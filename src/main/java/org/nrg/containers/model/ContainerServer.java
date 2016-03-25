@@ -14,6 +14,19 @@ public class ContainerServer {
         this.certPath = certPath;
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public Builder toBuilder() {
+        return new Builder(this);
+    }
+
+    private ContainerServer(final Builder builder) {
+        this.host = builder.host;
+        this.certPath = builder.certPath;
+    }
+
     public String host() {
         return host;
     }
@@ -48,5 +61,39 @@ public class ContainerServer {
     @Override
     public int hashCode() {
         return Objects.hashCode(host, certPath);
+    }
+
+    public static class Builder {
+        private String host;
+        private String certPath;
+
+        private Builder() {}
+
+        private Builder(final ContainerServer server) {
+            this.host = server.host;
+            this.certPath = server.certPath;
+        }
+
+        public ContainerServer build() {
+            return new ContainerServer(this);
+        }
+
+        public Builder host(final String host) {
+            this.host = host;
+            return this;
+        }
+
+        public String host() {
+            return this.host;
+        }
+
+        public Builder certPath(final String certPath) {
+            this.certPath = certPath;
+            return this;
+        }
+
+        public String certPath() {
+            return this.certPath;
+        }
     }
 }

@@ -9,7 +9,9 @@ import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@NrgPreferenceBean(toolId = "container", toolName = "Container Prefs", description = "All the preferences for the Container Service")
+@NrgPreferenceBean(toolId = "container-server",
+    toolName = "Container Server Prefs",
+    description = "All the preferences that define a Container Server")
 public class ContainerServerPrefsBean extends AbstractPreferenceBean {
     private static final Logger _log = LoggerFactory.getLogger(ContainerServerPrefsBean.class);
 
@@ -19,7 +21,10 @@ public class ContainerServerPrefsBean extends AbstractPreferenceBean {
     }
 
     public ContainerServer toBean() {
-        return new ContainerServer(getHost(), getCertPath());
+        return ContainerServer.builder()
+            .host(getHost())
+            .certPath(getCertPath())
+            .build();
     }
 
     @NrgPreference
