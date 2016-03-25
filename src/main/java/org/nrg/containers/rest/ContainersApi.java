@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -314,27 +315,29 @@ public class ContainersApi {
 
     @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT})
     @ResponseBody
-    public List<ContainerHub> getHubs(final @RequestParam(name = "verbose", defaultValue = "false") Boolean verbose)
+    public List<ContainerHub> getHubs()
             throws NotFoundException {
-        // Hard-code non-verbose until I get user permissions sorted out
-        return service.getHubs(Boolean.FALSE);
+        return service.getHubs();
     }
 
-    @RequestMapping(value = "/hubs/{hub}", method = GET, produces = {JSON, PLAIN_TEXT})
+    @RequestMapping(value = "/hubs/{key}", method = GET, produces = {JSON, PLAIN_TEXT})
     @ResponseBody
-    public ContainerHub getHub(final @PathVariable("hub") String hub,
-                               final @RequestParam(name = "verbose", defaultValue = "false") Boolean verbose)
-            throws NotFoundException {
-        // Hard-code non-verbose until I get user permissions sorted out
-        return service.getHub(hub, Boolean.FALSE);
+    public ContainerHub getHub(final @PathVariable("key") String key)
+        throws NotFoundException, IOException {
+        return service.getHub(key);
+    }
+
+    @RequestMapping(value = "/hubs/url/{url}", method = GET, produces = {JSON, PLAIN_TEXT})
+    @ResponseBody
+    public List<ContainerHub> getHubsByUrl(final @PathVariable("url") String url)
+        throws NotFoundException, IOException {
+        return service.getHubsByUrl(url);
     }
 
     @RequestMapping(value = "/hubs", method = POST, consumes = JSON)
     @ResponseBody
-    public void setHub(final @RequestBody ContainerHub hub,
-                       final @RequestParam(name = "overwrite", defaultValue = "false") Boolean overwrite,
-                       final @RequestParam(name = "ignoreBlank", defaultValue = "false") Boolean ignoreBlank) {
-        service.setHub(hub, overwrite, ignoreBlank);
+    public void setHub(final @RequestBody ContainerHub hub) throws IOException {
+        service.setHub(hub);
     }
 
     @RequestMapping(value = "/search", method = GET)

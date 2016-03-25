@@ -14,9 +14,11 @@ import org.nrg.containers.metadata.ImageMetadata;
 import org.nrg.containers.metadata.service.ImageMetadataService;
 import org.nrg.containers.model.Container;
 import org.nrg.containers.model.ContainerHub;
+import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.nrg.transporter.TransportService;
 import org.nrg.xft.XFT;
@@ -26,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -51,6 +54,10 @@ public class DefaultContainerService implements ContainerService {
     @Autowired
     @SuppressWarnings("SpringJavaAutowiringInspection") // IntelliJ does not process the excludeFilter in ContainerServiceConfig @ComponentScan, erroneously marks this red
     private TransportService transportService;
+
+    @Autowired
+    @SuppressWarnings("SpringJavaAutowiringInspection") // IntelliJ does not process the excludeFilter in ContainerServiceConfig @ComponentScan, erroneously marks this red
+    private ContainerHubPrefs containerHubPrefs;
 
     public List<Image> getAllImages() throws NoServerPrefException {
         return controlApi.getAllImages();
@@ -205,20 +212,27 @@ public class DefaultContainerService implements ContainerService {
     }
 
     @Override
-    public ContainerHub getHub(final String hub, final Boolean verbose) throws NotFoundException {
-        // TODO
-        return null;
+    public ContainerHub getHub(final String key) throws NotFoundException, IOException {
+        try {
+            return containerHubPrefs.getContainerHub(key);
+        } catch (NrgServiceRuntimeException e) {
+            throw new NotFoundException(e);
+        }
     }
 
     @Override
-    public List<ContainerHub> getHubs(final Boolean verbose) throws NotFoundException {
-        // TODO
-        return null;
+    public List<ContainerHub> getHubs() {
+        return containerHubPrefs.getContainerHubs();
     }
 
     @Override
-    public void setHub(final ContainerHub hub, final Boolean overwrite, final Boolean ignoreBlank) {
-        // TODO
+    public List<ContainerHub> getHubsByUrl(final String url) throws IOException {
+        return containerHubPrefs.getContainerHubsByUrl(url);
+    }
+
+    @Override
+    public void setHub(final ContainerHub hub) throws IOException {
+        containerHubPrefs.setContainerHub(hub);
     }
 
     @Override

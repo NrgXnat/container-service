@@ -12,6 +12,7 @@ import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -46,11 +47,13 @@ public interface ContainerService {
 
     String verbContainer(String id, String status) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
-    ContainerHub getHub(String hub, Boolean verbose) throws NotFoundException;
+    ContainerHub getHub(String key) throws NotFoundException, IOException;
 
-    List<ContainerHub> getHubs(Boolean verbose) throws NotFoundException;
+    List<ContainerHub> getHubs();
 
-    void setHub(ContainerHub hub, Boolean overwrite, Boolean ignoreBlank);
+    List<ContainerHub> getHubsByUrl(String url) throws NotFoundException, IOException;
+
+    void setHub(ContainerHub hub) throws IOException;
 
     String search(String term) throws NoHubException;
 

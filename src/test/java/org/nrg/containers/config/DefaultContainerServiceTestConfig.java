@@ -5,6 +5,7 @@ import org.nrg.automation.services.ScriptService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.metadata.service.ImageMetadataService;
 import org.nrg.containers.model.ContainerServerPrefsBean;
+import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.impl.DefaultContainerService;
 import org.nrg.transporter.TransportService;
@@ -33,6 +34,11 @@ public class DefaultContainerServiceTestConfig {
     @Bean
     public ContainerServerPrefsBean mockContainerServer() {
         return Mockito.mock(ContainerServerPrefsBean.class);
+    }
+
+    @Bean
+    public ContainerHubPrefs mockContainerHub() {
+        return Mockito.mock(ContainerHubPrefs.class);
     }
 
     @Bean

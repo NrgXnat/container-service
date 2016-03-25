@@ -2,6 +2,7 @@ package org.nrg.containers.api.impl;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.spotify.docker.client.DockerClient;
 import org.junit.After;
 import org.junit.Before;
@@ -10,6 +11,8 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
+import org.nrg.containers.model.ContainerHub;
+import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.services.NrgPreferenceService;
@@ -25,6 +28,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.model.ContainerHubPrefs.PREF_ID;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = DockerControlApiTestConfig.class)
@@ -46,6 +50,9 @@ public class DockerControlApiTest {
     private ContainerServerPrefsBean containerServerPrefsBean;
 
     @Autowired
+    private ContainerHubPrefs containerHubPrefs;
+
+    @Autowired
     private NrgPreferenceService mockPrefsService;
 
     @Rule
@@ -60,22 +67,31 @@ public class DockerControlApiTest {
             "https://192.168.99.100:2376";
         final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
         CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
-            certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
+            certPathEnv : "/Users/johnflavin/.docker/machine/machines/1.10";
 
-        when(mockPrefsService.getPreferenceValue("container", "host"))
+        // Set up mock prefs service for all the calls that will initialize
+        // the ContainerServerPrefsBean
+        when(mockPrefsService.getPreferenceValue("container-server", "host"))
             .thenReturn(CONTAINER_HOST);
-        when(mockPrefsService.getPreferenceValue("container", "certPath"))
+        when(mockPrefsService.getPreferenceValue("container-server", "certPath"))
             .thenReturn(CERT_PATH);
         doNothing().when(mockPrefsService)
-            .setPreferenceValue("container", "host", "");
+            .setPreferenceValue("container-server", "host", "");
         doNothing().when(mockPrefsService)
-            .setPreferenceValue("container", "certPath", "");
-        when(mockPrefsService.hasPreference("container", "host"))
+            .setPreferenceValue("container-server", "certPath", "");
+        when(mockPrefsService.hasPreference("container-server", "host"))
             .thenReturn(true);
-        when(mockPrefsService.hasPreference("container", "certPath"))
+        when(mockPrefsService.hasPreference("container-server", "certPath"))
             .thenReturn(true);
 
         containerServerPrefsBean.initialize(mockPrefsService);
+
+        when(mockPrefsService.getToolPropertyNames(PREF_ID))
+            .thenReturn(Sets.newHashSet(PREF_ID + "."));
+        when(mockPrefsService.getPreferenceValue(PREF_ID, PREF_ID + "."))
+            .thenReturn("{'key':'','url':'https://index.docker.io/v1/'," +
+                "'username':'','password':'','email':''}");
+        containerHubPrefs.initialize(mockPrefsService);
 
         client = controlApi.getClient();
     }
@@ -94,6 +110,21 @@ public class DockerControlApiTest {
 //        final ContainerServerPrefsBean expectedServer = mapper.readValue(containerServerJson, ContainerServerPrefsBean.class);
 
         assertEquals(containerServerPrefsBean.toBean(), controlApi.getServer());
+    }
+
+    @Test
+    public void testGetHubs() throws Exception {
+        final ContainerHub defaultContainerHub =
+            ContainerHub.builder()
+                .url("https://index.docker.io/v1/")
+                .username("")
+                .password("")
+                .email("")
+                .build();
+        final List<ContainerHub> defaultContainerHubWithListWrapper =
+            Lists.newArrayList(defaultContainerHub);
+
+        assertEquals(defaultContainerHubWithListWrapper, containerHubPrefs.getContainerHubs());
     }
 
     @Test
