@@ -1,0 +1,193 @@
+<script type="text/javascript">
+    jq(function(){
+        jq('body').addClass('administer configuration no_left_bar');
+    });
+</script>
+
+<style>
+    .form-group {
+        margin: 2em 0;
+    }
+    .form-group label {
+        display: inline-block;
+        font-weight: bold;
+        vertical-align: top;
+        width: 180px;
+    }
+    .form-control {
+        display: inline-block;
+        margin-right: 10px;
+        padding: 2px 4px;
+        vertical-align: top;
+        width: 330px;
+    }
+    .form-helptext {
+        color: #848484;
+        display: block;
+        font-size: 11px;
+        margin-left: 184px;
+    }
+</style>
+
+<script type="text/javascript">
+    if (!XNAT.admin) {
+        XNAT.admin = {};
+    }
+
+    // helper function to JSONify form data. From http://stackoverflow.com/questions/1184624/convert-form-data-to-javascript-object-with-jquery
+    jq.fn.serializeObject = function()
+    {
+        var o = {};
+        var a = this.serializeArray();
+        $.each(a, function() {
+            if (this.name == "XNAT_CSRF") {
+                // skip this
+            } else if (o[this.name] !== undefined) {
+                if (!o[this.name].push) {
+                    o[this.name] = [o[this.name]];
+                }
+                o[this.name].push(this.value || '');
+            } else {
+                o[this.name] = this.value || '';
+            }
+        });
+        return o;
+    };
+
+    XNAT.admin.showContainerInfo = function() {
+        jq.getJSON('/xapi/containers/server')
+                .done( function(data) {
+                    var URIdisplay = (data.host) ? data.host : "<em>Not Defined</em>";
+                    jq('#containerServerUrl').html(URIdisplay);
+                })
+                .fail( function(e) {
+                    xmodal.message('<p>Something bad happened: '+e.statusText+'</p><p>Error Code: '+e.status+'</p>');
+                })
+    };
+
+    XNAT.admin.setContainerServer = function() {
+        var requestBody = jq('#form-configure-container-server').serializeObject();
+        jq.ajax({ url: '/xapi/containers/server/?XNAT_CSRF='+csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
+            .done( function(){
+                alert('Successfully updated Container Server URI');
+                XNAT.admin.showContainerInfo();
+            })
+            .fail( function(e) {
+                xmodal.message('<p>Something bad happened: '+e.statusText+'</p><p>Error Code: '+e.status+'</p>');
+            });
+    };
+
+    XNAT.admin.openContainerServerModal = function() {
+        xmodal.open({
+            title: 'Configure Container Server',
+            template: jq('#modal-configure-container-server'),
+            okAction: function() { XNAT.admin.setContainerServer(); }
+        });
+    };
+
+    XNAT.admin.showImageHubs = function() {
+        var hubs = [];
+        jq.getJSON('/xapi/containers/hubs')
+            .done( function(data) {
+                hubs = data;
+                if (hubs.length > 0) {
+                    jq('#imageHubListing').html('');
+                    for (i=0, j=hubs.length; i<j; i++) {
+                        jq('#imageHubListing').append('<p>'+hubs[i].url+'</p>');
+                    }
+                } else {
+                    jq('#imageHubListing').html('<em>None defined</em>');
+                }
+            })
+            .fail( function(e) {
+                xmodal.message('<p>Something bad happened: '+e.statusText+'</p><p>Error Code: '+e.status+'</p>');
+            });
+    }
+
+    XNAT.admin.addImageHub = function() {
+        var requestBody = jq('#form-add-image-hub').serializeObject();
+        jq.ajax({ url: '/xapi/containers/hubs/?XNAT_CSRF='+csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
+                .done( function(){
+                    alert('Successfully added Image Hub');
+                    XNAT.admin.showImageHubs();
+                })
+                .fail( function(e) {
+                    xmodal.message('<p>Something bad happened: '+e.statusText+'</p><p>Error Code: '+e.status+'</p>');
+                });
+    };
+
+    XNAT.admin.openImageHubModal = function() {
+        xmodal.open({
+            title: 'Add Image Hub',
+            template: jq('#modal-add-image-hub'),
+            okAction: function() { XNAT.admin.addImageHub(); }
+        });
+    };
+
+    jq(document).ready(function(){
+        XNAT.admin.showContainerInfo();
+        XNAT.admin.showImageHubs();
+    });
+</script>
+
+<div class="yui-skin-sam">
+    <h1 class="edit_header1">Administer XNAT</h1>
+
+    #if($data.getSession().getAttribute("user").checkRole("Administrator"))
+        <h3>Container Service Setup</h3>
+        <p><strong>Help: </strong> Data processing in XNAT can now be performed within a temporary container via the XNAT Container Service. In order to set up a process within XNAT, you must download the process image from an image host, and point XNAT to the container server where the image will be run.</p>
+        <div class="form-group">
+            <label>Container Server URL</label>
+            <span class="form-control" id="containerServerUrl"><em>Not Defined</em></span>
+            <button class="btn2" onclick="XNAT.admin.openContainerServerModal()">Configure Container Server</button>
+        </div>
+
+        <div class="form-group">
+            <label for="imageHosts">Image Hosts</label>
+            <div id="imageHubListing" class="form-control">
+                <em>None defined</em>
+            </div>
+            <button class="btn2" onclick="XNAT.admin.openImageHubModal()">Add Image Hub</button>
+        </div>
+
+        <div id="modal-configure-container-server" class="hidden">
+            <h2>Configure Container Server</h2>
+            <form id="form-configure-container-server">
+                <div class="form-group">
+                    <label for="host">Container Server URL</label>
+                    <input type="url" name="host" class="form-control" placeholder="https://" required />
+                    <span class="form-helptext">Required</span>
+                </div>
+                <div class="form-group">
+                    <label for="certPath">Certificate Path</label>
+                    <input type="text" name="certPath" class="form-control" placeholder="/path/to/certificate/files">
+                    <span class="form-helptext">Optional</span>
+                </div>
+            </form>
+        </div>
+
+        <div id="modal-add-image-hub" class="hidden">
+            <h2>Add Image Hub</h2>
+            <form id="form-add-image-hub">
+                <div class="form-group">
+                    <label for="url">Image Hub URL</label>
+                    <input type="url" name="url" class="form-control" placeholder="https://" required />
+                    <span class="form-helptext">Required</span>
+                </div>
+                <div class="form-group">
+                    <label for="name">Image Hub Name</label>
+                    <input type="text" name="name" class="form-control" />
+                    <span class="form-helptext">Optional. Will be displayed as a label instead of the URL</span>
+                </div>
+                <input type="hidden" name="username" value />
+                <input type="hidden" name="email" value />
+                <input type="hidden" name="password" value />
+            </form>
+        </div>
+
+    #else
+        <p>Only site administrators can view this page. </p>
+    #end
+
+</div>
+

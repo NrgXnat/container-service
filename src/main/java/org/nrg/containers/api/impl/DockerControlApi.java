@@ -8,19 +8,20 @@ import com.spotify.docker.client.DockerCertificates;
 import com.spotify.docker.client.DockerClient;
 import com.spotify.docker.client.DockerClient.LogsParam;
 import com.spotify.docker.client.DockerException;
+import com.spotify.docker.client.ImageNotFoundException;
 import com.spotify.docker.client.LogStream;
+import com.spotify.docker.client.messages.AuthConfig;
 import com.spotify.docker.client.messages.ContainerConfig;
 import com.spotify.docker.client.messages.ContainerCreation;
 import com.spotify.docker.client.messages.ContainerInfo;
 import com.spotify.docker.client.messages.HostConfig;
-import com.spotify.docker.client.messages.ImageInfo;
-import com.spotify.docker.client.messages.ImageSearchResult;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.model.Container;
+import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
@@ -48,7 +49,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return Image objects stored on docker server
      **/
     @Override
-    public List<org.nrg.containers.model.Image> getAllImages() throws NoServerPrefException {
+    public List<org.nrg.containers.model.Image> getAllImages() throws NoServerPrefException, ContainerServerException {
         return getImages(null);
     }
 
@@ -58,14 +59,13 @@ public class DockerControlApi implements ContainerControlApi {
      * @param params Map of query parameters (name = value)
      * @return Image objects stored on docker server meeting the query parameters
      **/
-    public List<Image> getImages(final Map<String, String> params) throws NoServerPrefException {
+    public List<Image> getImages(final Map<String, String> params)
+        throws NoServerPrefException, ContainerServerException {
         return DockerImageToNrgImage(_getImages(params));
     }
 
     private List<com.spotify.docker.client.messages.Image> _getImages(final Map<String, String> params)
-        throws NoServerPrefException {
-        final DockerClient dockerClient = getClient();
-
+        throws NoServerPrefException, ContainerServerException {
         // Transform param map to ListImagesParam array
         DockerClient.ListImagesParam[] dockerParams;
         if (params != null && params.size() > 0) {
@@ -76,15 +76,15 @@ public class DockerControlApi implements ContainerControlApi {
             dockerParams = new DockerClient.ListImagesParam[] {};
         }
 
-        try {
+        try (final DockerClient dockerClient = getClient()) {
             return dockerClient.listImages(dockerParams);
         } catch (DockerException | InterruptedException e) {
-            _log.error("Failed to list images. "+e.getMessage());
+            _log.error("Failed to list images. " + e.getMessage());
+            throw new ContainerServerException(e);
         } catch (Error e) {
-            _log.error("Failed to list images. "+e.getMessage());
+            _log.error("Failed to list images. " + e.getMessage());
             throw e;
         }
-        return null;
     }
 
     public ContainerServer getServer() throws NoServerPrefException {
@@ -107,6 +107,34 @@ public class DockerControlApi implements ContainerControlApi {
         containerServerPref.setFromBean(serverBean);
     }
 
+    @Override
+    public String pingServer() throws NoServerPrefException, ContainerServerException {
+        try (final DockerClient client = getClient()) {
+            return client.ping();
+        } catch (DockerException | InterruptedException e) {
+            _log.error(e.getMessage());
+            throw new ContainerServerException(e);
+        }
+    }
+
+    @Override
+    public String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException {
+        final DockerClient client = getClient();
+        AuthConfig authConfig = AuthConfig.builder().email(hub.email()).username(hub.username())
+                .password(hub.password()).serverAddress(hub.url()).build();
+        try {
+            client.pull("connectioncheckonly", authConfig);
+        }
+        catch (ImageNotFoundException imageNotFoundException){
+            // Expected result: Hub found, bogus image not found
+            return "OK";
+        }
+        catch (Exception e) {
+            _log.error(e.getMessage());
+            throw new ContainerServerException(e);
+        }
+        return null;
+    }
 
     /**
      * Query Docker server for image by name
@@ -126,28 +154,14 @@ public class DockerControlApi implements ContainerControlApi {
 
     private com.spotify.docker.client.messages.Image _getImageByName(final String imageName)
         throws ContainerServerException, NoServerPrefException {
-        final DockerClient client = getClient();
-
-        List<com.spotify.docker.client.messages.Image> images = null;
-        try {
+        List<com.spotify.docker.client.messages.Image> images;
+        try (final DockerClient client = getClient()) {
             images = client.listImages(DockerClient.ListImagesParam.byName(imageName));
         } catch (DockerException | InterruptedException e) {
             throw new ContainerServerException(e);
         }
 
-        if (images != null && !images.isEmpty()) {
-            if (images.size() > 1) {
-                String warn = "Found multiple images with name "+imageName + ": ";
-                for (final com.spotify.docker.client.messages.Image image : images) {
-                    warn += image.id() + " ";
-                }
-                warn += ". Returning "+images.get(0).id()+".";
-
-                _log.warn(warn);
-            }
-            return images.get(0);
-        }
-        return null;
+        return oneImage(imageName, images);
     }
 
     /**
@@ -169,18 +183,24 @@ public class DockerControlApi implements ContainerControlApi {
     private com.spotify.docker.client.messages.Image _getImageById(final String imageId)
         throws ContainerServerException, NoServerPrefException {
 //        TODO: Make this work
-        final DockerClient client = getClient();
 
         List<com.spotify.docker.client.messages.Image> images;
-        try {
+        try (final DockerClient client = getClient()) {
             images = client.listImages(DockerClient.ListImagesParam.byName(imageId));
         } catch (DockerException | InterruptedException e) {
             throw new ContainerServerException(e);
         }
 
+        return oneImage(imageId, images);
+    }
+
+    private com.spotify.docker.client.messages.Image
+            oneImage(final String nameOrId,
+                     final List<com.spotify.docker.client.messages.Image> images) {
+
         if (images != null && !images.isEmpty()) {
             if (images.size() > 1) {
-                String warn = "Found multiple images with name "+ imageId + ": ";
+                String warn = "Found multiple images matching "+ nameOrId + ": ";
                 for (final com.spotify.docker.client.messages.Image image : images) {
                     warn += image.id() + " ";
                 }
@@ -200,7 +220,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return Container objects stored on docker server
      **/
     @Override
-    public List<Container> getAllContainers() throws NoServerPrefException {
+    public List<Container> getAllContainers() throws NoServerPrefException, ContainerServerException {
         return getContainers(null);
     }
 
@@ -211,9 +231,9 @@ public class DockerControlApi implements ContainerControlApi {
      * @return Container objects stored on docker server meeting the query parameters
      **/
     @Override
-    public List<Container> getContainers(final Map<String, String> params) throws NoServerPrefException {
-        DockerClient dockerClient = getClient();
-        List<com.spotify.docker.client.messages.Container> containerList = null;
+    public List<Container> getContainers(final Map<String, String> params)
+        throws NoServerPrefException, ContainerServerException {
+        List<com.spotify.docker.client.messages.Container> containerList;
 
         // Transform param map to ListImagesParam array
         DockerClient.ListContainersParam[] dockerParams;
@@ -225,10 +245,11 @@ public class DockerControlApi implements ContainerControlApi {
             dockerParams = new DockerClient.ListContainersParam[] {};
         }
 
-        try {
+        try (final DockerClient dockerClient = getClient()) {
             containerList = dockerClient.listContainers(dockerParams);
         } catch (DockerException | InterruptedException e) {
             _log.error(e.getMessage());
+            throw new ContainerServerException(e);
         }
         return DockerContainerToNrgContainer(containerList);
     }
@@ -240,7 +261,8 @@ public class DockerControlApi implements ContainerControlApi {
      * @return Container object with specified ID
      **/
     @Override
-    public Container getContainer(final String id) throws NotFoundException, NoServerPrefException {
+    public Container getContainer(final String id)
+        throws NotFoundException, NoServerPrefException, ContainerServerException {
         final Container container = DockerContainerToNrgContainer(_getContainer(id));
         if (container != null) {
             return container;
@@ -248,14 +270,14 @@ public class DockerControlApi implements ContainerControlApi {
         throw new NotFoundException(String.format("Could not find container %s", id));
     }
 
-    private ContainerInfo _getContainer(final String id) throws NoServerPrefException {
+    private ContainerInfo _getContainer(final String id) throws NoServerPrefException, ContainerServerException {
         final DockerClient client = getClient();
         try {
             return client.inspectContainer(id);
         } catch (DockerException | InterruptedException e) {
             _log.error("Container server error." + e.getMessage());
+            throw new ContainerServerException(e);
         }
-        return null;
     }
 
     /**
@@ -265,7 +287,8 @@ public class DockerControlApi implements ContainerControlApi {
      * @return Status of Container object with specified ID
      **/
     @Override
-    public String getContainerStatus(final String id) throws NotFoundException, NoServerPrefException {
+    public String getContainerStatus(final String id)
+        throws NotFoundException, NoServerPrefException, ContainerServerException {
         final Container container = getContainer(id);
 
         return container != null ? container.status() : null;
@@ -307,9 +330,8 @@ public class DockerControlApi implements ContainerControlApi {
             _log.debug(message);
         }
 
-        final DockerClient client = getClient();
         final ContainerCreation container;
-        try {
+        try (final DockerClient client = getClient()) {
             container = client.createContainer(containerConfig);
 
             _log.info("Starting container: id "+container.id());
@@ -329,18 +351,22 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     @Override
-    public String getContainerLogs(String id) throws NoServerPrefException, DockerException, InterruptedException {
-        final LogStream logStream = getClient().logs(id, LogsParam.stdout());
-        final String logs = logStream.readFully();
-        logStream.close();
+    public String getContainerLogs(String id) throws NoServerPrefException, ContainerServerException {
+        String logs;
+        try (final LogStream logStream = getClient().logs(id, LogsParam.stdout())) {
+            logs = logStream.readFully();
+        } catch (DockerException | InterruptedException e) {
+            _log.error(e.getMessage());
+            throw new ContainerServerException(e);
+        }
 
         return logs;
     }
 
     /**
-     * Create a client connection to a Docker server
+     * Create a client connection to a Docker server using default image repository configuration
      *
-     * @return DockerClient object
+     * @return DockerClient object using default authConfig
      **/
     public DockerClient getClient() throws NoServerPrefException {
         final ContainerServer server = getServer();
@@ -371,22 +397,53 @@ public class DockerControlApi implements ContainerControlApi {
         return DefaultDockerClient.fromEnv().build();
     }
 
-    /**
-     * Search docker server for images
-     *
-     * @param searchString string to match with image names.
-     * @return List of NRG Image objects
-     **/
-    public void searchImages(String searchString) throws Exception {
-        List<ImageSearchResult> searchResult = getClient().searchImages(searchString);
+//    /**
+//     * Search docker server for images
+//     *
+//     * @param searchString string to match with image names.
+//     * @return List of NRG Image objects
+//     **/
+//    public List<ImageSearchResult> searchImages(String searchString) throws Exception {
+//        return getClient().searchImages(searchString);
+//
+//    }
 
+    /**
+     * Pull image from default hub onto docker server
+     *
+     **/
+    @Override
+    public void pullImage(String name) throws NoServerPrefException, ContainerServerException {
+        try (final DockerClient client = getClient()) {
+            client.pull(name);
+        } catch (DockerException | InterruptedException e) {
+            _log.error(e.getMessage());
+            throw new ContainerServerException(e);
+        }
     }
 
-    public ImageInfo pullImage(String imageName) throws Exception {
-        final DockerClient client = getClient();
-        client.pull(imageName);
-        return client.inspectImage(imageName);
-
+    /**
+     * Pull image from specified hub onto docker server
+     *
+     **/
+    @Override
+    public void pullImage(String name, ContainerHub hub) throws NoServerPrefException, ContainerServerException {
+        if (hub == null) {
+            pullImage(name);
+        } else {
+            try (final DockerClient client = getClient()) {
+                final AuthConfig authConfig = AuthConfig.builder()
+                    .email(hub.email())
+                    .username(hub.username())
+                    .password(hub.password())
+                    .serverAddress(hub.url())
+                    .build();
+                client.pull(name, authConfig);
+            } catch (DockerException | InterruptedException e) {
+                _log.error(e.getMessage());
+                throw new ContainerServerException(e);
+            }
+        }
     }
 
 

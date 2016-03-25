@@ -2,12 +2,12 @@ package org.nrg.containers.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @ApiModel(description = "Properties that define an image.")
 public class Image {
@@ -96,15 +96,15 @@ public class Image {
 
         Image that = (Image) o;
 
-        return Objects.equal(this._name, that._name) &&
-                Objects.equal(this._id, that._id) &&
-                Objects.equal(this._repoTags, that._repoTags) &&
-                Objects.equal(this._size, that._size) &&
-                Objects.equal(this._labels, that._labels);
+        return Objects.equals(this._name, that._name) &&
+                Objects.equals(this._id, that._id) &&
+                Objects.equals(this._repoTags, that._repoTags) &&
+                Objects.equals(this._size, that._size) &&
+                Objects.equals(this._labels, that._labels);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(_name, _id, _repoTags, _size, _labels);
+        return Objects.hash(_name, _id, _repoTags, _size, _labels);
     }
 }
