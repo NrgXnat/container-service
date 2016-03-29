@@ -9,20 +9,14 @@ import com.spotify.docker.client.DockerClient;
 import com.spotify.docker.client.DockerClient.LogsParam;
 import com.spotify.docker.client.DockerException;
 import com.spotify.docker.client.LogStream;
-import com.spotify.docker.client.messages.ContainerConfig;
-import com.spotify.docker.client.messages.ContainerCreation;
-import com.spotify.docker.client.messages.ContainerInfo;
-import com.spotify.docker.client.messages.HostConfig;
-import com.spotify.docker.client.messages.ImageInfo;
-import com.spotify.docker.client.messages.ImageSearchResult;
+import com.spotify.docker.client.messages.*;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
+import org.nrg.containers.model.*;
 import org.nrg.containers.model.Container;
-import org.nrg.containers.model.ContainerServer;
-import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.slf4j.Logger;
@@ -107,6 +101,11 @@ public class DockerControlApi implements ContainerControlApi {
         containerServerPref.setFromBean(serverBean);
     }
 
+    @Override
+    public String pingServer() throws NoServerPrefException, DockerException, InterruptedException {
+        final DockerClient client = getClient();
+        return client.ping();
+    }
 
     /**
      * Query Docker server for image by name
@@ -338,9 +337,9 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     /**
-     * Create a client connection to a Docker server
+     * Create a client connection to a Docker server using default image repository configuration
      *
-     * @return DockerClient object
+     * @return DockerClient object using default authConfig
      **/
     public DockerClient getClient() throws NoServerPrefException {
         final ContainerServer server = getServer();
@@ -382,11 +381,25 @@ public class DockerControlApi implements ContainerControlApi {
 
     }
 
-    public ImageInfo pullImage(String imageName) throws Exception {
-        final DockerClient client = getClient();
-        client.pull(imageName);
-        return client.inspectImage(imageName);
+    /**
+     * Pull image from default hub onto docker server
+     *
+     **/
+    @Override
+    public void pullImage(String name) throws InterruptedException, DockerException, NoServerPrefException {
+        pullImage(name, null);
+    }
 
+    /**
+     * Pull image from specified hub onto docker server
+     *
+     **/
+    @Override
+    public void pullImage(String name, ContainerHub hub) throws DockerException, InterruptedException, NoServerPrefException {
+        final DockerClient client = getClient();
+        AuthConfig authConfig = AuthConfig.builder().email(hub.email()).username(hub.username())
+                .password(hub.password()).serverAddress(hub.url()).build();
+        client.pull(name, authConfig);
     }
 
 

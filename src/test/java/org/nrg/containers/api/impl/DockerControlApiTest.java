@@ -4,6 +4,7 @@ import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.spotify.docker.client.DockerClient;
+import com.spotify.docker.client.DockerException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -11,6 +12,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
+import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServerPrefsBean;
@@ -67,7 +69,7 @@ public class DockerControlApiTest {
             "https://192.168.99.100:2376";
         final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
         CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
-            certPathEnv : "/Users/johnflavin/.docker/machine/machines/1.10";
+            certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
 
         // Set up mock prefs service for all the calls that will initialize
         // the ContainerServerPrefsBean
@@ -190,6 +192,18 @@ public class DockerControlApiTest {
 
         client.pull(KELSEYM_PYDICOM);
         String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
+    }
+
+    @Test
+    public void testPingServer() {
+        String pingResponse = "";
+        try {
+            pingResponse = controlApi.pingServer();
+        } catch (NoServerPrefException | DockerException | InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            assertEquals(pingResponse, "OK");
+        }
     }
 }
 

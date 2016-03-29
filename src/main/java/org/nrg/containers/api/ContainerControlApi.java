@@ -1,10 +1,12 @@
 package org.nrg.containers.api;
 
 import com.spotify.docker.client.DockerException;
+import com.spotify.docker.client.messages.ImageInfo;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.model.Container;
+import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
@@ -18,6 +20,12 @@ public interface ContainerControlApi {
     void setServer(String host, String certPath) throws InvalidPreferenceName;
 
     void setServer(ContainerServer server) throws InvalidPreferenceName;
+
+    String pingServer() throws NoServerPrefException, DockerException, InterruptedException;
+
+    void pullImage(String name) throws InterruptedException, DockerException, NoServerPrefException;
+
+    void pullImage(String name, ContainerHub hub) throws DockerException, InterruptedException, NoServerPrefException;
 
     List<Image> getAllImages() throws NoServerPrefException;
 
