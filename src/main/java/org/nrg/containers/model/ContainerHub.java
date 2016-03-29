@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
+
+import java.util.Objects;
+
 
 @JsonIgnoreProperties({"key"})
 public class ContainerHub {
@@ -66,15 +68,15 @@ public class ContainerHub {
 
         ContainerHub that = (ContainerHub) o;
 
-        return Objects.equal(this.url, that.url) &&
-                Objects.equal(this.username, that.username) &&
-                Objects.equal(this.password, that.password) &&
-                Objects.equal(this.email, that.email);
+        return Objects.equals(this.url, that.url) &&
+                Objects.equals(this.username, that.username) &&
+                Objects.equals(this.password, that.password) &&
+                Objects.equals(this.email, that.email);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(url, username, password, email);
+        return Objects.hash(url, username, password, email);
     }
 
     @Override

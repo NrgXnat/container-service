@@ -1,7 +1,8 @@
 package org.nrg.containers.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Objects;
+
+import java.util.Objects;
 
 public class ContainerServer {
     @JsonProperty("host") private String host;
@@ -54,13 +55,13 @@ public class ContainerServer {
 
         ContainerServer that = (ContainerServer) o;
 
-        return Objects.equal(this.host, that.host) &&
-                Objects.equal(this.certPath, that.certPath);
+        return Objects.equals(this.host, that.host) &&
+                Objects.equals(this.certPath, that.certPath);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(host, certPath);
+        return Objects.hash(host, certPath);
     }
 
     public static class Builder {
