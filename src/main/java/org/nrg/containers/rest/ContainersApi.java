@@ -363,6 +363,15 @@ public class ContainersApi {
         return service.pullFromSource(source, name);
     }
 
+    @RequestMapping(value = "/ping", method = GET)
+    @ResponseBody
+    public String ping()
+        throws NoServerPrefException, InterruptedException, DockerException {
+        return service.ping();
+    }
+
+
+
     @ResponseStatus(value = HttpStatus.INTERNAL_SERVER_ERROR)
     @ExceptionHandler(value = {InvalidPreferenceName.class})
     public void handleInvalidPreferenceNameException() {

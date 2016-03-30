@@ -344,4 +344,16 @@ public class ContainersApiTest {
     public void testPullFromSource() throws Exception {
         // TODO
     }
+
+    @Test
+    public void testPing() throws Exception {
+        final String path = "/containers/ping";
+        final MockHttpServletRequestBuilder request = get(path);
+
+        when(service.ping()).thenReturn("OK");
+
+        mockMvc.perform(request)
+            .andExpect(status().isOk())
+            .andExpect(content().string(equalTo("OK")));
+    }
 }

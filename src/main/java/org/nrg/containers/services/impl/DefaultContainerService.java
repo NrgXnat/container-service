@@ -285,4 +285,8 @@ public class DefaultContainerService implements ContainerService {
     public String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank) throws NoServerPrefException, NotFoundException {
         return null;
     }
+
+    public String ping() throws NoServerPrefException, InterruptedException, DockerException {
+        return controlApi.pingServer();
+    }
 }

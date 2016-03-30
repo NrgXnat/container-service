@@ -274,7 +274,10 @@ public class DefaultContainerServiceTest {
     }
 
     @Test
-    public void testSetMetadataById1() throws Exception {
+    public void testPing() throws Exception {
+        when(mockContainerControlApi.pingServer())
+            .thenReturn("OK");
 
+        assertEquals("OK", service.ping());
     }
 }

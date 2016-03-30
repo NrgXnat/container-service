@@ -74,4 +74,5 @@ public interface ContainerService {
     String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank)
             throws NoServerPrefException, NotFoundException;
 
+    String ping() throws NoServerPrefException, InterruptedException, DockerException;
 }
