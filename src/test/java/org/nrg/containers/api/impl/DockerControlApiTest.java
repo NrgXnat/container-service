@@ -68,9 +68,15 @@ public class DockerControlApiTest {
         CONTAINER_HOST = hostEnv != null && !hostEnv.equals("") ?
             hostEnv.replace("tcp", "https") :
             "https://192.168.99.100:2376";
+
+        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
         final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
-            certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
+        if (tlsVerify != null && tlsVerify.equals("1")) {
+            CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
+                certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
+        } else {
+            CERT_PATH = "";
+        }
 
         // Set up mock prefs service for all the calls that will initialize
         // the ContainerServerPrefsBean
