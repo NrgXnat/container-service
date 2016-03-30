@@ -143,7 +143,7 @@ public class ContainersApi {
     @ResponseBody
     public String getContainerLogs(@ApiParam(value = "Get logs of container with this ID", required = true)
                                        final @PathVariable("id") String id)
-        throws NotFoundException, NoServerPrefException, ContainerServerException, DockerException, InterruptedException {
+        throws NotFoundException, NoServerPrefException, ContainerServerException {
         return service.getContainerLogs(id);
     }
 
@@ -366,7 +366,7 @@ public class ContainersApi {
     @RequestMapping(value = "/ping", method = GET)
     @ResponseBody
     public String ping()
-        throws NoServerPrefException, InterruptedException, DockerException {
+        throws NoServerPrefException, ContainerServerException {
         return service.ping();
     }
 

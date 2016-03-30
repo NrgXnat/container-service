@@ -59,7 +59,7 @@ public class DefaultContainerService implements ContainerService {
     @SuppressWarnings("SpringJavaAutowiringInspection") // IntelliJ does not process the excludeFilter in ContainerServiceConfig @ComponentScan, erroneously marks this red
     private ContainerHubPrefs containerHubPrefs;
 
-    public List<Image> getAllImages() throws NoServerPrefException {
+    public List<Image> getAllImages() throws NoServerPrefException, ContainerServerException {
         return controlApi.getAllImages();
     }
 
@@ -200,7 +200,7 @@ public class DefaultContainerService implements ContainerService {
 
     @Override
     public String getContainerLogs(final String id)
-        throws NoServerPrefException, NotFoundException, ContainerServerException, DockerException, InterruptedException {
+        throws NoServerPrefException, NotFoundException, ContainerServerException {
         return controlApi.getContainerLogs(id);
     }
 
@@ -286,7 +286,7 @@ public class DefaultContainerService implements ContainerService {
         return null;
     }
 
-    public String ping() throws NoServerPrefException, InterruptedException, DockerException {
+    public String ping() throws NoServerPrefException, ContainerServerException {
         return controlApi.pingServer();
     }
 }

@@ -10,6 +10,8 @@ import org.junit.runner.RunWith;
 import org.nrg.automation.services.ScriptService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.config.DefaultContainerServiceTestConfig;
+import org.nrg.containers.exceptions.ContainerServerException;
+import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.metadata.service.ImageMetadataService;
 import org.nrg.containers.model.ContainerServer;
@@ -24,6 +26,7 @@ import java.util.List;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.when;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -34,9 +37,12 @@ public class DefaultContainerServiceTest {
     final static String MOCK_CONTAINER_CERT_PATH = "/path/to/file";
     final static ContainerServer MOCK_CONTAINER_SERVER =
         new ContainerServer(MOCK_CONTAINER_HOST, MOCK_CONTAINER_CERT_PATH);
-    ;
 
     final NotFoundException NOT_FOUND_EXCEPTION = new NotFoundException("Some cool message");
+    final ContainerServerException CONTAINER_SERVER_EXCEPTION =
+        new ContainerServerException("Your server dun goofed.");
+    final NoServerPrefException NO_SERVER_PREF_EXCEPTION =
+        new NoServerPrefException("Set your server, silly!.");
 
     @Autowired
     private ContainerControlApi mockContainerControlApi;
@@ -276,8 +282,24 @@ public class DefaultContainerServiceTest {
     @Test
     public void testPing() throws Exception {
         when(mockContainerControlApi.pingServer())
-            .thenReturn("OK");
+            .thenReturn("OK")
+            .thenThrow(CONTAINER_SERVER_EXCEPTION)
+            .thenThrow(NO_SERVER_PREF_EXCEPTION);
 
         assertEquals("OK", service.ping());
+
+        try {
+            service.ping();
+            fail("We should have caught a ContainerServerException.");
+        } catch (ContainerServerException e) {
+            assertEquals(CONTAINER_SERVER_EXCEPTION, e);
+        }
+
+        try {
+            service.ping();
+            fail("We should have caught a NoServerPrefException.");
+        } catch (NoServerPrefException e) {
+            assertEquals(NO_SERVER_PREF_EXCEPTION, e);
+        }
     }
 }

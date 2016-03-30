@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.RestApiTestConfig;
+import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.model.Container;
@@ -59,6 +60,8 @@ public class ContainersApiTest {
     final NotFoundException NOT_FOUND_EXCEPTION = new NotFoundException("Some cool message");
     final NoServerPrefException NO_SERVER_PREF_EXCEPTION = new NoServerPrefException("message");
     final InvalidPreferenceName INVALID_PREFERENCE_NAME = new InvalidPreferenceName("*invalid name*");
+    final ContainerServerException CONTAINER_SERVER_EXCEPTION =
+        new ContainerServerException("Your server dun goofed.");
 
     final static String MOCK_CONTAINER_HOST = "fake://host.url";
     final static String MOCK_CONTAINER_CERT_PATH = "/path/to/file";
@@ -350,10 +353,17 @@ public class ContainersApiTest {
         final String path = "/containers/ping";
         final MockHttpServletRequestBuilder request = get(path);
 
-        when(service.ping()).thenReturn("OK");
+        when(service.ping())
+            .thenReturn("OK")
+            .thenThrow(CONTAINER_SERVER_EXCEPTION)
+            .thenThrow(NO_SERVER_PREF_EXCEPTION);
 
         mockMvc.perform(request)
             .andExpect(status().isOk())
             .andExpect(content().string(equalTo("OK")));
+
+        mockMvc.perform(request).andExpect(status().isInternalServerError());
+
+        mockMvc.perform(request).andExpect(status().isFailedDependency());
     }
 }

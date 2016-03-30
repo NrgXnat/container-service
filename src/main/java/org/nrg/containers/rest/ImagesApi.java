@@ -50,7 +50,7 @@ public class ImagesApi {
     @RequestMapping(value = "/images", method = GET, produces = {JSON, PLAIN_TEXT})
     public List<Image> getAllImages(final @RequestParam(value = "project", required = false) String projectParam,
                                     final @RequestParam(value = "metadata", required = false) Boolean metadata)
-            throws NoServerPrefException {
+        throws NoServerPrefException, ContainerServerException {
         return service.getAllImages();
     }
 

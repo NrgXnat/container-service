@@ -18,7 +18,7 @@ import java.util.Map;
 
 public interface ContainerService {
 
-    List<Image> getAllImages() throws NoServerPrefException;
+    List<Image> getAllImages() throws NoServerPrefException, ContainerServerException;
 
     Image getImageByName(String name) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
@@ -43,7 +43,7 @@ public interface ContainerService {
 
     String launchFromScript(String scriptId, Map<String, String> launchArguments, Boolean wait) throws Exception;
 
-    String getContainerLogs(String id) throws NoServerPrefException, NotFoundException, ContainerServerException, DockerException, InterruptedException;
+    String getContainerLogs(String id) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
     String verbContainer(String id, String status) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
@@ -74,5 +74,5 @@ public interface ContainerService {
     String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank)
             throws NoServerPrefException, NotFoundException;
 
-    String ping() throws NoServerPrefException, InterruptedException, DockerException;
+    String ping() throws NoServerPrefException, ContainerServerException;
 }

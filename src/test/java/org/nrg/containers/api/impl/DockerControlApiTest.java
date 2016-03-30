@@ -12,6 +12,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
+import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerHubPrefs;
@@ -195,15 +196,8 @@ public class DockerControlApiTest {
     }
 
     @Test
-    public void testPingServer() {
-        String pingResponse = "";
-        try {
-            pingResponse = controlApi.pingServer();
-        } catch (NoServerPrefException | DockerException | InterruptedException e) {
-            e.printStackTrace();
-        } finally {
-            assertEquals(pingResponse, "OK");
-        }
+    public void testPingServer() throws Exception {
+        assertEquals("OK", controlApi.pingServer());
     }
 }
 
