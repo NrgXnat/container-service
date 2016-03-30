@@ -286,17 +286,17 @@ public class DefaultContainerServiceTest {
             .thenThrow(CONTAINER_SERVER_EXCEPTION)
             .thenThrow(NO_SERVER_PREF_EXCEPTION);
 
-        assertEquals("OK", service.ping());
+        assertEquals("OK", service.pingServer());
 
         try {
-            service.ping();
+            service.pingServer();
             fail("We should have caught a ContainerServerException.");
         } catch (ContainerServerException e) {
             assertEquals(CONTAINER_SERVER_EXCEPTION, e);
         }
 
         try {
-            service.ping();
+            service.pingServer();
             fail("We should have caught a NoServerPrefException.");
         } catch (NoServerPrefException e) {
             assertEquals(NO_SERVER_PREF_EXCEPTION, e);

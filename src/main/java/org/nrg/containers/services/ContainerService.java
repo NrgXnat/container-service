@@ -71,8 +71,8 @@ public interface ContainerService {
 
     void setServer(ContainerServer server) throws InvalidPreferenceName;
 
+    String pingServer() throws NoServerPrefException, ContainerServerException;
+
     String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank)
             throws NoServerPrefException, NotFoundException;
-
-    String ping() throws NoServerPrefException, ContainerServerException;
 }

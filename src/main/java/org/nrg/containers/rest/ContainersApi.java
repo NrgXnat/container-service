@@ -1,6 +1,5 @@
 package org.nrg.containers.rest;
 
-import com.spotify.docker.client.DockerException;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -313,6 +312,13 @@ public class ContainersApi {
         service.setServer(containerServer);
     }
 
+    @RequestMapping(value = "/server/ping", method = GET)
+    @ResponseBody
+    public String pingServer()
+        throws NoServerPrefException, ContainerServerException {
+        return service.pingServer();
+    }
+
     @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT})
     @ResponseBody
     public List<ContainerHub> getHubs()
@@ -361,13 +367,6 @@ public class ContainersApi {
                         final @RequestParam(name = "name", required = false) String name)
             throws ContainerServerException, NotFoundException, NoHubException {
         return service.pullFromSource(source, name);
-    }
-
-    @RequestMapping(value = "/ping", method = GET)
-    @ResponseBody
-    public String ping()
-        throws NoServerPrefException, ContainerServerException {
-        return service.ping();
     }
 
 

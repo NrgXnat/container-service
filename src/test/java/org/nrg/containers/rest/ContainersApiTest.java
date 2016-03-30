@@ -350,10 +350,10 @@ public class ContainersApiTest {
 
     @Test
     public void testPing() throws Exception {
-        final String path = "/containers/ping";
+        final String path = "/containers/server/ping";
         final MockHttpServletRequestBuilder request = get(path);
 
-        when(service.ping())
+        when(service.pingServer())
             .thenReturn("OK")
             .thenThrow(CONTAINER_SERVER_EXCEPTION)
             .thenThrow(NO_SERVER_PREF_EXCEPTION);

@@ -286,7 +286,7 @@ public class DefaultContainerService implements ContainerService {
         return null;
     }
 
-    public String ping() throws NoServerPrefException, ContainerServerException {
+    public String pingServer() throws NoServerPrefException, ContainerServerException {
         return controlApi.pingServer();
     }
 }
