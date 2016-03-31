@@ -1,0 +1,4 @@
+<div style="width: 400px; text-align: left;">
+    <h1>This is a customized XNAT Site Description</h1>
+    <p>You can put anything you want into this file, the trick is making sure that it gets recognized by XNAT.</p>
+</div>
