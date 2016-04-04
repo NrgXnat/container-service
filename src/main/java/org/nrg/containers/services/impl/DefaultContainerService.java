@@ -235,11 +235,11 @@ public class DefaultContainerService implements ContainerService {
         containerHubPrefs.setContainerHub(hub);
     }
 
-    @Override
-    public String search(final String term) throws NoHubException {
-        // TODO
-        return null;
-    }
+//    @Override
+//    public String search(final String term) throws NoHubException {
+//        // TODO
+//        return null;
+//    }
 
     @Override
     public Image pullByName(final String image, final String hub, final String name)

@@ -13,6 +13,7 @@ import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.model.Container;
+import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
@@ -27,9 +28,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import javax.servlet.ServletContext;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
@@ -54,6 +61,7 @@ public class ContainersApiTest {
     private MockMvc mockMvc;
     final ObjectMapper mapper = new ObjectMapper();
 
+    final MediaType FORM = MediaType.APPLICATION_FORM_URLENCODED;
     final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
     final MediaType PLAIN_TEXT = MediaType.TEXT_PLAIN;
     
@@ -330,13 +338,57 @@ public class ContainersApiTest {
 
     @Test
     public void testSetHub() throws Exception {
-        // TODO
+        final ContainerHub hub = ContainerHub.builder()
+            .email("user@email.com")
+            .username("joe_schmoe")
+            .password("insecure")
+            .url("http://hub.io")
+            .build();
+
+        final String path = "/containers/hubs";
+        doNothing().when(service).setHub(hub);
+
+        // Make a json representation of the hub
+        final String hubJsonString = mapper.writeValueAsString(hub);
+
+//        // Make an html form representation of the hub
+//        final String hubFormString =
+//            String.format("email=%s&username=%s&password=%s&url=%s",
+//                urlEncode(hub.email()),
+//                urlEncode(hub.username()),
+//                urlEncode(hub.password()),
+//                urlEncode(hub.url()));
+
+
+        // send json in
+        final MockHttpServletRequestBuilder requestJson =
+            post(path).content(hubJsonString).contentType(JSON);
+
+        mockMvc.perform(requestJson)
+            .andExpect(status().isOk());
+
+        verify(service, times(1)).setHub(hub); // Method has been called once
+
+//        // send form in
+//        final MockHttpServletRequestBuilder requestForm =
+//            post(path).content(hubFormString).contentType(FORM);
+//
+//        mockMvc.perform(requestForm)
+//            .andExpect(status().isOk());
+//
+//        verify(service, times(2)).setHub(hub); // Method has been called twice
+
+        // Exception
+        doThrow(IOException.class).when(service).setHub(hub);
+
+        mockMvc.perform(requestJson)
+            .andExpect(status().isInternalServerError());
     }
 
-    @Test
-    public void testSearch() throws Exception {
-        // TODO
-    }
+//    @Test
+//    public void testSearch() throws Exception {
+//
+//    }
 
     @Test
     public void testPullByName() throws Exception {
@@ -365,5 +417,9 @@ public class ContainersApiTest {
         mockMvc.perform(request).andExpect(status().isInternalServerError());
 
         mockMvc.perform(request).andExpect(status().isFailedDependency());
+    }
+
+    public String urlEncode(final String raw) throws UnsupportedEncodingException {
+        return URLEncoder.encode(raw, UTF_8.name());
     }
 }

@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,9 +33,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.List;
 import java.util.Map;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 import static org.springframework.web.bind.annotation.RequestMethod.PUT;
@@ -333,9 +338,9 @@ public class ContainersApi {
         return service.getHub(key);
     }
 
-    @RequestMapping(value = "/hubs/url/{url}", method = GET, produces = {JSON, PLAIN_TEXT})
+    @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT}, params = "url")
     @ResponseBody
-    public List<ContainerHub> getHubsByUrl(final @PathVariable("url") String url)
+    public List<ContainerHub> getHubsByUrl(final @RequestParam("url") String url)
         throws NotFoundException, IOException {
         return service.getHubsByUrl(url);
     }
@@ -346,11 +351,28 @@ public class ContainersApi {
         service.setHub(hub);
     }
 
-    @RequestMapping(value = "/search", method = GET)
-    @ResponseBody
-    public String search(final @RequestParam(name = "term") String term) throws NoHubException {
-        return service.search(term);
-    }
+//    @RequestMapping(value = "/hubs", method = POST, consumes = FORM)
+//    @ResponseBody
+//    public void setHubWithForm(final @RequestBody MultiValueMap<String, String> hubForm)
+//        throws IOException, BadRequestException {
+//        if (!hubForm.containsKey("url")) {
+//            throw new BadRequestException("URL is required for ub definition");
+//        }
+//        final Map<String, String> hubMap = hubForm.toSingleValueMap();
+//        final ContainerHub hub = ContainerHub.builder()
+//            .email(hubMap.containsKey("email") ? urlDecode(hubMap.get("email")) : "")
+//            .email(hubMap.containsKey("username") ? urlDecode(hubMap.get("username")) : "")
+//            .email(hubMap.containsKey("password") ? urlDecode(hubMap.get("password")) : "")
+//            .url(urlDecode(hubMap.get("url")))
+//            .build();
+//        service.setHub(hub);
+//    }
+
+//    @RequestMapping(value = "/search", method = GET)
+//    @ResponseBody
+//    public String search(final @RequestParam(name = "term") String term) throws NoHubException {
+//        return service.search(term);
+//    }
 
     @RequestMapping(value = "/pull", method = GET, params = "image")
     @ResponseBody
@@ -372,8 +394,12 @@ public class ContainersApi {
 
 
     @ResponseStatus(value = HttpStatus.INTERNAL_SERVER_ERROR)
-    @ExceptionHandler(value = {InvalidPreferenceName.class})
-    public void handleInvalidPreferenceNameException() {
+    @ExceptionHandler(value = {InvalidPreferenceName.class, IOException.class})
+    public void handleExceptionsReturn500() {
         // Do nothing. HTTP 500 will be returned.
+    }
+
+    public String urlDecode(final String encoded) throws UnsupportedEncodingException {
+        return URLDecoder.decode(encoded, UTF_8.name());
     }
 }

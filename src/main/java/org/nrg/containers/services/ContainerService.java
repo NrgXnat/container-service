@@ -55,7 +55,7 @@ public interface ContainerService {
 
     void setHub(ContainerHub hub) throws IOException;
 
-    String search(String term) throws NoHubException;
+//    String search(String term) throws NoHubException;
 
     Image pullByName(String image, String hub, String name) throws NoHubException, NotFoundException, ContainerServerException;
 
