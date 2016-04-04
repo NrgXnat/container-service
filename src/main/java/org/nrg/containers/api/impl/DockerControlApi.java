@@ -416,7 +416,7 @@ public class DockerControlApi implements ContainerControlApi {
      **/
     @Override
     public void pullImage(String name) throws NoServerPrefException, ContainerServerException {
-        pullImage(name, null);
+        pullImage(name, ContainerHub.builder().build());
     }
 
     /**

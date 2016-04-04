@@ -219,6 +219,7 @@ public class DockerControlApiTest {
     }
     @Test
     public void testPullImage() throws Exception {
+        controlApi.pullImage(BUSYBOX_LATEST);
 
     }
 
