@@ -205,6 +205,23 @@ public class DockerControlApiTest {
     public void testPingServer() throws Exception {
         assertEquals("OK", controlApi.pingServer());
     }
+    @Test
+    public void testPingHub() throws Exception {
+        final ContainerHub containerHub =
+                ContainerHub.builder()
+                        .url("https://index.docker.io/v1/")
+                        .username("")
+                        .password("")
+                        .email("")
+                        .build();
+
+        assertEquals("OK", controlApi.pingHub(containerHub));
+    }
+    @Test
+    public void testPullImage() throws Exception {
+
+    }
+
 }
 
 

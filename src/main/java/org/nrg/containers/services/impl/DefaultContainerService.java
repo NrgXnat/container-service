@@ -286,7 +286,13 @@ public class DefaultContainerService implements ContainerService {
         return null;
     }
 
+    @Override
     public String pingServer() throws NoServerPrefException, ContainerServerException {
         return controlApi.pingServer();
+    }
+
+    @Override
+    public String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException {
+        return controlApi.pingHub(hub);
     }
 }

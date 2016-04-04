@@ -2,13 +2,8 @@ package org.nrg.containers.api.impl;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
-import com.spotify.docker.client.DefaultDockerClient;
-import com.spotify.docker.client.DockerCertificateException;
-import com.spotify.docker.client.DockerCertificates;
-import com.spotify.docker.client.DockerClient;
+import com.spotify.docker.client.*;
 import com.spotify.docker.client.DockerClient.LogsParam;
-import com.spotify.docker.client.DockerException;
-import com.spotify.docker.client.LogStream;
 import com.spotify.docker.client.messages.*;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
@@ -25,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Paths;
+import java.rmi.server.UID;
 import java.util.List;
 import java.util.Map;
 
@@ -106,11 +102,30 @@ public class DockerControlApi implements ContainerControlApi {
     public String pingServer() throws NoServerPrefException, ContainerServerException {
         final DockerClient client = getClient();
         try {
-            return client.ping();
+            return  client.ping();
         } catch (DockerException | InterruptedException e) {
             _log.error(e.getMessage());
             throw new ContainerServerException(e);
         }
+    }
+
+    @Override
+    public String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException {
+        final DockerClient client = getClient();
+        AuthConfig authConfig = AuthConfig.builder().email(hub.email()).username(hub.username())
+                .password(hub.password()).serverAddress(hub.url()).build();
+        try {
+            client.pull("connectioncheckonly", authConfig);
+        }
+        catch (ImageNotFoundException imageNotFoundException){
+            // Expected result: Hub found, bogus image not found
+            return "OK";
+        }
+        catch (Exception e) {
+            _log.error(e.getMessage());
+            throw new ContainerServerException(e);
+        }
+        return null;
     }
 
     /**

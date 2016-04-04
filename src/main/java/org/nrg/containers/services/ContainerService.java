@@ -73,6 +73,8 @@ public interface ContainerService {
 
     String pingServer() throws NoServerPrefException, ContainerServerException;
 
+    String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException;
+
     String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank)
             throws NoServerPrefException, NotFoundException;
 }

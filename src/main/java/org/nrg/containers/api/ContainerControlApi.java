@@ -1,7 +1,5 @@
 package org.nrg.containers.api;
 
-import com.spotify.docker.client.DockerException;
-import com.spotify.docker.client.messages.ImageInfo;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
@@ -22,6 +20,8 @@ public interface ContainerControlApi {
     void setServer(ContainerServer server) throws InvalidPreferenceName;
 
     String pingServer() throws NoServerPrefException, ContainerServerException;
+
+    String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException;
 
     void pullImage(String name) throws NoServerPrefException, ContainerServerException;
 
