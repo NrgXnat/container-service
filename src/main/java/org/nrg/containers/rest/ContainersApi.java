@@ -331,9 +331,9 @@ public class ContainersApi {
         return service.getHubs();
     }
 
-    @RequestMapping(value = "/hubs/{key}", method = GET, produces = {JSON, PLAIN_TEXT})
+    @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT}, params = "key")
     @ResponseBody
-    public ContainerHub getHub(final @PathVariable("key") String key)
+    public ContainerHub getHub(final @RequestParam("key") String key)
         throws NotFoundException, IOException {
         return service.getHub(key);
     }

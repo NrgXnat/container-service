@@ -50,7 +50,7 @@ public class ContainerHub {
 
     @JsonGetter("key")
     public String key() {
-        return String.format("%s-%s-%s", url, username, email);
+        return String.format("%s-%s", url, username);
     }
 
     public String getKey() {
