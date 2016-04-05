@@ -1,6 +1,5 @@
 package org.nrg.containers.services;
 
-import com.spotify.docker.client.DockerException;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoHubException;
 import org.nrg.containers.exceptions.NoServerPrefException;
