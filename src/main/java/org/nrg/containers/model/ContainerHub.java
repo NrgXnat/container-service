@@ -1,15 +1,16 @@
 package org.nrg.containers.model;
 
-import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.Objects;
 
 
 @JsonIgnoreProperties({"key"})
 public class ContainerHub {
+    @JsonProperty("name") private String name;
     @JsonProperty("url") private String url;
     @JsonProperty("username") private String username;
     @JsonProperty("password") private String password;
@@ -18,6 +19,7 @@ public class ContainerHub {
     public ContainerHub() {}
 
     private ContainerHub(final Builder builder) {
+        this.name = builder.name;
         this.url = builder.url;
         this.username = builder.username;
         this.password = builder.password;
@@ -32,7 +34,15 @@ public class ContainerHub {
         return new Builder(this);
     }
 
+    public String name() {
+        return name;
+    }
+
     public String url() {
+        return url;
+    }
+
+    public String getUrl() {
         return url;
     }
 
@@ -48,15 +58,6 @@ public class ContainerHub {
         return email;
     }
 
-    @JsonGetter("key")
-    public String key() {
-        return String.format("%s-%s", url, username);
-    }
-
-    public String getKey() {
-        return key();
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -68,7 +69,8 @@ public class ContainerHub {
 
         ContainerHub that = (ContainerHub) o;
 
-        return Objects.equals(this.url, that.url) &&
+        return Objects.equals(this.name, that.name) &&
+                Objects.equals(this.url, that.url) &&
                 Objects.equals(this.username, that.username) &&
                 Objects.equals(this.password, that.password) &&
                 Objects.equals(this.email, that.email);
@@ -76,20 +78,22 @@ public class ContainerHub {
 
     @Override
     public int hashCode() {
-        return Objects.hash(url, username, password, email);
+        return Objects.hash(name, url, username, password, email);
     }
 
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
+            .add("name", name)
             .add("url", url)
             .add("username", username)
-            //.add("password", password)
+            .add("password", StringUtils.isBlank(password) ? "" : "******")
             .add("email", email)
             .toString();
     }
 
     public static class Builder {
+        private String name;
         private String url;
         private String username;
         private String password;
@@ -98,6 +102,7 @@ public class ContainerHub {
         private Builder() {}
 
         private Builder(final ContainerHub hub) {
+            this.name = hub.name;
             this.url = hub.url;
             this.username = hub.username;
             this.password = hub.password;
@@ -106,6 +111,11 @@ public class ContainerHub {
 
         public ContainerHub build() {
             return new ContainerHub(this);
+        }
+
+        public Builder name(final String name) {
+            this.name = name;
+            return this;
         }
 
         public Builder url(final String url) {
