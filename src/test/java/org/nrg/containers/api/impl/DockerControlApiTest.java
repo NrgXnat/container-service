@@ -2,9 +2,7 @@ package org.nrg.containers.api.impl;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.DockerException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -12,10 +10,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
-import org.nrg.containers.exceptions.ContainerServerException;
-import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.model.ContainerHub;
-import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.services.NrgPreferenceService;
@@ -31,7 +26,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
-import static org.nrg.containers.model.ContainerHubPrefs.PREF_ID;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = DockerControlApiTestConfig.class)
@@ -51,9 +45,6 @@ public class DockerControlApiTest {
 
     @Autowired
     private ContainerServerPrefsBean containerServerPrefsBean;
-
-    @Autowired
-    private ContainerHubPrefs containerHubPrefs;
 
     @Autowired
     private NrgPreferenceService mockPrefsService;
@@ -95,13 +86,6 @@ public class DockerControlApiTest {
 
         containerServerPrefsBean.initialize(mockPrefsService);
 
-        when(mockPrefsService.getToolPropertyNames(PREF_ID))
-            .thenReturn(Sets.newHashSet(PREF_ID + "."));
-        when(mockPrefsService.getPreferenceValue(PREF_ID, PREF_ID + "."))
-            .thenReturn("{'key':'','url':'https://index.docker.io/v1/'," +
-                "'username':'','password':'','email':''}");
-        containerHubPrefs.initialize(mockPrefsService);
-
         client = controlApi.getClient();
     }
 
@@ -119,21 +103,6 @@ public class DockerControlApiTest {
 //        final ContainerServerPrefsBean expectedServer = mapper.readValue(containerServerJson, ContainerServerPrefsBean.class);
 
         assertEquals(containerServerPrefsBean.toBean(), controlApi.getServer());
-    }
-
-    @Test
-    public void testGetHubs() throws Exception {
-        final ContainerHub defaultContainerHub =
-            ContainerHub.builder()
-                .url("https://index.docker.io/v1/")
-                .username("")
-                .password("")
-                .email("")
-                .build();
-        final List<ContainerHub> defaultContainerHubWithListWrapper =
-            Lists.newArrayList(defaultContainerHub);
-
-        assertEquals(defaultContainerHubWithListWrapper, containerHubPrefs.getContainerHubs());
     }
 
     @Test
@@ -205,18 +174,17 @@ public class DockerControlApiTest {
     public void testPingServer() throws Exception {
         assertEquals("OK", controlApi.pingServer());
     }
+
     @Test
     public void testPingHub() throws Exception {
-        final ContainerHub containerHub =
-                ContainerHub.builder()
-                        .url("https://index.docker.io/v1/")
-                        .username("")
-                        .password("")
-                        .email("")
-                        .build();
+        final ContainerHub containerHub = ContainerHub.builder()
+                .url("https://index.docker.io/v1/")
+                .name("Docker Hub")
+                .build();
 
         assertEquals("OK", controlApi.pingHub(containerHub));
     }
+
     @Test
     public void testPullImage() throws Exception {
         controlApi.pullImage(BUSYBOX_LATEST);

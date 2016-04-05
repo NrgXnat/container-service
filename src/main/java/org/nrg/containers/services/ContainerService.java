@@ -1,6 +1,5 @@
 package org.nrg.containers.services;
 
-import com.spotify.docker.client.DockerException;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoHubException;
 import org.nrg.containers.exceptions.NoServerPrefException;
@@ -47,17 +46,17 @@ public interface ContainerService {
 
     String verbContainer(String id, String status) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
-    ContainerHub getHub(String key) throws NotFoundException, IOException;
-
     List<ContainerHub> getHubs();
-
-    List<ContainerHub> getHubsByUrl(String url) throws NotFoundException, IOException;
 
     void setHub(ContainerHub hub) throws IOException;
 
 //    String search(String term) throws NoHubException;
 
-    Image pullByName(String image, String hub, String name) throws NoHubException, NotFoundException, ContainerServerException;
+    void pullByName(String image, String hub, String hubUsername, String hubPassword)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException;
+
+    void pullByName(String image, String hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException;
 
     Image pullFromSource(String source, String name) throws NoHubException, NotFoundException, ContainerServerException;
 

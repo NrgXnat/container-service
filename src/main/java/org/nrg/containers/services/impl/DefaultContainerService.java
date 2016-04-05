@@ -1,7 +1,6 @@
 package org.nrg.containers.services.impl;
 
 import com.google.common.collect.Lists;
-import com.spotify.docker.client.DockerException;
 import org.apache.commons.io.FileUtils;
 import org.nrg.automation.entities.Script;
 import org.nrg.automation.services.ScriptService;
@@ -18,7 +17,6 @@ import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.containers.services.ContainerService;
-import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.nrg.transporter.TransportService;
 import org.nrg.xft.XFT;
@@ -212,22 +210,8 @@ public class DefaultContainerService implements ContainerService {
     }
 
     @Override
-    public ContainerHub getHub(final String key) throws NotFoundException, IOException {
-        try {
-            return containerHubPrefs.getContainerHub(key);
-        } catch (NrgServiceRuntimeException e) {
-            throw new NotFoundException(e);
-        }
-    }
-
-    @Override
     public List<ContainerHub> getHubs() {
         return containerHubPrefs.getContainerHubs();
-    }
-
-    @Override
-    public List<ContainerHub> getHubsByUrl(final String url) throws IOException {
-        return containerHubPrefs.getContainerHubsByUrl(url);
     }
 
     @Override
@@ -242,10 +226,27 @@ public class DefaultContainerService implements ContainerService {
 //    }
 
     @Override
-    public Image pullByName(final String image, final String hub, final String name)
-            throws NoHubException, NotFoundException, ContainerServerException {
-        // TODO
-        return null;
+    public void pullByName(final String image, final String hub,
+                           final String hubUsername, final String hubPassword)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        final ContainerHub hubWithAuth = ContainerHub.builder()
+            .url(hub)
+            .username(hubUsername)
+            .password(hubPassword)
+            .build();
+        pullByName(image, hubWithAuth);
+    }
+
+    @Override
+    public void pullByName(String image, String hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        final ContainerHub hubNoAuth = ContainerHub.builder().url(hub).build();
+        pullByName(image, hubNoAuth);
+    }
+
+    private void pullByName(String image, ContainerHub hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        controlApi.pullImage(image, hub);
     }
 
     @Override

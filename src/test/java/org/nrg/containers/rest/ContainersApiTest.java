@@ -46,6 +46,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -392,7 +393,34 @@ public class ContainersApiTest {
 
     @Test
     public void testPullByName() throws Exception {
-        // TODO
+        final String imageName = "foo/bar";
+        final String noAuthUrl = "http://a.url";
+        final String authUrl = "http://different.url";
+        final String username = "foo";
+        final String password = "bar";
+
+        final String path = "/containers/pull";
+
+        final MockHttpServletRequestBuilder requestNoAuth =
+            get(path).param("image", imageName).param("hub", noAuthUrl);
+
+        doNothing().when(service).pullByName(imageName, noAuthUrl);
+
+        mockMvc.perform(requestNoAuth)
+            .andExpect(status().isOk());
+        verify(service, times(1)).pullByName(imageName, noAuthUrl);
+
+        final MockHttpServletRequestBuilder requestWithAuth = get(path)
+                .param("image", imageName)
+                .param("hub", authUrl)
+                .param("username", username)
+                .param("password", password);
+
+        doNothing().when(service).pullByName(imageName, authUrl, username, password);
+
+        mockMvc.perform(requestWithAuth)
+            .andExpect(status().isOk());
+        verify(service, times(1)).pullByName(imageName, authUrl, username, password);
     }
 
     @Test

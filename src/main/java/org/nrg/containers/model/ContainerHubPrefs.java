@@ -28,64 +28,53 @@ public class ContainerHubPrefs extends AbstractPreferenceBean {
 //        String.format("{'%s':{'url':'%s','username':'%s','password':'%s','email':'%s'}}",
 //            DefaultHub.key(), DefaultHub.url(), DefaultHub.username(), DefaultHub.password(), DefaultHub.email());
 
-    public boolean hasContainerHub(final String key) {
-        return getContainerHubPrefs().containsKey(key);
+    public boolean hasContainerHub(final String url) {
+        for (final ContainerHub instance : getContainerHubPrefs()) {
+            if (instance.url().equals(url)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    @NrgPreference(
-        defaultValue = "{'':{'key':'','url':'https://index.docker.io/v1/','username':'','password':'','email':''}}",
-        key = "key")
-    public Map<String, ContainerHub> getContainerHubPrefs() {
-        return getMapValue(PREF_ID);
+    @NrgPreference(defaultValue = "[{'url':'https://index.docker.io/v1/', 'name':'Docker Hub'}]", key = "url")
+    public List<ContainerHub> getContainerHubPrefs() {
+        return getListValue(PREF_ID);
     }
 
-    public ContainerHub getContainerHubPref(final String key) {
-        return getContainerHubPrefs().get(key);
+    public ContainerHub getContainerHubPref(final String url) throws IOException {
+        final String value = getValue(PREF_ID, url);
+        return deserialize(value, ContainerHub.class);
     }
 
     public void setContainerHub(final ContainerHub instance) throws IOException {
-        final String key = instance.key();
-
-        if (hasContainerHub(key)) {
-            deleteContainerHub(key);
-        }
+        final String instanceId = getPrefId(PREF_ID, instance);
 
         try {
-            set(serialize(instance), PREF_ID, key);
+            set(serialize(instance), PREF_ID, instanceId);
         } catch (InvalidPreferenceName invalidPreferenceName) {
-            _log.info("Got an invalid preference name error setting Container Hub " + key);
+            _log.info("Got an invalid preference name error setting Container Hub " + instanceId);
             throw new NrgServiceRuntimeException(NrgServiceError.Unknown,
                 "Could not set Container Hub " + instance);
         }
     }
 
-    public void deleteContainerHub(final String key) {
+    public void deleteContainerHub(final ContainerHub instance) {
+        final String instanceId = getPrefId(PREF_ID, instance);
         try {
-            delete(PREF_ID, key);
+            delete(PREF_ID, instanceId);
         } catch (InvalidPreferenceName invalidPreferenceName) {
-            _log.info("Got an invalid preference name error trying to delete Container Hub with key " + key);
+            _log.info("Got an invalid preference name error trying to delete Container Hub with id " + instanceId);
         }
     }
 
     public List<ContainerHub> getContainerHubs() {
-        return Lists.newArrayList(getContainerHubPrefs().values());
+        return getContainerHubPrefs();
     }
 
-    public ContainerHub getContainerHub(final String key) throws IOException, NrgServiceRuntimeException {
-        if (!hasContainerHub(key)) {
-            throw new NrgServiceRuntimeException(NrgServiceError.UnknownEntity,
-                "There is no definition for the Container Hub with key " + key);
-        }
-        return getContainerHubPref(key);
-    }
 
-    public List<ContainerHub> getContainerHubsByUrl(final String url) throws IOException, NrgServiceRuntimeException {
-        final List<ContainerHub> toReturn = Lists.newArrayList();
-        for (final ContainerHub hub : getContainerHubs()) {
-            if (hub.url().equals(url)) {
-                toReturn.add(hub);
-            }
-        }
-        return toReturn;
+    private String getPrefId(final String prefId, final ContainerHub instance) {
+        final String url = instance.url();
+        return getNamespacedPropertyId(prefId, url);
     }
 }
