@@ -2,9 +2,7 @@ package org.nrg.containers.api.impl;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.DockerException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -12,10 +10,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
-import org.nrg.containers.exceptions.ContainerServerException;
-import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.model.ContainerHub;
-import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.services.NrgPreferenceService;
@@ -31,7 +26,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
-import static org.nrg.containers.model.ContainerHubPrefs.PREF_ID;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = DockerControlApiTestConfig.class)
