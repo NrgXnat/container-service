@@ -67,7 +67,7 @@
 
     XNAT.admin.setContainerServer = function() {
         var requestBody = jq('#form-configure-container-server').serializeObject();
-        jq.ajax({ url: '/xapi/containers/server/?XNAT_CSRF='.csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
+        jq.ajax({ url: '/xapi/containers/server/?XNAT_CSRF='+csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
             .done( function(){
                 alert('Successfully updated Container Server URI');
                 XNAT.admin.showContainerInfo();
@@ -106,7 +106,7 @@
 
     XNAT.admin.addImageHub = function() {
         var requestBody = jq('#form-add-image-hub').serializeObject();
-        jq.ajax({ url: '/xapi/containers/hubs/?XNAT_CSRF='.csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
+        jq.ajax({ url: '/xapi/containers/hubs/?XNAT_CSRF='+csrfToken, data: JSON.stringify(requestBody), dataType: 'json', contentType: 'application/json', type:'POST', headers: { 'Accept': 'application/json','Content-Type': 'application/json' } })
                 .done( function(){
                     alert('Successfully added Image Hub');
                     XNAT.admin.showImageHubs();
