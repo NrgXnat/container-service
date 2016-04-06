@@ -90,6 +90,14 @@ dependencies {
 
     compile "com.google.guava:guava:19.0"
 
+    // add turbine, exclude turbine's copy of velocity and all other imported crap (i.e. jamon)
+    compile ("turbine:turbine:2.3.3") {
+        transitive = false
+    }
+
+    // add velocity 1.7
+    compile "org.apache.velocity:velocity:1.7"
+
 //    compile "org.codehaus.groovy:groovy-all:${vGroovy}"
     compile (group: 'com.spotify', name: 'docker-client', version: '3.6.3') {
         exclude group: "ch.qos.logback"
