@@ -1,7 +1,8 @@
 package org.nrg.containers.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Objects;
+
+import java.util.Objects;
 
 public class ContainerServer {
     @JsonProperty("host") private String host;
@@ -12,6 +13,19 @@ public class ContainerServer {
     public ContainerServer(final String host, final String certPath) {
         this.host = host;
         this.certPath = certPath;
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public Builder toBuilder() {
+        return new Builder(this);
+    }
+
+    private ContainerServer(final Builder builder) {
+        this.host = builder.host;
+        this.certPath = builder.certPath;
     }
 
     public String host() {
@@ -41,12 +55,46 @@ public class ContainerServer {
 
         ContainerServer that = (ContainerServer) o;
 
-        return Objects.equal(this.host, that.host) &&
-                Objects.equal(this.certPath, that.certPath);
+        return Objects.equals(this.host, that.host) &&
+                Objects.equals(this.certPath, that.certPath);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(host, certPath);
+        return Objects.hash(host, certPath);
+    }
+
+    public static class Builder {
+        private String host;
+        private String certPath;
+
+        private Builder() {}
+
+        private Builder(final ContainerServer server) {
+            this.host = server.host;
+            this.certPath = server.certPath;
+        }
+
+        public ContainerServer build() {
+            return new ContainerServer(this);
+        }
+
+        public Builder host(final String host) {
+            this.host = host;
+            return this;
+        }
+
+        public String host() {
+            return this.host;
+        }
+
+        public Builder certPath(final String certPath) {
+            this.certPath = certPath;
+            return this;
+        }
+
+        public String certPath() {
+            return this.certPath;
+        }
     }
 }

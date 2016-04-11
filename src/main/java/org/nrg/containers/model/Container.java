@@ -1,8 +1,9 @@
 package org.nrg.containers.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Objects;
 import io.swagger.annotations.ApiModelProperty;
+
+import java.util.Objects;
 
 public class Container {
 
@@ -56,13 +57,13 @@ public class Container {
 
         Container that = (Container) o;
 
-        return Objects.equal(this._id, that._id) &&
-                Objects.equal(this._status, that._status);
+        return Objects.equals(this._id, that._id) &&
+                Objects.equals(this._status, that._status);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(_id, _status);
+        return Objects.hash(_id, _status);
     }
 
     private String _id;

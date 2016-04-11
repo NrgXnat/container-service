@@ -1,11 +1,11 @@
 package org.nrg.containers.rest;
 
-import com.spotify.docker.client.DockerException;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
+import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoHubException;
@@ -32,9 +32,13 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.List;
 import java.util.Map;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 import static org.springframework.web.bind.annotation.RequestMethod.PUT;
@@ -142,7 +146,7 @@ public class ContainersApi {
     @ResponseBody
     public String getContainerLogs(@ApiParam(value = "Get logs of container with this ID", required = true)
                                        final @PathVariable("id") String id)
-        throws NotFoundException, NoServerPrefException, ContainerServerException, DockerException, InterruptedException {
+        throws NotFoundException, NoServerPrefException, ContainerServerException {
         return service.getContainerLogs(id);
     }
 
@@ -312,44 +316,75 @@ public class ContainersApi {
         service.setServer(containerServer);
     }
 
-    @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT})
+    @RequestMapping(value = "/server/ping", method = GET)
     @ResponseBody
-    public List<ContainerHub> getHubs(final @RequestParam(name = "verbose", defaultValue = "false") Boolean verbose)
-            throws NotFoundException {
-        // Hard-code non-verbose until I get user permissions sorted out
-        return service.getHubs(Boolean.FALSE);
+    public String pingServer()
+        throws NoServerPrefException, ContainerServerException {
+        return service.pingServer();
     }
 
-    @RequestMapping(value = "/hubs/{hub}", method = GET, produces = {JSON, PLAIN_TEXT})
+    @RequestMapping(value = "/hubs", method = GET, produces = {JSON, PLAIN_TEXT})
     @ResponseBody
-    public ContainerHub getHub(final @PathVariable("hub") String hub,
-                               final @RequestParam(name = "verbose", defaultValue = "false") Boolean verbose)
+    public List<ContainerHub> getHubs()
             throws NotFoundException {
-        // Hard-code non-verbose until I get user permissions sorted out
-        return service.getHub(hub, Boolean.FALSE);
+        return service.getHubs();
     }
 
     @RequestMapping(value = "/hubs", method = POST, consumes = JSON)
     @ResponseBody
-    public void setHub(final @RequestBody ContainerHub hub,
-                       final @RequestParam(name = "overwrite", defaultValue = "false") Boolean overwrite,
-                       final @RequestParam(name = "ignoreBlank", defaultValue = "false") Boolean ignoreBlank) {
-        service.setHub(hub, overwrite, ignoreBlank);
+    public void setHub(final @RequestBody ContainerHub hub) throws IOException {
+        service.setHub(hub);
     }
 
-    @RequestMapping(value = "/search", method = GET)
+//    @RequestMapping(value = "/hubs", method = POST, consumes = FORM)
+//    @ResponseBody
+//    public void setHubWithForm(final @RequestBody MultiValueMap<String, String> hubForm)
+//        throws IOException, BadRequestException {
+//        if (!hubForm.containsKey("url")) {
+//            throw new BadRequestException("URL is required for ub definition");
+//        }
+//        final Map<String, String> hubMap = hubForm.toSingleValueMap();
+//        final ContainerHub hub = ContainerHub.builder()
+//            .email(hubMap.containsKey("email") ? urlDecode(hubMap.get("email")) : "")
+//            .email(hubMap.containsKey("username") ? urlDecode(hubMap.get("username")) : "")
+//            .email(hubMap.containsKey("password") ? urlDecode(hubMap.get("password")) : "")
+//            .url(urlDecode(hubMap.get("url")))
+//            .build();
+//        service.setHub(hub);
+//    }
+
+//    @RequestMapping(value = "/search", method = GET)
+//    @ResponseBody
+//    public String search(final @RequestParam(name = "term") String term) throws NoHubException {
+//        return service.search(term);
+//    }
+
+    @RequestMapping(value = "/pull", method = GET, params = {"image", "hub", "username", "password"})
     @ResponseBody
-    public String search(final @RequestParam(name = "term") String term) throws NoHubException {
-        return service.search(term);
+    public void pullByNameWithAuth(final @RequestParam("image") String image,
+                            final @RequestParam("hub") String hub,
+                            final @RequestParam("username") String hubUsername,
+                            final @RequestParam("password") String hubPassword)
+        throws ContainerServerException, NotFoundException, NoHubException, IOException, BadRequestException, NoServerPrefException {
+        if (StringUtils.isBlank(hubUsername) ^ StringUtils.isBlank(hubPassword)) {
+            throw new BadRequestException("Hub username and password must both be set, or not set.");
+        }
+        service.pullByName(image, hub, hubUsername, hubPassword);
+    }
+
+    @RequestMapping(value = "/pull", method = GET, params = {"image", "hub"})
+    @ResponseBody
+    public void pullByNameNoAuth(final @RequestParam("image") String image,
+                            final @RequestParam("hub") String hub)
+        throws ContainerServerException, NotFoundException, NoHubException, IOException, NoServerPrefException {
+        service.pullByName(image, hub);
     }
 
     @RequestMapping(value = "/pull", method = GET, params = "image")
     @ResponseBody
-    public Image pullByName(final @RequestParam("image") String image,
-                            final @RequestParam(value = "hub", required = false) String hub,
-                            final @RequestParam(name = "name", required = false) String name)
-            throws ContainerServerException, NotFoundException, NoHubException {
-        return service.pullByName(image, hub, name);
+    public Image pullByNameBad()
+            throws BadRequestException {
+        throw new BadRequestException("Please specify a hub from which to pull the image.");
     }
 
     @RequestMapping(value = "/pull", method = GET, params = "source")
@@ -360,9 +395,15 @@ public class ContainersApi {
         return service.pullFromSource(source, name);
     }
 
+
+
     @ResponseStatus(value = HttpStatus.INTERNAL_SERVER_ERROR)
-    @ExceptionHandler(value = {InvalidPreferenceName.class})
-    public void handleInvalidPreferenceNameException() {
+    @ExceptionHandler(value = {InvalidPreferenceName.class, IOException.class})
+    public void handleExceptionsReturn500() {
         // Do nothing. HTTP 500 will be returned.
+    }
+
+    public String urlDecode(final String encoded) throws UnsupportedEncodingException {
+        return URLDecoder.decode(encoded, UTF_8.name());
     }
 }

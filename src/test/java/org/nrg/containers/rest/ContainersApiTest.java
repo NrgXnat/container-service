@@ -9,9 +9,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.RestApiTestConfig;
+import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoServerPrefException;
 import org.nrg.containers.exceptions.NotFoundException;
 import org.nrg.containers.model.Container;
+import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
@@ -26,9 +28,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import javax.servlet.ServletContext;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
@@ -38,6 +46,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,12 +62,15 @@ public class ContainersApiTest {
     private MockMvc mockMvc;
     final ObjectMapper mapper = new ObjectMapper();
 
+    final MediaType FORM = MediaType.APPLICATION_FORM_URLENCODED;
     final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
     final MediaType PLAIN_TEXT = MediaType.TEXT_PLAIN;
     
     final NotFoundException NOT_FOUND_EXCEPTION = new NotFoundException("Some cool message");
     final NoServerPrefException NO_SERVER_PREF_EXCEPTION = new NoServerPrefException("message");
     final InvalidPreferenceName INVALID_PREFERENCE_NAME = new InvalidPreferenceName("*invalid name*");
+    final ContainerServerException CONTAINER_SERVER_EXCEPTION =
+        new ContainerServerException("Your server dun goofed.");
 
     final static String MOCK_CONTAINER_HOST = "fake://host.url";
     final static String MOCK_CONTAINER_CERT_PATH = "/path/to/file";
@@ -327,21 +339,115 @@ public class ContainersApiTest {
 
     @Test
     public void testSetHub() throws Exception {
-        // TODO
+        final ContainerHub hub = ContainerHub.builder()
+            .email("user@email.com")
+            .username("joe_schmoe")
+            .password("insecure")
+            .url("http://hub.io")
+            .build();
+
+        final String path = "/containers/hubs";
+        doNothing().when(service).setHub(hub);
+
+        // Make a json representation of the hub
+        final String hubJsonString = mapper.writeValueAsString(hub);
+
+//        // Make an html form representation of the hub
+//        final String hubFormString =
+//            String.format("email=%s&username=%s&password=%s&url=%s",
+//                urlEncode(hub.email()),
+//                urlEncode(hub.username()),
+//                urlEncode(hub.password()),
+//                urlEncode(hub.url()));
+
+
+        // send json in
+        final MockHttpServletRequestBuilder requestJson =
+            post(path).content(hubJsonString).contentType(JSON);
+
+        mockMvc.perform(requestJson)
+            .andExpect(status().isOk());
+
+        verify(service, times(1)).setHub(hub); // Method has been called once
+
+//        // send form in
+//        final MockHttpServletRequestBuilder requestForm =
+//            post(path).content(hubFormString).contentType(FORM);
+//
+//        mockMvc.perform(requestForm)
+//            .andExpect(status().isOk());
+//
+//        verify(service, times(2)).setHub(hub); // Method has been called twice
+
+        // Exception
+        doThrow(IOException.class).when(service).setHub(hub);
+
+        mockMvc.perform(requestJson)
+            .andExpect(status().isInternalServerError());
     }
 
-    @Test
-    public void testSearch() throws Exception {
-        // TODO
-    }
+//    @Test
+//    public void testSearch() throws Exception {
+//
+//    }
 
     @Test
     public void testPullByName() throws Exception {
-        // TODO
+        final String imageName = "foo/bar";
+        final String noAuthUrl = "http://a.url";
+        final String authUrl = "http://different.url";
+        final String username = "foo";
+        final String password = "bar";
+
+        final String path = "/containers/pull";
+
+        final MockHttpServletRequestBuilder requestNoAuth =
+            get(path).param("image", imageName).param("hub", noAuthUrl);
+
+        doNothing().when(service).pullByName(imageName, noAuthUrl);
+
+        mockMvc.perform(requestNoAuth)
+            .andExpect(status().isOk());
+        verify(service, times(1)).pullByName(imageName, noAuthUrl);
+
+        final MockHttpServletRequestBuilder requestWithAuth = get(path)
+                .param("image", imageName)
+                .param("hub", authUrl)
+                .param("username", username)
+                .param("password", password);
+
+        doNothing().when(service).pullByName(imageName, authUrl, username, password);
+
+        mockMvc.perform(requestWithAuth)
+            .andExpect(status().isOk());
+        verify(service, times(1)).pullByName(imageName, authUrl, username, password);
     }
 
     @Test
     public void testPullFromSource() throws Exception {
         // TODO
+    }
+
+    @Test
+    public void testPing() throws Exception {
+        final String path = "/containers/server/ping";
+        final MockHttpServletRequestBuilder request = get(path);
+
+        when(service.pingServer())
+            .thenReturn("OK")
+            .thenThrow(CONTAINER_SERVER_EXCEPTION)
+            .thenThrow(NO_SERVER_PREF_EXCEPTION);
+
+        mockMvc.perform(request)
+            .andExpect(status().isOk())
+            .andExpect(content().string(equalTo("OK")));
+
+        mockMvc.perform(request).andExpect(status().isInternalServerError());
+
+        mockMvc.perform(request).andExpect(status().isFailedDependency());
+    }
+
+    public String urlEncode(final String raw) throws UnsupportedEncodingException {
+        return URLEncoder.encode(raw, UTF_8.name());
     }
 }

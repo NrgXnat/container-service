@@ -10,6 +10,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerControlApiTestConfig;
+import org.nrg.containers.model.ContainerHub;
 import org.nrg.containers.model.ContainerServerPrefsBean;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.services.NrgPreferenceService;
@@ -58,21 +59,29 @@ public class DockerControlApiTest {
         CONTAINER_HOST = hostEnv != null && !hostEnv.equals("") ?
             hostEnv.replace("tcp", "https") :
             "https://192.168.99.100:2376";
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
-            certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
 
-        when(mockPrefsService.getPreferenceValue("container", "host"))
+        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
+        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
+        if (tlsVerify != null && tlsVerify.equals("1")) {
+            CERT_PATH = certPathEnv != null && !certPathEnv.equals("") ?
+                certPathEnv : "/Users/Kelsey/.docker/machine/machines/testDocker";
+        } else {
+            CERT_PATH = "";
+        }
+
+        // Set up mock prefs service for all the calls that will initialize
+        // the ContainerServerPrefsBean
+        when(mockPrefsService.getPreferenceValue("container-server", "host"))
             .thenReturn(CONTAINER_HOST);
-        when(mockPrefsService.getPreferenceValue("container", "certPath"))
+        when(mockPrefsService.getPreferenceValue("container-server", "certPath"))
             .thenReturn(CERT_PATH);
         doNothing().when(mockPrefsService)
-            .setPreferenceValue("container", "host", "");
+            .setPreferenceValue("container-server", "host", "");
         doNothing().when(mockPrefsService)
-            .setPreferenceValue("container", "certPath", "");
-        when(mockPrefsService.hasPreference("container", "host"))
+            .setPreferenceValue("container-server", "certPath", "");
+        when(mockPrefsService.hasPreference("container-server", "host"))
             .thenReturn(true);
-        when(mockPrefsService.hasPreference("container", "certPath"))
+        when(mockPrefsService.hasPreference("container-server", "certPath"))
             .thenReturn(true);
 
         containerServerPrefsBean.initialize(mockPrefsService);
@@ -160,6 +169,28 @@ public class DockerControlApiTest {
         client.pull(KELSEYM_PYDICOM);
         String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
     }
+
+    @Test
+    public void testPingServer() throws Exception {
+        assertEquals("OK", controlApi.pingServer());
+    }
+
+    @Test
+    public void testPingHub() throws Exception {
+        final ContainerHub containerHub = ContainerHub.builder()
+                .url("https://index.docker.io/v1/")
+                .name("Docker Hub")
+                .build();
+
+        assertEquals("OK", controlApi.pingHub(containerHub));
+    }
+
+    @Test
+    public void testPullImage() throws Exception {
+        controlApi.pullImage(BUSYBOX_LATEST);
+
+    }
+
 }
 
 

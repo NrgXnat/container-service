@@ -1,7 +1,6 @@
 package org.nrg.containers.services.impl;
 
 import com.google.common.collect.Lists;
-import com.spotify.docker.client.DockerException;
 import org.apache.commons.io.FileUtils;
 import org.nrg.automation.entities.Script;
 import org.nrg.automation.services.ScriptService;
@@ -14,6 +13,7 @@ import org.nrg.containers.metadata.ImageMetadata;
 import org.nrg.containers.metadata.service.ImageMetadataService;
 import org.nrg.containers.model.Container;
 import org.nrg.containers.model.ContainerHub;
+import org.nrg.containers.model.ContainerHubPrefs;
 import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.containers.services.ContainerService;
@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -52,7 +53,11 @@ public class DefaultContainerService implements ContainerService {
     @SuppressWarnings("SpringJavaAutowiringInspection") // IntelliJ does not process the excludeFilter in ContainerServiceConfig @ComponentScan, erroneously marks this red
     private TransportService transportService;
 
-    public List<Image> getAllImages() throws NoServerPrefException {
+    @Autowired
+    @SuppressWarnings("SpringJavaAutowiringInspection") // IntelliJ does not process the excludeFilter in ContainerServiceConfig @ComponentScan, erroneously marks this red
+    private ContainerHubPrefs containerHubPrefs;
+
+    public List<Image> getAllImages() throws NoServerPrefException, ContainerServerException {
         return controlApi.getAllImages();
     }
 
@@ -193,7 +198,7 @@ public class DefaultContainerService implements ContainerService {
 
     @Override
     public String getContainerLogs(final String id)
-        throws NoServerPrefException, NotFoundException, ContainerServerException, DockerException, InterruptedException {
+        throws NoServerPrefException, NotFoundException, ContainerServerException {
         return controlApi.getContainerLogs(id);
     }
 
@@ -205,33 +210,43 @@ public class DefaultContainerService implements ContainerService {
     }
 
     @Override
-    public ContainerHub getHub(final String hub, final Boolean verbose) throws NotFoundException {
-        // TODO
-        return null;
+    public List<ContainerHub> getHubs() {
+        return containerHubPrefs.getContainerHubs();
     }
 
     @Override
-    public List<ContainerHub> getHubs(final Boolean verbose) throws NotFoundException {
-        // TODO
-        return null;
+    public void setHub(final ContainerHub hub) throws IOException {
+        containerHubPrefs.setContainerHub(hub);
+    }
+
+//    @Override
+//    public String search(final String term) throws NoHubException {
+//        // TODO
+//        return null;
+//    }
+
+    @Override
+    public void pullByName(final String image, final String hub,
+                           final String hubUsername, final String hubPassword)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        final ContainerHub hubWithAuth = ContainerHub.builder()
+            .url(hub)
+            .username(hubUsername)
+            .password(hubPassword)
+            .build();
+        pullByName(image, hubWithAuth);
     }
 
     @Override
-    public void setHub(final ContainerHub hub, final Boolean overwrite, final Boolean ignoreBlank) {
-        // TODO
+    public void pullByName(String image, String hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        final ContainerHub hubNoAuth = ContainerHub.builder().url(hub).build();
+        pullByName(image, hubNoAuth);
     }
 
-    @Override
-    public String search(final String term) throws NoHubException {
-        // TODO
-        return null;
-    }
-
-    @Override
-    public Image pullByName(final String image, final String hub, final String name)
-            throws NoHubException, NotFoundException, ContainerServerException {
-        // TODO
-        return null;
+    private void pullByName(String image, ContainerHub hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException {
+        controlApi.pullImage(image, hub);
     }
 
     @Override
@@ -270,5 +285,15 @@ public class DefaultContainerService implements ContainerService {
     @Override
     public String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank) throws NoServerPrefException, NotFoundException {
         return null;
+    }
+
+    @Override
+    public String pingServer() throws NoServerPrefException, ContainerServerException {
+        return controlApi.pingServer();
+    }
+
+    @Override
+    public String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException {
+        return controlApi.pingHub(hub);
     }
 }

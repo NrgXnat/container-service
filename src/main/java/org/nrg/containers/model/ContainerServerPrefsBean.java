@@ -1,7 +1,6 @@
 package org.nrg.containers.model;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
 import org.nrg.prefs.annotations.NrgPreference;
 import org.nrg.prefs.annotations.NrgPreferenceBean;
 import org.nrg.prefs.beans.AbstractPreferenceBean;
@@ -9,7 +8,11 @@ import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@NrgPreferenceBean(toolId = "container", toolName = "Container Prefs", description = "All the preferences for the Container Service")
+import java.util.Objects;
+
+@NrgPreferenceBean(toolId = "container-server",
+    toolName = "Container Server Prefs",
+    description = "All the preferences that define a Container Server")
 public class ContainerServerPrefsBean extends AbstractPreferenceBean {
     private static final Logger _log = LoggerFactory.getLogger(ContainerServerPrefsBean.class);
 
@@ -19,7 +22,10 @@ public class ContainerServerPrefsBean extends AbstractPreferenceBean {
     }
 
     public ContainerServer toBean() {
-        return new ContainerServer(getHost(), getCertPath());
+        return ContainerServer.builder()
+            .host(getHost())
+            .certPath(getCertPath())
+            .build();
     }
 
     @NrgPreference
@@ -65,12 +71,12 @@ public class ContainerServerPrefsBean extends AbstractPreferenceBean {
 
         ContainerServerPrefsBean that = (ContainerServerPrefsBean) o;
 
-        return Objects.equal(this.getHost(), that.getHost()) &&
-                Objects.equal(this.getCertPath(), that.getCertPath());
+        return Objects.equals(this.getHost(), that.getHost()) &&
+                Objects.equals(this.getCertPath(), that.getCertPath());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(getHost(), getCertPath());
+        return Objects.hash(getHost(), getCertPath());
     }
 }

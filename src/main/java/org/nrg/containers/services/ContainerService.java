@@ -1,6 +1,5 @@
 package org.nrg.containers.services;
 
-import com.spotify.docker.client.DockerException;
 import org.nrg.containers.exceptions.ContainerServerException;
 import org.nrg.containers.exceptions.NoHubException;
 import org.nrg.containers.exceptions.NoServerPrefException;
@@ -12,12 +11,13 @@ import org.nrg.containers.model.ContainerServer;
 import org.nrg.containers.model.Image;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 public interface ContainerService {
 
-    List<Image> getAllImages() throws NoServerPrefException;
+    List<Image> getAllImages() throws NoServerPrefException, ContainerServerException;
 
     Image getImageByName(String name) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
@@ -42,19 +42,21 @@ public interface ContainerService {
 
     String launchFromScript(String scriptId, Map<String, String> launchArguments, Boolean wait) throws Exception;
 
-    String getContainerLogs(String id) throws NoServerPrefException, NotFoundException, ContainerServerException, DockerException, InterruptedException;
+    String getContainerLogs(String id) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
     String verbContainer(String id, String status) throws NoServerPrefException, NotFoundException, ContainerServerException;
 
-    ContainerHub getHub(String hub, Boolean verbose) throws NotFoundException;
+    List<ContainerHub> getHubs();
 
-    List<ContainerHub> getHubs(Boolean verbose) throws NotFoundException;
+    void setHub(ContainerHub hub) throws IOException;
 
-    void setHub(ContainerHub hub, Boolean overwrite, Boolean ignoreBlank);
+//    String search(String term) throws NoHubException;
 
-    String search(String term) throws NoHubException;
+    void pullByName(String image, String hub, String hubUsername, String hubPassword)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException;
 
-    Image pullByName(String image, String hub, String name) throws NoHubException, NotFoundException, ContainerServerException;
+    void pullByName(String image, String hub)
+        throws NoHubException, NotFoundException, ContainerServerException, IOException, NoServerPrefException;
 
     Image pullFromSource(String source, String name) throws NoHubException, NotFoundException, ContainerServerException;
 
@@ -68,7 +70,10 @@ public interface ContainerService {
 
     void setServer(ContainerServer server) throws InvalidPreferenceName;
 
+    String pingServer() throws NoServerPrefException, ContainerServerException;
+
+    String pingHub(ContainerHub hub) throws ContainerServerException, NoServerPrefException;
+
     String setMetadataById(String id, Map<String, String> metadata, String project, Boolean overwrite, Boolean ignoreBlank)
             throws NoServerPrefException, NotFoundException;
-
 }
