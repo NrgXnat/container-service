@@ -447,7 +447,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
                 // Can only launch if the user gave us an xsiType that matches
                 // one of the wrapper's contexts
-                if (!xsiTypesMatch(xsiType, wrapper.contexts())) {
+                if (xsiType != null && !xsiTypesMatch(xsiType, wrapper.contexts())) {
                     continue;
                 }
 
@@ -487,7 +487,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
                 // Can only launch if the user gave us an xsiType that matches
                 // one of the wrapper's contexts
-                if (!xsiTypesMatch(xsiType, wrapper.contexts())) {
+                if (xsiType != null && !xsiTypesMatch(xsiType, wrapper.contexts())) {
                     continue;
                 }
 
