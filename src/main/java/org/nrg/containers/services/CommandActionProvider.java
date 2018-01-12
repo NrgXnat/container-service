@@ -2,9 +2,11 @@ package org.nrg.containers.services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import org.nrg.containers.exceptions.*;
+import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.xnat.*;
@@ -39,14 +41,17 @@ public class CommandActionProvider extends MultiActionProvider {
 
     private final ContainerService containerService;
     private final CommandService commandService;
+    private final ContainerConfigService containerConfigService;
     private final ObjectMapper mapper;
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
+                                 final ContainerConfigService containerConfigService,
                                  final ObjectMapper mapper) {
         this.containerService = containerService;
         this.commandService = commandService;
+        this.containerConfigService = containerConfigService;
         this.mapper = mapper;
     }
 
@@ -134,11 +139,11 @@ public class CommandActionProvider extends MultiActionProvider {
     public List<Action> getActions(String projectId, String xsiType, UserI user) {
         List<Action> actions = new ArrayList<>();
         try {
-            List<CommandSummaryForContext> available;
-            if(projectId != null)
-                available = commandService.available(projectId, xsiType, user);
-            else
-                available = commandService.available(xsiType,user);
+            List<CommandSummaryForContext> available = new ArrayList<>();
+            if(projectId != null) {
+                available.addAll(commandService.available(projectId, xsiType, user));
+            }
+            available.addAll(commandService.available(xsiType,user));
             for(CommandSummaryForContext command : available){
                 List<String> attributes = new ArrayList<>();
                 try {
@@ -168,5 +173,23 @@ public class CommandActionProvider extends MultiActionProvider {
             e.printStackTrace();
         }
         return actions;
+    }
+
+    @Override
+    public Boolean isActionAvailable(Action action, String projectId, String xnatType, UserI user) {
+        for (Command command : commandService.getAll()) {
+            for(Command.CommandWrapper wrapper : command.xnatCommandWrappers()){
+                if(Long.toString(wrapper.id()).contentEquals(actionKeyToActionId(action.actionKey()))){
+                    if(Strings.isNullOrEmpty(xnatType) || wrapper.contexts().contains(xnatType)){
+                        if( (Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForSite(wrapper.id())) ||
+                                (!Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForProject(projectId, wrapper.id())) ){
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 }
