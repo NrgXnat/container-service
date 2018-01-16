@@ -176,10 +176,10 @@ public class CommandActionProvider extends MultiActionProvider {
     }
 
     @Override
-    public Boolean isActionAvailable(Action action, String projectId, String xnatType, UserI user) {
+    public Boolean isActionAvailable(String actionKey, String projectId, String xnatType, UserI user) {
         for (Command command : commandService.getAll()) {
             for(Command.CommandWrapper wrapper : command.xnatCommandWrappers()){
-                if(Long.toString(wrapper.id()).contentEquals(actionKeyToActionId(action.actionKey()))){
+                if(Long.toString(wrapper.id()).contentEquals(actionKeyToActionId(actionKey))){
                     if(Strings.isNullOrEmpty(xnatType) || wrapper.contexts().contains(xnatType)){
                         if( (Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForSite(wrapper.id())) ||
                                 (!Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForProject(projectId, wrapper.id())) ){
