@@ -65,7 +65,6 @@ public class CommandActionProvider extends MultiActionProvider {
         return DESCRIPTION;
     }
 
-
     @Override
     public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, final UserI user) {
         final Object eventObject = event.getObject();
@@ -123,6 +122,26 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
     }
+
+
+    @Override
+    public List<Action> getAllActions() {
+        List<Action> actions = new ArrayList<>();
+        List<Command> commands = commandService.getAll();
+        for(Command command : commands){
+            for(Command.CommandWrapper wrapper : command.xnatCommandWrappers()) {
+                actions.add(Action.builder()
+                                  .id(String.valueOf(wrapper.id()))
+                                  .displayName(wrapper.name())
+                                  .description(wrapper.description())
+                                  .provider(this)
+                                  .actionKey(actionIdToActionKey(Long.toString(wrapper.id())))
+                                  .build());
+                }
+            }
+        return actions;
+    }
+
 
 
     @Override
