@@ -141,9 +141,13 @@ public class CommandActionProvider extends MultiActionProvider {
         try {
             List<CommandSummaryForContext> available = new ArrayList<>();
             if(projectId != null) {
+                // Project configured Commands
                 available.addAll(commandService.available(projectId, xsiType, user));
+            } else {
+                // Site configured Commands
+                available.addAll(commandService.available(xsiType, user));
             }
-            available.addAll(commandService.available(xsiType,user));
+
             for(CommandSummaryForContext command : available){
                 List<String> attributes = new ArrayList<>();
                 try {
