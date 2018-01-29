@@ -161,13 +161,14 @@ public class CommandActionProvider extends MultiActionProvider {
             List<CommandSummaryForContext> available = new ArrayList<>();
             if(projectId != null) {
                 // Project configured Commands
-                available.addAll(commandService.available(projectId, xsiType, user));
+                available = commandService.available(projectId, xsiType, user);
             } else {
                 // Site configured Commands
-                available.addAll(commandService.available(xsiType, user));
+                available = commandService.available(xsiType, user);
             }
 
             for(CommandSummaryForContext command : available){
+                if(!command.enabled()) continue;
                 List<String> attributes = new ArrayList<>();
                 try {
                     ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
