@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -80,7 +81,6 @@ public class CommandActionProvider extends MultiActionProvider {
         String projectId = null;
         final Map inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.newHashMap();
         try {
-            ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> requiredInputs = commandService.getSiteConfiguration(wrapperId).inputs();
 
             // Setup XNAT Object for Container
             XnatModelObject modelObject = null;
@@ -158,7 +158,7 @@ public class CommandActionProvider extends MultiActionProvider {
     public List<Action> getActions(String projectId, String xsiType, UserI user) {
         List<Action> actions = new ArrayList<>();
         try {
-            List<CommandSummaryForContext> available = new ArrayList<>();
+            List<CommandSummaryForContext> available;
             if(projectId != null) {
                 // Project configured Commands
                 available = commandService.available(projectId, xsiType, user);
@@ -169,13 +169,16 @@ public class CommandActionProvider extends MultiActionProvider {
 
             for(CommandSummaryForContext command : available){
                 if(!command.enabled()) continue;
-                List<String> attributes = new ArrayList<>();
+                Map<String, String> attributes = new HashMap<>();
                 try {
                     ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
                     for (String key : inputs.keySet()) {
-                        if ((inputs.get(key).userSettable() == null || inputs.get(key).userSettable())
-                                && inputs.get(key).type().equalsIgnoreCase("string")) {
-                            attributes.add(key);
+                        CommandConfiguration.CommandInputConfiguration input = inputs.get(key);
+                        if ((input.userSettable() == null || input.userSettable())
+                                && (input.type().equalsIgnoreCase("string") || input.type().equalsIgnoreCase("boolean"))) {
+                            attributes.put(
+                                    key + " (" + input.type() + ")",
+                                    input.defaultValue() == null ? "" : input.defaultValue());
                         }
                     }
                 } catch (Exception e) {
