@@ -23,6 +23,7 @@ import org.nrg.xnat.eventservice.actions.MultiActionProvider;
 import org.nrg.xnat.eventservice.entities.SubscriptionEntity;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
 import org.nrg.xnat.eventservice.model.Action;
+import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -169,16 +170,12 @@ public class CommandActionProvider extends MultiActionProvider {
 
             for(CommandSummaryForContext command : available){
                 if(!command.enabled()) continue;
-                Map<String, String> attributes = new HashMap<>();
+                Map<String, ActionAttributeConfiguration> attributes = new HashMap<>();
                 try {
                     ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
-                    for (String key : inputs.keySet()) {
-                        CommandConfiguration.CommandInputConfiguration input = inputs.get(key);
-                        if ((input.userSettable() == null || input.userSettable())
-                                && (input.type().equalsIgnoreCase("string") || input.type().equalsIgnoreCase("boolean"))) {
-                            attributes.put(
-                                    key + " (" + input.type() + ")",
-                                    input.defaultValue() == null ? "" : input.defaultValue());
+                    for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
+                        if(entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
+                            attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
                         }
                     }
                 } catch (Exception e) {
@@ -219,4 +216,15 @@ public class CommandActionProvider extends MultiActionProvider {
 
         return false;
     }
+
+    ActionAttributeConfiguration CommandInputConfig2ActionAttributeConfig(CommandConfiguration.CommandInputConfiguration commandInputConfiguration){
+        return ActionAttributeConfiguration.builder()
+                                    .description(commandInputConfiguration.description())
+                                    .type(commandInputConfiguration.type())
+                                    .defaultValue(commandInputConfiguration.defaultValue())
+                                    .userSettable(commandInputConfiguration.userSettable())
+                                    .required(commandInputConfiguration.required())
+                                    .build();
+    }
+
 }
