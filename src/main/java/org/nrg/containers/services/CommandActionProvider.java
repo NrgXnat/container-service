@@ -9,6 +9,7 @@ import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
+import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.xnat.*;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.model.XnatImageassessordataI;
@@ -24,15 +25,16 @@ import org.nrg.xnat.eventservice.entities.SubscriptionEntity;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
 import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
+import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
+import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
+import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
 
 @Service
 public class CommandActionProvider extends MultiActionProvider {
@@ -45,16 +47,20 @@ public class CommandActionProvider extends MultiActionProvider {
     private final CommandService commandService;
     private final ContainerConfigService containerConfigService;
     private final ObjectMapper mapper;
+    private SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
-                                 final ObjectMapper mapper) {
+                                 final ObjectMapper mapper,
+                                 final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
         this.containerService = containerService;
         this.commandService = commandService;
         this.containerConfigService = containerConfigService;
         this.mapper = mapper;
+        this.subscriptionDeliveryEntityService = subscriptionDeliveryEntityService;
+
     }
 
     @Override
@@ -68,7 +74,7 @@ public class CommandActionProvider extends MultiActionProvider {
     }
 
     @Override
-    public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, final UserI user) {
+    public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, final UserI user, final Long deliveryId) {
         final Object eventObject = event.getObject();
         String objectClass = event.getObjectClass();
         final long wrapperId;
@@ -77,9 +83,9 @@ public class CommandActionProvider extends MultiActionProvider {
         }catch(Exception e){
             log.error("Could not extract WrapperId from actionKey:" + subscription.getActionKey());
             log.error("Aborting subscription: " + subscription.getName());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.getActionKey());
             return;
         }
-        String projectId = null;
         final Map inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.newHashMap();
         try {
 
@@ -109,17 +115,21 @@ public class CommandActionProvider extends MultiActionProvider {
             } else {
                 log.error(String.format("Container Service does not support %s Event Object.", objectClass));
             }
-            String objectString = modelObject.getUri();
+            String objectString = modelObject != null ? modelObject.getUri() : "";
             try {
                 objectString = mapper.writeValueAsString(modelObject);
             } catch (JsonProcessingException e) {
                 log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
             }
             inputValues.put(objectLabel, objectString);
-            containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+            Container container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container " + container.containerId() + " launched.");
+
 
         } catch (NotFoundException | CommandResolutionException | NoDockerServerException | DockerServerException | ContainerException | UnauthorizedException e) {
-            log.error("Error launching command wrapper " + wrapperId, e);
+            log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
+
         }
 
     }
@@ -174,7 +184,7 @@ public class CommandActionProvider extends MultiActionProvider {
                 try {
                     ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
-                        if(entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
+                        if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
                         }
                     }
