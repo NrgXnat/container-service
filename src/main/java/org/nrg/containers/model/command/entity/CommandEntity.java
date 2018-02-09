@@ -244,6 +244,29 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.commandLine = commandLine;
     }
 
+    public Long getReserveMemory() {
+        return reserveMemory;
+    }
+
+    public void setReserveMemory(Long reserveMemory) {
+        this.reserveMemory = reserveMemory;
+    }
+
+    public Long getLimitMemory() {
+        return limitMemory;
+    }
+
+    public void setLimitMemory(Long limitMemory) {
+        this.limitMemory = limitMemory;
+    }
+
+    public Double getLimitCpu() {
+        return limitCpu;
+    }
+
+    public void setLimitCpu(Double limitCpu) {
+        this.limitCpu = limitCpu;
+
     public Boolean getOverrideEntrypoint() {
         return overrideEntrypoint;
     }
