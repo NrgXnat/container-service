@@ -5,13 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.xnat.*;
-import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.model.XnatImageassessordataI;
 import org.nrg.xdat.model.XnatImagescandataI;
 import org.nrg.xdat.model.XnatImagesessiondataI;
@@ -86,51 +84,52 @@ public class CommandActionProvider extends MultiActionProvider {
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.getActionKey());
             return;
         }
-        final Map inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.newHashMap();
-        try {
+        final Map<String,String> inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.<String,String>newHashMap();
 
-            // Setup XNAT Object for Container
-            XnatModelObject modelObject = null;
-            String objectLabel = "";
-            if(eventObject instanceof XnatProjectdata){
-                modelObject = new Project(((XnatProjectdata) eventObject));
-                objectLabel = "project";
-            } else if(eventObject instanceof XnatSubjectdataI){
-                modelObject = new Subject((XnatSubjectdataI) eventObject);
-                objectLabel = "subject";
-            } else if(eventObject instanceof XnatImagesessiondataI){
-                modelObject = new Session((XnatImagesessiondataI) eventObject);
-                objectLabel = "session";
-            } else if(eventObject instanceof XnatImagescandataI){
-                Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user);
-                String sessionUri = session.getUri();
-                modelObject = new Scan((XnatImagescandataI) eventObject, sessionUri, null);
-                objectLabel = "scan";
-            } else if(eventObject instanceof XnatImageassessordataI){
-                modelObject = new Assessor((XnatImageassessordataI) eventObject);
-                objectLabel = "assessor";
-            } else if(eventObject instanceof XnatResourcecatalog){
-                modelObject = new Resource((XnatResourcecatalog) eventObject);
-                objectLabel = "resource";
-            } else {
-                log.error(String.format("Container Service does not support %s Event Object.", objectClass));
-            }
-            String objectString = modelObject != null ? modelObject.getUri() : "";
-            try {
-                objectString = mapper.writeValueAsString(modelObject);
-            } catch (JsonProcessingException e) {
-                log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
-            }
-            inputValues.put(objectLabel, objectString);
-            Container container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container " + container.containerId() + " launched.");
-
-
-        } catch (NotFoundException | CommandResolutionException | NoDockerServerException | DockerServerException | ContainerException | UnauthorizedException e) {
-            log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage());
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
-
+        // Setup XNAT Object for Container
+        XnatModelObject modelObject = null;
+        String objectLabel = "";
+        if(eventObject instanceof XnatProjectdata){
+            modelObject = new Project(((XnatProjectdata) eventObject));
+            objectLabel = "project";
+        } else if(eventObject instanceof XnatSubjectdataI){
+            modelObject = new Subject((XnatSubjectdataI) eventObject);
+            objectLabel = "subject";
+        } else if(eventObject instanceof XnatImagesessiondataI){
+            modelObject = new Session((XnatImagesessiondataI) eventObject);
+            objectLabel = "session";
+        } else if(eventObject instanceof XnatImagescandataI){
+            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user);
+            String sessionUri = session.getUri();
+            modelObject = new Scan((XnatImagescandataI) eventObject, sessionUri, null);
+            objectLabel = "scan";
+        } else if(eventObject instanceof XnatImageassessordataI){
+            modelObject = new Assessor((XnatImageassessordataI) eventObject);
+            objectLabel = "assessor";
+        } else if(eventObject instanceof XnatResourcecatalog){
+            modelObject = new Resource((XnatResourcecatalog) eventObject);
+            objectLabel = "resource";
+        } else {
+            log.error(String.format("Container Service does not support %s Event Object.", objectClass));
         }
+        String objectString = modelObject != null ? modelObject.getUri() : "";
+        try {
+            objectString = mapper.writeValueAsString(modelObject);
+        } catch (JsonProcessingException e) {
+            log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
+        }
+        inputValues.put(objectLabel, objectString);
+        Container container = null;
+        try {
+            container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+        }catch (Throwable e){
+            log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage(), e);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
+        }
+        if(container != null) {
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container " + container.containerId() + " launched.");
+        }
+
 
     }
 
@@ -183,6 +182,7 @@ public class CommandActionProvider extends MultiActionProvider {
                 Map<String, ActionAttributeConfiguration> attributes = new HashMap<>();
                 try {
                     ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
+                    // TODO commandService.getProjectConfiguration()
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
                         if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
