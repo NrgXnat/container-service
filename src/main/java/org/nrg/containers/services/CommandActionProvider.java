@@ -181,8 +181,12 @@ public class CommandActionProvider extends MultiActionProvider {
                 if(!command.enabled()) continue;
                 Map<String, ActionAttributeConfiguration> attributes = new HashMap<>();
                 try {
-                    ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
-                    // TODO commandService.getProjectConfiguration()
+                    ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = null;
+                    if(!Strings.isNullOrEmpty(projectId)) {
+                        inputs = commandService.getProjectConfiguration(projectId, command.wrapperId()).inputs();
+                    } else {
+                        inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
+                    }
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
                         if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
