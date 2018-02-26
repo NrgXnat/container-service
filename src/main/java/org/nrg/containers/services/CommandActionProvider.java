@@ -188,7 +188,9 @@ public class CommandActionProvider extends MultiActionProvider {
                         inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
                     }
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
-                        if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable()) {
+                        if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().type() != null &&
+                                (entry.getValue().type().equalsIgnoreCase("string") || entry.getValue().type().equalsIgnoreCase("boolean") || entry.getValue().type().equalsIgnoreCase("integer"))
+                                ) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
                         }
                     }
@@ -236,7 +238,6 @@ public class CommandActionProvider extends MultiActionProvider {
                                     .description(commandInputConfiguration.description())
                                     .type(commandInputConfiguration.type())
                                     .defaultValue(commandInputConfiguration.defaultValue())
-                                    .userSettable(commandInputConfiguration.userSettable())
                                     .required(commandInputConfiguration.required())
                                     .build();
     }
