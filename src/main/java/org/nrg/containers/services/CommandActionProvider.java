@@ -74,7 +74,6 @@ public class CommandActionProvider extends MultiActionProvider {
     @Override
     public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, final UserI user, final Long deliveryId) {
         final Object eventObject = event.getObject();
-        String objectClass = event.getObjectClass();
         final long wrapperId;
         try {
             wrapperId = Long.parseLong(actionKeyToActionId(subscription.getActionKey()));
@@ -110,7 +109,7 @@ public class CommandActionProvider extends MultiActionProvider {
             modelObject = new Resource((XnatResourcecatalog) eventObject);
             objectLabel = "resource";
         } else {
-            log.error(String.format("Container Service does not support %s Event Object.", objectClass));
+            log.error(String.format("Container Service does not support Event Object."));
         }
         String objectString = modelObject != null ? modelObject.getUri() : "";
         try {
