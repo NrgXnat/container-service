@@ -19,10 +19,10 @@ import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
-import org.nrg.xnat.eventservice.entities.SubscriptionEntity;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
 import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
+import org.nrg.xnat.eventservice.model.Subscription;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,18 +72,18 @@ public class CommandActionProvider extends MultiActionProvider {
     }
 
     @Override
-    public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, final UserI user, final Long deliveryId) {
+    public void processEvent(EventServiceEvent event, Subscription subscription, final UserI user, final Long deliveryId) {
         final Object eventObject = event.getObject();
         final long wrapperId;
         try {
-            wrapperId = Long.parseLong(actionKeyToActionId(subscription.getActionKey()));
+            wrapperId = Long.parseLong(actionKeyToActionId(subscription.actionKey()));
         }catch(Exception e){
-            log.error("Could not extract WrapperId from actionKey:" + subscription.getActionKey());
-            log.error("Aborting subscription: " + subscription.getName());
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.getActionKey());
+            log.error("Could not extract WrapperId from actionKey:" + subscription.actionKey());
+            log.error("Aborting subscription: " + subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.actionKey());
             return;
         }
-        final Map<String,String> inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.<String,String>newHashMap();
+        final Map<String,String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
 
         // Setup XNAT Object for Container
         XnatModelObject modelObject = null;
@@ -151,17 +151,6 @@ public class CommandActionProvider extends MultiActionProvider {
         return actions;
     }
 
-
-
-    @Override
-    public List<Action> getActions(UserI user) {
-        return getActions(null, user);
-    }
-
-    @Override
-    public List<Action> getActions(String xsiType, UserI user) {
-        return getActions(null, xsiType, user);
-    }
 
     @Override
     public List<Action> getActions(String projectId, String xsiType, UserI user) {
