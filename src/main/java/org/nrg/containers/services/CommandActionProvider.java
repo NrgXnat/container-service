@@ -9,7 +9,13 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.Assessor;
+import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Scan;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.Subject;
+import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.xdat.model.XnatImageassessordataI;
 import org.nrg.xdat.model.XnatImagescandataI;
 import org.nrg.xdat.model.XnatImagesessiondataI;
@@ -19,17 +25,21 @@ import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
-import org.nrg.xnat.eventservice.entities.SubscriptionEntity;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
 import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
+import org.nrg.xnat.eventservice.model.Subscription;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
@@ -72,18 +82,18 @@ public class CommandActionProvider extends MultiActionProvider {
     }
 
     @Override
-    public void processEvent(EventServiceEvent event, SubscriptionEntity subscription, UserI user, Long deliveryId) {
+    public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
         final Object eventObject = event.getObject();
         final long wrapperId;
         try {
-            wrapperId = Long.parseLong(actionKeyToActionId(subscription.getActionKey()));
+            wrapperId = Long.parseLong(actionKeyToActionId(subscription.actionKey()));
         }catch(Exception e){
-            log.error("Could not extract WrapperId from actionKey:" + subscription.getActionKey());
-            log.error("Aborting subscription: " + subscription.getName());
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.getActionKey());
+            log.error("Could not extract WrapperId from actionKey:" + subscription.actionKey());
+            log.error("Aborting subscription: " + subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.actionKey());
             return;
         }
-        final Map<String,String> inputValues = subscription.getAttributes() != null ? subscription.getAttributes() : Maps.<String,String>newHashMap();
+        final Map<String,String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
 
         // Setup XNAT Object for Container
         XnatModelObject modelObject = null;

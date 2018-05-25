@@ -15,8 +15,8 @@ plugins {
 group "org.nrg"
 version "2.1.1-SNAPSHOT"
 
-sourceCompatibility = 1.7
-targetCompatibility = 1.7
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
 
 def vMockito = "1.10.19"
 def vJavassist = "3.21.0-GA"
