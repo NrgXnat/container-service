@@ -37,7 +37,7 @@ public class ContainerServiceAspect {
             log.debug(containerEvent.toString());
             Container container = Container.create(containerEntity);
             if(container != null) {
-                eventService.triggerEvent(new ContainerStatusEvent(container, userI.getLogin()));
+                eventService.triggerEvent(new ContainerStatusEvent(container, userI.getLogin(), containerEvent.status(), null));
             } else {
                 log.error("Failed to trigger event. Could not convert ContainerEntity: " + containerEntity.getContainerId() + " to Container object.");
             }
