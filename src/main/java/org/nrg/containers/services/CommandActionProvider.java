@@ -46,7 +46,7 @@ import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.A
 
 @Service
 public class CommandActionProvider extends MultiActionProvider {
-    private final String DISPLAY_NAME = "Container Service Action Provider";
+    private final String DISPLAY_NAME = "Container Service";
     private final String DESCRIPTION = "This Action Provider facilitates linking Event Service events to Container Service commands.";
 
     private static final Logger log = LoggerFactory.getLogger(CommandActionProvider.class);
