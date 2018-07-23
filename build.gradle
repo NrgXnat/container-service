@@ -6,7 +6,7 @@ import io.swagger.models.License
 
 buildscript {
     ext {
-        vXnat = 'X.X.X-eventservice-SNAPSHOT'
+        vXnat = '1.7.5-SNAPSHOT'
     }
     repositories {
         maven {
@@ -45,6 +45,7 @@ apply plugin: "com.github.zhurlik.swagger"
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
+def vXnatDev = 'X.X.X-eventservice-SNAPSHOT'
 def vMockito = '1.10.19'
 def vJavassist = '3.21.0-GA'
 def vAwaitility = '2.0.0'
@@ -69,7 +70,7 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("org.nrg:parent:${vXnat}") {
+        mavenBom("org.nrg:parent:${vXnatDev}") {
             bomProperties([
                     'mockito.version': vMockito,
                     'javassist.version': vJavassist
