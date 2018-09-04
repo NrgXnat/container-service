@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 @Service
 @XnatEventServiceEvent(name="ContainerStatusEvent")
 public class ContainerStatusEvent extends CombinedEventServiceEvent<ContainerStatusEvent, Container> {
-    final String displayName = "Container Status Update";
+    final String displayName = "Container Execution Event";
     final String description = "Container execution status has been updated.";
 
     public enum Status {Created, Starting, Running, Complete, Failed, Killed}
