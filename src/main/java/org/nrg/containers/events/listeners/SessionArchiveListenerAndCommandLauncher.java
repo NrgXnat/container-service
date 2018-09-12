@@ -3,6 +3,7 @@ package org.nrg.containers.events.listeners;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
 import org.nrg.containers.events.model.SessionArchiveEvent;
@@ -27,10 +28,10 @@ import reactor.fn.Consumer;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @SuppressWarnings("unused")
 public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<SessionArchiveEvent>> {
-    private static final Logger log = LoggerFactory.getLogger(SessionArchiveListenerAndCommandLauncher.class);
     private static final String EVENT_ID = "SessionArchived";
 
     private ObjectMapper mapper;
