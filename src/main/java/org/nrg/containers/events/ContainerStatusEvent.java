@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.nrg.containers.model.container.entity.ContainerEntity.STANDARD_STATUS_MAP;
 
 @Service
 @XnatEventServiceEvent(name="ContainerStatusEvent")
@@ -16,7 +19,10 @@ public class ContainerStatusEvent extends CombinedEventServiceEvent<ContainerSta
     final String displayName = "Container Execution Event";
     final String description = "Container execution status has been updated.";
 
-    public enum Status {Created, Starting, Running, Complete, Failed, Killed}
+    public enum Status {Created, Starting, Running, Finalizing, Complete, Failed, Killed}
+    private static List<String> statusNames = Stream.of(Status.values())
+                                     .map(Status::name)
+                                     .collect(Collectors.toList());
 
     public ContainerStatusEvent(){};
 
@@ -24,7 +30,12 @@ public class ContainerStatusEvent extends CombinedEventServiceEvent<ContainerSta
         super(payload, eventUser, status, projectId);}
 
     public ContainerStatusEvent(final Container payload, final String eventUser, final String status, final String projectId){
-        this(payload,eventUser,Status.valueOf(status),projectId);
+            this(payload,
+                    eventUser,
+                    statusNames.stream().anyMatch(sts -> sts.contentEquals(
+                            (STANDARD_STATUS_MAP.containsKey(status) ? STANDARD_STATUS_MAP.get(status) : status)
+                        )) ? Status.valueOf(status) : null,
+                    projectId);
     }
 
     @Override
