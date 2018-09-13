@@ -1,10 +1,8 @@
 package org.nrg.containers.events;
 
 import org.nrg.containers.model.container.auto.Container;
-import org.nrg.framework.event.XnatEventServiceEvent;
 import org.nrg.xnat.eventservice.events.CombinedEventServiceEvent;
 import org.nrg.xnat.eventservice.listeners.EventServiceListener;
-import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
@@ -13,8 +11,8 @@ import java.util.stream.Stream;
 
 import static org.nrg.containers.model.container.entity.ContainerEntity.STANDARD_STATUS_MAP;
 
-@Service
-@XnatEventServiceEvent(name="ContainerStatusEvent")
+//@Service
+//@XnatEventServiceEvent(name="ContainerStatusEvent")
 public class ContainerStatusEvent extends CombinedEventServiceEvent<ContainerStatusEvent, Container> {
     final String displayName = "Container Execution Event";
     final String description = "Container execution status has been updated.";
