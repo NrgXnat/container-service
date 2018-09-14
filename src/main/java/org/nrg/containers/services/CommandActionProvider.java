@@ -130,7 +130,13 @@ public class CommandActionProvider extends MultiActionProvider {
         inputValues.put(objectLabel, objectString);
         Container container = null;
         try {
-            container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+            String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
+                    (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
+            if(Strings.isNullOrEmpty(projectId)) {
+                container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+            } else {
+                container = containerService.resolveCommandAndLaunchContainer(projectId, wrapperId, inputValues, user);
+            }
         }catch (Throwable e){
             log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage(), e);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
