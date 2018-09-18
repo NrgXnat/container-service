@@ -222,14 +222,14 @@ siteSettings:
             active: false
             contents:
                 ${sitewideCommandConfigsPanel}
-        commandAutomationAdminTab:
-            kind: tab
-            name: commandAutomationAdminTab
-            label: Command Automation
-            group: containerServiceTabGroup
-            active: false
-            contents:
-                ${siteCommandAutomationPanel}
+#        commandAutomationAdminTab:
+#            kind: tab
+#            name: commandAutomationAdminTab
+#            label: Command Automation
+#            group: containerServiceTabGroup
+#            active: false
+#            contents:
+#                ${siteCommandAutomationPanel}
         commandHistoryTab:
             kind: tab
             name: commandHistoryTab

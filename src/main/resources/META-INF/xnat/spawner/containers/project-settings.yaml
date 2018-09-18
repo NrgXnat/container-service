@@ -75,13 +75,13 @@ projectSettings:
             active: true
             contents:
                 ${projectCommandConfigsPanel}
-        projectCommandAutomationTab:
-            kind: tab
-            label: Command Automation
-            group: containerServiceProjectTabGroup
-            active: false
-            contents:
-                ${projectCommandAutomationPanel}
+#        projectCommandAutomationTab:
+#            kind: tab
+#            label: Command Automation
+#            group: containerServiceProjectTabGroup
+#            active: false
+#            contents:
+#                ${projectCommandAutomationPanel}
         projectCommandHistoryTab:
             kind: tab
             label: Command History
