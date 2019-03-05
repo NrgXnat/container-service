@@ -36,10 +36,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
@@ -169,16 +172,27 @@ public class CommandActionProvider extends MultiActionProvider {
 
 
     @Override
-    public List<Action> getActions(String projectId, String xsiType, UserI user) {
+    public List<Action> getActions(String projectId, List<String> xsiTypes, UserI user) {
         List<Action> actions = new ArrayList<>();
+        if(xsiTypes == null || xsiTypes.isEmpty()){
+            xsiTypes = Arrays.asList(null);
+        }
         try {
-            List<CommandSummaryForContext> available;
+            Set<CommandSummaryForContext> available = new HashSet<>();
             if(projectId != null) {
                 // Project configured Commands
-                available = commandService.available(projectId, xsiType, user);
+                xsiTypes.forEach(xsiType ->
+                {
+                    try { available.addAll(commandService.available(projectId, xsiType, user));
+                    } catch (ElementNotFoundException e) { log.error(e.getMessage()); }
+                });
             } else {
                 // Site configured Commands
-                available = commandService.available(xsiType, user);
+                xsiTypes.forEach(xsiType ->
+                {
+                    try { available.addAll(commandService.available(xsiType, user));
+                    } catch (ElementNotFoundException e) { log.error(e.getMessage()); }
+                });
             }
 
             for(CommandSummaryForContext command : available){
@@ -212,7 +226,7 @@ public class CommandActionProvider extends MultiActionProvider {
                                   .attributes(attributes.isEmpty() ? null : attributes)
                                   .build());
             }
-        } catch (ElementNotFoundException e) {
+        } catch (Throwable e) {
             log.error(e.getMessage());
             e.printStackTrace();
         }
