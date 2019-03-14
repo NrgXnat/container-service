@@ -36,7 +36,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -175,7 +174,8 @@ public class CommandActionProvider extends MultiActionProvider {
     public List<Action> getActions(String projectId, List<String> xsiTypes, UserI user) {
         List<Action> actions = new ArrayList<>();
         if(xsiTypes == null || xsiTypes.isEmpty()){
-            xsiTypes = Arrays.asList(null);
+            xsiTypes = new ArrayList<>();
+            xsiTypes.add(null);
         }
         try {
             Set<CommandSummaryForContext> available = new HashSet<>();

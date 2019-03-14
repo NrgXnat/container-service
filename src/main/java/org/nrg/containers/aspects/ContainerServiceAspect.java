@@ -35,7 +35,13 @@ public class ContainerServiceAspect {
                 Container container = Container.create(containerEntity);
                 log.debug("Intercepted triggerOnContainerEventToHistory");
                 if (container != null) {
-                    eventService.triggerEvent(new ContainerStatusEvent(container, userI.getLogin(), containerEvent.status(), container.project()));
+                    String status = containerEvent.status();
+                    if (status != null && status.contentEquals("die") && containerEvent.exitCode() != null && containerEvent.exitCode().contentEquals("0")){
+                        status = ContainerStatusEvent.Status.Complete.name();
+                    } else if (status != null && status.contentEquals( "die") && containerEvent.exitCode() != null && containerEvent.exitCode().contentEquals("0")){
+                        status = ContainerStatusEvent.Status.Failed.name();
+                    }
+                    eventService.triggerEvent(new ContainerStatusEvent(container, userI.getLogin(), status, container.project()));
                 } else {
                     log.error("Failed to trigger event. Could not convert ContainerEntity: " + containerEntity.getContainerId() + " to Container object.");
                 }

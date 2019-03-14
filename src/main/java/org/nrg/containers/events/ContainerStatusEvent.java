@@ -19,12 +19,12 @@ public class ContainerStatusEvent extends CombinedEventServiceEvent<ContainerSta
     final String displayName = "Container Execution Event";
     final String description = "Container execution status has been updated.";
 
-    public enum Status {Created, Starting, Running, Finalizing, Complete, Failed, Killed}
+    public enum Status {Complete, Failed, Killed}
     private static List<String> statusNames = Stream.of(Status.values())
                                      .map(Status::name)
                                      .collect(Collectors.toList());
 
-    public ContainerStatusEvent(){};
+    public ContainerStatusEvent(){}
 
     public ContainerStatusEvent(final Container payload, final String eventUser, final Status status, final String projectId){
         super(payload, eventUser, status, projectId);}
