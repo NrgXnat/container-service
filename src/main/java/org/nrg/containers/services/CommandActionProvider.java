@@ -15,10 +15,12 @@ import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.model.xnat.Subject;
+import org.nrg.containers.model.xnat.SubjectAssessor;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.xdat.model.XnatImageassessordataI;
 import org.nrg.xdat.model.XnatImagescandataI;
 import org.nrg.xdat.model.XnatImagesessiondataI;
+import org.nrg.xdat.model.XnatSubjectassessordataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatResourcecatalog;
@@ -106,9 +108,13 @@ public class CommandActionProvider extends MultiActionProvider {
         } else if(eventObject instanceof XnatSubjectdataI){
             modelObject = new Subject((XnatSubjectdataI) eventObject);
             objectLabel = "subject";
-        } else if(eventObject instanceof XnatImagesessiondataI){
+        } else if(eventObject instanceof XnatImagesessiondataI
+                && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
             modelObject = new Session((XnatImagesessiondataI) eventObject);
             objectLabel = "session";
+        } else if(eventObject instanceof XnatSubjectassessordataI){
+            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject);
+            objectLabel = "subject_assessor";
         } else if(eventObject instanceof XnatImagescandataI){
             Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user);
             String sessionUri = session.getUri();
