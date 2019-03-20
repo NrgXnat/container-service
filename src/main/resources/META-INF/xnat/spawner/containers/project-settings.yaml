@@ -25,13 +25,13 @@ projectCommandConfigsPanel:
                     header: false
                     footer: false
         projCommandHistoryScript:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         projCommandConfigScript:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
         projCommandStylesheet:
-        #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
+            #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
 
 projectCommandAutomationPanel:
@@ -75,13 +75,13 @@ projectSettings:
             active: true
             contents:
                 ${projectCommandConfigsPanel}
-#        projectCommandAutomationTab:
-#            kind: tab
-#            label: Command Automation
-#            group: containerServiceProjectTabGroup
-#            active: false
-#            contents:
-#                ${projectCommandAutomationPanel}
+        projectCommandAutomationTab:
+            kind: tab
+            label: Command Automation
+            group: containerServiceProjectTabGroup
+            active: false
+            contents:
+                ${projectCommandAutomationPanel}
         projectCommandHistoryTab:
             kind: tab
             label: Command History

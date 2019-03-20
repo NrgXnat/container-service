@@ -11,13 +11,13 @@ dockerSetupPanel:
         containerHostTable:
             tag: "div#container-host-manager"
         csStylesheet:
-        #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
+            #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
         csHistoryScript:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         csSiteAdminScripts:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
 
 imageHostsPanel:
@@ -222,14 +222,14 @@ siteSettings:
             active: false
             contents:
                 ${sitewideCommandConfigsPanel}
-#        commandAutomationAdminTab:
-#            kind: tab
-#            name: commandAutomationAdminTab
-#            label: Command Automation
-#            group: containerServiceTabGroup
-#            active: false
-#            contents:
-#                ${siteCommandAutomationPanel}
+        commandAutomationAdminTab:
+            kind: tab
+            name: commandAutomationAdminTab
+            label: Command Automation
+            group: containerServiceTabGroup
+            active: false
+            contents:
+                ${siteCommandAutomationPanel}
         commandHistoryTab:
             kind: tab
             name: commandHistoryTab
@@ -238,4 +238,3 @@ siteSettings:
             active: false
             contents:
                 ${sitewideCommandHistoryPanel}
-

@@ -114,7 +114,7 @@ public class CommandActionProvider extends MultiActionProvider {
             objectLabel = "session";
         } else if(eventObject instanceof XnatSubjectassessordataI){
             modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject);
-            objectLabel = "subject_assessor";
+            objectLabel = "assessor";
         } else if(eventObject instanceof XnatImagescandataI){
             Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user);
             String sessionUri = session.getUri();

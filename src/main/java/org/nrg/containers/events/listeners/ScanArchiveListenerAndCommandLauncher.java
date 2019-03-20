@@ -25,6 +25,8 @@ import reactor.fn.Consumer;
 import java.util.List;
 import java.util.Map;
 
+import static reactor.bus.selector.Selectors.type;
+
 @Slf4j
 @Service
 public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<ScanArchiveEventToLaunchCommands>> {
@@ -41,7 +43,7 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
                                                  final ContainerService containerService,
                                                  final CommandEventMappingService commandEventMappingService,
                                                  final UserManagementServiceI userManagementService) {
- //       eventBus.on(type(ScanArchiveEventToLaunchCommands.class), this);
+        eventBus.on(type(ScanArchiveEventToLaunchCommands.class), this);
         this.mapper = mapper;
         this.containerService = containerService;
         this.commandEventMappingService = commandEventMappingService;
