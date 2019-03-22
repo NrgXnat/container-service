@@ -172,7 +172,7 @@ siteCommandAutomationPanel:
                 "With this panel, you can set up an automated command execution that will be triggered by an XNAT event, such as an image session being archived."
         siteCommandAutomationTable:
             tag: div#command-automation-admin-list
-            contents: Table will go here
+            contents: No commands defined
 
 sitewideCommandHistoryPanel:
     kind: panel

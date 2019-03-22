@@ -48,7 +48,7 @@ projectCommandAutomationPanel:
             id:
         projectCommandAutomationTable:
             tag: div#command-automation-list
-            contents: Table will go here
+            contents: No commands defined
 
 projectCommandHistoryPanel:
     kind: panel
