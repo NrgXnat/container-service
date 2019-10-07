@@ -342,6 +342,21 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     }
 
     @Override
+    @Nonnull
+    public Command.ConfiguredCommand getAndConfigure(final String project,
+                                                     final long commandId,
+                                                     final String wrapperName,
+                                                     final long wrapperId) throws NotFoundException {
+            return project == null ?
+                    (commandId == 0L && wrapperName == null ?
+                            getAndConfigure(wrapperId) :
+                            getAndConfigure(commandId, wrapperName)) :
+                    (commandId == 0L && wrapperName == null ?
+                            getAndConfigure(project, wrapperId) :
+                            getAndConfigure(project, commandId, wrapperName));
+    }
+
+    @Override
     public void deleteSiteConfiguration(final long wrapperId, final String username) throws CommandConfigurationException {
         containerConfigService.deleteSiteConfiguration(wrapperId, username);
     }

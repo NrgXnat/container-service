@@ -1,5 +1,7 @@
 package org.nrg.containers.rest;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.swagger.annotations.Api;
@@ -13,16 +15,17 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.Input;
 import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.configuration.CommandConfiguration;
-import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
@@ -31,11 +34,16 @@ import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
+import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
+import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,9 +53,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Edit;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
@@ -68,17 +80,27 @@ public class LaunchRestApi extends AbstractXapiRestController {
     private final CommandService commandService;
     private final ContainerService containerService;
     private final CommandResolutionService commandResolutionService;
+    private final DockerServerService dockerServerService;
+    private final ObjectMapper mapper;
+    private final ExecutorService executorService;
 
     @Autowired
     public LaunchRestApi(final CommandService commandService,
                          final ContainerService containerService,
                          final CommandResolutionService commandResolutionService,
+                         final DockerServerService dockerServerService,
                          final UserManagementServiceI userManagementService,
-                         final RoleHolder roleHolder) {
+                         final RoleHolder roleHolder,
+                         final ObjectMapper mapper,
+                         @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
+                             final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {
         super(userManagementService, roleHolder);
         this.commandService = commandService;
         this.containerService = containerService;
+        this.dockerServerService = dockerServerService;
         this.commandResolutionService = commandResolutionService;
+        this.mapper = mapper;
+        this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
     }
 
     /*
@@ -87,7 +109,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = GET)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable long wrapperId,
+    public LaunchUi getLaunchUi(final @PathVariable long wrapperId,
                                                final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.info("Launch UI requested for wrapper {}", wrapperId);
@@ -98,7 +120,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable long commandId,
+    public LaunchUi getLaunchUi(final @PathVariable long commandId,
                                                final @PathVariable String wrapperName,
                                                final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
@@ -110,7 +132,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = GET, restrictTo = Edit)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
                                                final @PathVariable long wrapperId,
                                                final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
@@ -122,7 +144,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET, restrictTo = Edit)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
                                                final @PathVariable long commandId,
                                                final @PathVariable String wrapperName,
                                                final @RequestParam Map<String, String> allRequestParams)
@@ -132,7 +154,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return getLaunchUi(project, commandId, wrapperName, 0L, allRequestParams);
     }
 
-    private LaunchUi.SingleLaunchUi getLaunchUi(final String project,
+    private LaunchUi getLaunchUi(final String project,
                                                 final long commandId,
                                                 final String wrapperName,
                                                 final long wrapperId,
@@ -148,7 +170,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
 
             log.debug("Creating launch UI.");
-            return LaunchUi.SingleLaunchUi.create(partiallyResolvedCommand, commandConfiguration.inputs());
+            return LaunchUi.create(partiallyResolvedCommand,
+                    commandConfiguration.inputs(),
+                    dockerServerService.getServer(),
+                    false);
         } catch (Throwable t) {
             log.error("Error getting launch UI.", t);
             if (Exception.class.isAssignableFrom(t.getClass())) {
@@ -194,109 +219,88 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/bulklaunch"}, method = GET)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable long wrapperId,
-                                                 final @RequestParam Map<String, String> allRequestParams)
+    public LaunchUi getBulkLaunchUi(final @PathVariable long wrapperId,
+                                                 final @RequestParam("sampleTarget") String target,
+                                                 final @RequestParam("rootElement") String rootElement)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.info("Launch UI requested for wrapper {}", wrapperId);
 
-        return getBulkLaunchUi(null, 0L, null, wrapperId, allRequestParams);
+        return getBulkLaunchUi(null, 0L, null, wrapperId, target, rootElement);
     }
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = GET)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable long commandId,
+    public LaunchUi getBulkLaunchUi(final @PathVariable long commandId,
                                                  final @PathVariable String wrapperName,
-                                                 final @RequestParam Map<String, String> allRequestParams)
+                                                 final @RequestParam("sampleTarget") String target,
+                                                 final @RequestParam("rootElement") String rootElement)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.info("Bulk Launch UI requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return getBulkLaunchUi(null, commandId, wrapperName, 0L, allRequestParams);
+        return getBulkLaunchUi(null, commandId, wrapperName, 0L, target, rootElement);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = GET,
+            restrictTo = Edit)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
                                                  final @PathVariable long wrapperId,
-                                                 final @RequestParam Map<String, String> allRequestParams)
+                                                 final @RequestParam("sampleTarget") String target,
+                                                 final @RequestParam("rootElement") String rootElement)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.info("Launch UI requested for project {}, wrapper {}", project, wrapperId);
 
-        return getBulkLaunchUi(project, 0L, null, wrapperId, allRequestParams);
+        return getBulkLaunchUi(project, 0L, null, wrapperId, target, rootElement);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"},
+            method = GET, restrictTo = Edit)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
                                                  final @PathVariable long commandId,
                                                  final @PathVariable String wrapperName,
-                                                 final @RequestParam Map<String, String> allRequestParams)
+                                                 final @RequestParam("sampleTarget") String target,
+                                                 final @RequestParam("rootElement") String rootElement)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.info("Launch UI requested for project {}, command {}, wrapper {}", project, commandId, wrapperName);
 
-        return getBulkLaunchUi(project, commandId, wrapperName, 0L, allRequestParams);
+        return getBulkLaunchUi(project, commandId, wrapperName, 0L, target, rootElement);
     }
 
-    private LaunchUi.BulkLaunchUi getBulkLaunchUi(final String project,
+    private LaunchUi getBulkLaunchUi(final String project,
                                                   final long commandId,
                                                   final String wrapperName,
                                                   final long wrapperId,
-                                                  final Map<String, String> allRequestParams)
+                                                  final String target,
+                                                  final String rootElement)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
 
-        final List<Map<String, String>> paramsMapList = Lists.newArrayList();
-        paramsMapList.add(Maps.<String, String>newHashMap());
-        for (final Map.Entry<String, String> param : allRequestParams.entrySet()) {
-            final String[] splitValue = StringUtils.split(param.getValue(), ",");
-            if (splitValue.length > 1) {
-                // The param is a CSV. We must add each value in the CSV to each param map in the list.
-                final List<Map<String, String>> paramsMapListCopy = Lists.newArrayList(paramsMapList);
-                paramsMapList.clear();
-                for (final Map<String, String> paramsMap : paramsMapListCopy) {
-                    for (final String value : splitValue) {
-                        final Map<String, String> paramsMapCopy = Maps.newHashMap(paramsMap);
-                        paramsMapCopy.put(param.getKey(), value);
-                        paramsMapList.add(paramsMapCopy);
-                    }
-                }
-            } else {
-                // The param was not a CSV, so add it to all the maps in the list
-                for (final Map<String, String> paramsMap : paramsMapList) {
-                    paramsMap.put(param.getKey(), param.getValue());
-                }
-            }
+        if (StringUtils.isBlank(target)) {
+            throw new CommandResolutionException("No sample target specified");
         }
-
+        
+        // For now, we just use the sample target for command preresolution
+        Map<String, String> prms = Maps.newHashMap();
+        prms.put(rootElement, target);
+        
         try {
-            log.debug("Getting {} configuration for command {}, wrapper name {}, wrapper id {}.", project == null ? "site" : "project " + project, commandId, wrapperName, wrapperId);
-            final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId, wrapperName, wrapperId);
+            log.debug("Getting {} configuration for command {}, wrapper name {}, wrapper id {}.",
+                    project == null ? "site" : "project " + project, commandId, wrapperName, wrapperId);
+            final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId,
+                    wrapperName, wrapperId);
 
             final UserI userI = XDAT.getUserDetails();
-
-            PartiallyResolvedCommand aPartiallyResolvedCommand = null;
-            final List<List<ResolvedInputTreeNode<? extends Input>>> listOfResolvedInputTrees = new ArrayList<>();
-            for (final Map<String, String> paramsMap : paramsMapList) {
-                log.debug("Preparing to pre-resolve command {}, wrapperName {}, wrapperId {}, in project {} with inputs {}.", commandId, wrapperName, wrapperId, project, paramsMap);
-                final PartiallyResolvedCommand partiallyResolvedCommand = preResolve(project, commandId, wrapperName, wrapperId, paramsMap, userI);
-                if (aPartiallyResolvedCommand == null) {
-                    aPartiallyResolvedCommand = partiallyResolvedCommand; // We use this to populate Meta info, which  should be the same in all
-                }
-                listOfResolvedInputTrees.add(partiallyResolvedCommand.resolvedInputTrees());
-                log.debug("Done pre-resolving command {}, wrapperName {}, wrapperId {}, in project {}.", commandId, wrapperName, project);
-            }
-
-            if (aPartiallyResolvedCommand == null) {
-                log.error("Could not populate Launch UI meta information. Something must have gone wrong.");
-                throw new CommandResolutionException("Unknown error. Inform your admin to consult container logs.");
-            }
+            final PartiallyResolvedCommand partiallyResolvedCommand = preResolve(project, commandId, wrapperName,
+                    wrapperId, prms, userI);
 
             log.debug("Creating launch UI.");
-            return LaunchUi.BulkLaunchUi.builder()
-                    .meta(LaunchUi.LaunchUiMeta.create(aPartiallyResolvedCommand))
-                    .populateInputTreeAndInputValueTreeFromResolvedInputTrees(listOfResolvedInputTrees, commandConfiguration.inputs())
-                    .build();
+            return LaunchUi.create(partiallyResolvedCommand,
+                    commandConfiguration.inputs(),
+                    dockerServerService.getServer(),
+                    true);
         } catch (Throwable t) {
             log.error("Error getting launch UI.", t);
             if (Exception.class.isAssignableFrom(t.getClass())) {
@@ -310,89 +314,113 @@ public class LaunchRestApi extends AbstractXapiRestController {
     /*
     LAUNCH CONTAINERS
      */
-    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = POST)
-    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/launch"}, method = POST)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable long wrapperId,
+                                                                  final @PathVariable String rootElement,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for command id " + String.valueOf(wrapperId));
 
-        return returnLaunchReportWithStatus(launchContainer(null, 0L, null, wrapperId, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(null, 0L, null,
+                wrapperId, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/launch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable long wrapperId,
+                                                               final @PathVariable String rootElement,
                                                                final @RequestBody Map<String, String> allRequestParams) {
-        log.info("Launch requested for command wrapper id " + String.valueOf(wrapperId));
+        log.info("Launch requested for command wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(null, 0L, null, wrapperId, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(null, 0L, null,
+                wrapperId, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/launch"}, method = POST, restrictTo = Edit)
-    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
+    @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/root/{rootElement}/launch"},
+            method = POST, restrictTo = Edit)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @ProjectId String project,
                                                                   final @PathVariable long wrapperId,
+                                                                  final @PathVariable String rootElement,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
-        log.info("Launch requested for wrapper id " + String.valueOf(wrapperId));
+        log.info("Launch requested for wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(project, 0L, null, wrapperId, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(project, 0L, null,
+                wrapperId, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = POST, consumes = {JSON}, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/root/{rootElement}/launch"},
+            method = POST, consumes = {JSON}, restrictTo = Edit)
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @ProjectId String project,
                                                                final @PathVariable long wrapperId,
+                                                               final @PathVariable String rootElement,
                                                                final @RequestBody Map<String, String> allRequestParams) {
-        log.info("Launch requested for wrapper id " + String.valueOf(wrapperId));
+        log.info("Launch requested for wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(project, 0L, null, wrapperId, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(project, 0L, null,
+                wrapperId, rootElement, allRequestParams));
     }
 
     /*
     LAUNCH COMMAND + WRAPPER BY NAME
      */
-    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST)
-    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
+            method = POST)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable long commandId,
                                                                   final @PathVariable String wrapperName,
-                                                                  final @RequestParam Map<String, String> allRequestParams)
-            throws NoDockerServerException, DockerServerException, NotFoundException, BadRequestException, CommandResolutionException, ContainerException {
+                                                                  final @PathVariable String rootElement,
+                                                                  final @RequestParam Map<String, String> allRequestParams){
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName, 0L, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName,
+                0L, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
+            method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable long commandId,
                                                                final @PathVariable String wrapperName,
-                                                               final @RequestBody Map<String, String> allRequestParams)
-            throws NoDockerServerException, DockerServerException, NotFoundException, BadRequestException, CommandResolutionException, ContainerException {
+                                                               final @PathVariable String rootElement,
+                                                               final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName, 0L, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName,
+                0L, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, restrictTo = Edit)
-    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
+            method = POST, restrictTo = Edit)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @ProjectId String project,
                                                                   final @PathVariable long commandId,
                                                                   final @PathVariable String wrapperName,
+                                                                  final @PathVariable String rootElement,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(project, commandId, wrapperName, 0L, allRequestParams));
+        return returnLaunchReportWithStatus(launchContainer(project, commandId, wrapperName,
+                0L, rootElement, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, consumes = {JSON}, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
+            method = POST, consumes = {JSON}, restrictTo = Edit)
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @ProjectId String project,
                                                                final @PathVariable long commandId,
                                                                final @PathVariable String wrapperName,
+                                                               final @PathVariable String rootElement,
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        final LaunchReport launchReport = launchContainer(project, commandId, wrapperName, 0L, allRequestParams);
+        final LaunchReport launchReport = launchContainer(project, commandId, wrapperName,
+                0L, rootElement, allRequestParams);
         return returnLaunchReportWithStatus(launchReport);
     }
 
@@ -401,37 +429,65 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                          final long commandId,
                                          @Nullable final String wrapperName,
                                          final long wrapperId,
+                                         @Nullable final String rootElement,
                                          final Map<String, String> allRequestParams) {
-        final UserI userI = XDAT.getUserDetails();
+
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                XDAT.getUserDetails());
+    }
+
+    @Nonnull
+    private LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI) {
+
+        PersistentWorkflowI workflow = null;
+        String workflowid = "";
+
         try {
-            final Container container =
-                    project == null ?
-                            (commandId == 0L && wrapperName == null ?
-                                    containerService.resolveCommandAndLaunchContainer(wrapperId, allRequestParams, userI) :
-                                    containerService.resolveCommandAndLaunchContainer(commandId, wrapperName, allRequestParams, userI)) :
-                            (commandId == 0L && wrapperName == null ?
-                                    containerService.resolveCommandAndLaunchContainer(project, wrapperId, allRequestParams, userI) :
-                                    containerService.resolveCommandAndLaunchContainer(project, commandId, wrapperName, allRequestParams, userI));
-            if (container == null) {
-                throw new CommandResolutionException("Something happened but I do not know what.");
-            }
-            if (log.isInfoEnabled()) {
-                log.info("Launched command {}, wrapper {} {}. Produced container {}.", commandId, wrapperId, wrapperName, container.databaseId());
-                if (log.isDebugEnabled()) {
-                    log.debug("" + container);
-                }
+            // Create workflow first
+            String xnatIdOrUri;
+            if (rootElement != null && (xnatIdOrUri = allRequestParams.get(rootElement)) != null) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
+                workflow = containerService.createContainerWorkflow(xnatIdOrUri, rootElement,
+                        StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name()),
+                        StringUtils.defaultString(project, ""), userI);
+                workflowid = workflow.getWorkflowId().toString();
             }
 
-            return container.isSwarmService() ?
-                    LaunchReport.ServiceSuccess.create(container) :
-                    LaunchReport.ContainerSuccess.create(container);
+            // Queue command resolution and container launch
+            containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, commandId,
+                    wrapperName, allRequestParams, userI, workflow);
+
+            String msg = "To be assigned";
+            if (StringUtils.isNotBlank(workflowid)) {
+                msg += ", see workflow " + workflowid;
+            }
+            return LaunchReport.ContainerSuccess.create(msg, allRequestParams, null, commandId, wrapperId);
+
         } catch (Throwable t) {
+            if (workflow != null) {
+                String failedStatus = PersistentWorkflowUtils.FAILED + " (Staging)";
+                workflow.setStatus(failedStatus);
+                workflow.setDetails(t.getMessage());
+                try {
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } catch (Exception we) {
+                    log.error("Unable to set workflow status to {} for wfid={}", failedStatus, workflow.getWorkflowId(), we);
+                }
+            }
             if (log.isInfoEnabled()) {
-                log.error("Launch failed for command wrapper name {}.", wrapperName);
+                log.error("Unable to queue container launch for command wrapper name {}.", wrapperName);
                 log.error(mapLogString("Params: ", allRequestParams));
                 log.error("Exception: ", t);
             }
-            return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "", allRequestParams, commandId, wrapperId);
+            return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "Unable to queue container launch",
+                    allRequestParams, commandId, wrapperId);
         }
     }
 
@@ -461,57 +517,80 @@ public class LaunchRestApi extends AbstractXapiRestController {
     /*
     BULK LAUNCH
      */
-    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch"},
+            method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
-                                                    final @RequestBody List<Map<String, String>> allRequestParams) {
-        log.info("Launch requested for command {}, wrapper name {}.", commandId, wrapperName);
-        return bulkLaunch(null, commandId, wrapperName, 0L, allRequestParams);
+                                                    final @PathVariable String rootElement,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        log.info("Bulk launch requested for command {}, wrapper name {}.", commandId, wrapperName);
+        return bulkLaunch(null, commandId, wrapperName, 0L, rootElement, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/bulklaunch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable long wrapperId,
-                                                    final @RequestBody List<Map<String, String>> allRequestParams) {
-        log.info("Launch requested for wrapper id {}.", wrapperId);
-        return bulkLaunch(null, 0L, null, wrapperId, allRequestParams);
+                                                    final @PathVariable String rootElement,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        log.info("Bulk launch requested for wrapper id {}.", wrapperId);
+        return bulkLaunch(null, 0L, null, wrapperId, rootElement, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch"},
+            method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @ProjectId String project,
                                                     final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
-                                                    final @RequestBody List<Map<String, String>> allRequestParams) {
-        log.info("Launch requested for command {}, wrapper name {}, project {}.", commandId, wrapperName, project);
-        return bulkLaunch(project, commandId, wrapperName, 0L, allRequestParams);
+                                                    final @PathVariable String rootElement,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        log.info("Bulk launch requested for command {}, wrapper name {}, project {}.", commandId, wrapperName, project);
+        return bulkLaunch(project, commandId, wrapperName, 0L, rootElement, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = POST, consumes = {JSON})
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/root/{rootElement}/bulklaunch"},
+            method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @ProjectId String project,
                                                     final @PathVariable long wrapperId,
-                                                    final @RequestBody List<Map<String, String>> allRequestParams) {
-        log.info("Launch requested for wrapper id {}, project {}.", wrapperId, project);
-        return bulkLaunch(project, 0L, null, wrapperId, allRequestParams);
+                                                    final @PathVariable String rootElement,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        log.info("Bulk launch requested for wrapper id {}, project {}.", wrapperId, project);
+        return bulkLaunch(project, 0L, null, wrapperId, rootElement, allRequestParams);
     }
 
     private LaunchReport.BulkLaunchReport bulkLaunch(final String project,
                                                      final long commandId,
                                                      final String wrapperName,
                                                      final long wrapperId,
-                                                     final List<Map<String, String>> allRequestParams) {
-
+                                                     final String rootElement,
+                                                     final Map<String, String> allRequestParams) throws IOException {
+        final UserI userI = XDAT.getUserDetails();
         final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder();
-        for (final Map<String, String> paramsSet : allRequestParams) {
-            reportBuilder.addReport(launchContainer(project, commandId, wrapperName, wrapperId, paramsSet));
+        List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
+        log.debug("Bulk launching on {} targets", targets.size());
+        for (final String target : targets) {
+            Map<String, String> paramsSet = Maps.newHashMap(allRequestParams);
+            paramsSet.put(rootElement, target);
+            try {
+                executorService.submit(() -> {
+                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI);
+                });
+                reportBuilder.addSuccess(LaunchReport.ContainerSuccess.create("To be assigned",
+                        paramsSet, null, commandId, wrapperId));
+            } catch (Exception e) {
+                // Most exceptions should be "logged" to the workflow but this is meant to catch
+                // issues submitting to the executorService
+                reportBuilder.addFailure(LaunchReport.Failure.create(e.getMessage() != null ?
+                                e.getMessage() : "Unable to queue container launch",
+                        paramsSet, commandId, wrapperId));
+            }
         }
-
         return reportBuilder.build();
     }
 

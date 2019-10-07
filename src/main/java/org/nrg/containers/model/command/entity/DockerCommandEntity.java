@@ -6,6 +6,7 @@ import com.google.common.collect.Maps;
 import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 
+import javax.annotation.Nonnull;
 import javax.persistence.DiscriminatorValue;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
@@ -15,20 +16,20 @@ import java.util.Objects;
 
 @Entity
 @DiscriminatorValue("docker")
-@Audited
 public class DockerCommandEntity extends CommandEntity {
     public static final CommandType type = CommandType.DOCKER;
 
     private String index;
     private String hash;
-    private Map<String, String> ports;
+    private Map<String, String> ports = Maps.<String, String>newHashMap();
 
-    public static DockerCommandEntity fromPojo(final Command commandPojo) {
-        final DockerCommandEntity command = new DockerCommandEntity();
-        command.setIndex(commandPojo.index());
-        command.setHash(commandPojo.hash());
-        command.setPorts(commandPojo.ports());
-        return command;
+    @Override
+    @Nonnull
+    public CommandEntity update(@Nonnull final Command command) {
+        setIndex(command.index());
+        setHash(command.hash());
+        setPorts(command.ports());
+        return super.update(command);
     }
 
     @Transient

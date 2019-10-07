@@ -2,25 +2,25 @@ package org.nrg.containers.model.container.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.MoreObjects;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.hibernate.envers.Audited;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.model.container.auto.Container;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
+import javax.persistence.*;
 import java.util.Date;
 import java.util.Objects;
 
+@Slf4j
 @Entity
-@Audited
 public class ContainerEntityHistory {
     private long id;
     @JsonIgnore private ContainerEntity containerEntity;
     private String status;
+    private String message;
     private String entityType;
     private String entityId;
     private Date timeRecorded;
@@ -78,6 +78,7 @@ public class ContainerEntityHistory {
     public ContainerEntityHistory update(final Container.ContainerHistory containerHistoryPojo) {
         this.setId(containerHistoryPojo.databaseId() == null ? 0L : containerHistoryPojo.databaseId());
         this.setStatus(containerHistoryPojo.status());
+        this.setMessage(containerHistoryPojo.message());
         this.setEntityType(containerHistoryPojo.entityType());
         this.setEntityId(containerHistoryPojo.entityId());
         this.setTimeRecorded(containerHistoryPojo.timeRecorded());
@@ -103,6 +104,15 @@ public class ContainerEntityHistory {
 
     public void setContainerEntity(final ContainerEntity containerEntity) {
         this.containerEntity = containerEntity;
+    }
+    
+    @Column(columnDefinition = "TEXT")
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(final String message) {
+        this.message = message;
     }
 
     public String getStatus() {
@@ -158,14 +168,23 @@ public class ContainerEntityHistory {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final ContainerEntityHistory that = (ContainerEntityHistory) o;
-        return Objects.equals(this.containerEntity, that.containerEntity) &&
+        
+        boolean match=Objects.equals(this.containerEntity, that.containerEntity) &&
                 Objects.equals(this.status, that.status) &&
+                Objects.equals(this.message, that.message) &&
                 Objects.equals(this.externalTimestamp, that.externalTimestamp);
+        if (match) {
+            log.trace("containerEntity {}={}, status {}={}, externalTimestamp{}={}",
+                    this.containerEntity.getId(), that.containerEntity.getId(), this.status, that.status,
+                    this.externalTimestamp, that.externalTimestamp);
+        }
+
+        return match;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(containerEntity, status, externalTimestamp);
+        return Objects.hash(containerEntity, status, externalTimestamp, message);
     }
 
     @Override
@@ -173,6 +192,7 @@ public class ContainerEntityHistory {
         return MoreObjects.toStringHelper(this)
                 .add("id", id)
                 .add("status", status)
+                .add("message", message)
                 .add("entityType", entityType)
                 .add("entityId", entityId)
                 .add("timeRecorded", timeRecorded)

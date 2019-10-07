@@ -174,7 +174,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         function basicConfigInput(name,value) {
             value = (value === undefined || value === null || value == 'null') ? '' : value;
-            return '<input type="text" name="'+name+'" value="'+value+'" />';
+            // Workaround to handle quotes in value string
+            var $input = $(spawn('input', {name: name, type: 'text'}));
+            $input.attr('value', value);
+            return $input.get(0);
         }
 
         function configCheckbox(name,checked,onText,offText){
@@ -784,6 +787,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     eventId: 'SessionArchived',
                     context: 'xnat:imageSessionData',
                     label: 'On Session Archive'
+                },
+                {
+                    eventId: 'Merged',
+                    context: 'xnat:imageSessionData',
+                    label: 'On Session Merged'
                 },
                 {
                     eventId: 'ScanArchived',

@@ -6,12 +6,12 @@ import com.google.common.collect.ImmutableMap;
 import javax.annotation.Nullable;
 import java.util.Date;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @AutoValue
 public abstract class DockerContainerEvent implements ContainerEvent {
     private static final Pattern exitStatusPattern = Pattern.compile("kill|die|oom");
+    private static final Pattern successStatusPattern = Pattern.compile("die");
 
     public abstract String status();
     public abstract String containerId();
@@ -20,8 +20,17 @@ public abstract class DockerContainerEvent implements ContainerEvent {
     public abstract ImmutableMap<String, String> attributes();
 
     public boolean isExitStatus() {
-        final Matcher exitStatusMatcher = exitStatusPattern.matcher(status());
-        return exitStatusMatcher.matches();
+        final String status = status();
+        return status != null && exitStatusPattern.matcher(status).matches();
+    }
+
+    public static boolean isSuccessfulStatus(String status){
+        return status != null && successStatusPattern.matcher(status).matches();
+    }
+
+    public boolean isSuccessfulStatus(){
+        final String status = status();
+        return isSuccessfulStatus(status);
     }
 
     public String exitCode() {

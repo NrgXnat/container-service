@@ -9,6 +9,7 @@ buildscript {
         vXnat = '1.7.5'
     }
     repositories {
+        mavenLocal()
         maven {
             url "https://plugins.gradle.org/m2/"
         }
@@ -32,7 +33,7 @@ buildscript {
 }
 
 group 'org.nrg'
-version '2.0.2-SNAPSHOT'
+version '2.0.2-SNAPSHOT.RAD8'
 
 apply plugin: 'java'
 apply plugin: 'idea'
@@ -42,15 +43,18 @@ apply plugin: "net.ltgt.apt"
 apply plugin: 'io.spring.dependency-management'
 apply plugin: "com.github.zhurlik.swagger"
 
-sourceCompatibility = 1.7
-targetCompatibility = 1.7
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
 
+def vXnat = '1.7.5'
+def vXnatDev = '1.7.5.6.RAD1'
 def vMockito = '1.10.19'
 def vJavassist = '3.21.0-GA'
 def vAwaitility = '2.0.0'
 
 repositories {
     jcenter()
+    mavenLocal()
     mavenCentral()
     maven {
         url 'https://nrgxnat.jfrog.io/nrgxnat/libs-release'
@@ -64,7 +68,10 @@ repositories {
         url 'https://nrgxnat.jfrog.io/nrgxnat/ext-release'
         name 'XNAT External Release Repository'
     }
+    
 }
+
+
 
 dependencyManagement {
     imports {
@@ -108,6 +115,8 @@ configurations.all {
 //    }
 //}
 
+
+
 dependencies {
     compileAndInclude (group: 'com.spotify', name: 'docker-client', version: vDockerClient) {
         exclude group: "ch.qos.logback"
@@ -116,7 +125,7 @@ dependencies {
     }
     compileAndInclude "com.jayway.jsonpath:json-path:${vJsonPath}"
 
-    compile ("org.nrg.xnat:web") {
+    compile ("org.nrg.xnat:web:${vXnatDev}") {
         transitive = false
     }
     compile "org.nrg:framework"
@@ -148,7 +157,10 @@ dependencies {
     compile "org.springframework:spring-tx"
     compile "org.springframework:spring-web"
     compile "org.springframework:spring-webmvc"
-
+    compile "org.springframework:spring-jms"
+    compile "org.springframework:spring-messaging"
+    compile group: 'javax.jms', name: 'javax.jms-api', version: '2.0.1'
+    compile group: 'org.apache.activemq', name: 'activemq-all', version: '5.15.8'
     compile "io.springfox:springfox-swagger2:${vSwagger}"
     compile "io.springfox:springfox-swagger-ui:${vSwagger}"
 
@@ -201,11 +213,17 @@ dependencies {
     testCompile "org.powermock:powermock-module-junit4:${vPowerMock}"
     testCompile "org.powermock:powermock-api-mockito:${vPowerMock}"
     testCompile "org.awaitility:awaitility:${vAwaitility}"
+    testCompile group: 'org.apache.axis', name: 'axis', version: '1.4'
+
 }
 
 task unitTest( type: Test ) {
     exclude '**/DockerControlApiTest.class', '**/*IntegrationTest.class'
 }
+
+//test.doFirst {
+//    jvmArgs '-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5009'
+//}
 
 task(type: SwaggerTask, 'swagger') {
 
@@ -260,7 +278,7 @@ sourceSets.main.java {
 
 jar{
     doLast {
-        throw new GradleException('ERROR:  You should run fatJar instead of jar task for this plugin')
+        logger.warn 'WARNING: You should generally run fatJar instead of jar task for this plugin'
     }
 }
 

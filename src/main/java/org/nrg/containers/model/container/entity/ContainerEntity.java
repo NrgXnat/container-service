@@ -5,11 +5,9 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.hibernate.envers.Audited;
-import org.nrg.containers.model.container.ContainerInputType;
+import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
-
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
@@ -28,18 +26,22 @@ import java.util.Objects;
 import java.util.Set;
 
 @Entity
-@Audited
+@Slf4j
 public class ContainerEntity extends AbstractHibernateEntity {
+    public static String KILL_STATUS = "kill";
     public static Map<String, String> STANDARD_STATUS_MAP = ImmutableMap.<String, String>builder()
-            .put("complete", "Complete")
+            .put("complete", "Waiting") // Docker swarm "complete" maps to waiting to be finalized
             .put("created", "Created")
-            .put("rejected", "Failed")
+            .put("rejected", "Failed (Rejected)")
             .put("failed", "Failed")
             .put("start", "Running")
             .put("started", "Running")
             .put("running", "Running")
-            .put("kill", "Killed")
-            .put("oom", "Killed (Out of Memory)")
+            .put("remove", "Failed (Remove)")
+            .put("orphaned", "Failed (Orphaned)")
+            .put(KILL_STATUS, "Failed (Killed)")
+            .put("oom", "Failed (Memory)")
+            .put("shutdown", "Failed (Shutdown)")
             .put("starting", "Starting")
             .build();
     private static final Set<String> TERMINAL_STATI = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
@@ -55,7 +57,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Boolean overrideEntrypoint;
     private String workingDirectory;
     private Map<String, String> environmentVariables = Maps.newHashMap();
-    private Map<String, String> ports = new HashMap<>();
+    private Map<String, String> ports = Maps.newHashMap();
     private List<ContainerEntityMount> mounts = Lists.newArrayList();
     private String containerId;
     private String workflowId;
@@ -74,6 +76,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Long reserveMemory;
     private Long limitMemory;
     private Double limitCpu;
+    private List<String> swarmConstraints;
     private String project;
 
     public ContainerEntity() {}
@@ -146,6 +149,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setReserveMemory(containerPojo.reserveMemory());
         this.setLimitMemory(containerPojo.limitMemory());
         this.setLimitCpu(containerPojo.limitCpu());
+        this.setSwarmConstraints(containerPojo.swarmConstraints());
 
         return this;
     }
@@ -244,7 +248,9 @@ public class ContainerEntity extends AbstractHibernateEntity {
     }
 
     public void setPorts(final Map<String, String> ports) {
-        this.ports = ports == null ? new HashMap<String, String>() : ports;
+        this.ports = ports == null ?
+                Maps.<String, String>newHashMap() :
+                ports;
     }
 
     public String getSubtype() {
@@ -432,14 +438,18 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.history.add(historyItem);
     }
 
+    /**
+     * Does this item have a different status (and externalTimestamp) than any previously recorded history item?
+     * @param historyItem the candidate history item
+     * @return T/F
+     */
     @Transient
-    public boolean isItemInHistory(final ContainerEntityHistory historyItem) {
-        if (this.history == null) {
-            return false;
-        }
-        historyItem.setContainerEntity(this);
-        return this.history.contains(historyItem);
-
+    public synchronized boolean isItemInHistory(final ContainerEntityHistory historyItem) {
+    	if (this.history == null){
+    		return false;
+    	}
+    	historyItem.setContainerEntity(this);
+    	return this.history.contains(historyItem);
     }
 
     @ElementCollection
@@ -457,6 +467,16 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setProject(final String project) {
         this.project = project;
+    }
+
+
+    @ElementCollection
+    public List<String> getSwarmConstraints() {
+        return swarmConstraints;
+    }
+
+    public void setSwarmConstraints(List<String> swarmConstraints) {
+        this.swarmConstraints = swarmConstraints;
     }
 
     @Override
@@ -506,6 +526,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("reserveMemory", reserveMemory)
                 .add("limitMemory", limitMemory)
                 .add("limitCpu", limitCpu)
+                .add("swarmConstraints", swarmConstraints)
                 .toString();
     }
 }

@@ -4,6 +4,8 @@ import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.events.DockerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.xnat.services.XnatAppInfo;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -20,13 +22,14 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 @EnableScheduling
 @EnableTransactionManagement
-@Import({IntegrationTestConfig.class})
+@Import({IntegrationTestConfig.class, JmsConfig.class})
 public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
     @Bean
     public DockerStatusUpdater dockerStatusUpdater(final DockerControlApi dockerControlApi,
                                                    final DockerServerService dockerServerService,
-                                                   final ContainerService containerService) {
-        return new DockerStatusUpdater(dockerControlApi, dockerServerService, containerService);
+                                                   final ContainerService containerService,
+                                                   @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo) {
+        return new DockerStatusUpdater(dockerControlApi, dockerServerService, containerService, mockXnatAppInfo);
     }
 
     @Bean

@@ -29,6 +29,7 @@ public class CommandEventMappingDao extends AbstractHibernateDAO<CommandEventMap
      * If eventType is null, return an emply list.
      *
      * @param eventType Find Commands that are triggered by this eventType.
+     * @param onlyEnabled Limit to enabled commands
      * @return List of Commands.
      */
     public List<CommandEventMapping> findByEventType(final String eventType, final boolean onlyEnabled) {

@@ -36,6 +36,10 @@
     overflow-y: auto;
 }
 
+.bulk-inputs {
+    margin-bottom:15px;
+}
+
 #containerMenu > .bd {
     border-top: none;
 }
@@ -44,4 +48,33 @@
 #actionsMenu li.wrapped a {
     white-space: normal;
     width: 180px;
+}
+
+div.swarm-constraints .panel-element .element-label{
+    width:50%;
+}
+div.swarm-constraints .panel-element .element-wrapper {
+    width:50%;
+}
+span.swarm-constraints-heading {
+    background-color: #f0f0f0;
+    color: #848484;
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 6px;
+    text-transform: uppercase;
+}
+
+kbd {
+    padding: .2rem .4rem;
+    font-size: 87.5%;
+    color: #fff;
+    background-color: #212529;
+    border-radius: .2rem;
+    display: inline-block;
+    margin-top: 3px;
+}
+
+.spinner {
+    margin: 0 10px 10px;
 }

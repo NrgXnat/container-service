@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
-@Import({ObjectMapperConfig.class})
+@Import({ObjectMapperConfig.class, HibernateConfig.class})
 public class CommandConfig {
     @Bean
     public CommandService commandService(final CommandEntityService commandEntityService,

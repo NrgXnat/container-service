@@ -10,15 +10,9 @@ import org.nrg.containers.model.command.auto.Command;
 import javax.annotation.Nonnull;
 import javax.persistence.*;
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 @Entity
-@Audited
 public class CommandWrapperEntity implements Serializable {
     private long id;
     private String name;
@@ -45,6 +39,7 @@ public class CommandWrapperEntity implements Serializable {
         this.setDescription(commandWrapper.description());
         this.setContexts(commandWrapper.contexts());
 
+        final List<CommandWrapperExternalInputEntity> toRemoveExternalInputs = new ArrayList<>();
         final Map<String, Command.CommandWrapperExternalInput> externalInputsByName = new HashMap<>();
         for (final Command.CommandWrapperExternalInput externalCommandWrapperInput : commandWrapper.externalInputs()) {
             externalInputsByName.put(externalCommandWrapperInput.name(), externalCommandWrapperInput);
@@ -54,6 +49,8 @@ public class CommandWrapperEntity implements Serializable {
             if (externalInputsByName.containsKey(externalInputEntity.getName())) {
                 externalInputEntity.update(externalInputsByName.get(externalInputEntity.getName()));
                 externalInputsByName.remove(externalInputEntity.getName());
+            } else {
+                toRemoveExternalInputs.add(externalInputEntity);
             }
         }
         for (final Command.CommandWrapperExternalInput externalInput : commandWrapper.externalInputs()) {
@@ -61,7 +58,11 @@ public class CommandWrapperEntity implements Serializable {
                 this.addExternalInput(CommandWrapperExternalInputEntity.fromPojo(externalInput));
             }
         }
+        for (final CommandWrapperExternalInputEntity externalInputEntity : toRemoveExternalInputs) {
+            this.removeExternalInput(externalInputEntity);
+        }
 
+        final List<CommandWrapperDerivedInputEntity> toRemoveDerivedInputs = new ArrayList<>();
         final Map<String, Command.CommandWrapperDerivedInput> derivedInputsByName = new HashMap<>();
         for (final Command.CommandWrapperDerivedInput derivedCommandWrapperInput : commandWrapper.derivedInputs()) {
             derivedInputsByName.put(derivedCommandWrapperInput.name(), derivedCommandWrapperInput);
@@ -71,6 +72,8 @@ public class CommandWrapperEntity implements Serializable {
             if (derivedInputsByName.containsKey(derivedInputEntity.getName())) {
                 derivedInputEntity.update(derivedInputsByName.get(derivedInputEntity.getName()));
                 derivedInputsByName.remove(derivedInputEntity.getName());
+            } else {
+                toRemoveDerivedInputs.add(derivedInputEntity);
             }
         }
         for (final Command.CommandWrapperDerivedInput derivedInput : commandWrapper.derivedInputs()) {
@@ -78,7 +81,11 @@ public class CommandWrapperEntity implements Serializable {
                 this.addDerivedInput(CommandWrapperDerivedInputEntity.fromPojo(derivedInput));
             }
         }
+        for (final CommandWrapperDerivedInputEntity derivedInputEntity : toRemoveDerivedInputs) {
+            this.removeDerivedInput(derivedInputEntity);
+        }
 
+        final List<CommandWrapperOutputEntity> toRemoveOutputHandlers = new ArrayList<>();
         final Map<String, Command.CommandWrapperOutput> outputsByName = new HashMap<>();
         for (final Command.CommandWrapperOutput commandWrapperOutput : commandWrapper.outputHandlers()) {
             outputsByName.put(commandWrapperOutput.name(), commandWrapperOutput);
@@ -88,12 +95,17 @@ public class CommandWrapperEntity implements Serializable {
             if (outputsByName.containsKey(outputEntity.getName())) {
                 outputEntity.update(outputsByName.get(outputEntity.getName()));
                 outputsByName.remove(outputEntity.getName());
+            } else {
+                toRemoveOutputHandlers.add(outputEntity);
             }
         }
         for (final Command.CommandWrapperOutput output : commandWrapper.outputHandlers()) {
             if (outputsByName.containsKey(output.name())) {
                 this.addOutputHandler(CommandWrapperOutputEntity.fromPojo(output));
             }
+        }
+        for (final CommandWrapperOutputEntity outputEntity : toRemoveOutputHandlers) {
+            this.removeOutputHandler(outputEntity);
         }
 
         return this;
@@ -192,6 +204,13 @@ public class CommandWrapperEntity implements Serializable {
             this.externalInputs.add(externalInput);
         }
     }
+    public void removeExternalInput(final CommandWrapperExternalInputEntity externalInput) {
+        if (externalInput == null || this.externalInputs == null || !this.externalInputs.contains(externalInput)) {
+            return;
+        }
+        this.externalInputs.remove(externalInput);
+        externalInput.setCommandWrapperEntity(null);
+    }
 
     @OneToMany(mappedBy = "commandWrapperEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy
@@ -222,6 +241,13 @@ public class CommandWrapperEntity implements Serializable {
             this.derivedInputs.add(derivedInput);
         }
     }
+    public void removeDerivedInput(final CommandWrapperDerivedInputEntity derivedInput) {
+        if (derivedInput == null || this.derivedInputs == null || !this.derivedInputs.contains(derivedInput)) {
+            return;
+        }
+        this.derivedInputs.remove(derivedInput);
+        derivedInput.setCommandWrapperEntity(null);
+    }
 
     @OneToMany(mappedBy = "commandWrapperEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy
@@ -251,6 +277,13 @@ public class CommandWrapperEntity implements Serializable {
         if (!this.outputHandlers.contains(outputHandler)) {
             this.outputHandlers.add(outputHandler);
         }
+    }
+    public void removeOutputHandler(final CommandWrapperOutputEntity outputHandler) {
+        if (outputHandler == null || this.outputHandlers == null || !this.outputHandlers.contains(outputHandler)) {
+            return;
+        }
+        this.outputHandlers.remove(outputHandler);
+        outputHandler.setCommandWrapperEntity(null);
     }
 
     @Override

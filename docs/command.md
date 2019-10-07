@@ -46,6 +46,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
         "inputs": [
             {
                 "name": "",
+                "label": "",
                 "description": "",
                 "type": "",
                 "required": true,
@@ -56,7 +57,9 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                 "command-line-separator": "",
                 "true-value": "",
                 "false-value": "",
-                "sensitive": false
+                "sensitive": false,
+                "select-values": [],
+                "multiple-delimiter": ""
             }
         ],
         "outputs": [
@@ -78,6 +81,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                 "external-inputs": [
                     {
                         "name": "",
+                        "label": "",
                         "description": "",
                         "type": "",
                         "matcher": "",
@@ -93,6 +97,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                 "derived-inputs": [
                     {
                         "name": "",
+                        "label": "",
                         "description": "",
                         "type": "",
                         "matcher": "",
@@ -104,7 +109,8 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                         "provides-files-for-command-mount": "",
                         "via-setup-command": "repo/image:version[:commandname]",
                         "derived-from-wrapper-input": "",
-                        "derived-from-xnat-object-property": ""
+                        "derived-from-xnat-object-property": "",
+                        "multiple": false
                     }
                 ],
                 "output-handlers": [
@@ -146,18 +152,20 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
 - **ports** - (Docker images only) String key/value pairs of ports to expose. The key is the port inside the container, the value is the port to expose out on the host. In other words, entries in this map should be of the form `"container_port": "host_port"`. Keys and values can be templates.
 - **inputs** - A list of inputs that will be used to resolve the command and launch the container. See [Command Inputs](#command-inputs).
     - **name** - The name of the input. You can use this to refer to the input elsewhere in the command.
-    - **label** - A short, human-friendly name of the command wrapper. This field will be displayed in the XNAT "Run Container" menu, so choose something that will help users understand what your command + wrapper are and do. (If no label is provided, the description will be used. If neither are provided, then the name will be used.)
+    - **label** - The label for the input in the UI, if none is provided, the name will be used. If a derived or external input provides the value for this input, that input's label will be used instead.
     - **description** - A human-friendly description of the input.
-    - **type** - One of string, boolean, number, or file. See the section on [input types](#input-types) below for more. Default: string.
+    - **type** - One of `string`, `boolean`, `number`, `select-one`, or `select-many`. See the section on [input types](#input-types) below for more. If `select-one` or `select-many`, be sure to provide `"select-values"` (see entry, below). Default: `string`.
     - **required** - A boolean value (true/false) whether this input is required. If a required input does not have a value at runtime, an error is thrown. Default: false.
     - **matcher** - A [JSONPath filter](#jsonpath-filters) used to determine if an input value is valid or not.
-    - **default-value** - A value that will be used if no other value is provided at runtime.
+    - **default-value** - A value that will be used if no other value is provided at runtime. If `"type":"select-many"` and you want to specify a default with multiple values, you may provide a JSON-stringified array here (e.g., `"[\"val1\",\"val2\"]"`).
     - **replacement-key** - A shorthand way to refer to this input's value elsewhere in the command. Default: the input's name bracketed by "#"; e.g. for an input named "foo" the default replacement-key is "#foo#".
     - **command-line-flag** - When this input's value is replaced in the command-line string, it is preceded by this flag. E.g. an input with value "foo" and command-line-flag "--flag" will appear in the command-line string as "--flag foo".
     - **command-line-separator** - The character separating the command-line-flag from the value in the command-line. Default: " ".
     - **true-value** - The string to use in the command line for a boolean input when its value is `true`. Some examples: "true", "T", "Y", "1", "--a-flag". Default: "true".
     - **false-value** - The string to use in the command line for a boolean input when its value is `false`. Some examples: "false", "F", "N", "0", "--some-other-flag". Default: "false".
-    - **sensitive** - A boolean value. Set to `true` if you want the value of this parameter to be masked out in the UI and REST API responses. The value will still be present in the database and logs. Default: `false`.
+    - **sensitive** - A boolean value. Set to `true` if you want the value of this parameter to be masked out in the UI and REST API responses. The value will still be present in the database and logs. Default: `false`.   
+	- **select-values** - If type is `select-one` or `select-many`, you must provide an array of possible values for this input. _These are only relevant if the input's value is NOT provided by an external or derived input_. Default: `[]`.
+	- **multiple-delimmiter** - One of `quoted-space`, `space`, `comma`, or `flag` (or null). This parameter will only be relevant if `"type":"select-many"` OR if this input's value is provided by a [derived-input](#wrapper-inputs) with `"multiple":true`. When this input's value is replaced in the command-line string, the multiple-delimiter defines how multiple values will be separated. Values are as follows: "space" = space-delimited (e.g, `1 2`), "comma" = comma-delimited (e.g, `1,2`), "quoted-space" = space-delimited within single quotes (e.g, `'1 2'`), "flag" = delimited by "command-line-flag" + "command-line-separator" (e.g., `--flag=1 --flag=2`). Default: `space`
 - **outputs** - A list of outputs that will be used to upload files produced by the container. See [Command Outputs](#command-outputs).
     - **name** - The name of the output.
     - **description** - A human-friendly description of the output.
@@ -167,12 +175,14 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
     - **glob** - A glob-style matcher for the files to upload. If `"glob"` is blank, then all files found at relative path `"path"` within the mount will be uploaded.
 - **xnat** - A list of XNAT Command Wrappers, or just "Wrappers" for short, in which you can define how to pull files and properties from XNAT objects into your containers, and upload the containers' outputs back.
     - **name** - A user-friendly name. Example: "dcm2niix on a scan".
+    - **label** - A short, human-friendly name of the command wrapper. This field will be displayed in the XNAT "Run Container" menu, so choose something that will help users understand what your command + wrapper are and do. (If no label is provided, the description will be used. If neither are provided, then the name will be used.)
     - **description** - A longer description of what this command wrapper does: What XNAT object(s) does it take as inputs? How does it use those to fill the command's inputs? Where does it upload the command's outputs?
     - **contexts** - A list of [XNAT data types](https://wiki.xnat.org/display/XNAT17/Understanding+the+XNAT+Data+Model) on which this command wrapper can be run. If none are provided, the list of contexts is populated from the data types of the external inputs.
     - **external-inputs** - A List of Inputs to the Command Wrapper that will come in when a launch is requested. See [Wrapper Inputs](#wrapper-inputs) for more.
         - **name**
+        - **label** - The label for the input in the UI, if none is provided, the name will be used.
         - **description**
-        - **type** - One of the basic types (string, boolean, number, file) or the XNAT object types (Project, Subject, Session, Scan, Assessor, Resource, Config). See the section on [input types](#input-types) below for more.
+        - **type** - One of the basic types (string, boolean, number) or the XNAT object types (Project, Subject, Session, Scan, Assessor, Resource, Config). See the section on [input types](#input-types) below for more.
         - **matcher** - A [JSONPath filter](#jsonpath-filters) used to determine if an input value is valid or not. For instance, if the parent input is a `Session`, and this input is a `Scan`, we can make sure that this input only matches scans with a DICOM resource by setting the matcher to `"DICOM" in @.resources[*].label`, or only matches scans of a certain type by setting the matcher to `@.scan-type == "MPRAGE"`.
         - **default-value**
         - **user-settable** - true/false. Should this Input be exposed to users who are launching via a UI? See the section [User-settable or not?](#user-settable-or-not) for the use-cases where one might want to set this to "false".
@@ -183,6 +193,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
         - **via-setup-command** - A reference to a setup command image (format: `repo/image:version[:commandname]` where the `commandname` is optional). See the page on [Setup Commands](https://wiki.xnat.org/display/CS/Setup+Commands) for more.
     - **derived-inputs** - A List of Inputs to the Command Wrapper that will not come in from outside, but instead will be derived from other inputs as parents or children. See [Wrapper Inputs](#wrapper-inputs) for more.
         - **name**
+        - **label** - The label for the input in the UI, if none is provided, the name will be used.
         - **description**
         - **type** - One of the basic types (string, boolean, number) or the XNAT object types (Project, Subject, Session, Scan, Assessor, Resource, Config, File, File[], Directory). See the section on [input types](#input-types) below for more.
         - **matcher** - A [JSONPath filter](#jsonpath-filters) used to determine if an input value is valid or not. For instance, if the parent input is a `Session`, and this input is a `Scan`, we can make sure that this input only matches scans with a DICOM resource by setting the matcher to `"DICOM" in @.resources[*].label`, or only matches scans of a certain type by setting the matcher to `@.scan-type == "MPRAGE"`.
@@ -195,9 +206,10 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
         - **via-setup-command** - A reference to a setup command image (format: `repo/image:version[:commandname]` where the `commandname` is optional). See the page on [Setup Commands](https://wiki.xnat.org/display/CS/Setup+Commands) for more.
         - **derived-from-wrapper-input** - Name of a Wrapper input which is a "parent" to this input. See [Deriving values](#deriving-values).
         - **derived-from-xnat-object-property** - Property of an XNAT object that will be used for the value of this input. See [Deriving values](#deriving-values).
+		- **multiple** - A boolean value indicating whether this input should be allowed to resolve to multiple values (e.g., you want this input to be all T1 scans, rather than matching precisely one or erroring-out). If `true`, this input cannot provide values for a command-mount, nor be the target for an output handler, nor have children apart from providing values for a command-input. Default: `false`.
     - **output-handlers** - A list of [output handlers](#output-handling). You use these to instruct the container service how and where to upload your container's outputs.
         - **name**
-        - **type** - The type of object that will be created in XNAT. Currently only `"Resource"` is accepted.
+        - **type** - The type of object that will be created in XNAT. Currently `"Resource", "Assessor", and "Scan"` are accepted. The latter two must be xml files.
         - **accepts-command-output** - The name of a [command output](#command-outputs) whose files will be handled.
         - **via-wrapup-command** - A reference to a wrapup command image (format: `repo/image:version[:commandname]` where the `commandname` is optional). See the page on [Wrapup Commands](https://wiki.xnat.org/display/CS/Wrapup+Commands) for more.
         - **as-a-child-of** - The name of a [wrapper input](#wrapper-inputs)—either external or derived—that refers to an XNAT object, or the name of a [wrapper output](#output-handling) that creates an XNAT object. The output files will be uploaded as a new child of that object.
@@ -258,6 +270,71 @@ Info dump:
 * `Subject` parents cannot have children of type `Directory`. All the other XNAT types can.
 * If the child type is not one of the XNAT types—e.g. `string` or `number`—you can derive the value by specifying the property on the parent object that you want to pull out using the input's `derived-from-xnat-object-property` field. For a list of the properties you can use, see [XNAT object properties](#xnat-object-properties).
 
+### Multiple matches
+If you have a `derived` wrapper input and have set `"multiple": true`, you are indicating that multiple matches ought to be flattened into a single value for this input. For example, the following command, run on a session with DICOM scans 1, 2, 3, would produce command line: `echo SCAN_IDS value is "--scan=1 --scan=2 --scan=3"`.
+```
+{
+  "name": "sample-multi",
+  "description": "Sample multi",
+  "version": "latest",
+  "schema-version": "1.0",
+  "image": "busybox:latest",
+  "type": "docker",
+  "command-line": "echo SCAN_IDS value is \"#SCAN_IDS#\"",
+  "override-entrypoint": true,
+  "mounts": [],
+  "environment-variables": {},
+  "ports": {},
+  "inputs": [
+    {
+      "name": "SCAN_IDS",
+      "type": "string",
+      "required": true,
+      "command-line-flag": "--scan",
+      "command-line-separator": "=",
+      "multiple-delimiter": "flag"
+    }
+  ],
+  "outputs": [],
+  "xnat": [
+    {
+      "name": "sample-multi-session",
+      "label": "Sample multi session",
+      "description": "Run sample multi session",
+      "contexts": [
+        "xnat:imageSessionData"
+      ],
+      "external-inputs": [
+        {
+          "name": "session",
+          "description": "Input session",
+          "type": "Session",
+          "required": true,
+          "load-children": true
+        }
+      ],
+      "derived-inputs": [
+        {
+          "name": "scan",
+          "type": "Scan",
+          "matcher": "'DICOM' in @.resources[*].label",
+          "required": true,
+          "provides-value-for-command-input": "SCAN_IDS",
+          "provides-files-for-command-mount": null,
+          "user-settable": true,
+          "load-children": true,
+          "derived-from-wrapper-input": "session",
+          "derived-from-xnat-object-property": "id",
+          "via-setup-command": null,
+          "multiple": true
+        }
+      ],
+      "output-handlers": []
+    }
+  ]
+}
+```
+
 ### XNAT object properties
 
 A list of all the properties for all the XNAT object types:
@@ -314,9 +391,9 @@ The more common use-case for this parameter is in XNAT-project-specific settings
 
 ## Input Types
 
-Command input types: string, boolean, number
+Command input types: string, boolean, number, select-one, select-many. These control how the input is displayed in the UI, provided it doesn't get its value from an XNAT wrapper input (in which case, the "type" property is ignored).
 
-XNAT Wrapper input types: string, boolean, number, Directory, File, File[], Project, Subject, Session, Scan, Assessor, Resource, Config
+XNAT Wrapper input types: string, boolean, number, Directory, File, File[], Project, Subject, Session, Scan, Assessor, Resource, Config. These are more about how to resolve the input than how is is displayed in the UI (which is dictated by whether user input is needed to resolve it or not).
 
 **Note**: Some inputs are possible to make but aren't currently functional.
 

@@ -1,0 +1,9 @@
+{
+    "id": "0",
+    "type": "Resource",
+    "label": "this is the resource label",
+    "directory": "change this at runtime",
+    "uri": "/scans/0/resources/0",
+    "files": [
+    ]
+}

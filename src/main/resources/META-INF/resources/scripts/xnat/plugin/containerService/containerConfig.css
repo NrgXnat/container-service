@@ -59,3 +59,14 @@ div.xnat-dialog > .body p.divider {
     margin-bottom: 2em;
     padding-top: 1em;
 }
+
+div.swarm-constraint {
+    border: 1px solid #ccc;
+    padding: 5px;
+    margin: 5px;
+    border-radius: 10px;
+}
+div.swarm-constraint a.close{
+    float: right;
+    margin: 0 3px 0 0;
+}

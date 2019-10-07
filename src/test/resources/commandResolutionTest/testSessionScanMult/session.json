@@ -1,0 +1,48 @@
+{
+    "id": "session1",
+    "type": "Session",
+    "label": "session1",
+    "uri": "/experiments/session1",
+    "scans": [
+        {
+            "id": "scan1",
+            "type": "Scan",
+            "scan-type": "SCANTYPE",
+            "uri": "/experiments/session1/scans/scan1",
+            "frames": "12",
+            "series-description": "great!",
+            "modality": "super!",
+            "quality": "the best!",
+            "note": "I love it - me",
+            "resources": [
+                {
+                    "id": 0,
+                    "type": "Resource",
+                    "label": "DICOM",
+                    "directory": "this will be overwritten at runtime",
+                    "uri": "/experiments/session1/scans/scan1/resources/0"
+                }
+            ]
+        },
+        {
+            "id": "scan2",
+            "type": "Scan",
+            "scan-type": "OTHER_SCANTYPE",
+            "uri": "/experiments/session1/scans/scan2",
+            "frames": "12",
+            "series-description": "great!",
+            "modality": "super!",
+            "quality": "the best!",
+            "note": "I love it - me",
+            "resources": [
+                {
+                    "id": 0,
+                    "type": "Resource",
+                    "label": "DICOM",
+                    "directory": "this will be overwritten at runtime",
+                    "uri": "/experiments/session1/scans/scan2/resources/0"
+                }
+            ]
+        }
+    ]
+}

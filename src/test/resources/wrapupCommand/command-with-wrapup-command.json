@@ -2,7 +2,7 @@
     "name": "command-with-wrapup-command",
     "description": "A command with a wrapup command",
     "type": "docker",
-    "image": "busybox:latest",
+    "image": "xnat/test-wrapup-command-main:latest",
     "command-line": "main-command-script.sh",
     "inputs": [],
     "mounts": [

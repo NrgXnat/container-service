@@ -7,6 +7,7 @@ import org.hibernate.FlushMode;
 import org.hibernate.Hibernate;
 import org.hibernate.NonUniqueObjectException;
 import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -30,8 +31,13 @@ public class CommandEntityRepository extends AbstractHibernateDAO<CommandEntity>
         Hibernate.initialize(commandEntity);
         Hibernate.initialize(commandEntity.getEnvironmentVariables());
         Hibernate.initialize(commandEntity.getMounts());
-        Hibernate.initialize(commandEntity.getInputs());
         Hibernate.initialize(commandEntity.getOutputs());
+        Hibernate.initialize(commandEntity.getInputs());
+        if (commandEntity.getInputs() != null) {
+            for (final CommandInputEntity commandInputEntity : commandEntity.getInputs()) {
+                Hibernate.initialize(commandInputEntity.getSelectValues());
+            }
+        }
         Hibernate.initialize(commandEntity.getCommandWrapperEntities());
         if (commandEntity.getCommandWrapperEntities() != null) {
             for (final CommandWrapperEntity commandWrapperEntity : commandEntity.getCommandWrapperEntities()) {

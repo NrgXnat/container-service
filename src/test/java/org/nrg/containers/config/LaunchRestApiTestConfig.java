@@ -1,15 +1,10 @@
 package org.nrg.containers.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Mockito;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.rest.LaunchRestApi;
-import org.nrg.containers.services.CommandResolutionService;
-import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerEntityService;
-import org.nrg.containers.services.ContainerFinalizeService;
-import org.nrg.containers.services.ContainerService;
-import org.nrg.containers.services.DockerServerService;
-import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.*;
 import org.nrg.framework.services.ContextService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -21,6 +16,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.security.authentication.TestingAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -36,21 +32,13 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
     public LaunchRestApi launchRestApi(final CommandService commandService,
                                        final ContainerService containerService,
                                        final CommandResolutionService commandResolutionService,
-                                       final UserManagementServiceI userManagementServiceI,
-                                       final RoleHolder roleHolder) {
-        return new LaunchRestApi(commandService, containerService, commandResolutionService, userManagementServiceI, roleHolder);
-    }
-
-    @Bean
-    public ContainerService containerService(final ContainerControlApi containerControlApi,
-                                             final ContainerEntityService containerEntityService,
-                                             final CommandResolutionService commandResolutionService,
-                                             final AliasTokenService aliasTokenService,
-                                             final SiteConfigPreferences siteConfigPreferences,
-                                             final ContainerFinalizeService containerFinalizeService) {
-        return new ContainerServiceImpl(containerControlApi, containerEntityService,
-                commandResolutionService, aliasTokenService, siteConfigPreferences,
-                containerFinalizeService, null);
+                                       final DockerServerService mockDockerServerService,
+                                       final UserManagementServiceI mockUserManagementServiceI,
+                                       final RoleHolder roleHolder,
+                                       final ObjectMapper mapper,
+                                       final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+        return new LaunchRestApi(commandService, containerService, commandResolutionService,
+                mockDockerServerService, mockUserManagementServiceI, roleHolder, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean
@@ -59,8 +47,8 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
     }
 
     @Bean
-    public ContainerFinalizeService mockContainerFinalizeService() {
-        return Mockito.mock(ContainerFinalizeService.class);
+    public ContainerService mockContainerService() {
+        return Mockito.mock(ContainerService.class);
     }
 
     @Bean

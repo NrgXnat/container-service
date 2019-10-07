@@ -7,6 +7,7 @@
     "inputs": [
         {
             "name": "file-path",
+            "label": "file path",
             "type": "string",
             "required": false
         },
@@ -216,6 +217,69 @@
                     "required": true
                 }
             ]
+        },
+        {   
+            "name": "session-scan-mult",
+            "label": "Dummy: Session multiple scan",
+            "description": "run the dummy command with a session with multiple scans",
+            "external-inputs": [
+                {   
+                    "name": "T1-scantype",
+                    "description": "scantype of T1 scan",
+                    "type": "string",
+                    "default-value": "\"SCANTYPE\", \"OTHER_SCANTYPE\"",
+                    "required": true
+                },  
+                {   
+                    "name": "session",
+                    "type": "Session",
+                    "required": true
+                }
+            ],
+            "derived-inputs": [
+                {   
+                    "name": "scan",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "whatever",
+                    "matcher": "@.scan-type in [#T1-scantype#]",
+                    "required": true,
+                    "multiple": true
+                }
+            ],
+            "output-handlers": []
+        },
+        {
+            "name": "session-scan-mult-uri",
+            "label": "Dummy: Session multiple scan retrieve uri",
+            "description": "run the dummy command with a session with multiple scans",
+            "external-inputs": [
+                {
+                    "name": "T1-scantype",
+                    "description": "scantype of T1 scan",
+                    "type": "string",
+                    "default-value": "\"SCANTYPE\", \"OTHER_SCANTYPE\"",
+                    "required": true
+                },
+                {
+                    "name": "session",
+                    "type": "Session",
+                    "required": true
+                }
+            ],
+            "derived-inputs": [
+                {
+                    "name": "scan",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "provides-value-for-command-input": "whatever",
+                    "matcher": "@.scan-type in [#T1-scantype#]",
+                    "required": true,
+                    "multiple": true
+                }
+            ],
+            "output-handlers": []
         }
     ]
 }

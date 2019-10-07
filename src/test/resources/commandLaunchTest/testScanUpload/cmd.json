@@ -1,0 +1,130 @@
+{
+  "name": "add-scan",
+  "description": "Add scan",
+  "version": "latest",
+  "schema-version": "1.0",
+  "image": "busybox:latest",
+  "type": "docker",
+  "command-line": "cp /input/scan.xml /scan/scan.xml; cp -r /input/DICOM /scan/DICOM",
+  "override-entrypoint": true,
+  "mounts": [
+    {
+      "name": "in",
+      "writable": false,
+      "path": "/input"
+    },
+    {
+      "name": "scan_out",
+      "writable": true,
+      "path": "/scan"
+    }
+  ],
+  "environment-variables": {},
+  "ports": {},
+  "inputs": [
+    {
+      "name": "SESSION_ID",
+      "label": "Session ID",
+      "description": null,
+      "type": "string",
+      "matcher": null,
+      "default-value": null,
+      "required": true,
+      "replacement-key": null,
+      "sensitive": null,
+      "command-line-flag": null,
+      "command-line-separator": null,
+      "true-value": null,
+      "false-value": null,
+      "select-values": [],
+      "multiple-delimiter": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "scan_xml",
+      "description": "scan XML file",
+      "required": true,
+      "mount": "scan_out",
+      "path": "scan.xml",
+      "glob": null
+    },
+    {
+      "name": "scan_output",
+      "description": "Scan output",
+      "required": true,
+      "mount": "scan_out",
+      "path": "DICOM",
+      "glob": null
+    }
+  ],
+  "xnat": [
+    {
+      "name": "add-scan",
+      "label": "Add scan",
+      "description": "Run add scan",
+      "contexts": [
+        "xnat:imageSessionData"
+      ],
+      "external-inputs": [
+        {
+          "name": "session",
+          "label": "Session",
+          "description": "Input session",
+          "type": "Session",
+          "matcher": null,
+          "default-value": null,
+          "required": true,
+          "replacement-key": null,
+          "sensitive": null,
+          "provides-value-for-command-input": null,
+          "provides-files-for-command-mount": "in",
+          "via-setup-command": null,
+          "user-settable": null,
+          "load-children": true
+        }
+      ],
+      "derived-inputs": [
+        {
+          "name": "session-id",
+          "label": "Session ID",
+          "description": null,
+          "type": "string",
+          "matcher": null,
+          "default-value": null,
+          "required": true,
+          "replacement-key": null,
+          "sensitive": null,
+          "provides-value-for-command-input": "SESSION_ID",
+          "provides-files-for-command-mount": null,
+          "user-settable": false,
+          "load-children": true,
+          "derived-from-wrapper-input": "session",
+          "derived-from-xnat-object-property": "id",
+          "via-setup-command": null,
+          "multiple": false
+        }
+      ],
+      "output-handlers": [
+        {
+          "name": "scan-xml",
+          "accepts-command-output": "scan_xml",
+          "via-wrapup-command": null,
+          "as-a-child-of": "session",
+          "type": "Scan",
+          "label": null,
+          "format": null
+        },
+        {
+          "name": "scan-dicom",
+          "accepts-command-output": "scan_output",
+          "via-wrapup-command": null,
+          "as-a-child-of": "scan-xml",
+          "type": "Resource",
+          "label": "DICOM",
+          "format": null
+        }
+      ]
+    }
+  ]
+}

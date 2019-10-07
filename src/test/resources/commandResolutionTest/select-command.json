@@ -1,0 +1,69 @@
+{
+    "name": "param-test",
+    "description": "Test resolving params",
+    "type": "docker",
+    "image": "busybox:latest",
+    "command-line": "echo #MULTI_FLAG1# #MULTI_FLAG2# #MULTI_QSPACE# #MULTI_COMMA# #MULTI_SPACE# #MULTI_DEFAULT#",
+    "inputs": [
+        {
+            "name": "MULTI_FLAG1",
+            "type": "select-many",
+            "required": true,
+            "command-line-flag": "--flag",
+            "command-line-separator": "=",
+            "multiple-delimiter": "flag",
+            "default-value": "[\"scan1\",\"scan2\"]",
+            "select-values": ["scan1","junk","scan2"]
+        },
+        {
+            "name": "MULTI_FLAG2",
+            "type": "select-many",
+            "required": true,
+            "command-line-flag": "--flag",
+            "multiple-delimiter": "flag",
+            "default-value": "[\"scan1\",\"scan2\"]",
+            "select-values": ["scan1","junk","scan2"]
+        },
+        {
+            "name": "MULTI_QSPACE",
+            "type": "select-many",
+            "required": true,
+            "multiple-delimiter": "quoted-space",
+            "default-value": "[\"scan1\",\"scan2\"]",
+            "select-values": ["scan1","junk","scan2"]
+        },
+        {
+            "name": "MULTI_COMMA",
+            "type": "select-many",
+            "required": true,
+            "multiple-delimiter": "comma",
+            "default-value": "[\"scan1\",\"scan2\"]",
+            "select-values": ["scan1","junk","scan2"]
+        },
+        {
+            "name": "MULTI_SPACE",
+            "type": "select-many",
+            "required": true,
+            "multiple-delimiter": "space",
+            "default-value": "[\"scan1\",\"scan2\"]",
+            "select-values": ["scan1","junk","scan2"]
+        },
+        {
+            "name": "MULTI_DEFAULT",
+            "type": "select-many",
+            "required": true,
+            "default-value": "scan1",
+            "select-values": ["scan1","junk","scan2"]
+        }
+    ],
+    "xnat": [
+        {
+            "name": "multiple",
+            "label": "Dummy: Session multiple scan",
+            "description": "run the dummy command with a session with multiple scans",
+            "external-inputs": [],
+            "derived-inputs": [],
+            "output-handlers": []
+        }
+    ]
+}

@@ -1,0 +1,130 @@
+{
+  "name": "add-assessor",
+  "description": "Add assessor",
+  "version": "latest",
+  "schema-version": "1.0",
+  "image": "busybox:latest",
+  "type": "docker",
+  "command-line": "cp /input/assessor.xml /output/assessor.xml; cp -r /input/DATA /output/DATA",
+  "override-entrypoint": true,
+  "mounts": [
+    {
+      "name": "in",
+      "writable": false,
+      "path": "/input"
+    },
+    {
+      "name": "out",
+      "writable": true,
+      "path": "/output"
+    }
+  ],
+  "environment-variables": {},
+  "ports": {},
+  "inputs": [
+    {
+      "name": "SESSION_ID",
+      "label": "Session ID",
+      "description": null,
+      "type": "string",
+      "matcher": null,
+      "default-value": null,
+      "required": true,
+      "replacement-key": null,
+      "sensitive": null,
+      "command-line-flag": null,
+      "command-line-separator": null,
+      "true-value": null,
+      "false-value": null,
+      "select-values": [],
+      "multiple-delimiter": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "assessor_xml",
+      "description": "assessor XML file",
+      "required": true,
+      "mount": "out",
+      "path": "assessor.xml",
+      "glob": null
+    },
+    {
+      "name": "assessor_output",
+      "description": "Assessor output",
+      "required": true,
+      "mount": "out",
+      "path": "DATA",
+      "glob": null
+    }
+  ],
+  "xnat": [
+    {
+      "name": "add-assessor",
+      "label": "Add assessor",
+      "description": "Run add assessor",
+      "contexts": [
+        "xnat:imageSessionData"
+      ],
+      "external-inputs": [
+        {
+          "name": "session",
+          "label": "Session",
+          "description": "Input session",
+          "type": "Session",
+          "matcher": null,
+          "default-value": null,
+          "required": true,
+          "replacement-key": null,
+          "sensitive": null,
+          "provides-value-for-command-input": null,
+          "provides-files-for-command-mount": "in",
+          "via-setup-command": null,
+          "user-settable": null,
+          "load-children": true
+        }
+      ],
+      "derived-inputs": [
+        {
+          "name": "session-id",
+          "label": "Session ID",
+          "description": null,
+          "type": "string",
+          "matcher": null,
+          "default-value": null,
+          "required": true,
+          "replacement-key": null,
+          "sensitive": null,
+          "provides-value-for-command-input": "SESSION_ID",
+          "provides-files-for-command-mount": null,
+          "user-settable": false,
+          "load-children": true,
+          "derived-from-wrapper-input": "session",
+          "derived-from-xnat-object-property": "id",
+          "via-setup-command": null,
+          "multiple": false
+        }
+      ],
+      "output-handlers": [
+        {
+          "name": "assessor-xml",
+          "accepts-command-output": "assessor_xml",
+          "via-wrapup-command": null,
+          "as-a-child-of": "session",
+          "type": "Assessor",
+          "label": null,
+          "format": null
+        },
+        {
+          "name": "assessor-data",
+          "accepts-command-output": "assessor_output",
+          "via-wrapup-command": null,
+          "as-a-child-of": "assessor-xml",
+          "type": "Resource",
+          "label": "DATA",
+          "format": null
+        }
+      ]
+    }
+  ]
+}

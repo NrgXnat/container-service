@@ -30,7 +30,7 @@ public class HibernateContainerEntityService
     @Nonnull
     public ContainerEntity save(final ContainerEntity toCreate, final UserI userI) {
         final ContainerEntity created = create(toCreate);
-        final ContainerEntityHistory historyItem = ContainerEntityHistory.fromUserAction("Created", userI.getLogin(), created);
+        final ContainerEntityHistory historyItem = ContainerEntityHistory.fromUserAction(ContainerServiceImpl.CREATED, userI.getLogin(), created);
         addContainerHistoryItem(created, historyItem, userI);
         return created;
     }
@@ -57,10 +57,19 @@ public class HibernateContainerEntityService
     public ContainerEntity get(final String containerId) throws NotFoundException {
         final ContainerEntity containerEntity = retrieve(containerId);
         if (containerEntity == null) {
-            throw new NotFoundException("No container with ID " + containerId);
+     		//Could be service id - try by service id
+            final ContainerEntity containerEntityByServiceId = getDao().retrieveByServiceId(containerId);
+            if (containerEntityByServiceId == null) {
+	     		throw new NotFoundException("No container with ID " + containerId);
+		    }else {
+	            initialize(containerEntityByServiceId);
+	            return containerEntityByServiceId;
+		    }
         }
         return containerEntity;
     }
+
+
 
     @Override
     public void delete(final String containerId) {
@@ -82,6 +91,7 @@ public class HibernateContainerEntityService
         return (nonfinalized == null || !nonfinalized) ? getAll() : getDao().getAllNonfinalized();
     }
 
+  
     @Override
     @Nonnull
     public List<ContainerEntity> retrieveServices() {
@@ -94,6 +104,29 @@ public class HibernateContainerEntityService
         return getDao().retrieveNonfinalizedServices();
     }
 
+    @Override
+    @Nonnull
+    public List<ContainerEntity> retrieveServicesInFinalizingState() {
+        return getDao().retrieveServicesInFinalizingState();
+    }
+
+    @Override
+    @Nonnull
+    public List<ContainerEntity> retrieveServicesInWaitingState() {
+        return getDao().retrieveServicesInWaitingState();
+    }
+    
+    @Override
+    @Nonnull
+    public int howManyContainersAreBeingFinalized() {
+        return getDao().howManyContainersAreBeingFinalized();
+    }
+    @Override
+    @Nonnull
+    public int howManyContainersAreWaiting() {
+        return getDao().howManyContainersAreWaiting();
+    }
+    
     @Override
     @Nonnull
     public List<ContainerEntity> retrieveSetupContainersForParent(final long parentId) {
@@ -128,19 +161,16 @@ public class HibernateContainerEntityService
                                                           final ContainerEntityHistory history,
                                                           final UserI userI) {
         if (containerEntity.isItemInHistory(history)) {
-            if (log.isDebugEnabled()) {
-                log.debug("Event has already been recorded.");
-            }
+            log.debug("Event has already been recorded {}", containerEntity.getId());
             return null;
         }
 
         log.info("Adding new history item to container entity " + containerEntity.getId() + ".");
-        if (log.isDebugEnabled()) {
-            log.debug("" + history);
-        }
+        log.debug("" + history);
         getDao().addHistoryItem(containerEntity, history);
 
-        ContainerUtils.updateWorkflowStatus(containerEntity.getWorkflowId(), containerEntity.getStatus(), userI);
+        ContainerUtils.updateWorkflowStatus(containerEntity.getWorkflowId(), containerEntity.getStatus(),
+                userI, history.getMessage());
 
         return history;
     }
