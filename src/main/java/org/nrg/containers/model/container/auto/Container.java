@@ -63,6 +63,9 @@ public abstract class Container {
     @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
     @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
+    @Nullable @JsonProperty("runtime") public abstract String runtime();
+    @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
+
 
     @JsonIgnore
     public boolean isSwarmService() {
@@ -118,7 +121,9 @@ public abstract class Container {
                                    @JsonProperty("log-paths") final List<String> logPaths,
                                    @JsonProperty("reserve-memory") final Long reserveMemory,
                                    @JsonProperty("limit-memory") final Long limitMemory,
-                                   @JsonProperty("limit-cpu") final Double limitCpu) {
+                                   @JsonProperty("limit-cpu") final Double limitCpu,
+                                   @JsonProperty("runtime") final String runtime,
+                                   @JsonProperty("ipc-mode") final String ipcMode) {
 
         return builder()
                 .databaseId(databaseId)
@@ -150,6 +155,8 @@ public abstract class Container {
                 .reserveMemory(reserveMemory)
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
+                .runtime(runtime)
+                .ipcMode(ipcMode)
                 .build();
     }
 
@@ -220,6 +227,8 @@ public abstract class Container {
                 .reserveMemory(containerEntity.getReserveMemory())
                 .limitMemory(containerEntity.getLimitMemory())
                 .limitCpu(containerEntity.getLimitCpu())
+                .runtime(containerEntity.getCommandLine())
+                .ipcMode(containerEntity.getIpcMode())
                 .build();
     }
 
@@ -263,7 +272,9 @@ public abstract class Container {
                 .reserveMemory(resolvedCommand.reserveMemory())
                 .limitMemory(resolvedCommand.limitMemory())
                 .limitCpu(resolvedCommand.limitCpu())
-                .parentSourceObjectName(resolvedCommand.parentSourceObjectName());
+                .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
+                .runtime(resolvedCommand.runtime())
+                .ipcMode(resolvedCommand.ipcMode());
     }
 
     public static Builder builder() {
@@ -398,6 +409,9 @@ public abstract class Container {
         public abstract Builder reserveMemory(Long reserveMemory);
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();

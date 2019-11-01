@@ -316,6 +316,14 @@ public class DockerControlApi implements ContainerControlApi {
                 0D :
                 resolvedCommand.limitCpu();
 
+
+        final String runtime = resolvedCommand.runtime() == null ?
+                "" :
+                resolvedCommand.runtime();
+        final String ipcMode = resolvedCommand.ipcMode() == null ?
+                "" :
+                resolvedCommand.ipcMode();
+
         final List<ResolvedCommandMount> resolvedCommandMounts = resolvedCommand.mounts();
         final DockerServer server = getServer();
         if (server.swarmMode()) {
@@ -359,7 +367,9 @@ public class DockerControlApi implements ContainerControlApi {
                             workingDirectory,
                             reserveMemory,
                             limitMemory,
-                            limitCpu),
+                            limitCpu,
+                            runtime,
+                            ipcMode),
                     userI.getLogin()
             );
         }
@@ -403,6 +413,13 @@ public class DockerControlApi implements ContainerControlApi {
         final Double limitCpu = container.limitCpu() == null ?
                 0D :
                 container.limitCpu();
+
+        final String runtime = container.runtime() == null ?
+                "" :
+                container.runtime();
+        final String ipcMode = container.ipcMode() == null ?
+                "" :
+                container.ipcMode();
 
         final DockerServer server = getServer();
 
@@ -451,7 +468,9 @@ public class DockerControlApi implements ContainerControlApi {
                     workingDirectory,
                     reserveMemory,
                     limitMemory,
-                    limitCpu);
+                    limitCpu,
+                    runtime,
+                    ipcMode);
 
             return container.toBuilder()
                     .containerId(containerId)
@@ -470,7 +489,9 @@ public class DockerControlApi implements ContainerControlApi {
                                    final String workingDirectory,
                                    final Long reserveMemory,
                                    final Long limitMemory,
-                                   final Double limitCpu)
+                                   final Double limitCpu,
+                                   final String runtime,
+                                   final String ipcMode)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -505,6 +526,8 @@ public class DockerControlApi implements ContainerControlApi {
 
         final HostConfig hostConfig =
                 HostConfig.builder()
+                        .runtime(runtime)
+                        .ipcMode(ipcMode)
                         .binds(bindMounts)
                         .portBindings(portBindings)
                         .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes

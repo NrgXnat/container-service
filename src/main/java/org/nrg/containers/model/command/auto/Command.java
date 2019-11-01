@@ -52,6 +52,8 @@ public abstract class Command {
     @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
     @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
+    @Nullable @JsonProperty("runtime") public abstract String runtime();
+    @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
 
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
 
@@ -79,7 +81,9 @@ public abstract class Command {
                           @JsonProperty("xnat") final List<CommandWrapper> xnatCommandWrappers,
                           @JsonProperty("reserve-memory") final Long reserveMemory,
                           @JsonProperty("limit-memory") final Long limitMemory,
-                          @JsonProperty("limit-cpu") final Double limitCpu) {
+                          @JsonProperty("limit-cpu") final Double limitCpu,
+                          @JsonProperty("runtime") final String runtime,
+                          @JsonProperty("ipc-mode") final String ipcMode) {
         return builder()
                 .id(id)
                 .name(name)
@@ -104,6 +108,8 @@ public abstract class Command {
                 .reserveMemory(reserveMemory)
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
+                .runtime(runtime)
+                .ipcMode(ipcMode)
                 .build();
     }
 
@@ -127,6 +133,8 @@ public abstract class Command {
                 .reserveMemory(commandEntity.getReserveMemory())
                 .limitMemory(commandEntity.getLimitMemory())
                 .limitCpu(commandEntity.getLimitCpu())
+                .runtime(commandEntity.getRuntime())
+                .ipcMode(commandEntity.getIpcMode())
                 .environmentVariables(commandEntity.getEnvironmentVariables() == null ?
                         Collections.<String, String>emptyMap() :
                         commandEntity.getEnvironmentVariables())
@@ -203,6 +211,8 @@ public abstract class Command {
                 .reserveMemory(creation.reserveMemory())
                 .limitMemory(creation.limitMemory())
                 .limitCpu(creation.limitCpu())
+                .runtime(creation.runtime())
+                .ipcMode(creation.ipcMode())
                 .mounts(creation.mounts() == null ? Collections.<CommandMount>emptyList() : creation.mounts())
                 .environmentVariables(creation.environmentVariables() == null ? Collections.<String, String>emptyMap() : creation.environmentVariables())
                 .ports(creation.ports() == null ? Collections.<String, String>emptyMap() : creation.ports())
@@ -549,6 +559,8 @@ public abstract class Command {
         public abstract Builder reserveMemory(Long reserveMemory);
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
 
         public abstract Command build();
     }
@@ -1426,6 +1438,8 @@ public abstract class Command {
         @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
         @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
         @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
+        @Nullable @JsonProperty("runtime") public abstract String runtime();
+        @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -1449,7 +1463,9 @@ public abstract class Command {
                                       @JsonProperty("xnat") final List<CommandWrapperCreation> commandWrapperCreations,
                                       @JsonProperty("reserve-memory") final Long reserveMemory,
                                       @JsonProperty("limit-memory") final Long limitMemory,
-                                      @JsonProperty("limit-cpu") final Double limitCpu) {
+                                      @JsonProperty("limit-cpu") final Double limitCpu,
+                                      @JsonProperty("runtime") final String runtime,
+                                      @JsonProperty("ipcMode") final String ipcMode) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
                     type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
                     mounts == null ? ImmutableList.<CommandMount>of() : ImmutableList.copyOf(mounts),
@@ -1458,7 +1474,7 @@ public abstract class Command {
                     inputs == null ? ImmutableList.<CommandInput>of() : ImmutableList.copyOf(inputs),
                     outputs == null ? ImmutableList.<CommandOutput>of() : ImmutableList.copyOf(outputs),
                     commandWrapperCreations == null ? ImmutableList.<CommandWrapperCreation>of() : ImmutableList.copyOf(commandWrapperCreations),
-                    reserveMemory, limitMemory, limitCpu);
+                    reserveMemory, limitMemory, limitCpu, runtime, ipcMode);
         }
     }
 
@@ -1544,6 +1560,8 @@ public abstract class Command {
         @Nullable public abstract Long reserveMemory();
         @Nullable public abstract Long limitMemory();
         @Nullable public abstract Double limitCpu();
+        @Nullable public abstract String runtime();
+        @Nullable public abstract String ipcMode();
 
         public static ConfiguredCommand.Builder initialize(final Command command) {
             return builder()
@@ -1567,7 +1585,9 @@ public abstract class Command {
                     .outputs(command.outputs())
                     .reserveMemory(command.reserveMemory())
                     .limitMemory(command.limitMemory())
-                    .limitCpu(command.limitCpu());
+                    .limitCpu(command.limitCpu())
+                    .runtime(command.runtime())
+                    .ipcMode(command.ipcMode());
         }
 
         static Builder builder() {
@@ -1634,6 +1654,8 @@ public abstract class Command {
             public abstract Builder reserveMemory(Long reserveMemory);
             public abstract Builder limitMemory(Long limitMemory);
             public abstract Builder limitCpu(Double limitCpu);
+            public abstract Builder runtime(String runtime);
+            public abstract Builder ipcMode(String ipcMode);
 
             public abstract ConfiguredCommand build();
         }

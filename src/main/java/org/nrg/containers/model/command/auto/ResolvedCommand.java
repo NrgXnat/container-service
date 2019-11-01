@@ -43,6 +43,8 @@ public abstract class ResolvedCommand {
     @JsonProperty("wrapup-commands") public abstract ImmutableList<ResolvedCommand> wrapupCommands();
     @JsonProperty("reserve-memory") @Nullable public abstract Long reserveMemory();
     @JsonProperty("limit-memory") @Nullable public abstract Long limitMemory();
+    @JsonProperty("runtime") @Nullable public abstract String runtime();
+    @JsonProperty("ipc-mode") @Nullable public abstract String ipcMode();
     @JsonProperty("limit-cpu") @Nullable public abstract Double limitCpu();
     @JsonProperty("parent-source-object-name") @Nullable public abstract String parentSourceObjectName();
 
@@ -190,6 +192,8 @@ public abstract class ResolvedCommand {
                 .reserveMemory(command.reserveMemory())
                 .limitMemory(command.limitMemory())
                 .limitCpu(command.limitCpu())
+                .runtime(command.runtime())
+                .ipcMode(command.ipcMode())
                 .parentSourceObjectName(parentSourceObjectName)
                 .addMount(ResolvedCommandMount.builder()
                         .name("input")
@@ -291,6 +295,9 @@ public abstract class ResolvedCommand {
         public abstract Builder reserveMemory(Long reserveMemory);
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
 
         public abstract ResolvedCommand build();

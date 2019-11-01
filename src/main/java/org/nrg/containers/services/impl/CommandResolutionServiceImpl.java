@@ -431,6 +431,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .reserveMemory(command.reserveMemory())
                     .limitMemory(command.limitMemory())
                     .limitCpu(command.limitCpu())
+                    .runtime(command.runtime())
+                    .ipcMode(command.ipcMode())
                     .build();
 
             log.info("Done resolving command.");

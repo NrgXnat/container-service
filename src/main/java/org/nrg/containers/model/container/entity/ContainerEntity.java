@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.hibernate.envers.Audited;
-import org.nrg.containers.model.container.ContainerInputType;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
@@ -75,6 +74,8 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Long limitMemory;
     private Double limitCpu;
     private String project;
+    private String runtime;
+    private String ipcMode;
 
     public ContainerEntity() {}
 
@@ -146,6 +147,8 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setReserveMemory(containerPojo.reserveMemory());
         this.setLimitMemory(containerPojo.limitMemory());
         this.setLimitCpu(containerPojo.limitCpu());
+        this.setRuntime(containerPojo.runtime());
+        this.setIpcMode(containerPojo.ipcMode());
 
         return this;
     }
@@ -349,6 +352,14 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.limitCpu = limitCpu;
     }
 
+    public String getRuntime() { return runtime; }
+
+    public void setRuntime(final String runtime) { this.runtime = runtime; }
+
+    public String getIpcMode() { return ipcMode; }
+
+    public void setIpcMode(String ipcMode) { this.ipcMode = ipcMode; }
+
     @ManyToOne
     public ContainerEntity getParentContainerEntity() {
         return parentContainerEntity;
@@ -506,6 +517,8 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("reserveMemory", reserveMemory)
                 .add("limitMemory", limitMemory)
                 .add("limitCpu", limitCpu)
+                .add("runtime", runtime)
+                .add("ipcMode", ipcMode)
                 .toString();
     }
 }

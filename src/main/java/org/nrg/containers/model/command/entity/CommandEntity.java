@@ -43,6 +43,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private Long reserveMemory;
     private Long limitMemory;
     private Double limitCpu;
+    private String runtime;
+    private String ipcMode;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -84,6 +86,9 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setReserveMemory(command.reserveMemory());
         this.setLimitMemory(command.limitMemory());
         this.setLimitCpu(command.limitCpu());
+        this.setRuntime(command.runtime());
+        this.setIpcMode(command.ipcMode());
+
 
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
         for (final Command.CommandMount commandMount : command.mounts()) {
@@ -272,6 +277,14 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.limitCpu = limitCpu;
     }
 
+    public String getRuntime() { return runtime; }
+
+    public void setRuntime(final String runtime) { this.runtime = runtime; }
+
+    public String getIpcMode() { return ipcMode; }
+
+    public void setIpcMode(final String ipcMode) { this.ipcMode = ipcMode; }
+
     @OneToMany(mappedBy = "commandEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy
     public List<CommandMountEntity> getMounts() {
@@ -431,7 +444,9 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("xnatCommandWrappers", commandWrapperEntities)
                 .add("reserveMemory", reserveMemory)
                 .add("limitMemory", limitMemory)
-                .add("limitCpu", limitCpu);
+                .add("limitCpu", limitCpu)
+                .add("runtime", runtime)
+                .add("ipcMode", ipcMode);
     }
 
     @Override
