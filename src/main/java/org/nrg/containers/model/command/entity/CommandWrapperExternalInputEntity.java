@@ -78,6 +78,9 @@ public class CommandWrapperExternalInputEntity {
             case "Project":
                 this.setType(CommandWrapperInputType.PROJECT);
                 break;
+            case "ProjectAsset":
+                this.setType(CommandWrapperInputType.PROJECT_ASSET);
+                break;
             case "Subject":
                 this.setType(CommandWrapperInputType.SUBJECT);
                 break;

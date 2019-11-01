@@ -48,6 +48,7 @@ import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.ProjectAsset;
 import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
@@ -93,6 +94,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.FI
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.FILES;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.NUMBER;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT_ASSET;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RESOURCE;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
@@ -536,7 +538,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Processing input value as a {}.", input.type());
 
                 final String type = input.type();
-                if (type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
+                if (type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
                         || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName())) {
 
                     final XnatModelObject xnatModelObject;
@@ -545,6 +547,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         if (type.equals(PROJECT.getName())) {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
                                     Project.class, Project.uriToModelObject(preload), Project.idToModelObject(userI, preload));
+                        } else if (type.equals(PROJECT_ASSET.getName())) {
+                                xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
+                                        ProjectAsset.class, ProjectAsset.uriToModelObject(), ProjectAsset.idToModelObject(userI));
                         } else if (type.equals(SUBJECT.getName())) {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
                                     Subject.class, Subject.uriToModelObject(), Subject.idToModelObject(userI));
@@ -690,7 +695,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's JSON representation is blank.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (parentType.equals(PROJECT.getName()) || parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName()) ||
+                } else if (parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) ||parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName()) ||
                         parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName()) || parentType.equals(FILE.getName()) || parentType.equals(RESOURCE.getName())) {
                     final String parentValue = pullStringFromParentJson("$." + propertyToGet, resolvedMatcher, parentJson);
                     resolvedXnatObjects = null;
@@ -768,7 +773,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     resolvedValues = Collections.emptyList();
                 } else {
                     final Project project;
-                    if (parentType.equals(SUBJECT.getName())) {
+                    if (parentType.equals(PROJECT_ASSET.getName())) {
+                        project = ((ProjectAsset)parentXnatObject).getProject(userI);
+                    } else if (parentType.equals(SUBJECT.getName())) {
                         project = ((Subject)parentXnatObject).getProject(userI);
                     } else if (parentType.equals(SESSION.getName())) {
                         project = ((Session)parentXnatObject).getProject(userI);
@@ -998,7 +1005,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (!(parentType.equals(PROJECT.getName()) || parentType.equals(SUBJECT.getName()) ||
+                } else if (!(parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) || parentType.equals(SUBJECT.getName()) ||
                                 parentType.equals(SESSION.getName()) || parentType.equals(SCAN.getName()) ||
                                 parentType.equals(ASSESSOR.getName()))) {
                     logIncompatibleTypes(input.type(), parentType);
@@ -2088,7 +2095,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     // TODO
                 } else if (inputType.equals(FILE.getName())) {
                     // TODO
-                } else if (inputType.equals(PROJECT.getName()) || inputType.equals(SESSION.getName()) || inputType.equals(SCAN.getName())
+                } else if (inputType.equals(PROJECT.getName()) ||inputType.equals(PROJECT_ASSET.getName()) || inputType.equals(SESSION.getName()) || inputType.equals(SCAN.getName())
                         || inputType.equals(ASSESSOR.getName()) || inputType.equals(RESOURCE.getName())) {
                     log.debug("Looking for directory on source input.");
                     final XnatModelObject xnatModelObject = resolvedInputValue.xnatModelObject();

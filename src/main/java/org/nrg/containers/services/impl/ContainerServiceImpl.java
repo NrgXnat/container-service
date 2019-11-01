@@ -65,6 +65,7 @@ import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
 import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.ASSESSOR;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT_ASSET;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RESOURCE;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
@@ -874,7 +875,7 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
+            if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
                     || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;

@@ -6,7 +6,7 @@ import io.swagger.models.License
 
 buildscript {
     ext {
-        vXnat = '1.8.0-eventservice-SNAPSHOT'
+        vXnat = '1.7.6-rsnademo-SNAPSHOT'
     }
     repositories {
         maven {
@@ -32,7 +32,7 @@ buildscript {
 }
 
 group 'org.nrg'
-version '2.1.0-eventservice-SNAPSHOT'
+version '2.1.0-rsnademo-SNAPSHOT'
 
 apply plugin: 'java'
 apply plugin: 'idea'
