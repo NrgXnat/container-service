@@ -129,6 +129,7 @@ public class ProjectAsset extends XnatModelObject {
     }
 
     public Project getProject(final UserI userI) {
+        loadXnatProjectAssetDataI(userI);
         return new Project(xnatProjectAssetI.getProject(), userI);
     }
 
@@ -148,6 +149,14 @@ public class ProjectAsset extends XnatModelObject {
     public List<Subject> getSubjects() { return subjects; }
 
     public List<Resource> getResources() { return resources; }
+
+    public String getDirectory() {
+        return directory;
+    }
+
+    public void setDirectory(String directory) {
+        this.directory = directory;
+    }
 
     @Override
     public XFTItem getXftItem(final UserI userI) {

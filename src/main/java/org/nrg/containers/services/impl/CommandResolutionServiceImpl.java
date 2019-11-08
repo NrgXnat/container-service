@@ -768,7 +768,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (!(parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName())) ||
+                } else if (!(parentType.equals(PROJECT_ASSET.getName()) ||parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName())) ||
                         parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName())) {
                     logIncompatibleTypes(input.type(), parentType);
                     resolvedXnatObjects = Collections.emptyList();
