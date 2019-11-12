@@ -121,7 +121,7 @@ public class ProjectAsset extends XnatModelObject {
                 }
                 final XnatAbstractprojectasset xnatAbstractprojectasset = XnatAbstractprojectasset.getXnatAbstractprojectassetsById(s, userI, true);
                 if (xnatAbstractprojectasset != null) {
-                    return new ProjectAsset(xnatAbstractprojectasset);
+                    return new ProjectAsset(xnatAbstractprojectasset.getId(), userI);
                 }
                 return null;
             }
