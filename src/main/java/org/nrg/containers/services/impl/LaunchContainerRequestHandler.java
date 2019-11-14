@@ -51,20 +51,23 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
             String processingId = containerProcessingRequest.getProcessingId();
             Map<String, String> parameters = containerProcessingRequest.getParameters();
 
+            final Long wrapperId = Long.parseLong(processingId);
+
             // Validate container and input
             Container container = null;
-            Long wrapperId = null;
             String project = parameters.get("project");
             List<CommandSummaryForContext> available = _commandService.available(project,"clara:trainSession", user);
-            if(available != null && available.size() > 0) {
-                CommandSummaryForContext command = available.get(0);
-                wrapperId = command.wrapperId();
+            if(available != null &&
+                    available.size() > 0 &&
+                    wrapperId != null &&
+                    available.stream().filter(cm -> wrapperId.equals(cm.wrapperId())).findFirst().isPresent()) {
+
                 Command.CommandWrapper wrapper = _commandService.getWrapper(wrapperId);
                 ImmutableList<Command.CommandWrapperExternalInput> commandWrapperExternalInputs = wrapper.externalInputs();
 
                 // resolve wrapper inputs
-                final Map<String,String> inputValues = Maps.<String,String>newHashMap();
-                for(Command.CommandWrapperExternalInput wrapperInput : commandWrapperExternalInputs){
+                final Map<String, String> inputValues = Maps.<String, String>newHashMap();
+                for (Command.CommandWrapperExternalInput wrapperInput : commandWrapperExternalInputs) {
                     if (parameters.keySet().contains(wrapperInput.name())) {
                         String inputValue = parameters.get(wrapperInput.name());
                         inputValues.put(wrapperInput.name(), inputValue);
@@ -90,8 +93,9 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
                     }
                 }
             } else {
-                log.debug("No container wrappers found to process request.");
+                log.debug("No container wrapper ID {} found to process clara:trainSession request.", processingId);
             }
+
         } catch (Throwable e) {
             log.error("Unable to process the request: " + containerProcessingRequest.getProcessingId());
         }

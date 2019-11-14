@@ -14,6 +14,7 @@ import org.nrg.xdat.model.XnatExperimentdataI;
 import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
 import org.nrg.xdat.om.XnatAbstractprojectasset;
+import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.om.base.BaseXnatExperimentdata;
@@ -161,7 +162,7 @@ public class ProjectAsset extends XnatModelObject {
     @Override
     public XFTItem getXftItem(final UserI userI) {
         loadXnatProjectAssetDataI(userI);
-        return xnatProjectAssetI == null ? null : ((XnatSubjectdata)xnatProjectAssetI).getItem();
+        return xnatProjectAssetI == null ? null : ((XnatExperimentdata)xnatProjectAssetI).getItem();
     }
 
     @Override
