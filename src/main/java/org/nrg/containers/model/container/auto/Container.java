@@ -47,6 +47,7 @@ public abstract class Container {
     @Nullable @JsonProperty("task-id") public abstract String taskId();
     @Nullable @JsonProperty("node-id") public abstract String nodeId();
     @JsonProperty("docker-image") public abstract String dockerImage();
+    @Nullable @JsonProperty("container-name") public abstract String containerName();
     @JsonProperty("command-line") public abstract String commandLine();
     @Nullable @JsonProperty("override-entrypoint") public abstract Boolean overrideEntrypoint();
     @Nullable @JsonProperty("working-directory") public abstract String workingDirectory();
@@ -65,7 +66,10 @@ public abstract class Container {
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
     @Nullable @JsonProperty("runtime") public abstract String runtime();
     @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
-
+    @Nullable @JsonProperty("auto-remove") public abstract Boolean autoRemove();
+    @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
+    @Nullable @JsonProperty("network") public abstract String network();
+    @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
 
     @JsonIgnore
     public boolean isSwarmService() {
@@ -107,6 +111,7 @@ public abstract class Container {
                                    @JsonProperty("task-id") final String taskId,
                                    @JsonProperty("node-id") final String nodeId,
                                    @JsonProperty("docker-image") final String dockerImage,
+                                   @JsonProperty("container-name") final String containerName,
                                    @JsonProperty("command-line") final String commandLine,
                                    @JsonProperty("override-entrypoint") final Boolean overrideEntrypoint,
                                    @JsonProperty("working-directory") final String workingDirectory,
@@ -123,7 +128,12 @@ public abstract class Container {
                                    @JsonProperty("limit-memory") final Long limitMemory,
                                    @JsonProperty("limit-cpu") final Double limitCpu,
                                    @JsonProperty("runtime") final String runtime,
-                                   @JsonProperty("ipc-mode") final String ipcMode) {
+                                   @JsonProperty("ipc-mode") final String ipcMode,
+                                   @JsonProperty("auto-remove") final Boolean autoremove,
+                                   @JsonProperty("shm-size") final Long shmSize,
+                                   @JsonProperty("network") final String network,
+                                   @JsonProperty("container-labels") final Map<String, String> containerLabels)
+    {
 
         return builder()
                 .databaseId(databaseId)
@@ -140,6 +150,7 @@ public abstract class Container {
                 .taskId(taskId)
                 .nodeId(nodeId)
                 .dockerImage(dockerImage)
+                .containerName(containerName)
                 .commandLine(commandLine)
                 .overrideEntrypoint(overrideEntrypoint)
                 .workingDirectory(workingDirectory)
@@ -157,6 +168,10 @@ public abstract class Container {
                 .limitCpu(limitCpu)
                 .runtime(runtime)
                 .ipcMode(ipcMode)
+                .autoRemove(autoremove)
+                .shmSize(shmSize)
+                .network(network)
+                .containerLabels(containerLabels)
                 .build();
     }
 
@@ -179,6 +194,7 @@ public abstract class Container {
                 .taskId(containerEntity.getTaskId())
                 .nodeId(containerEntity.getNodeId())
                 .dockerImage(containerEntity.getDockerImage())
+                .containerName(containerEntity.getContainerName())
                 .commandLine(containerEntity.getCommandLine())
                 .overrideEntrypoint(containerEntity.getOverrideEntrypoint())
                 .workingDirectory(containerEntity.getWorkingDirectory())
@@ -229,6 +245,10 @@ public abstract class Container {
                 .limitCpu(containerEntity.getLimitCpu())
                 .runtime(containerEntity.getCommandLine())
                 .ipcMode(containerEntity.getIpcMode())
+                .autoRemove(containerEntity.getAutoRemove())
+                .shmSize(containerEntity.getShmSize())
+                .network(containerEntity.getNetwork())
+                .containerLabels(containerEntity.getContainerLabels())
                 .build();
     }
 
@@ -259,6 +279,7 @@ public abstract class Container {
                 .wrapperId(resolvedCommand.wrapperId())
                 .project(resolvedCommand.project())
                 .dockerImage(resolvedCommand.image())
+                .containerName(resolvedCommand.containerName())
                 .commandLine(resolvedCommand.commandLine())
                 .overrideEntrypoint(resolvedCommand.overrideEntrypoint())
                 .workingDirectory(resolvedCommand.workingDirectory())
@@ -274,7 +295,11 @@ public abstract class Container {
                 .limitCpu(resolvedCommand.limitCpu())
                 .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
                 .runtime(resolvedCommand.runtime())
-                .ipcMode(resolvedCommand.ipcMode());
+                .ipcMode(resolvedCommand.ipcMode())
+                .autoRemove(resolvedCommand.autoRemove())
+                .shmSize(resolvedCommand.shmSize())
+                .network(resolvedCommand.network())
+                .containerLabels(resolvedCommand.containerLabels());
     }
 
     public static Builder builder() {
@@ -394,6 +419,7 @@ public abstract class Container {
         public abstract Builder userId(String userId);
         public abstract Builder project(String project);
         public abstract Builder dockerImage(String dockerImage);
+        public abstract Builder containerName(String containerName);
         public abstract Builder commandLine(String commandLine);
         public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
         public abstract Builder workingDirectory(String workingDirectory);
@@ -411,6 +437,10 @@ public abstract class Container {
         public abstract Builder limitCpu(Double limitCpu);
         public abstract Builder runtime(String runtime);
         public abstract Builder ipcMode(String ipcMode);
+        public abstract Builder autoRemove(Boolean autoRemove);
+        public abstract Builder shmSize(Long shmSize);
+        public abstract Builder network(String network);
+        public abstract Builder containerLabels(Map<String, String> containerLabels);
 
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
