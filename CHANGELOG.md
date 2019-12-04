@@ -15,6 +15,12 @@ TODO:
     
 Fixed output resource "format" parameter.
     
+Added Rest APIs to get containers by name - only works if container was assigned name by Container Service
+    /projects/{project}/containers/name/{name} - param: nonfinalized bool
+    /container/name/{name} - param: nonfinalized bool
+
+Added project scoped container kill Rest API:
+    /projects/{project}/containers/{id}/kill
 
 ## 2.1.0
 

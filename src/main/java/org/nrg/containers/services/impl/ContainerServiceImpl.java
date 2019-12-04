@@ -233,6 +233,29 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
+    public Container getByName(String project, String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized, project);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public Container getByName(String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
+
+    @Override
     @Nonnull
     public List<Container> retrieveServices() {
         return toPojo(containerEntityService.retrieveServices());
@@ -732,6 +755,13 @@ public class ContainerServiceImpl implements ContainerService {
         return kill(get(containerId), userI);
     }
 
+    @Override
+    public String kill(final String project, final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException {
+        // TODO check user permissions. How?
+
+        return kill(get(containerId), userI);
+    }
     private String kill(final Container container, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction("Killed", userI.getLogin()), userI);

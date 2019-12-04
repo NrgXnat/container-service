@@ -37,6 +37,10 @@ public interface ContainerService {
     List<Container> getAll(String project);
     List<Container> getAll(Boolean nonfinalized);
 
+    Container getByName(String project, String name, final Boolean nonfinalized);
+    Container getByName(String name, final Boolean nonfinalized);
+
+
     List<Container> retrieveServices();
     List<Container> retrieveNonfinalizedServices();
 
@@ -78,6 +82,9 @@ public interface ContainerService {
     void finalize(final Container container, final UserI userI, final String exitCode) throws ContainerException, NoDockerServerException, DockerServerException;
 
     String kill(final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException;
+
+    String kill(final String project, final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException;
 
     Map<String, InputStream> getLogStreams(long id) throws NotFoundException, NoDockerServerException, DockerServerException;
