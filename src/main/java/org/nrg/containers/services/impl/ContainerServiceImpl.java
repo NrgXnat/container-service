@@ -897,6 +897,18 @@ public class ContainerServiceImpl implements ContainerService {
 
         XFTItem rootInputValue = null;
         for (final ResolvedInputTreeNode<? extends Command.Input> node : flatInputTrees) {
+
+
+            if (rootInputValue != null) {
+                // We have already seen one candidate for a root object.
+                // Seeing this one means we have more than one, and won't be able to
+                // uniquely resolve a root object.
+
+
+                log.debug("Found another root XNAT input object: {}. I was expecting one. Using first: {}", node.input().name(), rootInputValue.getDBName());
+                continue;
+            }
+
             final Command.Input input = node.input();
             log.debug("Input \"{}\".", input.name());
             if (!(input instanceof Command.CommandWrapperExternalInput)) {
@@ -923,15 +935,6 @@ public class ContainerServiceImpl implements ContainerService {
             if (inputValueXnatObject == null) {
                 log.debug("Skipping. XNAT model object is null.");
                 continue;
-            }
-
-            if (rootInputValue != null) {
-                // We have already seen one candidate for a root object.
-                // Seeing this one means we have more than one, and won't be able to
-                // uniquely resolve a root object.
-                // We won't be able to make a workflow. We can bail out now.
-                log.debug("Found another root XNAT input object. I was expecting one. Bailing out.", input.name());
-                return null;
             }
 
             final XnatModelObject xnatObjectToUseAsRoot;
