@@ -381,7 +381,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 );
             }
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
-            final String resolvedCommandLine = resolveCommandLine(resolvedInputValuesByReplacementKey);
+            //final String resolvedCommandLine = resolveCommandLine(resolvedInputValuesByReplacementKey);
+            final String resolvedCommandLine = resolveCommandLine(resolvedInputTrees);
             final Map<String, String> resolvedEnvironmentVariables = resolveEnvironmentVariables(resolvedInputValuesByReplacementKey);
             final String resolvedWorkingDirectory = resolveWorkingDirectory(resolvedInputValuesByReplacementKey);
             final Map<String, String> resolvedPorts = resolvePorts(resolvedInputValuesByReplacementKey);
@@ -1833,33 +1834,39 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
+        private String resolveCommandLine(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees)
+                throws CommandResolutionException {
+            return resolveCommandLine(resolvedInputTrees, command.commandLine());
+        }
+
+        @Nonnull
         private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey)
                 throws CommandResolutionException {
             return resolveCommandLine(resolvedInputValuesByReplacementKey, command.commandLine());
         }
 
-        //@Deprecated
-        //@Nonnull
-        //private String resolveCommandLine(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees, String commandLine)
-        //        throws CommandResolutionException {
-        //    log.info("Resolving command-line string: ", commandLine);
-//
-        //    // Look through the input tree, and find any command inputs that have uniquely resolved values
-        //    final Map<String, String> resolvedInputCommandLineValuesByReplacementKey = Maps.newHashMap();
-        //    for (final ResolvedInputTreeNode<? extends Input> node : resolvedInputTrees) {
-        //        log.debug("Finding command-line values for input tree with root \"{}\".", node.input().name());
-        //        resolvedInputCommandLineValuesByReplacementKey.putAll(findUniqueResolvedCommandLineValues(node));
-        //        log.debug("Done finding command-line values for input tree with root \"{}\".", node.input().name());
-        //    }
-//
-        //    // Resolve the command-line string using the resolved command-line values
-        //    log.debug("Using resolved command-line values to resolve command-line template string.");
-        //    final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputCommandLineValuesByReplacementKey);
-//
-        //    log.info("Done resolving command-line string.");
-        //    log.debug("Command-line string: {}", resolvedCommandLine);
-        //    return resolvedCommandLine;
-        //}
+        @Deprecated
+        @Nonnull
+        private String resolveCommandLine(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees, String commandLine)
+                throws CommandResolutionException {
+            log.info("Resolving command-line string: ", commandLine);
+
+            // Look through the input tree, and find any command inputs that have uniquely resolved values
+            final Map<String, String> resolvedInputCommandLineValuesByReplacementKey = Maps.newHashMap();
+            for (final ResolvedInputTreeNode<? extends Input> node : resolvedInputTrees) {
+                log.debug("Finding command-line values for input tree with root \"{}\".", node.input().name());
+                resolvedInputCommandLineValuesByReplacementKey.putAll(findUniqueResolvedCommandLineValues(node));
+                log.debug("Done finding command-line values for input tree with root \"{}\".", node.input().name());
+            }
+
+            // Resolve the command-line string using the resolved command-line values
+            log.debug("Using resolved command-line values to resolve command-line template string.");
+            final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputCommandLineValuesByReplacementKey);
+
+            log.info("Done resolving command-line string.");
+            log.debug("Command-line string: {}", resolvedCommandLine);
+            return resolvedCommandLine;
+        }
 
         @Nonnull
         private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey, String commandLine)
