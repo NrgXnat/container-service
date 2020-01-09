@@ -16,4 +16,7 @@ public interface CommandEventMappingService extends BaseHibernateService<Command
 
     List<CommandEventMapping> findByEventType(String eventType);
     List<CommandEventMapping> findByEventType(String eventType, boolean onlyEnabled);
+    
+    List<CommandEventMapping> findByProject(String project);
+    List<CommandEventMapping> findByProject(String project, boolean onlyEnabled);
 }

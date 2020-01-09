@@ -43,6 +43,7 @@ group 'org.nrg'
 version '2.0.2.RAD-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'maven'
 apply plugin: 'maven-publish'
