@@ -1523,7 +1523,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     message += " does not have a unique, resolved value and multiple = true is not set in command.json.";
                 }
 
-                if (resolveFully) {
+                if (resolveFully && node.input().required()) {
                     // we're resolving for real, throw exception
                     throw new CommandResolutionException(message);
                 } else {
