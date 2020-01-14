@@ -32,7 +32,7 @@ buildscript {
 }
 
 group 'org.nrg'
-version '2.1.0'
+version '2.1.1-SNAPSHOT'
 
 apply plugin: 'java'
 apply plugin: 'idea'

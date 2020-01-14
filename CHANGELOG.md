@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.1
+
+[Not yet released]
+
+### Features
+
+### Bugfixes
+
+### Other
+
+
+
 ## 2.1.0
 
 [Released 2020-01-21](https://github.com/NrgXnat/container-service/releases/tag/2.1.0).
