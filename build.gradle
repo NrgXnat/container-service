@@ -6,7 +6,7 @@ import io.swagger.models.License
 
 buildscript {
     ext {
-        vXnat = '1.7.6-SNAPSHOT'
+        vXnat = '1.7.6'
     }
     repositories {
         maven {
@@ -32,7 +32,7 @@ buildscript {
 }
 
 group 'org.nrg'
-version '2.1.0-SNAPSHOT'
+version '2.1.0'
 
 apply plugin: 'java'
 apply plugin: 'idea'
