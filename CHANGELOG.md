@@ -1,11 +1,34 @@
 # Changelog
 
+## 2.1.0
+
+[Released 2020-01-15](https://github.com/NrgXnat/container-service/releases/tag/2.1.0).
+
+Along with several bug fixes, this release focuses on permissions updates required for compatibility with XNAT 1.7.6.  These updates break backward compatibility with previous versions of XNAT (<1.7.6). Users of XNAT 1.7.5.x should use [Container Service 2.0.1](https://github.com/NrgXnat/container-service/releases/tag/2.0.1).
+
+### Bugfixes
+
+* [CS-440][] Fixed an issue which caused guest users to see authentication dialog on public projects.
+* [CS-572][]: Change command listing permissions to require only project-read permissions. Viewing the "Run containers" action is still restricted by item "canEdit" permissions, although this does need to be modified since, for example, a custom user group ought to be able to read an MR session and write a QC assessor by launching a container on the read-only session.
+* [CS-584][]: Fixed bug which kept external and derived input replacement-key values from propagating to the command line.
+
+### Updates
+
+* [CS-585][]: Updated permissions model and h2 database parameters (in unit tests) to align with XNAT 1.7.6 requirements
+
+
+[CS-440]: https://issues.xnat.org/browse/CS-440
+[CS-572]: https://issues.xnat.org/browse/CS-572
+[CS-584]: https://issues.xnat.org/browse/CS-584
+[CS-585]: https://issues.xnat.org/browse/CS-585
+
+
 
 ## 2.0.1
 
 [Released 2019-04-06](https://github.com/NrgXnat/container-service/releases/tag/2.0.1).
 
-## Bugfixes
+### Bugfixes
 
 * [CS-554][] Prevent illegal characters from being used in command input names.
 * [XNAT-5876][] Prevent Container Service from overwriting bugfix for character handling in core XNAT
@@ -54,7 +77,6 @@
 [CS-550]: https://issues.xnat.org/browse/CS-550
 [CS-557]: https://issues.xnat.org/browse/CS-557
 [CS-558]: https://issues.xnat.org/browse/CS-558
-
  
 ## 1.6.0
 

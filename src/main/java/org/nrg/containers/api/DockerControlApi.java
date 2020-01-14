@@ -117,7 +117,7 @@ public class DockerControlApi implements ContainerControlApi {
         try (final DockerClient client = getClient(dockerServer)) {
             return client.ping();
         } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
+            log.error("Unable to connect with Docker server:\n" + (dockerServer == null ? "" : dockerServer.toString()), e.getMessage());
             throw new DockerServerException(e);
         }
     }
@@ -285,14 +285,14 @@ public class DockerControlApi implements ContainerControlApi {
 
         // CS-403 We need to make sure everything exists before we mount it, else
         // bad stuff can happen.
-        // TODO I really should be doing this before the files are transported. But right now transporter is a noop anyway.
         for (final ResolvedCommandMount mount : resolvedCommand.mounts()) {
             final File mountFile = Paths.get(mount.xnatHostPath()).toFile();
             if (!mountFile.exists()) {
-                if (mountFile.isDirectory()) {
-                    mountFile.mkdirs();
-                } else {
+                if (!mountFile.getParentFile().exists()){
                     mountFile.getParentFile().mkdirs();
+                }
+                if (!mountFile.isFile()) {
+                    mountFile.mkdirs();
                 }
             }
         }

@@ -381,6 +381,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 );
             }
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
+            //final String resolvedCommandLine = resolveCommandLine(resolvedInputValuesByReplacementKey);
             final String resolvedCommandLine = resolveCommandLine(resolvedInputTrees);
             final Map<String, String> resolvedEnvironmentVariables = resolveEnvironmentVariables(resolvedInputValuesByReplacementKey);
             final String resolvedWorkingDirectory = resolveWorkingDirectory(resolvedInputValuesByReplacementKey);
@@ -395,14 +396,14 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 populatedSetupCommands.add(
                         setup.toBuilder()
                              .addEnvironmentVariables(resolvedEnvironmentVariables)
-                             .commandLine(resolveCommandLine(resolvedInputTrees, setup.commandLine()))
+                             .commandLine(resolveCommandLine(resolvedInputValuesByReplacementKey, setup.commandLine()))
                              .build());
             }
             for(ResolvedCommand wrapup : resolvedWrapupCommands){
                 populatedWrapupCommands.add(
                         wrapup.toBuilder()
                               .addEnvironmentVariables(resolvedEnvironmentVariables)
-                              .commandLine(resolveCommandLine(resolvedInputTrees, wrapup.commandLine()))
+                              .commandLine(resolveCommandLine(resolvedInputValuesByReplacementKey, wrapup.commandLine()))
                               .build());
             }
 
@@ -1839,6 +1840,13 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
+        private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey)
+                throws CommandResolutionException {
+            return resolveCommandLine(resolvedInputValuesByReplacementKey, command.commandLine());
+        }
+
+        @Deprecated
+        @Nonnull
         private String resolveCommandLine(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees, String commandLine)
                 throws CommandResolutionException {
             log.info("Resolving command-line string: ", commandLine);
@@ -1854,6 +1862,20 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             // Resolve the command-line string using the resolved command-line values
             log.debug("Using resolved command-line values to resolve command-line template string.");
             final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputCommandLineValuesByReplacementKey);
+
+            log.info("Done resolving command-line string.");
+            log.debug("Command-line string: {}", resolvedCommandLine);
+            return resolvedCommandLine;
+        }
+
+        @Nonnull
+        private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey, String commandLine)
+                throws CommandResolutionException {
+            log.info("Resolving command-line string: ", commandLine);
+
+           // Resolve the command-line string using the resolved command-line values
+            log.debug("Using resolved command-line values to resolve command-line template string.");
+            final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputValuesByReplacementKey);
 
             log.info("Done resolving command-line string.");
             log.debug("Command-line string: {}", resolvedCommandLine);
@@ -2241,8 +2263,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 throws CommandResolutionException {
             log.debug("Resolving template: \"{}\".", template);
 
-            if (StringUtils.isBlank(template)) {
+            if (template == null || StringUtils.isBlank(template)) {
                 log.debug("Template is blank.");
+                return template;
+            }
+            if (valuesMap == null || valuesMap.size() == 0) {
+                log.debug("No template replacement values found.");
                 return template;
             }
 

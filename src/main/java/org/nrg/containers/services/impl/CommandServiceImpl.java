@@ -585,7 +585,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
     private boolean userCanLaunch(final UserI userI, final String project, final CommandWrapper wrapper) {
         // TODO How do we know if the user can launch this particular command wrapper in this project?
-        return Permissions.canEditProject(userI, project);
+        return Permissions.canReadProject(userI, project);
     }
 
 

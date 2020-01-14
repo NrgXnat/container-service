@@ -1108,6 +1108,7 @@ public abstract class Command {
             return builder()
                     .id(this.id())
                     .name(this.name())
+                    .description(this.description())
                     .type(this.type())
                     .providesValueForCommandInput(this.providesValueForCommandInput())
                     .providesFilesForCommandMount(this.providesFilesForCommandMount())
@@ -1118,6 +1119,7 @@ public abstract class Command {
                     .defaultValue(commandInputConfiguration.defaultValue())
                     .matcher(commandInputConfiguration.matcher())
                     .userSettable(commandInputConfiguration.userSettable())
+                    .rawReplacementKey(this.rawReplacementKey())
                     .build();
         }
 
@@ -1222,6 +1224,7 @@ public abstract class Command {
             return builder()
                     .id(this.id())
                     .name(this.name())
+                    .description(this.description())
                     .type(this.type())
                     .derivedFromWrapperInput(this.derivedFromWrapperInput())
                     .derivedFromXnatObjectProperty(this.derivedFromXnatObjectProperty())

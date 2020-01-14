@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
         name = "containers",
         description = "Container Service",
         entityPackages = "org.nrg.containers",
-        log4jPropertiesFile = "META-INF/resources/log4j.properties",
+        logConfigurationFile = "META-INF/resources/logback.xml",
         version = ""
 )
 @ComponentScan(value = "org.nrg.containers",

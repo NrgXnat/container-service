@@ -26,9 +26,8 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
-import org.nrg.xapi.rest.ProjectId;
+import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
-import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
@@ -49,7 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.Edit;
+import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 
@@ -107,10 +106,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return getLaunchUi(null, commandId, wrapperName, 0L, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @Project String project,
                                                final @PathVariable long wrapperId,
                                                final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
@@ -119,10 +118,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return getLaunchUi(project, 0L, null, wrapperId, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi.SingleLaunchUi getLaunchUi(final @PathVariable @Project String project,
                                                final @PathVariable long commandId,
                                                final @PathVariable String wrapperName,
                                                final @RequestParam Map<String, String> allRequestParams)
@@ -142,7 +141,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
         final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId, wrapperName, wrapperId);
         try {
             log.debug("Preparing to pre-resolve command {}, wrapperName {}, wrapperId {}, in project {} with inputs {}.", commandId, wrapperName, wrapperId, project, allRequestParams);
-            final UserI userI = XDAT.getUserDetails();
+            final UserI userI = getSessionUser();
             final PartiallyResolvedCommand partiallyResolvedCommand = preResolve(project, commandId, wrapperName, wrapperId, allRequestParams, userI);
             log.debug("Done pre-resolving command {}, wrapperName {}, wrapperId {}, in project {}.", commandId, wrapperName, wrapperId, project);
 
@@ -214,10 +213,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return getBulkLaunchUi(null, commandId, wrapperName, 0L, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @Project String project,
                                                  final @PathVariable long wrapperId,
                                                  final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
@@ -226,10 +225,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return getBulkLaunchUi(project, 0L, null, wrapperId, allRequestParams);
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = GET, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     @ResponseBody
-    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @ProjectId String project,
+    public LaunchUi.BulkLaunchUi getBulkLaunchUi(final @PathVariable @Project String project,
                                                  final @PathVariable long commandId,
                                                  final @PathVariable String wrapperName,
                                                  final @RequestParam Map<String, String> allRequestParams)
@@ -273,7 +272,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             log.debug("Getting {} configuration for command {}, wrapper name {}, wrapper id {}.", project == null ? "site" : "project " + project, commandId, wrapperName, wrapperId);
             final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId, wrapperName, wrapperId);
 
-            final UserI userI = XDAT.getUserDetails();
+            final UserI userI = getSessionUser();
 
             PartiallyResolvedCommand aPartiallyResolvedCommand = null;
             final List<List<ResolvedInputTreeNode<? extends Input>>> listOfResolvedInputTrees = new ArrayList<>();
@@ -314,7 +313,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
     public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable long wrapperId,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
-        log.info("Launch requested for command id " + String.valueOf(wrapperId));
+        log.info("Launch requested for command id " + wrapperId);
 
         return returnLaunchReportWithStatus(launchContainer(null, 0L, null, wrapperId, allRequestParams));
     }
@@ -328,9 +327,9 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return returnLaunchReportWithStatus(launchContainer(null, 0L, null, wrapperId, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/launch"}, method = POST, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/launch"}, method = POST, restrictTo = Read)
     @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @ProjectId String project,
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @Project String project,
                                                                   final @PathVariable long wrapperId,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for wrapper id " + String.valueOf(wrapperId));
@@ -338,9 +337,9 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return returnLaunchReportWithStatus(launchContainer(project, 0L, null, wrapperId, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = POST, consumes = {JSON}, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = POST, consumes = {JSON}, restrictTo = Read)
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @ProjectId String project,
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @Project String project,
                                                                final @PathVariable long wrapperId,
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for wrapper id " + String.valueOf(wrapperId));
@@ -373,9 +372,9 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName, 0L, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, restrictTo = Read)
     @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @ProjectId String project,
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams(final @PathVariable @Project String project,
                                                                   final @PathVariable long commandId,
                                                                   final @PathVariable String wrapperName,
                                                                   final @RequestParam Map<String, String> allRequestParams) {
@@ -384,9 +383,9 @@ public class LaunchRestApi extends AbstractXapiRestController {
         return returnLaunchReportWithStatus(launchContainer(project, commandId, wrapperName, 0L, allRequestParams));
     }
 
-    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, consumes = {JSON}, restrictTo = Edit)
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = POST, consumes = {JSON}, restrictTo = Read)
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @ProjectId String project,
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody(final @PathVariable @Project String project,
                                                                final @PathVariable long commandId,
                                                                final @PathVariable String wrapperName,
                                                                final @RequestBody Map<String, String> allRequestParams) {
@@ -402,7 +401,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                          @Nullable final String wrapperName,
                                          final long wrapperId,
                                          final Map<String, String> allRequestParams) {
-        final UserI userI = XDAT.getUserDetails();
+        final UserI userI = getSessionUser();
         try {
             final Container container =
                     project == null ?
@@ -483,7 +482,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @ProjectId String project,
+    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @RequestBody List<Map<String, String>> allRequestParams) {
@@ -494,7 +493,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @ProjectId String project,
+    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long wrapperId,
                                                     final @RequestBody List<Map<String, String>> allRequestParams) {
         log.info("Launch requested for wrapper id {}, project {}.", wrapperId, project);

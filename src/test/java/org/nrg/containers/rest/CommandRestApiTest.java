@@ -96,6 +96,7 @@ public class CommandRestApiTest {
     private final String NON_ADMIN_IS_OWNER_PROJECT = "projectowner";
     private final String NON_ADMIN_IS_MEMBER_PROJECT = "projectmember";
     private final String NON_ADMIN_IS_COLLABORATOR_PROJECT = "projectcollab";
+    private final String NON_ADMIN_NON_PROJECT = "projectnon";
 
     @Autowired private WebApplicationContext wac;
     @Autowired private ObjectMapper mapper;
@@ -178,13 +179,18 @@ public class CommandRestApiTest {
         // Mock the permissions call
         // This may render some of the above moot
         // Added in 1.7.5 to avoid priming the cache
+        // As of 1.7.6, canEditProject refers to actually being able to edit project metadata and is not relevant to
+        // deciding whether a user can run a container. Project read permissions will do for now (though the strict
+        // collaborator role would actually be blocked from editing any data via a container, so while he can launch,
+        // he can't upload)
         mockStatic(Permissions.class);
-        PowerMockito.when(Permissions.canEditProject(nonAdmin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canEditProject(nonAdmin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canEditProject(nonAdmin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(false);
-        PowerMockito.when(Permissions.canEditProject(admin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canEditProject(admin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canEditProject(admin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_NON_PROJECT)).thenReturn(false);
+        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
+        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(true);
     }
 
     @Test
@@ -721,7 +727,21 @@ public class CommandRestApiTest {
                             .getResponse()
                             .getContentAsString();
 
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(Collections.<CommandSummaryForContext>emptyList()));
+            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
         }
+
+        // TODO: CS tests don't work with restrictTo annotation, although the XNAT site does, see CS-266.
+        //  Probably need to adjust the test config somehow
+        //{
+        //    final MockHttpServletRequestBuilder request =
+        //            get(path).param("project", NON_ADMIN_NON_PROJECT)
+        //                    .param("xsiType", xsiType)
+        //                    .with(authentication(NONADMIN_AUTH))
+        //                    .with(csrf())
+        //                    .with(testSecurityContext());
+        //
+        //    mockMvc.perform(request)
+        //            .andExpect(status().isForbidden());
+        //}
     }
 }

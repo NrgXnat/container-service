@@ -16,7 +16,7 @@ import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
-import org.nrg.xapi.rest.ProjectId;
+import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -46,7 +46,6 @@ import java.util.zip.ZipOutputStream;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
-import static org.nrg.xdat.security.helpers.AccessLevel.Delete;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -90,10 +89,10 @@ public class ContainerRestApi extends AbstractXapiRestController {
         });
     }
 
-    @XapiRequestMapping(value = "/projects/{project}/containers", method = GET, restrictTo = Delete)
+    @XapiRequestMapping(value = "/projects/{project}/containers", method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get all Containers by project")
     @ResponseBody
-    public List<Container> getAll(final @PathVariable @ProjectId String project,
+    public List<Container> getAll(final @PathVariable @Project String project,
                                   final @RequestParam(required = false) Boolean nonfinalized) {
         return Lists.transform(containerService.getAll(nonfinalized, project), new Function<Container, Container>() {
             @Override

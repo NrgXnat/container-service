@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender class="ch.qos.logback.core.rolling.RollingFileAppender" name="spotify">
+        <append>false</append>
+        <file>${xnat.home}/logs/containers-spotify.log</file>
+        <encoder>
+            <pattern>%d [%t] %-5p %c - %m%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${xnat.home}/logs/containers-spotify.log.%d{yyyy-MM-dd}</fileNamePattern>
+        </rollingPolicy>
+    </appender>
+    <appender class="ch.qos.logback.core.rolling.RollingFileAppender" name="containers">
+        <append>false</append>
+        <file>${xnat.home}/logs/containers.log</file>
+        <encoder>
+            <pattern>%d [%t] %-5p %c - %m%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${xnat.home}/logs/containers.log.%d{yyyy-MM-dd}</fileNamePattern>
+        </rollingPolicy>
+    </appender>
+    <appender class="ch.qos.logback.core.rolling.RollingFileAppender" name="services">
+        <append>false</append>
+        <file>${xnat.home}/logs/containers-services-commandresolution.log</file>
+        <encoder>
+            <pattern>%d [%t] %-5p %c - %m%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${xnat.home}/logs/containers-services-commandresolution.log.%d{yyyy-MM-dd}</fileNamePattern>
+        </rollingPolicy>
+    </appender>
+    <logger additivity="false" level="DEBUG" name="org.nrg.containers">
+        <appender-ref ref="containers"/>
+    </logger>
+    <logger additivity="false" level="INFO" name="com.spotify">
+        <appender-ref ref="spotify"/>
+    </logger>
+    <logger additivity="false" level="INFO" name="org.nrg.containers.services.impl.CommandResolutionServiceImpl">
+        <appender-ref ref="services"/>
+    </logger>
+</configuration>
