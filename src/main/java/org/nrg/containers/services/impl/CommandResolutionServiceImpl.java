@@ -381,7 +381,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 );
             }
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
-            //final String resolvedCommandLine = resolveCommandLine(resolvedInputValuesByReplacementKey);
             final String resolvedCommandLine = resolveCommandLine(resolvedInputTrees);
             final Map<String, String> resolvedEnvironmentVariables = resolveEnvironmentVariables(resolvedInputValuesByReplacementKey);
             final String resolvedWorkingDirectory = resolveWorkingDirectory(resolvedInputValuesByReplacementKey);
@@ -1840,13 +1839,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
-        private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey)
-                throws CommandResolutionException {
-            return resolveCommandLine(resolvedInputValuesByReplacementKey, command.commandLine());
-        }
-
-        @Deprecated
-        @Nonnull
         private String resolveCommandLine(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees, String commandLine)
                 throws CommandResolutionException {
             log.info("Resolving command-line string: ", commandLine);
@@ -1862,20 +1854,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             // Resolve the command-line string using the resolved command-line values
             log.debug("Using resolved command-line values to resolve command-line template string.");
             final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputCommandLineValuesByReplacementKey);
-
-            log.info("Done resolving command-line string.");
-            log.debug("Command-line string: {}", resolvedCommandLine);
-            return resolvedCommandLine;
-        }
-
-        @Nonnull
-        private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey, String commandLine)
-                throws CommandResolutionException {
-            log.info("Resolving command-line string: ", commandLine);
-
-           // Resolve the command-line string using the resolved command-line values
-            log.debug("Using resolved command-line values to resolve command-line template string.");
-            final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputValuesByReplacementKey);
 
             log.info("Done resolving command-line string.");
             log.debug("Command-line string: {}", resolvedCommandLine);
