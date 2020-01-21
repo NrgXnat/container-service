@@ -2,7 +2,7 @@
 
 ## 2.1.0
 
-[Released 2020-01-15](https://github.com/NrgXnat/container-service/releases/tag/2.1.0).
+[Released 2020-01-21](https://github.com/NrgXnat/container-service/releases/tag/2.1.0).
 
 Along with several bug fixes, this release focuses on permissions updates required for compatibility with XNAT 1.7.6.  These updates break backward compatibility with previous versions of XNAT (<1.7.6). Users of XNAT 1.7.5.x should use [Container Service 2.0.1](https://github.com/NrgXnat/container-service/releases/tag/2.0.1).
 
