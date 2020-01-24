@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatImagescandataI;
@@ -280,7 +281,7 @@ public class Scan extends XnatModelObject {
 
     @Override
     public String getDerivedWrapperInputValue() {
-        return getId();
+        return Strings.isNullOrEmpty(getUri()) ? getId() : getUri();
     }
 
     @Override

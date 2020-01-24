@@ -919,7 +919,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                             "id",
                             resolvedMatcher,
                             new TypeRef<List<Scan>>() {});
-                    if (childList == null) {
+                    if (childList == null || childList.isEmpty()) {
                         // It is also possible that the value they gave us contains a URI
                         childList = matchChildFromParent(
                                 parentJson,
