@@ -49,7 +49,8 @@
                     "accepts-command-output": "output",
                     "via-wrapup-command": "xnat/test-wrapup-command:latest:wrapup-command",
                     "as-a-child-of": "session",
-                    "label": "WRAPUP"
+                    "label": "WRAPUP",
+                    "content": "SNAPSHOT"
                 }
             ]
         }

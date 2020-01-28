@@ -31,6 +31,7 @@ public class CommandWrapperOutputEntity {
     private Type type;
     private String label;
     private String format;
+    private String content;
 
     public static CommandWrapperOutputEntity fromPojo(final Command.CommandWrapperOutput commandWrapperOutput) {
         return new CommandWrapperOutputEntity().update(commandWrapperOutput);
@@ -46,6 +47,8 @@ public class CommandWrapperOutputEntity {
         this.setWrapperInputName(commandWrapperOutput.targetName());
         this.setViaWrapupCommand(commandWrapperOutput.viaWrapupCommand());
         this.setLabel(commandWrapperOutput.label());
+        this.setContent(commandWrapperOutput.content());
+        this.setFormat(commandWrapperOutput.format());
 
         switch (commandWrapperOutput.type()) {
             case "Resource":
@@ -136,6 +139,12 @@ public class CommandWrapperOutputEntity {
         this.format = format;
     }
 
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(final String content) { this.content = content; }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -161,6 +170,7 @@ public class CommandWrapperOutputEntity {
                 .add("type", type)
                 .add("label", label)
                 .add("format", format)
+                .add("content", content)
                 .toString();
     }
 

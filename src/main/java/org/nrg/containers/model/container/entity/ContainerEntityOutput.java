@@ -30,6 +30,7 @@ public class ContainerEntityOutput implements Serializable {
     private String glob;
     private String label;
     private String format;
+    private String content;
     private String created;
     private String handledByXnatCommandInput;
     private String viaWrapupContainer;
@@ -54,6 +55,7 @@ public class ContainerEntityOutput implements Serializable {
         this.setGlob(containerOutputPojo.glob());
         this.setLabel(containerOutputPojo.label());
         this.setFormat(containerOutputPojo.format());
+        this.setContent(containerOutputPojo.content());
         this.setCreated(containerOutputPojo.created());
         this.setHandledByXnatCommandInput(containerOutputPojo.handledBy());
         this.setViaWrapupContainer(containerOutputPojo.viaWrapupContainer());
@@ -156,13 +158,15 @@ public class ContainerEntityOutput implements Serializable {
         this.label = label;
     }
 
-    public String getFormat() {
-        return format;
-    }
+    public String getFormat() { return format; }
 
     public void setFormat(final String format) {
         this.format = format;
     }
+
+    public String getContent() { return content; }
+
+    public void setContent(final String content) { this.content = content; }
 
     public String getHandledByXnatCommandInput() {
         return handledByXnatCommandInput;
@@ -212,7 +216,7 @@ public class ContainerEntityOutput implements Serializable {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, name, fromCommandOutput, fromOutputHandler, type, required, mount, path, glob, label, format, handledByXnatCommandInput, viaWrapupContainer, created);
+        return Objects.hash(id, name, fromCommandOutput, fromOutputHandler, type, required, mount, path, glob, label, format, content, handledByXnatCommandInput, viaWrapupContainer, created);
     }
 
     @Override
@@ -229,6 +233,7 @@ public class ContainerEntityOutput implements Serializable {
                 .add("glob", glob)
                 .add("label", label)
                 .add("format", format)
+                .add("content", content)
                 .add("handledByXnatInput", handledByXnatCommandInput)
                 .add("viaWrapupContainer", viaWrapupContainer)
                 .add("created", created)

@@ -1825,6 +1825,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         .path(resolveTemplate(commandOutput.path(), resolvedInputValuesByReplacementKey))
                         .label(resolveTemplate(commandOutputHandler.label(), resolvedInputValuesByReplacementKey))
                         .format(resolveTemplate(commandOutputHandler.format(), resolvedInputValuesByReplacementKey))
+                        .content(resolveTemplate(commandOutputHandler.content(), resolvedInputValuesByReplacementKey))
                         .build());
                 outputHasAtLeastOneLegitHandler = true;
             }

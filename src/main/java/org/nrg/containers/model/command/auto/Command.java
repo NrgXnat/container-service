@@ -1284,6 +1284,7 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("content") public abstract String content();
 
         @JsonCreator
         public static CommandWrapperOutput create(@JsonProperty("name") final String name,
@@ -1292,7 +1293,8 @@ public abstract class Command {
                                                   @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                   @JsonProperty("type") final String type,
                                                   @JsonProperty("label") final String label,
-                                                  @JsonProperty("format") final String format) {
+                                                  @JsonProperty("format") final String format,
+                                                  @JsonProperty("content") final String content) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1301,6 +1303,7 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .content(content)
                     .build();
         }
 
@@ -1317,6 +1320,7 @@ public abstract class Command {
                     .type(wrapperOutput.getType().getName())
                     .label(wrapperOutput.getLabel())
                     .format(wrapperOutput.getFormat())
+                    .content(wrapperOutput.getContent())
                     .build();
         }
 
@@ -1329,6 +1333,7 @@ public abstract class Command {
                     .type(commandWrapperOutputCreation.type())
                     .label(commandWrapperOutputCreation.label())
                     .format(commandWrapperOutputCreation.format())
+                    .content(commandWrapperOutputCreation.content())
                     .build();
         }
 
@@ -1393,6 +1398,8 @@ public abstract class Command {
             public abstract Builder label(final String label);
 
             public abstract Builder format(final String format);
+
+            public abstract Builder content(final String content);
 
             public abstract CommandWrapperOutput build();
         }
@@ -1472,6 +1479,7 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("content") public abstract String content();
 
         @JsonCreator
         public static CommandWrapperOutputCreation create(@JsonProperty("name") final String name,
@@ -1481,7 +1489,8 @@ public abstract class Command {
                                                           @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                           @JsonProperty("type") final String type,
                                                           @JsonProperty("label") final String label,
-                                                          @JsonProperty("format") final String format) {
+                                                          @JsonProperty("format") final String format,
+                                                          @JsonProperty("content") final String content) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1490,6 +1499,7 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .content(content)
                     .build();
         }
 
@@ -1509,6 +1519,7 @@ public abstract class Command {
             public abstract Builder type(final String type);
             public abstract Builder label(final String label);
             public abstract Builder format(final String format);
+            public abstract Builder content(final String content);
 
             public abstract CommandWrapperOutputCreation build();
         }

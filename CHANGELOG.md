@@ -6,14 +6,18 @@ Not yet released
 
 ### Features
 
+* [CS-589][] Added optional `content` parameter to command output resource specification.
+
 ### Bugfixes
 
 * [CS-440][] Fixed an issue which caused guest users to see authentication dialog on public projects.
+* [CS-587][] Fixed an issue which caused outputs derived from derived Scan inputs to fail resolution.
 
 ### Other
 
 [CS-440]: https://issues.xnat.org/browse/CS-440
-
+[CS-587]: https://issues.xnat.org/browse/CS-587
+[CS-589]: https://issues.xnat.org/browse/CS-589
 
 
 ## 2.0.1

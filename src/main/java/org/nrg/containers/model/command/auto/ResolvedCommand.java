@@ -403,6 +403,7 @@ public abstract class ResolvedCommand {
         @JsonProperty("glob") @Nullable public abstract String glob();
         @JsonProperty("label") @Nullable public abstract String label();
         @JsonProperty("format") @Nullable public abstract String format();
+        @JsonProperty("content") @Nullable public abstract String content();
         @JsonProperty("handled-by") public abstract String handledBy();
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
 
@@ -422,6 +423,7 @@ public abstract class ResolvedCommand {
             public abstract Builder glob(String glob);
             public abstract Builder label(String label);
             public abstract Builder format(String format);
+            public abstract Builder content(String content);
             public abstract Builder handledBy(String handledBy);
             public abstract Builder viaWrapupCommand(String viaWrapupCommand);
 

@@ -23,6 +23,7 @@ public class ContainerUtils {
                         WorkflowUtils.save(workflow, workflow.buildEvent());
                     } catch (Exception e) {
                         log.error("Could not update workflow status.", e);
+                        log.error(e.getStackTrace().toString());
                     }
                 } else {
                     log.debug("Workflow {} status is already \"{}\"; not updating.", workflow.getWorkflowId(), status);
