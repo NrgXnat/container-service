@@ -1,77 +1,40 @@
-import com.github.kongchen.swagger.docgen.mavenplugin.ApiSource
-import com.github.zhurlik.SwaggerTask
-import io.swagger.models.Contact
-import io.swagger.models.Info
-import io.swagger.models.License
-
 buildscript {
     ext {
-        vXnat = '1.7.6'
-    }
-    repositories {
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
-        maven {
-            url 'https://nrgxnat.jfrog.io/nrgxnat/libs-release'
-            name 'XNAT Release Repository'
-        }
-        maven {
-            url 'https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot'
-            name 'XNAT Snapshot Repository'
-        }
-    }
-    dependencies {
-        classpath "net.ltgt.gradle:gradle-apt-plugin:0.9"
-        classpath "io.spring.gradle:dependency-management-plugin:1.0.3.RELEASE"
-        classpath "gradle.plugin.com.github.zhurlik:gradle-swagger-plugin:0.2"
-        classpath group: 'io.swagger', name: 'swagger-core', version: '1.5.+'
-        classpath group: 'com.github.kongchen', name: 'swagger-maven-plugin', version: '3.1.+'
-        classpath "org.nrg.xdat:core:${vXnat}"
+        vXnat = "1.7.6"
     }
 }
 
-group 'org.nrg'
-version '2.1.1-SNAPSHOT'
+plugins {
+    id "idea"
+    id "java"
+    id "maven-publish"
+    id "io.spring.dependency-management" version "1.0.9.RELEASE"
+    id "io.franzbecker.gradle-lombok" version "3.2.0"
+}
 
-apply plugin: 'java'
-apply plugin: 'idea'
-apply plugin: 'maven'
-apply plugin: 'maven-publish'
-apply plugin: "net.ltgt.apt"
-apply plugin: 'io.spring.dependency-management'
-apply plugin: "com.github.zhurlik.swagger"
+group "org.nrg"
+version "2.1.1-SNAPSHOT"
 
 sourceCompatibility = 1.7
 targetCompatibility = 1.7
 
-def vMockito = '1.10.19'
-def vJavassist = '3.21.0-GA'
-def vAwaitility = '2.0.0'
+def vMockito = "1.10.19"
+def vJavassist = "3.21.0-GA"
+def vAwaitility = "2.0.0"
 
 repositories {
     jcenter()
     mavenCentral()
-    maven {
-        url 'https://nrgxnat.jfrog.io/nrgxnat/libs-release'
-        name 'XNAT Release Repository'
-    }
-    maven {
-        url 'https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot'
-        name 'XNAT Snapshot Repository'
-    }
-    maven {
-        url 'https://nrgxnat.jfrog.io/nrgxnat/ext-release'
-        name 'XNAT External Release Repository'
-    }
+    maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
+    maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
 }
 
 dependencyManagement {
     imports {
         mavenBom("org.nrg:parent:${vXnat}") {
             bomProperties([
-                    'mockito.version': vMockito,
-                    'javassist.version': vJavassist
+                    "mockito.version": vMockito,
+                    "javassist.version": vJavassist
             ])
         }
     }
@@ -79,188 +42,144 @@ dependencyManagement {
 
 // I would prefer to use a floating version for docker client, like 8+, but they moved to java 8 and we are stuck on 7.
 // Once we can move to java 8 I want to put this back to a floating version. That way we always get the latest updates.
-def vDockerClient = '8.13.0'
+def vDockerClient = "8.13.0"
 
-def vJsonPath = '2.2.0'
-def vAutoValue = '1.3'
-def vPowerMock = '1.7.0'
-def vGson = '2.8.1'
-def vSwagger = '2.4.0'
-def vJackson = dependencyManagement.importedProperties['jackson.version']
-def vSpringSecurity = dependencyManagement.importedProperties['spring-security.version']
+def vJsonPath = "2.2.0"
+def vAutoValue = "1.3"
+def vPowerMock = "1.7.0"
+def vGson = "2.8.1"
+def vJackson = dependencyManagement.importedProperties["jackson.version"]
+def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
-    compile.extendsFrom(compileAndInclude)
+    implementation.extendsFrom(implementAndInclude)
 }
 configurations.all {
     resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
 }
-//// Possibly add annotation processor dependencies  to IntelliJ
-//idea {
-//    module {
-//        // With Gradle 3.4:
-//        scopes.PROVIDED.plus += [ configurations.apt ]
-//        scopes.TEST.plus += [ configurations.testApt ]
-//        // With older Gradle versions:
-//        // scopes.COMPILE.plus += [ configurations.apt ]
-//        // scopes.TEST.plus += [ configurations.testApt ]
-//    }
-//}
 
 dependencies {
-    compileAndInclude (group: 'com.spotify', name: 'docker-client', version: vDockerClient) {
+    annotationProcessor "org.nrg:framework"
+    annotationProcessor "com.google.auto.value:auto-value:${vAutoValue}"
+
+    compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
+
+    implementAndInclude ("com.spotify:docker-client:${vDockerClient}") {
         exclude group: "ch.qos.logback"
         exclude group: "com.fasterxml.jackson.core"
         exclude group: "com.fasterxml.jackson.datatype"
     }
-    compileAndInclude "com.jayway.jsonpath:json-path:${vJsonPath}"
+    implementAndInclude "com.jayway.jsonpath:json-path:${vJsonPath}"
 
-    compile ("org.nrg.xnat:web") {
+    implementation ("org.nrg.xnat:web") {
         transitive = false
     }
-    compile "org.nrg:framework"
-    compile ("org.nrg.xdat:core") {
+    implementation "org.nrg:framework"
+    implementation ("org.nrg.xdat:core") {
         transitive = false
     }
-    compile ("org.nrg.xnat:xnat-data-models") {
+    implementation ("org.nrg.xnat:xnat-data-models") {
         transitive = false
     }
-    compile "org.nrg:prefs"
-    compile ("org.nrg:notify") {
+    implementation "org.nrg:prefs"
+    implementation ("org.nrg:notify") {
         exclude group: "cglib"
     }
-    compile ("org.nrg:config") {
+    implementation ("org.nrg:config") {
         exclude group: "cglib"
     }
-    compile ("org.nrg:automation") {
+    implementation ("org.nrg:automation") {
         exclude group: "org.python"
         exclude group: "cglib"
     }
-    apt "org.nrg:framework"
-    compile ("cglib:cglib:2.2.2") {
+    implementation ("cglib:cglib:2.2.2") {
         exclude group: "asm"
     }
 
-    compile "org.springframework:spring-beans"
-    compile "org.springframework:spring-context"
-    compile "org.springframework:spring-core"
-    compile "org.springframework:spring-tx"
-    compile "org.springframework:spring-web"
-    compile "org.springframework:spring-webmvc"
+    implementation "org.springframework:spring-beans"
+    implementation "org.springframework:spring-context"
+    implementation "org.springframework:spring-core"
+    implementation "org.springframework:spring-tx"
+    implementation "org.springframework:spring-web"
+    implementation "org.springframework:spring-webmvc"
 
-    compile "io.springfox:springfox-swagger2:${vSwagger}"
-    compile "io.springfox:springfox-swagger-ui:${vSwagger}"
+    implementation "io.springfox:springfox-swagger2"
+    implementation "io.springfox:springfox-swagger-ui"
 
-    compile "org.hibernate:hibernate-core"
+    implementation "org.hibernate:hibernate-core"
 
-    compile "com.fasterxml.jackson.core:jackson-annotations"
-    compile "com.fasterxml.jackson.core:jackson-core"
-    compile "com.fasterxml.jackson.core:jackson-databind"
-    compile "com.fasterxml.jackson.datatype:jackson-datatype-guava:${vJackson}"
+    implementation "com.fasterxml.jackson.core:jackson-annotations"
+    implementation "com.fasterxml.jackson.core:jackson-core"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-guava:${vJackson}"
 
-    compile "org.slf4j:slf4j-api"
-    compile "org.slf4j:slf4j-log4j12"
-    compile "org.projectlombok:lombok"
-    apt "org.projectlombok:lombok"
+    implementation "org.slf4j:slf4j-api"
+    implementation "org.slf4j:slf4j-log4j12"
+    implementation "org.projectlombok:lombok"
 
-    compile "commons-lang:commons-lang"
+    implementation "commons-lang:commons-lang"
 
-    compile "javax.inject:javax.inject"
-    compile "javax.servlet:javax.servlet-api"
+    implementation "javax.inject:javax.inject"
+    implementation "javax.servlet:javax.servlet-api"
 
-    compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
-    apt "com.google.auto.value:auto-value:${vAutoValue}"
-
-    compile ("turbine:turbine") {
+    implementation ("turbine:turbine") {
         transitive = false
     }
-    compile ("org.apache.velocity:velocity") {
+    implementation ("org.apache.velocity:velocity") {
         transitive = false
     }
-    compile ("stratum:stratum") {
+    implementation ("stratum:stratum") {
         transitive = false
     }
-    compile ("xalan:xalan") {
+    implementation ("xalan:xalan") {
         transitive = false
     }
 
-    testCompile group: 'junit', name: 'junit'
-    testCompile "org.hamcrest:hamcrest-library"
-    testCompile "org.springframework:spring-test"
-    testCompile "org.springframework.security:spring-security-test:${vSpringSecurity}"
-    testCompile "org.springframework.security:spring-security-config"
-    testCompile "org.mockito:mockito-core"
-    testCompile "javax.servlet:javax.servlet-api"
-    testCompile "com.h2database:h2"
-    testCompile "org.springframework:spring-jdbc"
-    testCompile "org.springframework:spring-orm"
-    testCompile "com.google.code.gson:gson:${vGson}"
-    testCompile "org.json:json"
-    testCompile "org.apache.commons:commons-dbcp2"
-    testCompile "org.powermock:powermock-module-junit4:${vPowerMock}"
-    testCompile "org.powermock:powermock-api-mockito:${vPowerMock}"
-    testCompile "org.awaitility:awaitility:${vAwaitility}"
+    testImplementation "junit:junit"
+    testImplementation "org.hamcrest:hamcrest-library"
+    testImplementation "org.springframework:spring-test"
+    testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
+    testImplementation "org.springframework.security:spring-security-config"
+    testImplementation "org.mockito:mockito-core"
+    testImplementation "javax.servlet:javax.servlet-api"
+    testImplementation "com.h2database:h2"
+    testImplementation "org.springframework:spring-jdbc"
+    testImplementation "org.springframework:spring-orm"
+    testImplementation "com.google.code.gson:gson:${vGson}"
+    testImplementation "org.json:json"
+    testImplementation "org.apache.commons:commons-dbcp2"
+    testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
+    testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
+    testImplementation "org.awaitility:awaitility:${vAwaitility}"
 }
 
 task unitTest( type: Test ) {
-    exclude '**/DockerControlApiTest.class', '**/*IntegrationTest.class'
-}
-
-task(type: SwaggerTask, 'swagger') {
-
-    // any dirs with classes
-    classesDirs = [
-            file("${buildDir}/classes/java/main")
-            // project(':your-project').sourceSets['main'].output.classesDir
-    ]
-
-    apiSources = [
-            new ApiSource(
-                    springmvc: true,
-                    locations: ['org/nrg/containers/rest', 'org/nrg/xapi/rest'],
-                    schemes: ['http', 'https'],
-                    host: 'xnat.org',
-                    basePath: '/xapi',
-                    info: new Info(
-                            title: 'Container Service API',
-                            version: "${version}",
-                            description: 'XAPI endpoints for the XNAT Container Service',
-                            contact: new Contact(
-                                    email: 'kelseym@wustl.edu',
-                                    name: 'Matt Kelsey'
-                            ),
-                            license: new License(
-                                    url: 'https://github.com/NrgXnat/container-service/blob/master/LICENSE.md',
-                                    name: 'BSD 2-Clause'
-                            )
-                    ),
-                    swaggerDirectory: file("docs").path,
-            )
-    ]
+    exclude "**/DockerControlApiTest.class", "**/*IntegrationTest.class"
 }
 
 task fatJar(type: Jar) {
     zip64 true
     classifier = "fat"
     from {
-        configurations.compileAndInclude.collect { it.isDirectory() ? it : zipTree(it) }
+        configurations.implementAndInclude.collect { it.isDirectory() ? it : zipTree(it) }
     } {
         exclude "META-INF/*.SF"
         exclude "META-INF/*.DSA"
         exclude "META-INF/*.RSA"
     }
+    duplicatesStrategy "exclude"
     with jar
 }
 
 sourceSets.main.java {
-    srcDir 'generated'
-    exclude '*/AutoValue.java'
+    srcDir "generated"
+    exclude "*/AutoValue.java"
 }
 
 jar{
     doLast {
-        throw new GradleException('ERROR:  You should run fatJar instead of jar task for this plugin')
+        throw new GradleException("ERROR:  You should run fatJar instead of jar task for this plugin")
     }
 }
 
@@ -289,36 +208,36 @@ publishing {
 
             pom.withXml {
                 def root = asNode()
-                root.appendNode('name', 'XNAT Container Service')
-                root.appendNode('description', 'XNAT plugin for launching and managing containers.')
-                root.appendNode('url', 'https://github.com/nrgxnat/container-service')
-                root.appendNode('inceptionYear', '2016')
+                root.appendNode("name", "XNAT Container Service")
+                root.appendNode("description", "XNAT plugin for launching and managing containers.")
+                root.appendNode("url", "https://github.com/nrgxnat/container-service")
+                root.appendNode("inceptionYear", "2016")
 
-                def scm = root.appendNode('scm')
-                scm.appendNode('url', 'https://github.com/nrgxnat/container-service')
-                scm.appendNode('connection', 'scm:https://github.com/nrgxnat/container-service.git')
-                scm.appendNode('developerConnection', 'scm:git@github.com:nrgxnat/container-service')
+                def scm = root.appendNode("scm")
+                scm.appendNode("url", "https://github.com/nrgxnat/container-service")
+                scm.appendNode("connection", "scm:https://github.com/nrgxnat/container-service.git")
+                scm.appendNode("developerConnection", "scm:git@github.com:nrgxnat/container-service")
 
-                def license = root.appendNode('licenses').appendNode('license')
-                license.appendNode('name', 'Simplified BSD 2-Clause License')
-                license.appendNode('url', 'http://xnat.org/about/license.php')
-                license.appendNode('distribution', 'repo')
+                def license = root.appendNode("licenses").appendNode("license")
+                license.appendNode("name", "Simplified BSD 2-Clause License")
+                license.appendNode("url", "https://xnat.org/about/license.php")
+                license.appendNode("distribution", "repo")
 
-                def developers = root.appendNode('developers')
-                def flavin = developers.appendNode('developer')
-                flavin.appendNode('id', 'jflavin')
-                flavin.appendNode('name', 'John Flavin')
-                flavin.appendNode('email', 'jflavin@wustl.edu')
+                def developers = root.appendNode("developers")
+                def flavin = developers.appendNode("developer")
+                flavin.appendNode("id", "jflavin")
+                flavin.appendNode("name", "John Flavin")
+                flavin.appendNode("email", "jflavin@wustl.edu")
 
-                def kelsey = developers.appendNode('developer')
-                kelsey.appendNode('id', 'kelseym')
-                kelsey.appendNode('name', 'Matt Kelsey')
-                kelsey.appendNode('email', 'kelseym@wustl.edu')
+                def kelsey = developers.appendNode("developer")
+                kelsey.appendNode("id", "kelseym")
+                kelsey.appendNode("name", "Matt Kelsey")
+                kelsey.appendNode("email", "kelseym@wustl.edu")
 
-                def will = developers.appendNode('developer')
-                will.appendNode('id', 'hortonw')
-                will.appendNode('name', 'Will Horton')
-                will.appendNode('email', 'hortonw@wustl.edu')
+                def will = developers.appendNode("developer")
+                will.appendNode("id", "hortonw")
+                will.appendNode("name", "Will Horton")
+                will.appendNode("email", "hortonw@wustl.edu")
             }
         }
     }
@@ -327,10 +246,10 @@ publishing {
             credentials {
                 // These properties must be set in the ~/.gradle/gradle.properties file or passed on the Gradle command
                 // line in the form -PrepoUsername=foo -PrepoPassword=bar.
-                username propertyWithDefault('repoUsername', 'username')
-                password propertyWithDefault('repoPassword', 'password')
+                username propertyWithDefault("repoUsername", "username")
+                password propertyWithDefault("repoPassword", "password")
             }
-            if (project.version.endsWith('-SNAPSHOT')) {
+            if (project.version.endsWith("-SNAPSHOT")) {
                 url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot-local"
             } else {
                 url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
