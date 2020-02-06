@@ -1861,6 +1861,20 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
+        private String resolveCommandLine(final Map<String, String> resolvedInputValuesByReplacementKey, String commandLine)
+                throws CommandResolutionException {
+            log.info("Resolving command-line string: ", commandLine);
+
+           // Resolve the command-line string using the resolved command-line values
+            log.debug("Using resolved command-line values to resolve command-line template string.");
+            final String resolvedCommandLine = resolveTemplate(commandLine, resolvedInputValuesByReplacementKey);
+
+            log.info("Done resolving command-line string.");
+            log.debug("Command-line string: {}", resolvedCommandLine);
+            return resolvedCommandLine;
+        }
+
+        @Nonnull
         private Map<String, String> resolveEnvironmentVariables(final Map<String, String> resolvedInputValuesByReplacementKey)
                 throws CommandResolutionException {
             log.info("Resolving environment variables.");
