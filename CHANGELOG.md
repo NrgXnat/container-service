@@ -132,7 +132,6 @@ Along with several bug fixes, this release focuses on permissions updates requir
 * [CS-80][] Allow command wrapper output handlers to create new objects as children of objects created by previous output handlers. The previous behavior allowed outputs to be handled only by wrapper inputs.
 * [CS-457][] Add `label` field to command wrapper. This will be used to represent the command wrapper in the "Run Container" menu going forward.
 * [CS-458][] `GET /commands/available` includes command and wrapper labels
-
 * Manually refresh resource catalog when uploading resources. (We used to rely on the Catalog Service to do this, but it doesn't anymore.)
 * [CS-407][] Add docker host setting to translate mount paths. If xnat sees a path at /data/xnat/x/y/z but your docker host sees the same path at /my/path/x/y/z, you can include these path prefixes in your docker server settings. If you're using REST, set the properties "path-translation-xnat-prefix" and "path-translation-docker-prefix" respectively. If you're using the Plugin Settings UI, the fields will be there.
 * [CS-494][] Add docker host setting for whether to check on server startup if all the images referenced by commands are present, and pull them if not.

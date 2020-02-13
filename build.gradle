@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.6"
+        vXnat = "1.7.7-SNAPSHOT"
     }
 }
 
@@ -30,8 +30,6 @@ repositories {
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
 }
 
-
-
 dependencyManagement {
     imports {
         mavenBom("org.nrg:parent:${vXnat}") {
@@ -53,6 +51,7 @@ def vPowerMock = "1.7.0"
 def vGson = "2.8.1"
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
+def vH2 = "1.4.197"
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -61,8 +60,6 @@ configurations {
 configurations.all {
     resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
 }
-
-
 
 dependencies {
     annotationProcessor "org.nrg:framework"
@@ -102,7 +99,6 @@ dependencies {
     implementation ("cglib:cglib:2.2.2") {
         exclude group: "asm"
     }
-
     implementation "org.springframework:spring-beans"
     implementation "org.springframework:spring-context"
     implementation "org.springframework:spring-core"
@@ -154,7 +150,7 @@ dependencies {
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core"
     testImplementation "javax.servlet:javax.servlet-api"
-    testImplementation "com.h2database:h2"
+    testImplementation "com.h2database:h2:${vH2}"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "com.google.code.gson:gson:${vGson}"
