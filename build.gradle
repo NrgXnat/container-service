@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.7-SNAPSHOT"
+        vXnat = "1.7.7.RAD-SNAPSHOT"
     }
 }
 
@@ -13,7 +13,7 @@ plugins {
 }
 
 group "org.nrg"
-version "2.1.1-SNAPSHOT"
+version "2.1.1.RAD-SNAPSHOT"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -28,6 +28,8 @@ repositories {
     mavenCentral()
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
+    maven { url "https://maven.radiologics.com/repository/snapshots" }
+    maven { url "https://maven.radiologics.com/repository/internal" }
 }
 
 dependencyManagement {
@@ -263,6 +265,16 @@ publishing {
             } else {
                 url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
             }
+        }
+        maven {
+            name "Radiologics"
+            credentials {
+                // These properties must be set in the ~/.gradle/gradle.properties file or passed on the Gradle command
+                // line in the form -PrepoUsername=foo -PrepoPassword=bar.
+                username propertyWithDefault('repoUsername', 'username')
+                password propertyWithDefault('repoPassword', 'password')
+            }
+            url project.version.endsWith("-SNAPSHOT") ? "https://maven.radiologics.com/repository/snapshots/" : "https://maven.radiologics.com/repository/internal/"
         }
     }
 }
