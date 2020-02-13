@@ -31,9 +31,9 @@
 * [CS-578][]: Enforce ordering on uploading outputs so that we never try to upload to an object that has yet to be inserted
 * [CS-580][]: Add client-side validation for required inputs
 * [CS-579][]/[CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution. 
+* [CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution.
 
 ### Other
-
 
 [CS-54]: https://issues.xnat.org/browse/CS-54
 [CS-575]: https://issues.xnat.org/browse/CS-575
@@ -44,8 +44,7 @@
 [CS-580]: https://issues.xnat.org/browse/CS-580
 [CS-583]: https://issues.xnat.org/browse/CS-583
 [CS-592]: https://issues.xnat.org/browse/CS-592
-
-
+[CS-592]: https://issues.xnat.org/browse/CS-592
 
 ## 2.1.0
 
