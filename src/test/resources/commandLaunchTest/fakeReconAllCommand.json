@@ -4,6 +4,7 @@
     "type": "docker",
     "image": "busybox:latest",
     "command-line": "echo recon-all #SUBJECT_ID# #OTHER_ARGS# >> /output/out.txt; ls /input >> /output/out.txt" ,
+    "override-entrypoint": true,
     "mounts": [
         {
             "name": "input",

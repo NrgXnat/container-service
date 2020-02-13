@@ -1,3 +1,4 @@
 <!-- injected content -->
 <script src="$content.getURI("/scripts/xnat/app/scanTable/selectableTableBehavior.js")"></script>
 <script src="$content.getURI("/scripts/xnat/plugin/containerService/projectSearchLauncher.js")"></script>
+<script src="$content.getURI("/scripts/xnat/app/scanTable/selectableTableBehavior.js")"></script>

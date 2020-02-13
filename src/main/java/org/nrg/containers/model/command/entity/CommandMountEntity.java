@@ -15,7 +15,6 @@ import java.io.Serializable;
 import java.util.Objects;
 
 @Entity
-@Audited
 public class CommandMountEntity implements Serializable {
 
     private long id;

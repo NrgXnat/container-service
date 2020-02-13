@@ -1,6 +1,9 @@
 package org.nrg.containers.daos;
 
+import org.hibernate.Hibernate;
+import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
+import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.framework.orm.hibernate.AbstractHibernateDAO;
 import org.springframework.stereotype.Repository;
 
@@ -8,6 +11,25 @@ import java.util.Date;
 
 @Repository
 public class DockerServerEntityRepository extends AbstractHibernateDAO<DockerServerEntity> {
+    @Override
+    @SuppressWarnings("deprecation")
+    public void initialize(final DockerServerEntity entity) {
+        //TODO is this the appropriate alternative to eager loading constraints?
+        if (entity == null) {
+            return;
+        }
+        Hibernate.initialize(entity);
+        Hibernate.initialize(entity.getSwarmConstraints());
+        if (entity.getSwarmConstraints() != null) {
+            for (final DockerServerEntitySwarmConstraint constraint : entity.getSwarmConstraints()) {
+                Hibernate.initialize(constraint.getValues());
+            }
+        }
+    }
+
+    public static DockerServerEntity create(final DockerServerBase.DockerServer dockerServer) {
+        return new DockerServerEntity().update(dockerServer);
+    }
 
     public DockerServerEntity getUniqueEnabledServer() {
         final DockerServerEntity dockerServerEntity = (DockerServerEntity) getSession()

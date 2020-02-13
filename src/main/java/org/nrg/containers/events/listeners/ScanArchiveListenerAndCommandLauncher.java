@@ -19,6 +19,7 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -103,15 +104,17 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
                                 }
                             }
                         }
-                        if (subscriptionProjectId != null && !subscriptionProjectId.isEmpty()) {
-                            containerService.resolveCommandAndLaunchContainer(subscriptionProjectId, commandId, wrapperName, inputValues, subscriptionUser);
-                        } else {
-                            containerService.resolveCommandAndLaunchContainer(commandId, wrapperName, inputValues, subscriptionUser);
-                        }
+                        PersistentWorkflowI workflow = containerService.createContainerWorkflow(scan.getUri(),
+                                scan.getXsiType(), wrapperName, subscriptionProjectId, subscriptionUser);
+                        containerService.queueResolveCommandAndLaunchContainer(subscriptionProjectId, 0L,
+                                commandId, wrapperName, inputValues, subscriptionUser, workflow);
                     } catch (UserNotFoundException | UserInitException e) {
-                        log.error(String.format("Error launching command %d. Could not find or Init subscription owner: %s", commandId, commandEventMapping.getSubscriptionUserName()), e);
+                        log.error("Error launching command {}. Could not find or Init subscription owner: {}",
+                                commandId, commandEventMapping.getSubscriptionUserName(), e);
                     } catch (NotFoundException | CommandResolutionException | NoDockerServerException | DockerServerException | ContainerException | UnauthorizedException e) {
                         log.error("Error launching command " + commandId, e);
+                    } catch (Exception e) {
+                        log.error("Error queueing launching command {}", commandId, e);
                     }
                 }
             }

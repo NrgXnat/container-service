@@ -16,11 +16,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.config.LaunchRestApiTestConfig;
-import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
@@ -28,15 +26,14 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
-import org.nrg.containers.services.CommandResolutionService;
-import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerEntityService;
-import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.*;
+import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.RoleServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -51,6 +48,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,10 +58,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyMapOf;
-import static org.mockito.Matchers.argThat;
-import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.server.docker.DockerServerBase.*;
@@ -80,14 +75,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ContextConfiguration(classes = LaunchRestApiTestConfig.class)
 public class LaunchRestApiTest {
     private UserI mockAdmin;
+    private PersistentWorkflowI mockWorkflow;
     private Authentication authentication;
     private MockMvc mockMvc;
 
     private final String INPUT_NAME = "stringInput";
     private final String INPUT_VALUE = "the super cool value";
+    private final String FAKE_ROOT = "session";
+    private final String FAKE_XNAT_ID = "XNAT_E00001";
     private final String INPUT_JSON = "{\"" + INPUT_NAME + "\": \"" + INPUT_VALUE + "\"}";
     private final String FAKE_CONTAINER_ID = "098zyx";
-    private final String FAKE_WORKFLOW_ID = "workflow123456";
+    private final String FAKE_WORKFLOW_ID = "123456";
+    private final String QUEUED_WF_MSG = "To be assigned, see workflow " + FAKE_WORKFLOW_ID;
+    private final String QUEUED_MSG = "To be assigned";
+
     private final long WRAPPER_ID = 10L;
     private final long COMMAND_ID = 15L;
     private final String WRAPPER_NAME = "I don't know";
@@ -107,6 +108,7 @@ public class LaunchRestApiTest {
     @Autowired private ContainerControlApi mockDockerControlApi;
     @Autowired private ContainerEntityService mockContainerEntityService;
     @Autowired private CommandResolutionService mockCommandResolutionService;
+    @Autowired private ContainerService mockContainerService;
     @Autowired private AliasTokenService mockAliasTokenService;
     @Autowired private DockerServerService mockDockerServerService;
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
@@ -175,11 +177,17 @@ public class LaunchRestApiTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(folder.newFolder().getAbsolutePath()); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(folder.newFolder().getAbsolutePath()); // container logs get stored under archive
 
+        // Mock workflow
+        mockWorkflow = Mockito.mock(PersistentWorkflowI.class);
+        when(mockWorkflow.getWorkflowId()).thenReturn(Integer.valueOf(FAKE_WORKFLOW_ID));
+
+        // Mock command
         COMMAND_WRAPPER = CommandWrapper.builder()
                 .id(WRAPPER_ID)
                 .name(WRAPPER_NAME)
                 .build();
         when(mockCommandService.getWrapper(WRAPPER_ID)).thenReturn(COMMAND_WRAPPER);
+        when(mockCommandService.retrieveWrapper(WRAPPER_ID)).thenReturn(COMMAND_WRAPPER);
 
         RESOLVED_COMMAND = ResolvedCommand.builder()
                 .commandId(COMMAND_ID)
@@ -190,9 +198,14 @@ public class LaunchRestApiTest {
                 .commandLine("echo hello world")
                 .addRawInputValue(INPUT_NAME, INPUT_VALUE)
                 .build();
-        CONTAINER = Container.containerFromResolvedCommand(RESOLVED_COMMAND, FAKE_CONTAINER_ID, username).toBuilder().workflowId(FAKE_WORKFLOW_ID).build();
+        CONTAINER = Container.containerFromResolvedCommand(RESOLVED_COMMAND, FAKE_CONTAINER_ID, username)
+                .toBuilder().workflowId(FAKE_WORKFLOW_ID).build();
         final ContainerEntity containerEntity = ContainerEntity.fromPojo(CONTAINER);
         when(mockContainerEntityService.save(containerEntity, mockAdmin)).thenReturn(containerEntity);
+
+        // Mock queuing
+        when(mockContainerService.createContainerWorkflow(FAKE_XNAT_ID, FAKE_ROOT, WRAPPER_NAME, "", mockAdmin))
+                .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.
         when(mockDockerControlApi.createContainerOrSwarmService(any(ResolvedCommand.class), eq(mockAdmin))).thenReturn(CONTAINER);
@@ -203,17 +216,11 @@ public class LaunchRestApiTest {
 
     @Test
     public void testLaunchWithQueryParams() throws Exception {
-        final String pathTemplate = "/wrappers/%d/launch";
+        final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
-        when(mockCommandResolutionService.resolve(
-                eq(WRAPPER_ID),
-                argThat(isMapWithEntry(INPUT_NAME, INPUT_VALUE)),
-                eq(mockAdmin)
-        )).thenReturn(RESOLVED_COMMAND);
-
-        final String path = String.format(pathTemplate, WRAPPER_ID);
+        final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
-                post(path).param(INPUT_NAME, INPUT_VALUE)
+                post(path).param(INPUT_NAME, INPUT_VALUE).param(FAKE_ROOT, FAKE_XNAT_ID)
                         .with(authentication(authentication))
                         .with(csrf())
                         .with(testSecurityContext());
@@ -225,20 +232,15 @@ public class LaunchRestApiTest {
                 .getContentAsString();
         final String id = (new JSONObject(response)).get("container-id").toString();
 
-        assertThat(id, is(FAKE_CONTAINER_ID));
+        //Have a root element, so can make a workflow
+        assertThat(id, is(QUEUED_WF_MSG));
     }
 
     @Test
     public void testLaunchWithParamsInBody() throws Exception {
-        final String pathTemplate = "/wrappers/%d/launch";
+        final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
-        when(mockCommandResolutionService.resolve(
-                eq(WRAPPER_ID),
-                argThat(isMapWithEntry(INPUT_NAME, INPUT_VALUE)),
-                eq(mockAdmin)
-        )).thenReturn(RESOLVED_COMMAND);
-
-        final String path = String.format(pathTemplate, WRAPPER_ID);
+        final String path = String.format(pathTemplate, WRAPPER_ID, null);
         final MockHttpServletRequestBuilder request =
                 post(path).content(INPUT_JSON).contentType(JSON)
                         .with(authentication(authentication))
@@ -252,38 +254,28 @@ public class LaunchRestApiTest {
                 .getContentAsString();
         final String id = (new JSONObject(response)).get("container-id").toString();
 
-        assertThat(id, is(FAKE_CONTAINER_ID));
+        // No root element, no workflow
+        assertThat(id, is(QUEUED_MSG));
     }
 
     @Test
     public void testBulkLaunch() throws Exception {
-        final String pathTemplate = "/wrappers/%d/bulklaunch";
+        final String pathTemplate = "/wrappers/%d/root/%s/bulklaunch";
+        final String badId = "BAD";
 
-        final Map<String, String> input1 = Maps.newHashMap();
-        input1.put(INPUT_NAME, INPUT_VALUE);
-        final Map<String, String> input2 = Maps.newHashMap();
-        final String badInputValue = "a bad value";
-        input2.put(INPUT_NAME, badInputValue);
-        final List<Map<String, String>> bulkInputs = Lists.newArrayList();
-        bulkInputs.add(input1);
-        bulkInputs.add(input2);
-        final String bulkInputJson = mapper.writeValueAsString(bulkInputs);
+        final Map<String, String> input = Maps.newHashMap();
+        input.put(INPUT_NAME, INPUT_VALUE);
+        input.put(FAKE_ROOT, mapper.writeValueAsString(Arrays.asList(FAKE_XNAT_ID, badId)));
+        final String bulkInputJson = mapper.writeValueAsString(input);
+
+        //final String exceptionMessage = "Unable to queue container launch";
+        // Can go back to using the below when we allow different inputs for different targets
+        //Mockito.doThrow(new Exception(exceptionMessage)).when(mockContainerService).queueResolveCommandAndLaunchContainer(
+        //        isNull(String.class), eq(WRAPPER_ID), eq(0L), isNull(String.class),
+        //        argThat(TestingUtils.isMapWithEntry(FAKE_ROOT, badId)), eq(mockAdmin), eq(mockWorkflow));
 
 
-        when(mockCommandResolutionService.resolve(
-                eq(WRAPPER_ID),
-                argThat(isMapWithEntry(INPUT_NAME, INPUT_VALUE)),
-                eq(mockAdmin)
-        )).thenReturn(RESOLVED_COMMAND);
-
-        final String exceptionMessage = "uh oh!";
-        when(mockCommandResolutionService.resolve(
-                eq(WRAPPER_ID),
-                argThat(isMapWithEntry(INPUT_NAME, badInputValue)),
-                eq(mockAdmin)
-        )).thenThrow(new CommandResolutionException(exceptionMessage));
-
-        final String path = String.format(pathTemplate, WRAPPER_ID);
+        final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
                 post(path).content(bulkInputJson).contentType(JSON)
                         .with(authentication(authentication))
@@ -297,22 +289,24 @@ public class LaunchRestApiTest {
                 .getContentAsString();
 
         final LaunchReport.BulkLaunchReport bulkLaunchReport = mapper.readValue(response, LaunchReport.BulkLaunchReport.class);
-        assertThat(bulkLaunchReport.successes(), hasSize(1));
-        assertThat(bulkLaunchReport.failures(), hasSize(1));
+        assertThat(bulkLaunchReport.successes(), hasSize(2));
+        // We are needing to return from bulk UI ASAP so that we don't get a proxy replay of the request. This means we don't get status info (success/failures) in the launch report.
+        //assertThat(bulkLaunchReport.successes(), hasSize(1));
+        //assertThat(bulkLaunchReport.failures(), hasSize(1));
+        //final LaunchReport.Failure failure = bulkLaunchReport.failures().get(0);
+        //assertThat(failure.launchParams(), hasEntry(FAKE_ROOT, badId));
+        //assertThat(failure.message(), is(exceptionMessage));
 
         final LaunchReport.Success success = bulkLaunchReport.successes().get(0);
+        assertThat(success.launchParams(), hasEntry(FAKE_ROOT, FAKE_XNAT_ID));
         assertThat(success.launchParams(), hasEntry(INPUT_NAME, INPUT_VALUE));
         assertThat(success, instanceOf(LaunchReport.ContainerSuccess.class));
-        assertThat(((LaunchReport.ContainerSuccess) success).containerId(), is(FAKE_CONTAINER_ID));
-
-        final LaunchReport.Failure failure = bulkLaunchReport.failures().get(0);
-        assertThat(failure.launchParams(), hasEntry(INPUT_NAME, badInputValue));
-        assertThat(failure.message(), is(exceptionMessage));
+        assertThat(((LaunchReport.ContainerSuccess) success).containerId(), is(QUEUED_MSG));
     }
 
     @Test
     public void testGetLaunchUI() throws Exception {
-        final String pathTemplate = "/projects/%s/wrappers/%d/launch";
+        final String pathTemplate = "/projects/%s/wrappers/%s/launch";
         final String project = "project";
 
         // Mock out command configuration (project)
@@ -336,7 +330,8 @@ public class LaunchRestApiTest {
         when(mockCommandResolutionService.preResolve(eq(project), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
                 .thenReturn(partiallyResolvedCommand);
 
-        final LaunchUi expectedLaunchUi = LaunchUi.SingleLaunchUi.create(partiallyResolvedCommand, mockCommandConfiguration.inputs());
+        final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,
+                mockCommandConfiguration.inputs(), mockDockerServerService.getServer(), false);
 
         final String path = String.format(pathTemplate, project, WRAPPER_ID);
         final MockHttpServletRequestBuilder request = get(path)
@@ -351,30 +346,5 @@ public class LaunchRestApiTest {
                 .getContentAsString();
 
         assertThat(response, is(mapper.writeValueAsString(expectedLaunchUi)));
-    }
-
-    @SuppressWarnings("unchecked")
-    private ArgumentMatcher<Map<String, String>> isMapWithEntry(final String key, final String value) {
-        return new ArgumentMatcher<Map<String, String>>() {
-            @Override
-            public boolean matches(final Object argument) {
-                if (argument == null || !Map.class.isAssignableFrom(argument.getClass())) {
-                    return false;
-                }
-                final Map<String, String> argumentMap = Maps.newHashMap();
-                try {
-                    argumentMap.putAll((Map)argument);
-                } catch (ClassCastException e) {
-                    return false;
-                }
-
-                for (final Map.Entry<String, String> entry : argumentMap.entrySet()) {
-                    if (entry.getKey().equals(key) && entry.getValue().equals(value)) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        };
     }
 }

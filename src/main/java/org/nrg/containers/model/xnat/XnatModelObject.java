@@ -63,16 +63,6 @@ public abstract class XnatModelObject {
     @JsonIgnore
     public abstract XFTItem getXftItem(final UserI userI);
 
-    @JsonIgnore
-    public String getExternalWrapperInputValue() {
-        return getUri();
-    }
-
-    @JsonIgnore
-    public String getDerivedWrapperInputValue() {
-        return getLabel();
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

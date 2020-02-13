@@ -133,15 +133,17 @@ The resolved input tree that results would look like this.
         ]
     }
 
-### Finding unique values from resolved input trees
+### Finding "unique" values from resolved input trees
 
-What do we do with all this complexity of the resolved input trees? At this time, the container service is written to require that all inputs need to eventually be resolved to a unique value. This means that one of the inputs that might have multiple values (for instance, the `scan` input in the example above) needs to have a matcher defined that can distinguish between the values (the `scan` input could have a matcher that checks the scan type), or that the user needs to send an additional parameter at runtime (the user could send the parameter `scan=1`, and that would signal to the container service which scan they want).
+What do we do with all this complexity of the resolved input trees? Originally, the container service was written to require that all inputs need to eventually be resolved to a unique value. This means that one of the inputs that might have multiple values (for instance, the `scan` input in the example above) needs to have a matcher defined that can distinguish between the values (the `scan` input could have a matcher that checks the scan type), or that the user needs to send an additional parameter at runtime (the user could send the parameter `scan=1`, and that would signal to the container service which scan they want). 
+
+In version 2.0.2, we have added the "multiple" parameter for derived inputs, which slightly relaxes this restriction in that it will flatten resolved multiple values into a list for a derived input that "provides-value-for-command-input" only (a.k.a., it cannot provide files for mount nor be the target of an output handler). This will be useful if you wish to pass, for example, all T1 scans into one FreeSurfer container for averaging. At runtime, though, there is still one (flattened) input value. For more, see the document on [command.json](https://wiki.xnat.org/display/CS/Command#Command-multiple-matches). 
 
 <ac:structured-macro ac:name="tip" ac:schema-version="1" ac:macro-id="9374bcc1-9eb9-457e-a5ee-8786bd50f97a"><ac:rich-text-body>
-In the future we may relax this restriction and allow all the multiplicity of input values. It could be possible to use all of the resolved input values, organize them into a list of distinct sets of values, and launch different containers for each set. We do not allow this now, because there is a lot of complexity to manage, but we could in principle. For more, see the document on [Bulk Launching Containers](https://wiki.xnat.org/display/CS/Bulk+Launching+Containers). This scenario I have outlined here is the `1->N` bulk launch.
+In the future we may further relax this restriction and allow all the multiplicity of input values. It could be possible to use all of the resolved input values, organize them into a list of distinct sets of values, and launch different containers for each set. We do not allow this now, because there is a lot of complexity to manage, but we could in principle. For more, see the document on [Bulk Launching Containers](https://wiki.xnat.org/display/CS/Bulk+Launching+Containers). This scenario I have outlined here is the `1->N` bulk launch.
 </ac:rich-text-body></ac:structured-macro>
 
-Once unique values are found, they are exracted from the resolved input tree structure and put into a simple map of input name to input value. More precisely, they are put into two maps: one that stores the raw input value, and another that stores the input value as it would appear in the command line string, which adds any command-line flags that are defined on the input object.
+Once "unique" values are found, they are exracted from the resolved input tree structure and put into a simple map of input name to input value. More precisely, they are put into two maps: one that stores the raw input value, and another that stores the input value as it would appear in the command line string, which adds any command-line flags (and multiple delimiters, if relevant) that are defined on the input object.
 
 ## Resolve Inputs
 
@@ -221,5 +223,5 @@ For each mount, we first check if an input has claimed to give files to the moun
 
 ### Command-line string
 
-The command-line string is resolved like any other template string in the command. The only difference is that, instead of input keys being replaced by the input's _value_, they get replaced by the input's value combined with its `command-line-flag` and `command-line-separator`.
+The command-line string is resolved like any other template string in the command. The only difference is that, instead of input keys being replaced by the input's _value_, they get replaced by the input's value combined with its `command-line-flag` and `command-line-separator`, and potentially the `multiple-delimiter`.
 

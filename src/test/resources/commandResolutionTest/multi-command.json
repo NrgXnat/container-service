@@ -1,0 +1,152 @@
+{
+    "name": "param-test",
+    "description": "Test resolving params",
+    "type": "docker",
+    "image": "busybox:latest",
+    "command-line": "echo #MULTI_FLAG1# #MULTI_FLAG2# #MULTI_QSPACE# #MULTI_QSPACE_FLAG# #MULTI_COMMA# #MULTI_SPACE# #MULTI_DEFAULT# #MULTI_COMMA_FLAG#",
+    "inputs": [
+        {
+            "name": "MULTI_FLAG1",
+            "type": "string",
+            "required": true,
+            "command-line-flag": "--flag",
+            "command-line-separator": "=",
+            "multiple-delimiter": "flag"
+        },
+        {
+            "name": "MULTI_FLAG2",
+            "type": "string",
+            "required": true,
+            "command-line-flag": "--flag",
+            "multiple-delimiter": "flag"
+        },
+        {
+            "name": "MULTI_QSPACE",
+            "type": "string",
+            "required": true,
+            "multiple-delimiter": "quoted-space"
+        },
+        {
+            "name": "MULTI_QSPACE_FLAG",
+            "type": "string",
+            "required": true,
+            "command-line-flag": "--flag",
+            "command-line-separator": "=",
+            "multiple-delimiter": "quoted-space"
+        },
+        {
+            "name": "MULTI_COMMA",
+            "type": "string",
+            "required": true,
+            "multiple-delimiter": "comma"
+        },
+        {
+            "name": "MULTI_SPACE",
+            "type": "string",
+            "required": true,
+            "multiple-delimiter": "space"
+        },
+        {
+            "name": "MULTI_DEFAULT",
+            "type": "string",
+            "required": true
+        },
+        {
+            "name": "MULTI_COMMA_FLAG",
+            "type": "string",
+            "required": true,
+            "command-line-flag": "-alt",
+            "command-line-separator": " ",
+            "multiple-delimiter": "comma"
+        }
+    ],
+    "xnat": [
+        {
+            "name": "multiple",
+            "label": "Dummy: Session multiple scan",
+            "description": "run the dummy command with a session with multiple scans",
+            "external-inputs": [
+                {
+                    "name": "session",
+                    "type": "Session",
+                    "required": true
+                }
+            ],
+            "derived-inputs": [
+                {
+                    "name": "scan1",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_FLAG1",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan2",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_FLAG2",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan3",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_QSPACE",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan3-2",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_QSPACE_FLAG",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan4",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_COMMA",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan4-2",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_COMMA_FLAG",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan5",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_SPACE",
+                    "required": true,
+                    "multiple": true
+                },
+                {
+                    "name": "scan6",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "MULTI_DEFAULT",
+                    "required": true,
+                    "multiple": true
+                }
+            ],
+            "output-handlers": []
+        }
+    ]
+}

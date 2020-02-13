@@ -2,7 +2,7 @@ package org.nrg.containers.events.listeners;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.events.model.SessionArchiveEvent;
+import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.security.helpers.Users;
@@ -31,21 +31,25 @@ public class SessionTransferredListener implements Consumer<Event<WorkflowStatus
     }
 
     //*
-    // Translate "Transferred" workflow event into SessionArchivedEvent for workflow events containing Session type
+    // Translate "Transferred" or "Merged" workflow event into SessionArchivedOrMergedEvent for workflow events containing Session type
     //*
     @Override
     public void accept(Event<WorkflowStatusEvent> event) {
         final WorkflowStatusEvent wfsEvent = event.getData();
 
-        if (StringUtils.equals(wfsEvent.getEventId(), "Transferred") && wfsEvent.getEntityType().contains("Session")) {
-            try {
-                final UserI user = Users.getUser(wfsEvent.getUserId());
-                final XnatImagesessiondata session = XnatImagesessiondata.getXnatImagesessiondatasById(wfsEvent.getEntityId(), user, true);
-                eventService.triggerEvent(SessionArchiveEvent.create(session, user));
-            } catch (UserNotFoundException e) {
-                log.warn("The specified user was not found: {}", wfsEvent.getUserId());
-            } catch (UserInitException e) {
-                log.error("An error occurred trying to retrieve the user for a workflow event: " + wfsEvent.getUserId(), e);
+        if (wfsEvent.getEntityType().contains("Session")) {
+            final String eventId = wfsEvent.getEventId();
+            if (SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.containsKey(eventId)) {
+                try {
+                    final UserI user = Users.getUser(wfsEvent.getUserId());
+                    final XnatImagesessiondata session = XnatImagesessiondata.getXnatImagesessiondatasById(wfsEvent.getEntityId(), user, true);
+                    eventService.triggerEvent(SessionMergeOrArchiveEvent.create(session, user,
+                            SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.get(eventId)));
+                } catch (UserNotFoundException e) {
+                    log.warn("The specified user was not found: {}", wfsEvent.getUserId());
+                } catch (UserInitException e) {
+                    log.error("An error occurred trying to retrieve the user for a workflow event: " + wfsEvent.getUserId(), e);
+                }
             }
         }
     }

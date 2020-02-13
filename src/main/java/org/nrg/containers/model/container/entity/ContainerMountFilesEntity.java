@@ -20,7 +20,6 @@ import java.util.Objects;
  * @deprecated Since 2.0.0
  */
 @Entity
-@Audited
 @Deprecated
 public class ContainerMountFilesEntity {
     private long id;

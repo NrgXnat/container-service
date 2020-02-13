@@ -11,9 +11,20 @@ import javax.annotation.Nonnull;
 public abstract class ServiceTaskEvent implements EventI {
     public abstract ServiceTask task();
     public abstract Container service();
+    public abstract EventType eventType();
+
+    public enum EventType {
+        ProcessTask,
+        Restart,
+        Waiting
+    }
 
     public static ServiceTaskEvent create(final @Nonnull ServiceTask task, final @Nonnull Container service) {
-        return new AutoValue_ServiceTaskEvent(task, service);
+        return create(task, service, EventType.ProcessTask);
+    }
+    public static ServiceTaskEvent create(final @Nonnull ServiceTask task, final @Nonnull Container service,
+                                          final EventType eventType) {
+        return new AutoValue_ServiceTaskEvent(task, service, eventType);
     }
 
 }

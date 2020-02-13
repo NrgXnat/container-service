@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.6"
+        vXnat = "1.7.7-SNAPSHOT"
     }
 }
 
@@ -15,8 +15,8 @@ plugins {
 group "org.nrg"
 version "2.1.1-SNAPSHOT"
 
-sourceCompatibility = 1.7
-targetCompatibility = 1.7
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
 
 def vMockito = "1.10.19"
 def vJavassist = "3.21.0-GA"
@@ -24,6 +24,7 @@ def vAwaitility = "2.0.0"
 
 repositories {
     jcenter()
+    mavenLocal()
     mavenCentral()
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
@@ -50,6 +51,7 @@ def vPowerMock = "1.7.0"
 def vGson = "2.8.1"
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
+def vH2 = "1.4.197"
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -93,16 +95,20 @@ dependencies {
         exclude group: "org.python"
         exclude group: "cglib"
     }
+
     implementation ("cglib:cglib:2.2.2") {
         exclude group: "asm"
     }
-
     implementation "org.springframework:spring-beans"
     implementation "org.springframework:spring-context"
     implementation "org.springframework:spring-core"
     implementation "org.springframework:spring-tx"
     implementation "org.springframework:spring-web"
     implementation "org.springframework:spring-webmvc"
+    implementation "org.springframework:spring-jms"
+    implementation "org.springframework:spring-messaging"
+    implementation group: 'javax.jms', name: 'javax.jms-api', version: '2.0.1'
+    implementation group: 'org.apache.activemq', name: 'activemq-all', version: '5.15.8'
 
     implementation "io.springfox:springfox-swagger2"
     implementation "io.springfox:springfox-swagger-ui"
@@ -116,6 +122,7 @@ dependencies {
 
     implementation "org.slf4j:slf4j-api"
     implementation "org.slf4j:slf4j-log4j12"
+    annotationProcessor "org.projectlombok:lombok"
     implementation "org.projectlombok:lombok"
 
     implementation "commons-lang:commons-lang"
@@ -143,7 +150,7 @@ dependencies {
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core"
     testImplementation "javax.servlet:javax.servlet-api"
-    testImplementation "com.h2database:h2"
+    testImplementation "com.h2database:h2:${vH2}"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "com.google.code.gson:gson:${vGson}"
@@ -152,6 +159,8 @@ dependencies {
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
+    testCompileOnly "org.projectlombok:lombok"
+    testAnnotationProcessor "org.projectlombok:lombok"
 }
 
 task unitTest( type: Test ) {
@@ -179,7 +188,7 @@ sourceSets.main.java {
 
 jar{
     doLast {
-        throw new GradleException("ERROR:  You should run fatJar instead of jar task for this plugin")
+        logger.warn 'WARNING: You should generally run fatJar instead of jar task for this plugin'
     }
 }
 

@@ -6,12 +6,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Function;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import com.google.common.collect.*;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
+import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommandMount;
 import org.nrg.containers.model.container.ContainerInputType;
@@ -21,21 +21,28 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.utils.JsonDateSerializer;
+import org.nrg.containers.utils.JsonStringToDateSerializer;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
+import org.nrg.xft.security.UserI;
+import org.nrg.xnat.utils.WorkflowUtils;
 
 import javax.annotation.Nullable;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import javax.validation.constraints.NotNull;
+import java.util.*;
 
+@Slf4j
 @AutoValue
 public abstract class Container {
     @JsonIgnore private String exitCode;
+    @JsonIgnore private List<ContainerHistory> sortedHist = null;
 
     @JsonProperty("id") public abstract long databaseId();
     @JsonProperty("command-id") public abstract long commandId();
     @Nullable @JsonProperty("status") public abstract String status();
+    @JsonSerialize(using=JsonDateSerializer.class)
     @Nullable @JsonProperty("status-time") public abstract Date statusTime();
     @JsonProperty("wrapper-id") public abstract long wrapperId();
     @Nullable @JsonProperty("container-id") public abstract String containerId();
@@ -63,11 +70,55 @@ public abstract class Container {
     @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
     @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
+    @Nullable @JsonProperty("swarm-constraints") public abstract List<String> swarmConstraints();
 
     @JsonIgnore
     public boolean isSwarmService() {
         final Boolean swarm = swarm();
         return swarm != null && swarm;
+    }
+
+    @JsonIgnore
+    public String containerOrServiceId() {
+        return isSwarmService() ? serviceId() : containerId();
+    }
+
+    @JsonIgnore
+    private synchronized List<ContainerHistory> getSortedHistory() {
+        if (sortedHist == null) {
+            sortedHist = Ordering.natural().reverse().sortedCopy(this.history()); //Descending order (most recent first)
+        }
+        return sortedHist;
+    }
+
+    @JsonIgnore
+    @Nullable
+    private ContainerHistory getLatestServiceHistory() {
+        List<ContainerHistory> relevantHistory = getSortedHistory();
+        for (ContainerHistory latestNonSysHistory : relevantHistory) {
+            if (latestNonSysHistory.entityType().equals("service")) {
+                return latestNonSysHistory;
+            }
+        }
+        return null;
+    }
+
+    @JsonIgnore
+    @NotNull
+    public ServiceTask makeTaskFromLastHistoryItem() throws ContainerException {
+        // We generally want exit code / status from a service history event
+        ContainerHistory hist = getLatestServiceHistory();
+        if (hist == null) {
+            List<ContainerHistory> sortedHistory = getSortedHistory();
+            if (sortedHistory.isEmpty()) {
+                // Must have at least one history item to get here, so this shouldn't happen, but...
+                throw new ContainerException("No history for container " + containerOrServiceId());
+            }
+            // We cannot pass a null history item into createFromHistoryAndService, so give it the latest one,
+            // even if it's not a service item
+            hist = sortedHistory.get(0);
+        }
+        return ServiceTask.createFromHistoryAndService(hist, this);
     }
 
     @JsonIgnore
@@ -79,7 +130,7 @@ public abstract class Container {
             //      did not contain an "exitCode" key
             // "0": success
             // "1" to "255": failure
-            for (final ContainerHistory history : this.history()) {
+            for (final ContainerHistory history : getSortedHistory()) {
                 if (history.exitCode() != null) {
                     exitCode = history.exitCode();
                     break;
@@ -87,6 +138,74 @@ public abstract class Container {
             }
         }
         return exitCode;
+    }
+
+    @JsonIgnore
+    @Nullable
+    public String lastHistoryStatus() {
+        return getSortedHistory().get(0).status();
+    }
+
+    @JsonIgnore
+    public int countRestarts() {
+        int restarts = 0;
+        for (ContainerHistory history : this.history()) {
+            if (history.isRestartStatus()) {
+                restarts++;
+            }
+        }
+        return restarts;
+    }
+
+    @JsonIgnore
+    @Nullable
+    public String getWorkflowStatus(UserI user) {
+        final PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(user, workflowId());
+        return workflow == null ? null : workflow.getStatus();
+    }
+
+    /**
+     * Get outputs in order such that an output that creates a data type (say an assessor or scan xml) will be earlier
+     * in the list than an output that uploads to that data type. Put differently, an output with
+     * "as-a-child-of": "some-other-output-handler" will be placed after the output handled by
+     * "some-other-output-handler" in this list.
+     *
+     * @return the ordered list of outputs
+     */
+    @JsonIgnore
+    public List<ContainerOutput> getOrderedOutputs() {
+        Map<String, ContainerOutput> outputsByHandler = new HashMap<>();
+        for (ContainerOutput out : this.outputs()) {
+            outputsByHandler.put(out.fromOutputHandler(), out);
+        }
+
+        List<ContainerOutput> orderedOutputs = new ArrayList<>();
+        for (ContainerOutput output : this.outputs()) {
+            addOutputAndDependencies(output, outputsByHandler, orderedOutputs);
+        }
+        return orderedOutputs;
+    }
+
+    /**
+     * Add any dependencies for an output and then the output itself to the ordered list of container outputs
+     * @param output            the output
+     * @param outputsByHandler  a map of handler names to outputs
+     * @param orderedOutputs    the ordered list of outputs
+     */
+    @JsonIgnore
+    private void addOutputAndDependencies(ContainerOutput output, Map<String, ContainerOutput> outputsByHandler,
+                                          List<ContainerOutput> orderedOutputs) {
+        ContainerOutput dependency;
+        // if output is handled by another output, then it has a dependency. If we haven't already added this dependency,
+        // we need to add it and any of its dependencies (hence the recursion)
+        if (outputsByHandler.containsKey(output.handledBy()) &&
+                !orderedOutputs.contains(dependency = outputsByHandler.get(output.handledBy()))) {
+            addOutputAndDependencies(dependency, outputsByHandler, orderedOutputs);
+        }
+        // if we haven't added the output itself to the list, do it now
+        if (!orderedOutputs.contains(output)) {
+            orderedOutputs.add(output);
+        }
     }
 
     @JsonCreator
@@ -118,7 +237,8 @@ public abstract class Container {
                                    @JsonProperty("log-paths") final List<String> logPaths,
                                    @JsonProperty("reserve-memory") final Long reserveMemory,
                                    @JsonProperty("limit-memory") final Long limitMemory,
-                                   @JsonProperty("limit-cpu") final Double limitCpu) {
+                                   @JsonProperty("limit-cpu") final Double limitCpu,
+                                   @JsonProperty("swarm-constraints") final List<String> swarmConstraints) {
 
         return builder()
                 .databaseId(databaseId)
@@ -150,6 +270,7 @@ public abstract class Container {
                 .reserveMemory(reserveMemory)
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
+                .swarmConstraints(swarmConstraints)
                 .build();
     }
 
@@ -220,6 +341,7 @@ public abstract class Container {
                 .reserveMemory(containerEntity.getReserveMemory())
                 .limitMemory(containerEntity.getLimitMemory())
                 .limitCpu(containerEntity.getLimitCpu())
+                .swarmConstraints(containerEntity.getSwarmConstraints())
                 .build();
     }
 
@@ -263,6 +385,7 @@ public abstract class Container {
                 .reserveMemory(resolvedCommand.reserveMemory())
                 .limitMemory(resolvedCommand.limitMemory())
                 .limitCpu(resolvedCommand.limitCpu())
+                .swarmConstraints(resolvedCommand.swarmConstraints())
                 .parentSourceObjectName(resolvedCommand.parentSourceObjectName());
     }
 
@@ -282,6 +405,8 @@ public abstract class Container {
         return inputs;
     }
 
+   
+    
     @JsonIgnore
     public Map<String, String> getCommandInputs() {
         return getInputs(ContainerInputType.COMMAND);
@@ -365,8 +490,12 @@ public abstract class Container {
 
     @JsonIgnore
     public String getLogPath(final String filename) {
+		String fullFileName = filename;
+		if (!filename.endsWith(".log")) {
+			fullFileName += ".log";
+		}
         for (final String path : logPaths()) {
-            if (path.endsWith(filename)) {
+            if (path.endsWith(fullFileName)) {
                 return path;
             }
         }
@@ -398,6 +527,7 @@ public abstract class Container {
         public abstract Builder reserveMemory(Long reserveMemory);
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
+        public abstract Builder swarmConstraints(List<String> swarmConstraints);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();
@@ -769,15 +899,20 @@ public abstract class Container {
     }
 
     @AutoValue
-    public static abstract class ContainerHistory {
+    public static abstract class ContainerHistory implements Comparable<ContainerHistory> {
         @Nullable @JsonProperty("id") public abstract Long databaseId();
         @JsonProperty("status") public abstract String status();
         @JsonProperty("entity-type") public abstract String entityType();
         @Nullable @JsonProperty("entity-id") public abstract String entityId();
+        @JsonSerialize(using=JsonDateSerializer.class)
         @JsonProperty("time-recorded") public abstract Date timeRecorded();
+        @JsonSerialize(using=JsonStringToDateSerializer.class)
         @Nullable @JsonProperty("external-timestamp") public abstract String externalTimestamp();
         @Nullable @JsonProperty("message") public abstract String message();
         @Nullable @JsonProperty("exitCode") public abstract String exitCode();
+
+        @JsonIgnore
+        public final static String restartStatus = "Restart";
 
         @JsonCreator
         public static ContainerHistory create(@JsonProperty("id") final long databaseId,
@@ -808,6 +943,7 @@ public abstract class Container {
                     .entityId(containerEntityHistory.getEntityId())
                     .timeRecorded(containerEntityHistory.getTimeRecorded())
                     .externalTimestamp(containerEntityHistory.getExternalTimestamp())
+                    .message(containerEntityHistory.getMessage())
                     .exitCode(containerEntityHistory.getExitCode())
                     .build();
         }
@@ -826,13 +962,21 @@ public abstract class Container {
 
         public static ContainerHistory fromSystem(final String status,
                                                   final String message) {
+            return fromSystem(status, message, null);
+        }
+
+        public static ContainerHistory fromSystem(final String status,
+                                                  final String message,
+                                                  final String exitCode) {
+            Date now = new Date();
             return builder()
                     .status(status)
                     .entityType("system")
                     .entityId(null)
-                    .timeRecorded(new Date())
-                    .externalTimestamp(null)
+                    .timeRecorded(now)
+                    .externalTimestamp(String.valueOf(now.getTime()))
                     .message(message)
+                    .exitCode(exitCode)
                     .build();
         }
 
@@ -848,6 +992,11 @@ public abstract class Container {
         }
 
         public static ContainerHistory fromServiceTask(final ServiceTask task) {
+            String message = StringUtils.defaultString(task.message(), "");
+            if (StringUtils.isNotBlank(message) && StringUtils.isNotBlank(task.err())) {
+                message += ": ";
+            }
+            message += StringUtils.defaultString(task.err(), "");
             return builder()
                     .entityType("service")
                     .entityId(null)
@@ -855,8 +1004,23 @@ public abstract class Container {
                     .exitCode(task.exitCode() == null ? null : String.valueOf(task.exitCode()))
                     .timeRecorded(new Date())
                     .externalTimestamp(task.statusTime() == null ? null : String.valueOf(task.statusTime().getTime()))
-                    .message(task.message())
+                    .message(message)
                     .build();
+        }
+
+        @Override
+        public int compareTo(@NotNull ContainerHistory other) {
+            Date thisTime = this.timeRecorded();
+            Date otherTime = other.timeRecorded();
+            if (thisTime == null || otherTime == null) {
+                return 0;
+            }
+            return thisTime.compareTo(otherTime);
+        }
+
+        @JsonIgnore
+        public boolean isRestartStatus() {
+            return status().equals(restartStatus);
         }
 
         public static Builder builder() {

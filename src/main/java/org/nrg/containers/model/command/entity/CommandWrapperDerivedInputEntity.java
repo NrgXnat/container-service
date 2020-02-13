@@ -14,13 +14,13 @@ import javax.persistence.ManyToOne;
 import java.util.Objects;
 
 @Entity
-@Audited
 public class CommandWrapperDerivedInputEntity {
     public static final CommandWrapperInputType DEFAULT_TYPE = CommandWrapperInputType.STRING;
 
     private long id;
     private CommandWrapperEntity commandWrapperEntity;
     private String name;
+    private String label;
     private String description;
     private CommandWrapperInputType type;
     private String matcher;
@@ -33,6 +33,7 @@ public class CommandWrapperDerivedInputEntity {
     private boolean required = false;
     private boolean loadChildren = true;
     private Boolean sensitive;
+    private boolean multiple = false;
 
     private String derivedFromWrapperInput;
     private String derivedFromXnatObjectProperty;
@@ -50,6 +51,7 @@ public class CommandWrapperDerivedInputEntity {
         this.setDerivedFromWrapperInput(commandWrapperInput.derivedFromWrapperInput());
         this.setDerivedFromXnatObjectProperty(commandWrapperInput.derivedFromXnatObjectProperty());
         this.setName(commandWrapperInput.name());
+        this.setLabel(commandWrapperInput.label());
         this.setDescription(commandWrapperInput.description());
         this.setMatcher(commandWrapperInput.matcher());
         this.setProvidesValueForCommandInput(commandWrapperInput.providesValueForCommandInput());
@@ -61,6 +63,7 @@ public class CommandWrapperDerivedInputEntity {
         this.setRequired(commandWrapperInput.required());
         this.setLoadChildren(commandWrapperInput.loadChildren());
         this.setSensitive(commandWrapperInput.sensitive());
+        this.setMultiple(commandWrapperInput.multiple());
         switch (commandWrapperInput.type()) {
             case "string":
                 this.setType(CommandWrapperInputType.STRING);
@@ -254,6 +257,22 @@ public class CommandWrapperDerivedInputEntity {
         this.sensitive = sensitive;
     }
 
+    public Boolean getMultiple() {
+        return multiple;
+    }
+
+    public void setMultiple(Boolean multiple) {
+        this.multiple = multiple != null && multiple;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -273,6 +292,7 @@ public class CommandWrapperDerivedInputEntity {
         return MoreObjects.toStringHelper(this)
                 .add("id", id)
                 .add("name", name)
+                .add("label", label)
                 .add("description", description)
                 .add("type", type)
                 .add("derivedFromWrapperInput", derivedFromWrapperInput)
@@ -287,6 +307,7 @@ public class CommandWrapperDerivedInputEntity {
                 .add("required", required)
                 .add("loadChildren", loadChildren)
                 .add("sensitive", sensitive)
+                .add("multiple", multiple)
                 .toString();
     }
 }

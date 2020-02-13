@@ -716,10 +716,6 @@ public class CommandRestApiTest {
                             .with(csrf())
                             .with(testSecurityContext());
 
-            // TODO This is the correct behavior, but it does not work. See CS-266.
-            // mockMvc.perform(request)
-            //         .andExpect(status().isUnauthorized());
-
             final String response =
                     mockMvc.perform(request)
                             .andExpect(status().isOk())

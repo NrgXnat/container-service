@@ -60,7 +60,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     }
     function queueCount($list){
         var numChecked = $list.find('input[type=checkbox]:checked').not('.selectable-select-all').length;
-        $(document).find('#queue-targets').html(numChecked);
+        $(document).find('#preferences-targets').html(numChecked);
     }
 
     projectSearchLauncher.confirmTargets = function(targetList, config){
@@ -97,7 +97,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     }
                     
                     inputArea.append(spawn('!',[
-                        spawn('h3', '<b id="queue-targets">' + targetList.length + '</b> '+config['root-element-name']+s+' queued for this container launch.'),
+                        spawn('h3', '<b id="preferences-targets">' + targetList.length + '</b> '+config['root-element-name']+s+' queued for this container launch.'),
                         spawn('p','Select some or all to launch on, or add filters to your search table.')
                         ]));
 
@@ -106,7 +106,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     inputArea.append(
                         spawn('!',[
                             spawn('input|type=hidden',{ name: 'root-element-name', value: config['root-element-name'] }),
-                            spawn('input|type=hidden',{ name: 'wrapper-id', value: config['wrapper-id'] })
+                            spawn('input|type=hidden',{ name: 'wrapper-id', value: config['wrapper-id'] }),
+                            spawn('input|type=hidden',{ name: 'command-id', value: config['command-id'] }),
+                            spawn('input|type=hidden',{ name: 'project-id', value: config['project-id'] })
                             ]));
                 },
                 buttons: [
@@ -116,8 +118,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         close: false,
                         action: function(obj){
                             var targets = [];
+                            var targetLabels = [];
                             obj.$modal.find('input.target').each(function(){
-                                if ($(this).prop('checked')) targets.push($(this).val());
+                                if ($(this).prop('checked')) {
+                                	var accessionId = $(this).val();
+                                	targets.push(accessionId);
+                                	targetLabels.push(obj.$modal.find('input[name=label-'+accessionId+']').val());
+                                 }
                             });
 
                             if (!targets.length) {
@@ -126,8 +133,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             } else {
                                 var rootElementName = obj.$modal.find('input[name=root-element-name]').val();
                                 var wrapperId = obj.$modal.find('input[name=wrapper-id]').val();
+                                var commandId = obj.$modal.find('input[name=command-id]').val();
+                                var projectId = obj.$modal.find('input[name=project-id]').val();
                                 XNAT.ui.dialog.closeAll();
-                                XNAT.plugin.containerService.launcher.bulkLaunchDialog(wrapperId,rootElementName,targets);
+                                XNAT.plugin.containerService.launcher.bulkLaunchDialog(wrapperId,rootElementName,targets,targetLabels,projectId);
                             }
                         }
                     },

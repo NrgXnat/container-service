@@ -17,6 +17,7 @@ public abstract class ResolvedCommandMount {
     @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
     @Nullable @JsonProperty("from-uri") public abstract String fromUri();
     @Nullable @JsonProperty("from-root-directory") public abstract String fromRootDirectory();
+    @Nullable @JsonProperty("from-file-path") public abstract String fromFilePath();
 
     public static Builder builder() {
         return new AutoValue_ResolvedCommandMount.Builder();
@@ -40,6 +41,7 @@ public abstract class ResolvedCommandMount {
         public abstract Builder viaSetupCommand(String viaSetupCommand);
         public abstract Builder fromUri(String fromUri);
         public abstract Builder fromRootDirectory(String fromRootDirectory);
+        public abstract Builder fromFilePath(String fromFilePath);
 
         public abstract ResolvedCommandMount build();
     }

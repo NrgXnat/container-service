@@ -1,44 +1,9 @@
 package org.nrg.containers.services.impl;
 
-import com.google.common.base.Function;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.nrg.action.ClientException;
-import org.nrg.action.ServerException;
-import org.nrg.containers.api.ContainerControlApi;
-import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.exceptions.UnauthorizedException;
-import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.container.auto.Container.ContainerMount;
-import org.nrg.containers.model.container.auto.Container.ContainerOutput;
-import org.nrg.containers.services.ContainerFinalizeService;
-import org.nrg.containers.services.ContainerService;
-import org.nrg.containers.utils.ContainerUtils;
-import org.nrg.xdat.om.XnatResourcecatalog;
-import org.nrg.xdat.preferences.SiteConfigPreferences;
-import org.nrg.xdat.security.helpers.Permissions;
-import org.nrg.xft.XFTItem;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
-import org.nrg.xft.security.UserI;
-import org.nrg.xft.utils.FileUtils;
-import org.nrg.xnat.helpers.uri.URIManager;
-import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.restlet.util.XNATRestConstants;
-import org.nrg.xnat.services.archive.CatalogService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 
-import javax.annotation.Nullable;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
+import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,8 +15,53 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
+import javax.annotation.Nullable;
+
+import com.spotify.docker.client.messages.swarm.TaskStatus;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.nrg.action.ClientException;
+import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.jms.requests.ContainerRequest;
+import org.nrg.containers.model.command.entity.CommandType;
+import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.auto.Container.ContainerMount;
+import org.nrg.containers.model.container.auto.Container.ContainerOutput;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.utils.ContainerUtils;
+import org.nrg.mail.services.MailService;
+import org.nrg.xdat.om.XnatExperimentdata;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatResourcecatalog;
+import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.helpers.Permissions;
+import org.nrg.xft.XFTItem;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
+import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.xft.security.UserI;
+import org.nrg.xft.utils.FileUtils;
+import org.nrg.xnat.helpers.uri.URIManager;
+import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.restlet.util.XNATRestConstants;
+import org.nrg.xnat.services.archive.CatalogService;
+import org.nrg.xnat.turbine.utils.ArchivableItem;
+import org.nrg.xnat.utils.WorkflowUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.google.common.base.Function;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -60,16 +70,19 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     private final ContainerControlApi containerControlApi;
     private final SiteConfigPreferences siteConfigPreferences;
     private final CatalogService catalogService;
+    private final MailService mailService;
 
     private final Pattern experimentUri = Pattern.compile("^(/archive)?/experiments/([^/]+)$");
 
     @Autowired
     public ContainerFinalizeServiceImpl(final ContainerControlApi containerControlApi,
                                         final SiteConfigPreferences siteConfigPreferences,
-                                        final CatalogService catalogService) {
+                                        final CatalogService catalogService,
+                                        final MailService mailService) {
         this.containerControlApi = containerControlApi;
         this.siteConfigPreferences = siteConfigPreferences;
         this.catalogService = catalogService;
+        this.mailService = mailService;
     }
 
     @Override
@@ -77,6 +90,73 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         final ContainerFinalizeHelper helper =
                 new ContainerFinalizeHelper(toFinalize, userI, isFailed, wrapupContainers);
         return helper.finalizeContainer();
+    }
+
+    @Override
+    public void sendContainerStatusUpdateEmail(UserI userI,
+                                               boolean completionStatus,
+                                               String pipelineName,
+                                               String xnatId,
+                                               String xnatLabel,
+                                               String project,
+                                               @Nullable List<String> filePaths) {
+        String admin = siteConfigPreferences.getAdminEmail();
+        String status = completionStatus ? "Completed" : "Failed";
+        String subject = pipelineName + " update: " + status + " processing of " +
+                (xnatLabel !=null ? xnatLabel : xnatId) + " in project " + project;
+        Map<String, File> attachments = new HashMap<String, File>();
+        if (filePaths != null) {
+            for (String fPath : filePaths) {
+                File f = new File(fPath);
+                if (f.exists() && f.isFile()) {
+                    attachments.put(f.getName(), f);
+                }
+            }
+        }
+        boolean hasAttachments = false;
+        if (attachments.size() > 0) {
+            hasAttachments = true;
+        }
+        String emailHTMLBody = composeHTMLBody(pipelineName, status, xnatId, xnatLabel, project, hasAttachments);
+        String emailText = composeEmailText(pipelineName, status, xnatId, xnatLabel, project, hasAttachments);
+
+        try {
+            mailService.sendHtmlMessage(admin, new String[]{userI.getEmail()}, new String[]{admin},null, subject, emailHTMLBody, emailText, attachments);
+        } catch (Exception exception) {
+            log.error("Send failed. Retrying by sending each email individually.", exception);
+            int successfulSends = 0;
+            try {
+                mailService.sendHtmlMessage(admin, new String[]{admin}, null, null, subject, emailHTMLBody, emailText, attachments);
+                successfulSends++;
+            } catch (Exception e) {
+                log.error("Unable to send mail to " + admin + ".", e);
+            }
+            if (successfulSends == 0) {
+                log.error("Unable to send mail", exception);
+            }
+        }
+    }
+
+    private String composeHTMLBody(String pipeline_name,String status,String xnatId, String xnatLabel, String project, boolean hasAttachments) {
+        String htmlTxt  = "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("<html>");
+        sb.append("<body>");
+        sb.append(pipeline_name + " processing for " + (xnatLabel==null?xnatId:xnatLabel) +" in project " + project + " has " + status.toLowerCase());
+        if (hasAttachments)
+            sb.append("<br/> Log files generated by the processing are attached.");
+        sb.append("</body>");
+        sb.append("</html>");
+        htmlTxt = sb.toString();
+        return htmlTxt;
+    }
+
+    private String composeEmailText(String pipeline_name,String status,String xnatId, String xnatLabel, String project, boolean hasAttachments) {
+        String txt  = "";
+        txt = pipeline_name + " processing for " + (xnatLabel==null?xnatId:xnatLabel) +" has " + status.toLowerCase();
+        if (hasAttachments)
+            txt += "Log files generated by the processing are attached.";
+        return txt;
     }
 
     private class ContainerFinalizeHelper {
@@ -122,41 +202,101 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
 
         private Container finalizeContainer() {
             final Container.Builder finalizedContainerBuilder = toFinalize.toBuilder();
-            finalizedContainerBuilder.logPaths(uploadLogs());
+            List<String> logPaths = uploadLogs();
+            finalizedContainerBuilder.logPaths(logPaths);
+            String workFlowId = toFinalize.workflowId();
+            PersistentWorkflowI wrkFlow = (StringUtils.isNotBlank(workFlowId)) ?
+                    WorkflowUtils.getUniqueWorkflow(userI, workFlowId) : null;
+            String xnatLabel = null;
+            String xnatId = null;
+            String project = null;
+            String pipeline_name = null;
+            Integer eventId = null;
+            if (wrkFlow != null) {
+                xnatId = wrkFlow.getId();
+                project   = wrkFlow.getExternalid();
+                pipeline_name = wrkFlow.getPipelineName();
+                eventId = wrkFlow.buildEvent().getEventId().intValue();
+                try {
+                    XnatExperimentdata exp = XnatExperimentdata.getXnatExperimentdatasById(xnatId, userI, false);
+                    xnatLabel = exp != null ? exp.getLabel() : null;
+                	if (xnatLabel == null){
+                    	XnatSubjectdata sub = XnatSubjectdata.getXnatSubjectdatasById(xnatId, userI, false);
+                        xnatLabel = sub != null ? sub.getLabel() : null;
+                	}
+                	if (xnatLabel == null) {
+                	    XnatProjectdata proj = XnatProjectdata.getProjectByIDorAlias(xnatId, userI, false);
+                        xnatLabel = proj != null ? proj.getId() : null;
+                    }
+                } catch(Exception e) {
+                	log.error("Unable to get the XNAT Label for " + xnatId);
+                }
+            }
 
-            if (!isFailed) {
-                // Do not try to upload outputs if we know the container failed.
+            String status = null;
+            String details = "";
+            boolean processingCompleted = !isFailed;
+
+            if (processingCompleted) {
+                // Upload outputs if processing completed successfully
                 for (final ContainerMount mountOut : toFinalize.mounts()) {
                     outputMounts.put(mountOut.name(), mountOut);
                 }
 
-                final OutputsAndExceptions outputsAndExceptions = uploadOutputs();
+                final OutputsAndExceptions outputsAndExceptions = uploadOutputs(eventId);
                 final List<Exception> failedRequiredOutputs = outputsAndExceptions.exceptions;
+                status = PersistentWorkflowUtils.COMPLETE;
+                Date statusTime = new Date();
                 if (!failedRequiredOutputs.isEmpty()) {
-                    final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory.fromSystem("Failed",
-                            "Failed to upload required outputs.\n" + Joiner.on("\n").join(Lists.transform(failedRequiredOutputs, new Function<Exception, String>() {
-                                @Override
-                                public String apply(final Exception input) {
-                                    return input.getMessage();
-                                }
-                            })));
+                    details = "Failed to upload required outputs.\n" + Joiner.on("\n").join(Lists.transform(failedRequiredOutputs, new Function<Exception, String>() {
+                        @Override
+                        public String apply(final Exception input) {
+                            return input.getMessage();
+                        }
+                    }));
+                    final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED + " (Upload)",
+                            details);
+                    status = failedHistoryItem.status();
+                    statusTime = failedHistoryItem.timeRecorded();
                     finalizedContainerBuilder.addHistoryItem(failedHistoryItem)
-                            .outputs(outputsAndExceptions.outputs)
-                            .status(failedHistoryItem.status())
                             .statusTime(failedHistoryItem.timeRecorded());
-                } else {
-                    finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
-                            .status("Complete")
-                            .statusTime(new Date());
                 }
-
-                ContainerUtils.updateWorkflowStatus(toFinalize.workflowId(), PersistentWorkflowUtils.COMPLETE, userI);
+                finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
+                        .status(status)
+                        .statusTime(statusTime);
             } else {
-                // TODO We know the container has failed. Should we send an email?
-                ContainerUtils.updateWorkflowStatus(toFinalize.workflowId(), PersistentWorkflowUtils.FAILED, userI);
-                finalizedContainerBuilder.status("Failed")
-                        .addHistoryItem(Container.ContainerHistory.fromSystem("Failed", ""))
+                // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
+                for (Container.ContainerHistory history : toFinalize.history()) {
+                    String containerStatus = history.status();
+                    containerStatus = containerStatus != null ?
+                            containerStatus.replaceAll("^" + ContainerRequest.inQueueStatusPrefix, "")
+                                    .replaceFirst(ContainerServiceImpl.WAITING + " \\(([^)]*)\\)", "$1")
+                            : "";
+                    if (containerStatus.startsWith(PersistentWorkflowUtils.FAILED)) {
+                        status = containerStatus;
+                    } else if ((containerStatus.equals(TaskStatus.TASK_STATE_FAILED) || containerStatus.equals("die")) &&
+                            StringUtils.isNotBlank(history.message())) {
+                        details = history.message();
+                    }
+                }
+                if (status == null || !status.startsWith(PersistentWorkflowUtils.FAILED)) {
+                    // If it's not an XNAT failure status, we need to make it so
+                    status = PersistentWorkflowUtils.FAILED;
+                }
+                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details));
+                finalizedContainerBuilder.status(status)
                         .statusTime(new Date());
+
+                if (StringUtils.isBlank(details)) {
+                    details = "Non-zero exit code and/or failure status from container";
+                }
+            }
+
+            ContainerUtils.updateWorkflowStatus(toFinalize.workflowId(), status, userI, details);
+            if (!processingCompleted || CommandType.DOCKER.getName().equals(toFinalize.subtype())) {
+                // only send emails for the parent container or if processing failed
+                sendContainerStatusUpdateEmail(userI, processingCompleted, pipeline_name,
+                        xnatId, xnatLabel, project, logPaths);
             }
 
             return finalizedContainerBuilder.build();
@@ -173,10 +313,11 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
 
                 final String archivePath = siteConfigPreferences.getArchivePath(); // TODO find a place to upload this thing. Root of the archive if sitewide, else under the archive path of the root object
                 if (StringUtils.isNotBlank(archivePath)) {
+                    final String subtype = StringUtils.defaultIfBlank(toFinalize.subtype(), "");
                     final SimpleDateFormat formatter = new SimpleDateFormat(XNATRestConstants.PREARCHIVE_TIMESTAMP);
                     final String datestamp = formatter.format(new Date());
                     final String containerExecPath = FileUtils.AppendRootPath(archivePath, "CONTAINER_EXEC/");
-                    final String destinationPath = containerExecPath + datestamp + "/LOGS/";
+                    final String destinationPath = containerExecPath + datestamp + "/LOGS/" + subtype;
                     final File destination = new File(destinationPath);
                     destination.mkdirs();
 
@@ -202,9 +343,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 }
             }
 
-            if (log.isDebugEnabled()) {
-                log.debug("Adding log paths to container");
-            }
+            log.debug("Adding log paths to container");
             return logPaths;
         }
 
@@ -226,14 +365,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             return null;
         }
 
-        private OutputsAndExceptions uploadOutputs() {
+        private OutputsAndExceptions uploadOutputs(@Nullable Integer uploadEventId) {
             log.info(prefix + "Uploading outputs.");
 
             final List<ContainerOutput> outputs = Lists.newArrayList();
             final List<Exception> exceptions = Lists.newArrayList();
-            for (final ContainerOutput nonUploadedOuput: toFinalize.outputs()) {
+            for (final ContainerOutput nonUploadedOuput: toFinalize.getOrderedOutputs()) {
                 try {
-                    outputs.add(uploadOutput(nonUploadedOuput));
+                    outputs.add(uploadOutput(nonUploadedOuput, uploadEventId));
                 } catch (UnauthorizedException | ContainerException | RuntimeException e) {
                     log.error("Cannot upload files for command output " + nonUploadedOuput.name(), e);
                     if (nonUploadedOuput.required()) {
@@ -247,7 +386,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             return new OutputsAndExceptions(outputs, exceptions);
         }
 
-        private ContainerOutput uploadOutput(final ContainerOutput output) throws ContainerException, UnauthorizedException {
+        private ContainerOutput uploadOutput(final ContainerOutput output, @Nullable Integer uploadEventId)
+                throws ContainerException, UnauthorizedException {
             log.info(prefix + "Uploading output \"{}\".", output.name());
             log.debug("{}", output);
 
@@ -325,13 +465,15 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                         throw new UnauthorizedException(message);
                     }
 
-                    final XnatResourcecatalog resourcecatalog = catalogService.insertResources(userI, parentUri, toUpload, true, label, null, output.format(), null);
+                    final XnatResourcecatalog resourcecatalog = catalogService.insertResources(userI, parentUri,
+                            toUpload, uploadEventId, true, true,
+                            label, null, output.format(), null);
                     createdUri = UriParserUtils.getArchiveUri(resourcecatalog);
                     if (StringUtils.isBlank(createdUri)) {
                         createdUri = parentUri + "/resources/" + resourcecatalog.getLabel();
                     }
                 } catch (ClientException e) {
-                    final String message = String.format(prefix + "User does not have permission to add resources to item with URI %s.", parentUri);
+                    final String message = String.format(prefix + ": " + e.getMessage(), parentUri);
                     log.error(message);
                     throw new UnauthorizedException(message);
                 } catch (Exception e) {
@@ -339,54 +481,58 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                     log.error(message);
                     throw new ContainerException(message, e);
                 }
+                //Insert Resources does a refresh catalog action.
+                //try {
+                //    catalogService.refreshResourceCatalog(userI, createdUri);
+                //} catch (ServerException | ClientException e) {
+                //    final String message = String.format(prefix + "Could not refresh catalog for resource %s.", createdUri);
+                //    log.error(message, e);
+                //}
+            } else if (CommandWrapperOutputEntity.Type.xmlUploadTypes().contains(type)) {
 
-                try {
-                    catalogService.refreshResourceCatalog(userI, createdUri);
-                } catch (ServerException | ClientException e) {
-                    final String message = String.format(prefix + "Could not refresh catalog for resource %s.", createdUri);
-                    log.error(message, e);
-                }
-            } else if (type.equals(ASSESSOR.getName())) {
-
-                final ContainerMount mount = getMount(output.mount());
-                final String absoluteFilePath = FilenameUtils.concat(mount.xnatHostPath(), output.path());
-                final InputStream fileInputStream;
-                try {
-                    fileInputStream = new FileInputStream(absoluteFilePath);
-                } catch (FileNotFoundException e) {
-                    final String message = prefix + String.format("Could not read file from mount %s at path %s.", mount.name(), output.path());
-                    log.error(message);
-                    throw new ContainerException(message, e);
-                }
-
-                XFTItem item;
-                try {
-                    item = catalogService.insertXmlObject(userI, fileInputStream, true, Collections.<String, Object>emptyMap());
-                } catch (Exception e) {
-                    final String message = prefix + String.format("Could not insert object from XML file from mount %s at path %s.", mount.name(), output.path());
-                    log.error(message);
-                    throw new ContainerException(message, e);
-                }
-
-                if (item == null) {
-                    final String message = prefix + String.format("An unknown error occurred creating object from XML file from mount %s at path %s.", mount.name(), output.path());
+                File itemXml;
+                if (toUpload.size() != 1 || !(itemXml = toUpload.get(0)).getName().matches(".*\\.xml$")) {
+                    final String message = prefix + "Expecting precisely one xml file to upload for " + type +
+                            "; found " + toUpload;
                     log.error(message);
                     throw new ContainerException(message);
                 }
 
-                final String createdUriThatNeedsToBeChecked = UriParserUtils.getArchiveUri(item);
+                log.debug("{}Inserting {}.\n\tuser: {}\n\tparentUri: {}\n\tlabel: {}\n\txml: {}",
+                        prefix, type, userI.getLogin(), parentUri, label, itemXml);
 
-                // The URI that is returned from UriParserUtils is technically correct, but doesn't work very well.
-                // It is of the form /experiments/{assessorId}. If we try to upload resources to it, that will fail.
-                // We have to manually turn it into a URI of the form /experiments/{sessionId}/assessors/{assessorId}.
-                final Matcher createdUriMatchesExperimentUri = experimentUri.matcher(createdUriThatNeedsToBeChecked);
-                createdUri = createdUriMatchesExperimentUri.matches() ?
-                        String.format("%s/assessors/%s", parentUri, createdUriMatchesExperimentUri.group(2)) :
-                        createdUriThatNeedsToBeChecked;
+                try {
+                    // Get item from xml
+                    XFTItem item = catalogService.insertXmlObject(userI, itemXml,
+                            true, Collections.<String, Object>emptyMap(), uploadEventId);
 
+                    if (item == null) {
+                        throw new Exception();
+                    }
+
+                    createdUri = UriParserUtils.getArchiveUri(item);
+
+                    if (type.equals(ASSESSOR.getName())) {
+                        // The URI that is returned from UriParserUtils is technically correct, but doesn't work very well.
+                        // It is of the form /experiments/{assessorId}. If we try to upload resources to it, that will fail.
+                        // We have to manually turn it into a URI of the form /experiments/{sessionId}/assessors/{assessorId}.
+                        final Matcher createdUriMatchesExperimentUri = experimentUri.matcher(createdUri);
+                        createdUri = createdUriMatchesExperimentUri.matches() ?
+                                String.format("%s/assessors/%s", parentUri, createdUriMatchesExperimentUri.group(2)) :
+                                createdUri;
+                    }
+                } catch (IOException e) {
+                    final String message = prefix + "Could not read " + itemXml;
+                    log.error(message);
+                    throw new ContainerException(message, e);
+                } catch (Exception e) {
+                    final String message = prefix + "Could not insert item from XML file " + itemXml;
+                    log.error(message);
+                    throw new ContainerException(message, e);
+                }
             }
 
-            log.info(prefix + "Done uploading output \"{}\". URI of created output: {}", output.name(), createdUri);
+            log.info("{}Done uploading output \"{}\". URI of created item: {}", prefix, output.name(), createdUri);
 
             // We use the "fromOutputHandler" property here rather than name. The reason is that we will be looking
             // up the value later based on what users set in subsequent handers' "handled-by" properties, and the value

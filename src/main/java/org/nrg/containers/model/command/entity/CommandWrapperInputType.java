@@ -45,4 +45,19 @@ public enum CommandWrapperInputType {
             }
         });
     }
+
+    @Nullable
+    public static CommandWrapperInputType fromName(String text) {
+        for (CommandWrapperInputType e : CommandWrapperInputType.values()) {
+            if (e.name.equalsIgnoreCase(text)) {
+                return e;
+            }
+        }
+        return null;
+    }
+
+    public static List<String> xnatTypeNames() {
+        return Arrays.asList(DIRECTORY.getName(), FILE.getName(), FILES.getName(), PROJECT.getName(), SUBJECT.getName(),
+                SESSION.getName(), SCAN.getName(), ASSESSOR.getName(), RESOURCE.getName(), CONFIG.getName());
+    }
 }

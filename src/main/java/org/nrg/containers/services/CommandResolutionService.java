@@ -17,47 +17,31 @@ public interface CommandResolutionService {
                                         Map<String, String> inputValues,
                                         final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
     PartiallyResolvedCommand preResolve(long commandId,
                                         String wrapperName,
                                         Map<String, String> inputValues,
                                         final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
     PartiallyResolvedCommand preResolve(String project,
                                         long wrapperId,
                                         Map<String, String> inputValues,
                                         final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
     PartiallyResolvedCommand preResolve(String project,
                                         long commandId,
                                         String wrapperName,
                                         Map<String, String> inputValues,
                                         final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
     PartiallyResolvedCommand preResolve(ConfiguredCommand configuredCommand,
                                         Map<String, String> inputValues,
                                         UserI userI)
             throws CommandResolutionException, UnauthorizedException;
 
-    ResolvedCommand resolve(long commandId,
-                            String wrapperName,
-                            Map<String, String> inputValues,
-                            UserI userI)
-            throws NotFoundException, CommandResolutionException, UnauthorizedException;
-    ResolvedCommand resolve(long wrapperId,
-                            Map<String, String> inputValues,
-                            UserI userI)
-            throws NotFoundException, CommandResolutionException, UnauthorizedException;
-    ResolvedCommand resolve(String project,
-                            long commandId,
-                            String wrapperName,
-                            Map<String, String> inputValues,
-                            UserI userI)
-            throws NotFoundException, CommandResolutionException, UnauthorizedException;
-    ResolvedCommand resolve(String project,
-                            long wrapperId,
-                            Map<String, String> inputValues,
-                            UserI userI)
-            throws NotFoundException, CommandResolutionException, UnauthorizedException;
     ResolvedCommand resolve(ConfiguredCommand configuredCommand,
                             Map<String, String> inputValues,
                             UserI userI)
