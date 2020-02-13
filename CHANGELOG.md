@@ -8,9 +8,11 @@
 
 ### Bugfixes
 
+[CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution.
+
 ### Other
 
-
+[CS-592]: https://issues.xnat.org/browse/CS-592
 
 ## 2.1.0
 

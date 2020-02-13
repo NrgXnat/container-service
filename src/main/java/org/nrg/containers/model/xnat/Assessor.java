@@ -88,9 +88,13 @@ public class Assessor extends XnatModelObject {
         }
 
         this.resources = Lists.newArrayList();
-        for (final XnatAbstractresourceI xnatAbstractresourceI : xnatImageassessordataI.getResources_resource()) {
+        List<XnatAbstractresourceI> assessorResources = xnatImageassessordataI.getResources_resource();
+        if(assessorResources == null || assessorResources.size() == 0){
+            assessorResources = xnatImageassessordataI.getOut_file();
+        }
+        for (final XnatAbstractresourceI xnatAbstractresourceI : assessorResources) {
             if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
-                resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, this.uri, rootArchivePath));
+                this.resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, this.uri, rootArchivePath));
             }
         }
     }
