@@ -39,7 +39,7 @@ import com.fasterxml.jackson.datatype.guava.GuavaModule;
         name = "containers",
         description = "Container Service",
         entityPackages = "org.nrg.containers",
-        logConfigurationFile = "META-INF/resources/containers-logback.xml",
+        logConfigurationFile = "META-INF/resources/logback.xml",
         version = ""
 )
 @ComponentScan(value = "org.nrg.containers",

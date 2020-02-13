@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.0.2
+## 2.1.1
 
-Not yet released
+[Not yet released]
 
 ### Features
 
@@ -21,8 +21,6 @@ Not yet released
 * [CS-583][]: Add option to automatically remove containers/services after they've been finalized
 
 ### Bugfixes
-
-* [CS-440][] Fixed an issue which caused guest users to see authentication dialog on public projects.
 * Remove @Audited annotations to prevent database size explosion
 * Mannually set swarm service names since auto-generated ones can clash on high throughput
 * Allow removal of inputs, outputs, wrappers, external inputs, derived inputs, and output handlers from command.json via API
@@ -32,20 +30,41 @@ Not yet released
 * [CS-577][]: Ports, hash, and index fields of command.json can now be updated
 * [CS-578][]: Enforce ordering on uploading outputs so that we never try to upload to an object that has yet to be inserted
 * [CS-580][]: Add client-side validation for required inputs
-* [CS-572][]: Change command listing permissions to require only project-read permissions. Viewing the "Run containers" action is still restricted by item "canEdit" permissions, although this does need to be modified since, for example, a custom user group ought to be able to read an MR session and write a QC assessor by launching a container on the read-only session
-
 
 ### Other
 
-[CS-440]: https://issues.xnat.org/browse/CS-440
+
 [CS-54]: https://issues.xnat.org/browse/CS-54
 [CS-575]: https://issues.xnat.org/browse/CS-575
 [CS-576]: https://issues.xnat.org/browse/CS-576
 [CS-577]: https://issues.xnat.org/browse/CS-577
 [CS-578]: https://issues.xnat.org/browse/CS-578
 [CS-580]: https://issues.xnat.org/browse/CS-580
-[CS-572]: https://issues.xnat.org/browse/CS-572
 [CS-583]: https://issues.xnat.org/browse/CS-583
+
+
+
+## 2.1.0
+
+[Released 2020-01-21](https://github.com/NrgXnat/container-service/releases/tag/2.1.0).
+
+Along with several bug fixes, this release focuses on permissions updates required for compatibility with XNAT 1.7.6.  These updates break backward compatibility with previous versions of XNAT (<1.7.6). Users of XNAT 1.7.5.x should use [Container Service 2.0.1](https://github.com/NrgXnat/container-service/releases/tag/2.0.1).
+
+### Bugfixes
+
+* [CS-440][] Fixed an issue which caused guest users to see authentication dialog on public projects.
+* [CS-572][]: Change command listing permissions to require only project-read permissions. Viewing the "Run containers" action is still restricted by item "canEdit" permissions, although this does need to be modified since, for example, a custom user group ought to be able to read an MR session and write a QC assessor by launching a container on the read-only session.
+* [CS-584][]: Fixed bug which kept external and derived input replacement-key values from propagating to the command line.
+
+### Updates
+
+* [CS-585][]: Updated permissions model and h2 database parameters (in unit tests) to align with XNAT 1.7.6 requirements
+
+
+[CS-440]: https://issues.xnat.org/browse/CS-440
+[CS-572]: https://issues.xnat.org/browse/CS-572
+[CS-584]: https://issues.xnat.org/browse/CS-584
+[CS-585]: https://issues.xnat.org/browse/CS-585
 
 
 
@@ -102,7 +121,6 @@ Not yet released
 [CS-550]: https://issues.xnat.org/browse/CS-550
 [CS-557]: https://issues.xnat.org/browse/CS-557
 [CS-558]: https://issues.xnat.org/browse/CS-558
-
  
 ## 1.6.0
 

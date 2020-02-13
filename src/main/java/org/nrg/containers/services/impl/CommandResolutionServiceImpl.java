@@ -2538,8 +2538,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 throws CommandResolutionException {
             log.debug("Resolving template: \"{}\".", template);
 
-            if (StringUtils.isBlank(template)) {
+            if (template == null || StringUtils.isBlank(template)) {
                 log.debug("Template is blank.");
+                return template;
+            }
+            if (valuesMap == null || valuesMap.size() == 0) {
+                log.debug("No template replacement values found.");
                 return template;
             }
 
