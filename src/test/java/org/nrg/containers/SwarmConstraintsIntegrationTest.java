@@ -52,6 +52,7 @@ import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
@@ -66,15 +67,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
 import static org.powermock.api.mockito.PowerMockito.*;
 
 @Slf4j
@@ -107,6 +114,8 @@ public class SwarmConstraintsIntegrationTest {
 
     private static DockerClient CLIENT;
 
+    private List<DockerServerBase.DockerServerSwarmConstraint> constraints;
+
     @Autowired private CommandService commandService;
     @Autowired private ContainerService containerService;
     @Autowired private DockerControlApi controlApi;
@@ -115,6 +124,7 @@ public class SwarmConstraintsIntegrationTest {
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;
+    @Autowired private CatalogService mockCatalogService;
     @Autowired private ObjectMapper mapper;
 
     private CommandWrapper sleeperWrapper;
@@ -188,6 +198,9 @@ public class SwarmConstraintsIntegrationTest {
         PowerMockito.spy(PersistentWorkflowUtils.class);
         doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(FakeWorkflow.defaultEventId),
                 eq(mockUser), Mockito.any(XFTItem.class), Mockito.any(EventDetails.class));
+
+        // mock external FS check
+        when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
 
         // Setup docker server
         final String defaultHost = "unix:///var/run/docker.sock";
@@ -313,6 +326,149 @@ public class SwarmConstraintsIntegrationTest {
     @Test
     @DirtiesContext
     public void testThatServicesRunWithCorrectConstraintsAndNotOtherwise() throws Exception {
+        LaunchUi.LaunchUiServerConstraintSelected selConstr = setupServerWithConstraints();
+        Map<String, String> userInputs = new HashMap<>();
+        userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
+                mapper.writeValueAsString(Collections.singletonList(selConstr)));
+
+        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
+                0L, null, userInputs, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        containersToCleanUp.add(service.serviceId());
+        await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
+
+        // Now update it so that it fails
+        NodeInfo nodeInfo = CLIENT.inspectNode(managerNode.id());
+        NodeSpec noRunSpec = NodeSpec.builder(managerNode.spec())
+                .addLabel(selConstr.attribute().replace("node.labels.", ""),
+                        "NOT" + selConstr.value())
+                .build();
+        CLIENT.updateNode(managerNode.id(), nodeInfo.version().index(), noRunSpec);
+
+        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
+                0L, null, userInputs, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        Container service2 = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        containersToCleanUp.add(service2.serviceId());
+        Thread.sleep(11000L); // > 10s since that seems to be enough for a service to get running
+        assertThat(TestingUtils.serviceIsRunning(CLIENT, service2, true).call(), is(false));
+        assertThat(containerService.get(service2.serviceId()).status(), is(ContainerServiceImpl.CREATED));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testConstraintsWithSetupAndWrapup() throws Exception {
+        String cmd = "/bin/sh -c \"echo hi; exit 0\"";
+        String img = "busybox:latest";
+        String setup = "setup";
+        String wrapup = "wrapup";
+        commandService.create(Command.builder()
+                .name(setup)
+                .image(img)
+                .version("0")
+                .commandLine(cmd)
+                .type(DOCKER_SETUP.getName())
+                .build());
+        TestingUtils.commitTransaction();
+
+        commandService.create(Command.builder()
+                .name(wrapup)
+                .image(img)
+                .version("0")
+                .commandLine(cmd)
+                .type(DOCKER_WRAPUP.getName())
+                .build());
+        TestingUtils.commitTransaction();
+
+        final Command mainCommand = commandService.create(Command.builder()
+                .name("main")
+                .image(img)
+                .version("0")
+                .commandLine(cmd)
+                .mounts(
+                        Arrays.asList(
+                                Command.CommandMount.create("in", false, "/input"),
+                                Command.CommandMount.create("out", true, "/output")
+                        )
+                )
+                .outputs(Command.CommandOutput.builder()
+                        .name("output")
+                        .mount("out")
+                        .build())
+                .addCommandWrapper(CommandWrapper.builder()
+                        .name("placeholder")
+                        .externalInputs(
+                                Command.CommandWrapperExternalInput.builder()
+                                        .name("session")
+                                        .type("Session")
+                                        .build()
+                        )
+                        .derivedInputs(Command.CommandWrapperDerivedInput.builder()
+                                .name("resource")
+                                .type("Resource")
+                                .providesFilesForCommandMount("in")
+                                .viaSetupCommand(img + ":" + setup)
+                                .derivedFromWrapperInput("session")
+                                .build())
+                        .outputHandlers(Command.CommandWrapperOutput.builder()
+                                .name("output-handler")
+                                .commandOutputName("output")
+                                .targetName("session")
+                                .label("label")
+                                .viaWrapupCommand(img + ":" + wrapup)
+                                .build()
+                        )
+                        .build())
+                .build());
+        TestingUtils.commitTransaction();
+        CommandWrapper wrapper = mainCommand.xnatCommandWrappers().get(0);
+
+        // setup server with constraints, return the one the user is to be "selecting"
+        LaunchUi.LaunchUiServerConstraintSelected selConstr = setupServerWithConstraints();
+        // make a list for comparison
+        List<String> expectedConstraints = constraints.stream().map(c -> {
+            if (c.attribute().equals(selConstr.attribute())) {
+                return c.asStringConstraint(selConstr.value());
+            } else {
+                return c.asStringConstraint();
+            }
+        }).collect(Collectors.toList());
+
+        Map<String, String> userInputs = new HashMap<>();
+        userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
+                mapper.writeValueAsString(Collections.singletonList(selConstr)));
+
+        String uri = TestingUtils.setupSessionMock(folder, mapper, userInputs);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+
+        containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
+                0L, null, userInputs, mockUser, fakeWorkflow);
+        Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        TestingUtils.commitTransaction();
+
+        log.debug("Waiting until container is finalized");
+        await().atMost(90L, TimeUnit.SECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, service), is(true));
+
+        final long databaseId = service.databaseId();
+        final Container exited = containerService.get(databaseId);
+        assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.COMPLETE));
+
+        List<Container> toCleanup = new ArrayList<>();
+        toCleanup.add(exited);
+        toCleanup.addAll(containerService.retrieveSetupContainersForParent(databaseId));
+        toCleanup.addAll(containerService.retrieveWrapupContainersForParent(databaseId));
+        containersToCleanUp.addAll(toCleanup.stream().map(Container::serviceId)
+                .collect(Collectors.toList()));
+        for (Container ck : toCleanup) {
+            assertThat(ck.swarmConstraints(), containsInAnyOrder(expectedConstraints.toArray()));
+            assertThat(ck.exitCode(), is("0"));
+            assertThat(ck.status(), is(PersistentWorkflowUtils.COMPLETE));
+        }
+    }
+
+    private LaunchUi.LaunchUiServerConstraintSelected setupServerWithConstraints() throws Exception {
         // We need a client so we have to create a server, we'll update it shortly
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
@@ -337,7 +493,7 @@ public class SwarmConstraintsIntegrationTest {
                 .userSettable(true)
                 .build();
 
-        List<DockerServerBase.DockerServerSwarmConstraint> constraints = Arrays.asList(constraintNotSettable, constraintSettable);
+        constraints = Arrays.asList(constraintNotSettable, constraintSettable);
 
         // target manager bc every swarm has one, some test ones may not have workers
         List<Node> nodes = CLIENT.listNodes(Node.Criteria.builder().nodeRole("manager").build());
@@ -368,13 +524,10 @@ public class SwarmConstraintsIntegrationTest {
         dockerServerService.update(curServer.toBuilder().swarmConstraints(constraints).build());
         TestingUtils.commitTransaction();
 
-        Map<String, String> userInputs = new HashMap<>();
         LaunchUi.LaunchUiServerConstraintSelected selConstr = LaunchUi.LaunchUiServerConstraintSelected.builder()
                 .attribute(constraintSettable.attribute())
                 .value(constraintSettable.values().get(0))
                 .build();
-        userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
-                mapper.writeValueAsString(Collections.singletonList(selConstr)));
 
         NodeSpec runSpec = NodeSpec.builder(managerNode.spec())
                 .addLabel(selConstr.attribute().replace("node.labels.", ""),
@@ -384,29 +537,7 @@ public class SwarmConstraintsIntegrationTest {
         // Update manager node to match constraints
         CLIENT.updateNode(managerNode.id(), managerNode.version().index(), runSpec);
 
-        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, userInputs, mockUser, fakeWorkflow);
-        TestingUtils.commitTransaction();
-        Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(service.serviceId());
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
-
-        // Now update it so that it fails
-        NodeInfo nodeInfo = CLIENT.inspectNode(managerNode.id());
-        NodeSpec noRunSpec = NodeSpec.builder(managerNode.spec())
-                .addLabel(selConstr.attribute().replace("node.labels.", ""),
-                        "NOT" + selConstr.value())
-                .build();
-        CLIENT.updateNode(managerNode.id(), nodeInfo.version().index(), noRunSpec);
-
-        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, userInputs, mockUser, fakeWorkflow);
-        TestingUtils.commitTransaction();
-        Container service2 = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(service2.serviceId());
-        Thread.sleep(11000L); // > 10s since that seems to be enough for a service to get running
-        assertThat(TestingUtils.serviceIsRunning(CLIENT, service2, true).call(), is(false));
-        assertThat(containerService.get(service2.serviceId()).status(), is(ContainerServiceImpl.CREATED));
+        return selConstr;
     }
 
     @Test
@@ -452,5 +583,4 @@ public class SwarmConstraintsIntegrationTest {
         containersToCleanUp.add(container.containerId());
         await().until(TestingUtils.containerIsRunning(CLIENT, false, container)); //Running = success!
     }
-
 }
