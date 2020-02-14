@@ -1,5 +1,6 @@
 package org.nrg.containers.utils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
 import com.spotify.docker.client.DockerClient;
 import com.spotify.docker.client.exceptions.ContainerNotFoundException;
@@ -11,24 +12,46 @@ import com.spotify.docker.client.messages.swarm.TaskStatus;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
+import org.hamcrest.Matchers;
+import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
+import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.xft.XFTItem;
+import org.nrg.xft.event.EventDetails;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.xft.security.UserI;
+import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
+import org.nrg.xnat.services.archive.CatalogService;
+import org.nrg.xnat.turbine.utils.ArchivableItem;
+import org.nrg.xnat.utils.WorkflowUtils;
+import org.powermock.api.mockito.PowerMockito;
 import org.springframework.test.context.transaction.TestTransaction;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TestingUtils {
     public static void commitTransaction() {
@@ -293,6 +316,51 @@ public class TestingUtils {
                 return workflow.getStatus().equals(status);
             }
         };
+    }
+
+    public static String setupSessionMock(TemporaryFolder folder, ObjectMapper mapper, Map<String, String> runtimeValues) throws Exception {
+        final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
+        final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
+        // Set up input object(s)
+        final String sessionInputJsonPath = wrapupCommandDir + "/session.json";
+        // I need to set the resource directory to a temp directory
+        final String resourceDir = folder.newFolder("resource").getAbsolutePath();
+        final Session sessionInput = mapper.readValue(new File(sessionInputJsonPath), Session.class);
+        assertThat(sessionInput.getResources(), Matchers.<Resource>hasSize(1));
+        final Resource resource = sessionInput.getResources().get(0);
+        resource.setDirectory(resourceDir);
+        runtimeValues.put("session", mapper.writeValueAsString(sessionInput));
+        return sessionInput.getUri();
+    }
+
+    public static void setupMocksForSetupWrapupWorkflow(String uri, FakeWorkflow fakeWorkflow, CatalogService mockCatalogService, UserI mockUser) throws Exception {
+        // NOTE YOU MUST HAVE POWERMOCKITO PREPARED ON UriParserUtils, WorkflowUtils and PersistentWorkflowUtils
+        // to use this method!!
+        final ArchivableItem mockItem = mock(ArchivableItem.class);
+        String id = "id";
+        String xsiType = "type";
+        String project = "project";
+        when(mockItem.getId()).thenReturn(id);
+        when(mockItem.getXSIType()).thenReturn(xsiType);
+        when(mockItem.getProject()).thenReturn(project);
+        final ExptURI mockUriObject = mock(ExptURI.class);
+        when(UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
+        when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
+        fakeWorkflow.setId(uri);
+        ResourceData mockRD = mock(ResourceData.class);
+        when(mockRD.getItem()).thenReturn(mockItem);
+        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
+
+        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
+        setupWrapupWorkflow.setWfid(111);
+        setupWrapupWorkflow.setEventId(2);
+        PowerMockito.doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
+                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
+        when(WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
+                .thenReturn(setupWrapupWorkflow);
+
+        when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
+                .thenReturn(setupWrapupWorkflow);
     }
 }
 

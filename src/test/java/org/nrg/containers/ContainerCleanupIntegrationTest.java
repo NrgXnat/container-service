@@ -14,7 +14,6 @@ import com.spotify.docker.client.exceptions.ServiceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
-import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -30,7 +29,7 @@ import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
@@ -49,11 +48,8 @@ import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
-import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
 import org.nrg.xnat.services.archive.CatalogService;
-import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
@@ -67,19 +63,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nullable;
 import java.io.File;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
-import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -443,8 +436,8 @@ public class ContainerCleanupIntegrationTest {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(null);
 
         Map<String, String> runtimeValues = new HashMap<>();
-        String uri = setupSessionMock(runtimeValues);
-        setupMocksForSetupWrapupWorkflow("/archive" + uri);
+        String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
@@ -475,8 +468,8 @@ public class ContainerCleanupIntegrationTest {
         setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_SETUP);
         Map<String, String> runtimeValues = new HashMap<>();
-        String uri = setupSessionMock(runtimeValues);
-        setupMocksForSetupWrapupWorkflow("/archive" + uri);
+        String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
@@ -507,8 +500,8 @@ public class ContainerCleanupIntegrationTest {
         setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER);
         Map<String, String> runtimeValues = new HashMap<>();
-        String uri = setupSessionMock(runtimeValues);
-        setupMocksForSetupWrapupWorkflow("/archive" + uri);
+        String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
@@ -542,8 +535,8 @@ public class ContainerCleanupIntegrationTest {
         setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_WRAPUP);
         Map<String, String> runtimeValues = new HashMap<>();
-        String uri = setupSessionMock(runtimeValues);
-        setupMocksForSetupWrapupWorkflow("/archive" + uri);
+        String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
@@ -571,21 +564,6 @@ public class ContainerCleanupIntegrationTest {
             assertThat(ck.status(), startsWith(PersistentWorkflowUtils.FAILED));
             checkContainerRemoval(ck);
         }
-    }
-
-    private String setupSessionMock(Map<String, String> runtimeValues) throws Exception {
-        final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
-        final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
-        // Set up input object(s)
-        final String sessionInputJsonPath = wrapupCommandDir + "/session.json";
-        // I need to set the resource directory to a temp directory
-        final String resourceDir = folder.newFolder("resource").getAbsolutePath();
-        final Session sessionInput = mapper.readValue(new File(sessionInputJsonPath), Session.class);
-        assertThat(sessionInput.getResources(), Matchers.<Resource>hasSize(1));
-        final Resource resource = sessionInput.getResources().get(0);
-        resource.setDirectory(resourceDir);
-        runtimeValues.put("session", mapper.writeValueAsString(sessionInput));
-        return sessionInput.getUri();
     }
 
     private CommandWrapper configureSetupWrapupCommands(@Nullable CommandType failureLevel) throws Exception {
@@ -674,35 +652,6 @@ public class ContainerCleanupIntegrationTest {
 
         TestingUtils.commitTransaction();
         return main.xnatCommandWrappers().get(0);
-    }
-
-
-    private void setupMocksForSetupWrapupWorkflow(String uri) throws Exception {
-        final ArchivableItem mockItem = mock(ArchivableItem.class);
-        String id = "id";
-        String xsiType = "type";
-        String project = "project";
-        when(mockItem.getId()).thenReturn(id);
-        when(mockItem.getXSIType()).thenReturn(xsiType);
-        when(mockItem.getProject()).thenReturn(project);
-        final ExptURI mockUriObject = mock(ExptURI.class);
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
-        when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
-        fakeWorkflow.setId(uri);
-        ResourceData mockRD = mock(ResourceData.class);
-        when(mockRD.getItem()).thenReturn(mockItem);
-        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
-
-        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-        setupWrapupWorkflow.setWfid(111);
-        setupWrapupWorkflow.setEventId(2);
-        doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
-        when(WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
-                .thenReturn(setupWrapupWorkflow);
-
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
-                .thenReturn(setupWrapupWorkflow);
     }
 
     private void checkContainerRemoval(Container exited) throws Exception {
