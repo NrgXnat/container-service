@@ -2,6 +2,7 @@ package org.nrg.containers.api;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.spotify.docker.client.DefaultDockerClient;
@@ -315,6 +316,14 @@ public class DockerControlApi implements ContainerControlApi {
                 0D :
                 resolvedCommand.limitCpu();
 
+
+        final String runtime = resolvedCommand.runtime() == null ?
+                "" :
+                resolvedCommand.runtime();
+        final String ipcMode = resolvedCommand.ipcMode() == null ?
+                "" :
+                resolvedCommand.ipcMode();
+
         final List<ResolvedCommandMount> resolvedCommandMounts = resolvedCommand.mounts();
         final DockerServer server = getServer();
         if (server.swarmMode()) {
@@ -351,6 +360,7 @@ public class DockerControlApi implements ContainerControlApi {
             return Container.containerFromResolvedCommand(resolvedCommand,
                     createContainer(server,
                             resolvedCommand.image(),
+                            resolvedCommand.containerName(),
                             resolvedCommand.commandLine(),
                             resolvedCommand.overrideEntrypoint(),
                             bindMounts,
@@ -359,7 +369,13 @@ public class DockerControlApi implements ContainerControlApi {
                             workingDirectory,
                             reserveMemory,
                             limitMemory,
-                            limitCpu),
+                            limitCpu,
+                            runtime,
+                            ipcMode,
+                            resolvedCommand.autoRemove(),
+                            resolvedCommand.shmSize(),
+                            resolvedCommand.network(),
+                            resolvedCommand.containerLabels()),
                     userI.getLogin()
             );
         }
@@ -404,6 +420,13 @@ public class DockerControlApi implements ContainerControlApi {
                 0D :
                 container.limitCpu();
 
+        final String runtime = container.runtime() == null ?
+                "" :
+                container.runtime();
+        final String ipcMode = container.ipcMode() == null ?
+                "" :
+                container.ipcMode();
+
         final DockerServer server = getServer();
 
         final List<Container.ContainerMount> containerMounts = container.mounts();
@@ -443,6 +466,7 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             final String containerId = createContainer(server,
+                    container.containerName(),
                     container.dockerImage(),
                     container.commandLine(),
                     overrideEntrypoint,
@@ -452,7 +476,13 @@ public class DockerControlApi implements ContainerControlApi {
                     workingDirectory,
                     reserveMemory,
                     limitMemory,
-                    limitCpu);
+                    limitCpu,
+                    runtime,
+                    ipcMode,
+                    container.autoRemove(),
+                    container.shmSize(),
+                    container.network(),
+                    container.containerLabels());
 
             return container.toBuilder()
                     .containerId(containerId)
@@ -463,6 +493,7 @@ public class DockerControlApi implements ContainerControlApi {
 
     private String createContainer(final DockerServer server,
                                    final String imageName,
+                                   final String containerName,
                                    final String runCommand,
                                    final boolean overrideEntrypoint,
                                    final List<String> bindMounts,
@@ -471,7 +502,13 @@ public class DockerControlApi implements ContainerControlApi {
                                    final String workingDirectory,
                                    final Long reserveMemory,
                                    final Long limitMemory,
-                                   final Double limitCpu)
+                                   final Double limitCpu,
+                                   final String runtime,
+                                   final String ipcMode,
+                                   final Boolean autoRemove,
+                                   final Long shmSize,
+                                   final String network,
+                                   final Map<String, String> containerLabels)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -504,14 +541,32 @@ public class DockerControlApi implements ContainerControlApi {
 
         final String user = server.containerUser();
 
-        final HostConfig hostConfig =
+        HostConfig hostConfig =
                 HostConfig.builder()
+                        .autoRemove(autoRemove)
+                        .runtime(runtime)
+                        .ipcMode(ipcMode)
                         .binds(bindMounts)
                         .portBindings(portBindings)
                         .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes
                         .memory(1024 * 1024 * limitMemory) // megabytes to bytes
                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
                         .build();
+        if(shmSize != null && shmSize >= 0){
+            hostConfig = hostConfig.toBuilder().shmSize(shmSize).build();
+        }
+        if(!Strings.isNullOrEmpty(network)){
+            hostConfig = hostConfig.toBuilder().networkMode(network).build();
+        }
+        //if(ulimit != null && ulimit.size() > 0){
+        //    for(String ul : ulimit){
+        //        HostConfig.Ulimit.create(ul.split(":").)
+        //    }
+        //
+        //    HostConfig.Ulimit node = HostConfig.Ulimit.create(ulimit)
+        //    hostConfig.ulimits()
+        //}
+
         final ContainerConfig containerConfig =
                 ContainerConfig.builder()
                         .hostConfig(hostConfig)
@@ -523,6 +578,7 @@ public class DockerControlApi implements ContainerControlApi {
                         .env(environmentVariables)
                         .workingDir(workingDirectory)
                         .user(user)
+                        .labels(containerLabels)
                         .build();
 
         if (log.isDebugEnabled()) {
@@ -549,7 +605,12 @@ public class DockerControlApi implements ContainerControlApi {
         }
 
         try (final DockerClient client = getClient(server)) {
-            final ContainerCreation container = client.createContainer(containerConfig);
+            ContainerCreation container = null;
+            if(Strings.isNullOrEmpty(containerName)){
+                container = client.createContainer(containerConfig);
+            } else {
+                container = client.createContainer(containerConfig, containerName);
+            }
 
             final List<String> warnings = container.warnings();
             if (warnings != null) {

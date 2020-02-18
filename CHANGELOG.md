@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.1.1-ML
+
+
+## Machine Learning  Demo
+Added container command parameters (Docker Server only - not supported on Swarm services): 
+    runtime - string (default: null)
+    ipc-mode - string (default: null)
+    auto-remove - boolean (default: false)
+    shm-size - long (default: null)
+    network - string as named bridge network (default: "bridge")
+    container-labels - Map<String,String> corresponding to Docker container labels (default: null)
+    container-name - string(default null - container is named by docker)
+
+TODO:
+        ulimit - list of <string, long, long> ("name","soft","hard") (default: null)
+    
+Added Rest APIs to get containers by name - only works if container was assigned name by Container Service
+    /projects/{project}/containers/name/{name} - param: nonfinalized bool
+    /container/name/{name} - param: nonfinalized bool
+
+Added project scoped container kill Rest API:
+    /projects/{project}/containers/{id}/kill
+
 ## 2.1.1
 
 [Not yet released]

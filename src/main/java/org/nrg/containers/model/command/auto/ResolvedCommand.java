@@ -32,6 +32,7 @@ public abstract class ResolvedCommand {
     @JsonProperty("command-name") public abstract String commandName();
     @JsonProperty("command-description") @Nullable public abstract String commandDescription();
     @JsonProperty("image") public abstract String image();
+    @JsonProperty("container-name") @Nullable public abstract String containerName();
     @JsonProperty("type") public abstract String type();
     @JsonProperty("project") @Nullable public abstract String project();
     @JsonProperty("raw-input-values") public abstract ImmutableMap<String, String> rawInputValues();
@@ -47,6 +48,12 @@ public abstract class ResolvedCommand {
     @JsonProperty("wrapup-commands") public abstract ImmutableList<ResolvedCommand> wrapupCommands();
     @JsonProperty("reserve-memory") @Nullable public abstract Long reserveMemory();
     @JsonProperty("limit-memory") @Nullable public abstract Long limitMemory();
+    @JsonProperty("runtime") @Nullable public abstract String runtime();
+    @JsonProperty("ipc-mode") @Nullable public abstract String ipcMode();
+    @JsonProperty("auto-remove") @Nullable public abstract Boolean autoRemove();
+    @JsonProperty("shm-size") @Nullable public abstract Long shmSize();
+    @JsonProperty("network") @Nullable public abstract String network();
+    @JsonProperty("container-labels") @Nullable public abstract ImmutableMap<String, String> containerLabels();
     @JsonProperty("limit-cpu") @Nullable public abstract Double limitCpu();
     @JsonProperty("swarm-constraints") @Nullable public abstract List<String> swarmConstraints();
     @JsonProperty("parent-source-object-name") @Nullable public abstract String parentSourceObjectName();
@@ -268,11 +275,18 @@ public abstract class ResolvedCommand {
                 .commandId(command.id())
                 .commandName(command.name())
                 .image(command.image())
+                .containerName(command.containerName())
                 .commandLine(command.commandLine())
                 .workingDirectory(command.workingDirectory())
                 .reserveMemory(command.reserveMemory())
                 .limitMemory(command.limitMemory())
                 .limitCpu(command.limitCpu())
+                .runtime(command.runtime())
+                .ipcMode(command.ipcMode())
+                .autoRemove(command.autoRemove())
+                .shmSize(command.shmSize())
+                .network(command.network())
+                .containerLabels(command.containerLabels())
                 .parentSourceObjectName(parentSourceObjectName)
                 .addMount(ResolvedCommandMount.builder()
                         .name("input")
@@ -302,6 +316,7 @@ public abstract class ResolvedCommand {
         public abstract Builder commandName(String commandDescription);
         public abstract Builder commandDescription(String commandDescription);
         public abstract Builder image(String image);
+        public abstract Builder containerName(String containerName);
         public abstract Builder type(String type);
         public abstract Builder project(String project);
         public abstract Builder rawInputValues(Map<String, String> rawInputValues);
@@ -375,6 +390,13 @@ public abstract class ResolvedCommand {
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
         public abstract Builder swarmConstraints(List<String> swarmConstraints);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+        public abstract Builder autoRemove(Boolean autoRemove);
+        public abstract Builder shmSize(Long shmSize);
+        public abstract Builder network(String network);
+        public abstract Builder containerLabels(Map<String, String> containerLabels);
+
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
 
         public abstract ResolvedCommand build();
@@ -391,6 +413,8 @@ public abstract class ResolvedCommand {
         @Nullable public abstract String commandLabel();
         @Nullable public abstract String commandDescription();
         public abstract String image();
+        @Nullable
+        public abstract String containerName();
         public abstract String type();
         @Nullable public abstract String project();
         public abstract Boolean overrideEntrypoint();
@@ -416,6 +440,7 @@ public abstract class ResolvedCommand {
             public abstract Builder commandLabel(String commandLabel);
             public abstract Builder commandDescription(String commandDescription);
             public abstract Builder image(String image);
+            public abstract Builder containerName(String containerName);
             public abstract Builder type(String type);
             public abstract Builder project(String project);
             public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);

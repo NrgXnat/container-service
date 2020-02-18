@@ -36,6 +36,8 @@ public interface ContainerService {
     List<Container> getAll(String project);
     List<Container> getAll(Boolean nonfinalized);
 
+    Container getByName(String project, String name, final Boolean nonfinalized);
+    Container getByName(String name, final Boolean nonfinalized);
 
     List<Container> retrieveServices();
     List<Container> retrieveServicesInWaitingState();
@@ -84,10 +86,10 @@ public interface ContainerService {
     String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException;
 
-    Map<String, InputStream> getLogStreams(long id) throws NotFoundException;
-    Map<String, InputStream> getLogStreams(String containerId) throws NotFoundException;
-    InputStream getLogStream(long id, String logFileName) throws NotFoundException;
-    InputStream getLogStream(String containerId, String logFileName) throws NotFoundException;
+    Map<String, InputStream> getLogStreams(long id) throws NotFoundException, NoDockerServerException, DockerServerException;
+    Map<String, InputStream> getLogStreams(String containerId) throws NotFoundException, NoDockerServerException, DockerServerException;
+    InputStream getLogStream(long id, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
+    InputStream getLogStream(String containerId, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
     InputStream getLogStream(String containerId, String logFileName, boolean withTimestamps, Integer since) throws NotFoundException;
 	boolean isWaiting(Container service);
 	boolean isFinalizing(Container service);
@@ -111,4 +113,7 @@ public interface ContainerService {
      * @return true is successfully restarted, false otherwise
      */
     boolean restartService(Container service, UserI user);
+    String kill(final String project, final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException;
+
 }

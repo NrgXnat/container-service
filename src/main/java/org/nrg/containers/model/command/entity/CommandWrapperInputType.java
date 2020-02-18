@@ -17,6 +17,7 @@ public enum CommandWrapperInputType {
     FILES("File[]"),
     FILE("File"),
     PROJECT("Project"),
+    PROJECT_ASSET("ProjectAsset"),
     SUBJECT("Subject"),
     SUBJECT_ASSESSOR("SubjectAssessor"),
     SESSION("Session"),

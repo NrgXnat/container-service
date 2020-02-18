@@ -73,8 +73,16 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.nrg.containers.model.command.entity.CommandType.*;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.*;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT_ASSET;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RESOURCE;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
 
 @Slf4j
 @Service
@@ -247,6 +255,29 @@ public class ContainerServiceImpl implements ContainerService {
     public List<Container> getAll(final Boolean nonfinalized) {
         return toPojo(containerEntityService.getAll(nonfinalized));
     }
+
+    @Override
+    public Container getByName(String project, String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized, project);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public Container getByName(String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
 
     @Override
     @Nonnull
@@ -1270,6 +1301,13 @@ public class ContainerServiceImpl implements ContainerService {
         return kill(get(containerId), userI);
     }
 
+    @Override
+    public String kill(final String project, final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException {
+        // TODO check user permissions. How?
+
+        return kill(get(containerId), userI);
+    }
     private String kill(final Container container, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction(ContainerEntity.KILL_STATUS,
@@ -1594,6 +1632,18 @@ public class ContainerServiceImpl implements ContainerService {
 
         XFTItem rootInputValue = null;
         for (final ResolvedInputTreeNode<? extends Command.Input> node : flatInputTrees) {
+
+
+            if (rootInputValue != null) {
+                // We have already seen one candidate for a root object.
+                // Seeing this one means we have more than one, and won't be able to
+                // uniquely resolve a root object.
+
+
+                log.debug("Found another root XNAT input object: {}. I was expecting one. Using first: {}", node.input().name(), rootInputValue.getDBName());
+                continue;
+            }
+
             final Command.Input input = node.input();
             log.debug("Input \"{}\".", input.name());
             if (!(input instanceof Command.CommandWrapperExternalInput)) {
@@ -1602,7 +1652,7 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
+            if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
                     || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
@@ -1622,16 +1672,6 @@ public class ContainerServiceImpl implements ContainerService {
                 continue;
             }
 
-            if (rootInputValue != null) {
-                // We have already seen one candidate for a root object.
-                // Seeing this one means we have more than one, and won't be able to
-                // uniquely resolve a root object.
-                // We won't be able to make a workflow. We can bail out now.
-                log.debug("Found another root XNAT input object: {}. I was expecting one. Bailing out.", input.name());
-                return null;
-            }
-
-            final XnatModelObject xnatObjectToUseAsRoot;
             if (type.equals(SCAN.getName())) {
                 // If the external input is a scan, the workflow will not show up anywhere. So we
                 // use its parent session as the root object instead.

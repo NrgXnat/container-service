@@ -28,6 +28,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private String schemaVersion;
     private String infoUrl;
     private String image;
+    private String containerName;
     private String workingDirectory;
     private String commandLine;
     private Boolean overrideEntrypoint;
@@ -39,6 +40,12 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private Long reserveMemory;
     private Long limitMemory;
     private Double limitCpu;
+    private String runtime;
+    private String ipcMode;
+    private Boolean autoRemove;
+    private Long shmSize;
+    private String network;
+    private Map<String,String> containerLabels;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -73,6 +80,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setSchemaVersion(command.schemaVersion());
         this.setInfoUrl(command.infoUrl());
         this.setImage(command.image());
+        this.setContainerName(command.containerName());
         this.setWorkingDirectory(command.workingDirectory());
         this.setCommandLine(command.commandLine());
         this.setOverrideEntrypoint(command.overrideEntrypoint());
@@ -80,6 +88,12 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setReserveMemory(command.reserveMemory());
         this.setLimitMemory(command.limitMemory());
         this.setLimitCpu(command.limitCpu());
+        this.setRuntime(command.runtime());
+        this.setIpcMode(command.ipcMode());
+        this.setAutoRemove(command.autoRemove());
+        this.setShmSize(command.shmSize());
+        this.setNetwork(command.network());
+        this.setContainerLabels(command.containerLabels());
 
         final List<CommandMountEntity> toRemoveMount = new ArrayList<>();
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
@@ -243,6 +257,10 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.image = image;
     }
 
+    public String getContainerName() { return containerName; }
+
+    public void setContainerName(String containerName) { this.containerName = containerName; }
+
     public String getWorkingDirectory() {
         return workingDirectory;
     }
@@ -291,6 +309,33 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     public void setLimitCpu(Double limitCpu) {
         this.limitCpu = limitCpu;
     }
+
+    public String getRuntime() { return runtime; }
+
+    public void setRuntime(final String runtime) { this.runtime = runtime; }
+
+    public String getIpcMode() { return ipcMode; }
+
+    public void setIpcMode(final String ipcMode) { this.ipcMode = ipcMode; }
+
+    public Boolean getAutoRemove() { return autoRemove; }
+
+    public void setAutoRemove(Boolean autoRemove) { this.autoRemove = autoRemove; }
+
+    public Long getShmSize() { return shmSize; }
+
+    public void setShmSize(Long shmSize) { this.shmSize = shmSize;}
+
+    public String getNetwork() { return  network; }
+
+    public void setNetwork(String network) { this.network = network; }
+
+    @ElementCollection
+    public Map<String, String> getContainerLabels() { return containerLabels; }
+
+    public void setContainerLabels(Map<String, String> containerLabels) {
+        this.containerLabels = containerLabels == null ?
+                Maps.newHashMap() : containerLabels; }
 
     @OneToMany(mappedBy = "commandEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy
@@ -451,7 +496,12 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         if (o == null || getClass() != o.getClass()) return false;
         final CommandEntity that = (CommandEntity) o;
         return Objects.equals(this.name, that.name) &&
-                Objects.equals(this.version, that.version);
+                Objects.equals(this.version, that.version) &&
+                Objects.equals(this.autoRemove, that.autoRemove) &&
+                Objects.equals(this.shmSize, that.shmSize) &&
+                Objects.equals(this.network, that.network) &&
+                Objects.equals(this.containerLabels, that.containerLabels) &&
+                Objects.equals(this.containerName, that.containerName);
     }
 
     @Override
@@ -469,6 +519,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("schemaVersion", schemaVersion)
                 .add("infoUrl", infoUrl)
                 .add("image", image)
+                .add("containerName", containerName)
                 .add("workingDirectory", workingDirectory)
                 .add("commandLine", commandLine)
                 .add("overrideEntrypoint", overrideEntrypoint)
@@ -479,7 +530,13 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("xnatCommandWrappers", commandWrapperEntities)
                 .add("reserveMemory", reserveMemory)
                 .add("limitMemory", limitMemory)
-                .add("limitCpu", limitCpu);
+                .add("limitCpu", limitCpu)
+                .add("runtime", runtime)
+                .add("ipcMode", ipcMode)
+                .add("autoRemove", autoRemove)
+                .add("shmSize", shmSize)
+                .add("network", network)
+                .add("containerLabels", containerLabels);
     }
 
     @Override
