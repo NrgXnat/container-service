@@ -87,7 +87,7 @@ public class Resource extends XnatModelObject {
             if (cat == null) {
                 // would prefer to throw CommandResolutionException, but Functions, below, can't throw checked exceptions
                 throw new RuntimeException("Unable to load catalog for resource " + xnatResourcecatalog
-                        + ", have your admin check utils.log for the cause");
+                        + ", have your admin check xdat.log for the cause");
             }
             final Path parentUri = Paths.get(this.uri + "/files/");
 

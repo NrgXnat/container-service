@@ -1,27 +1,13 @@
 package org.nrg.containers.services.impl;
 
 
-import static org.nrg.containers.model.command.entity.CommandType.DOCKER;
-import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
-import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.ASSESSOR;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RESOURCE;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
-
-import java.io.*;
-import java.text.ParseException;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
+import com.google.common.base.Function;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.spotify.docker.client.DockerClient;
 import com.spotify.docker.client.messages.swarm.TaskStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
@@ -34,8 +20,8 @@ import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.command.auto.Command;
-import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
+import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
@@ -76,12 +62,19 @@ import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.google.common.base.Function;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.text.ParseException;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import lombok.extern.slf4j.Slf4j;
+import static org.nrg.containers.model.command.entity.CommandType.*;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.*;
 
 @Slf4j
 @Service
@@ -615,12 +608,18 @@ public class ContainerServiceImpl implements ContainerService {
         }
         String workflowid = workflow == null ? null : workflow.getWorkflowId().toString();
 
+        List<String> swarmConstraints;
+        if (parent != null) {
+            swarmConstraints = parent.swarmConstraints() != null ? new ArrayList<>(parent.swarmConstraints()) : null;
+        } else {
+            swarmConstraints = resolvedCommand.swarmConstraints();
+        }
         final Container toCreate = Container.containerFromResolvedCommand(resolvedCommand, null, userI.getLogin()).toBuilder()
                 .parent(parent)
                 .workflowId(workflowid)
                 .subtype(DOCKER_WRAPUP.getName())
                 .project(parent != null ? parent.project() : null)
-                .swarmConstraints(parent != null ? parent.swarmConstraints() : resolvedCommand.swarmConstraints())
+                .swarmConstraints(swarmConstraints)
                 .status(CREATED) //Needs non-empty status to be picked up by containerService.retrieveNonfinalizedServices()
                 .build();
         return toPojo(containerEntityService.create(fromPojo(toCreate)));
@@ -667,9 +666,7 @@ public class ContainerServiceImpl implements ContainerService {
             if (resolvedCommand.project() == null) {
                 builder.project(parent.project());
             }
-            if (resolvedCommand.swarmConstraints() == null || resolvedCommand.swarmConstraints().isEmpty()) {
-                builder.swarmConstraints(parent.swarmConstraints());
-            }
+            builder.swarmConstraints(parent.swarmConstraints() != null ? new ArrayList<>(parent.swarmConstraints()) : null);
         }
 
         return builder.build();
