@@ -1,0 +1,144 @@
+{
+    "name": "hello-world1",
+    "description": "a dummy command that does nothing",
+    "type": "docker",
+    "image": "busybox:latest",
+    "command-line": "echo hello world",
+    "mounts": [
+      {
+        "name": "output",
+        "writable": true,
+        "path": "/output"
+      },
+      {
+        "name": "output2",
+        "writable": true,
+        "path": "/output2"
+      }
+    ],
+    "inputs": [
+        {
+            "name": "whatever",
+            "description": "an input that will get filled by something, doesn't matter what",
+            "type": "string"
+        },
+        {
+          "name": "some_bad_config",
+          "label": "Some config",
+          "description": "Select a config",
+          "type": "select-one",
+          "default-value": "default",
+          "required": true
+        },
+        {
+          "name": "some_bad_config2",
+          "label": "Some config",
+          "description": "Select a config",
+          "type": "string",
+          "default-value": "default",
+          "required": true,
+          "select-values": [
+            "one",
+            "two",
+            "default"
+          ]
+        },
+        {
+          "name": "some_config",
+          "label": "Some config",
+          "description": "Select a config",
+          "type": "select-one",
+          "default-value": "default",
+          "required": true,
+          "select-values": [
+            "one",
+            "two",
+            "default"
+          ]
+        },
+        {
+          "name": "some_mult_config",
+          "label": "Some config",
+          "description": "Select a config",
+          "type": "select-many",
+          "default-value": "default",
+          "required": true,
+          "select-values": [
+            "one",
+            "two",
+            "default"
+          ]
+        }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "description": "Output",
+        "required": true,
+        "mount": "output"
+      },
+      {
+        "name": "out2",
+        "description": "Output2",
+        "required": true,
+        "mount": "output2"
+      }
+    ],
+    "xnat": [
+        {   
+            "name": "bad-command",
+            "label": "fail validation",
+            "description": null,
+            "external-inputs": [
+                {   
+                    "name": "session",
+                    "type": "Session",
+                    "required": true,
+                    "provides-value-for-command-input": "some_config"
+                }
+            ],
+            "derived-inputs": [
+                {   
+                    "name": "scan",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "provides-files-for-command-mount": "out",
+                    "required": true,
+                    "multiple": true
+                },
+                {   
+                    "name": "scan2",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-files-for-command-mount": "out2",
+                    "required": true
+                },
+                {
+                    "name": "scan3",
+                    "type": "Scan",
+                    "derived-from-wrapper-input": "session",
+                    "derived-from-xnat-object-property": "id",
+                    "provides-value-for-command-input": "some_mult_config",
+                    "required": true
+                }
+            ],
+            "output-handlers": [
+                {
+                  "name": "output-handler",
+                  "accepts-command-output": "out",
+                  "as-a-child-of": "scan",
+                  "type": "Resource",
+                  "label": "label"
+                },
+                { 
+                  "name": "output-handler2", 
+                  "accepts-command-output": "out2",
+                  "as-a-child-of": "scan2",
+                  "type": "Resource",
+                  "label": "label2"
+                }
+            ]
+        }
+    ]
+}

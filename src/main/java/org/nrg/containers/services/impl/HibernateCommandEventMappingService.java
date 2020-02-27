@@ -139,4 +139,14 @@ public class HibernateCommandEventMappingService extends AbstractHibernateEntity
     public List<CommandEventMapping> findByEventType(String eventType, boolean onlyEnabled) {
         return getDao().findByEventType(eventType, onlyEnabled);
     }
+    
+    @Override
+    public List<CommandEventMapping> findByProject(String project) {
+            return getDao().findByProject(project);
+    }
+
+    @Override
+    public List<CommandEventMapping> findByProject(String project, boolean onlyEnabled) {
+        return getDao().findByProject(project, onlyEnabled);
+    }
 }

@@ -6,13 +6,43 @@
 
 ### Features
 
+* Use ActiveMQ queues for staging (command resolution and container launch) and finalizing containers.
+* Update UI not to wait for command resolution and container launch before returning to user, add additional details to workflow entry so user still receives all information.
+* Revamp bulk launch UI to be faster to load (only serializes first session) and show limited info to user about derived inputs. Previous bulklauncher UI would serialize all XNAT objects for all selected sessions before rendering the "launch container" form. It did this serializing, which can be very slow depending on how deep the preresolution needs to go into the hierarchy, while the user was waiting. Additionally, the resulting UI form only displayed inputs for the first session, which can be misleading or even incorrect (e.g., setting a scan id or file name as in pyradiomics) - it only worked if you want the same setting for all sessions.
+* Allow admin to define docker swarm constraints (which may be user-settable).
+* Automatically restart containers that are killed due to docker swarm nodes being removed from swarm.
+* Live logging display
+* Support command inputs that resolve to mulitple values (e.g., multiple T1 scans)
+* Add label field to command.json inputs to allow customization of UI display
+* Add select-values field to command.json inputs to allow select box rendering of non-xnat inputs
+* Support scan output type (via scan xml) and resource uploads to it
+* Make use of "derived-from-xnat-object-property" for XNAT object type derived inputs (previously, this was only used when derived input was type="string")
+* Allow an input with type="File" to provide files for command mount
+* [CS-583][]: Add option to automatically remove containers/services after they've been finalized
+
 ### Bugfixes
+* Remove @Audited annotations to prevent database size explosion
+* Mannually set swarm service names since auto-generated ones can clash on high throughput
+* Allow removal of inputs, outputs, wrappers, external inputs, derived inputs, and output handlers from command.json via API
+* [CS-54][]: For writable directory mount with existing contents in archive space, copy all files out of the root (archive) directory to a build directory. NOTE: case of a mount being both input and output not addressed
+* [CS-575][]: Fix resolution of derived inputs to always set value to URI. This allows outputs to be uploaded to derived inputs. This "undoes" some of the fix CS-409, but the issue with URIs in the UI/launcher seems to have been resolved, and we still can derive an inupt by URI, label, or name. *This may be a breaking change for some command.json files. The replacement value, a.k.a., the thing that gets put into #inputName#, will now always be the URI (previously it varied: id for scan, name for file, label for project, label for subject derived from project, URI for subject derived from session and session derived from assessor or scan)*
+* [CS-576][]: Correctly construct authentication header for Docker Swarm, required because Spotify client does not implement authForSwarm() for ConfigFileRegistryAuthSupplier, which is the only type of private repo authentication XNAT currently supports and because Swarm does not default to using a local config.json if this header is not passed
+* [CS-577][]: Ports, hash, and index fields of command.json can now be updated
+* [CS-578][]: Enforce ordering on uploading outputs so that we never try to upload to an object that has yet to be inserted
+* [CS-580][]: Add client-side validation for required inputs
+* [CS-579][]/[CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution. 
 
 [CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution.
 
-### Other
 
-[CS-592]: https://issues.xnat.org/browse/CS-592
+[CS-54]: https://issues.xnat.org/browse/CS-54
+[CS-575]: https://issues.xnat.org/browse/CS-575
+[CS-576]: https://issues.xnat.org/browse/CS-576
+[CS-577]: https://issues.xnat.org/browse/CS-577
+[CS-578]: https://issues.xnat.org/browse/CS-578
+[CS-579]: https://issues.xnat.org/browse/CS-579
+[CS-580]: https://issues.xnat.org/browse/CS-580
+[CS-583]: https://issues.xnat.org/browse/CS-583
 
 ## 2.1.0
 
@@ -562,7 +592,7 @@ Along with several bug fixes, this release focuses on permissions updates requir
 [CS-242]: https://issues.xnat.org/browse/CS-242
 
 ### Bugfixes
-* [CS-257][] Hide “Create Automation” button from project owners if they do not have admin privileges. Depends on [XNAT-5044](https://issues.xnat.org/browse/XNAT-5044) change.
+* [CS-257][] Hide "Create Automation" button from project owners if they do not have admin privileges. Depends on [XNAT-5044](https://issues.xnat.org/browse/XNAT-5044) change.
 * Fix: container -> container entity should use existing entity in db if it exists
 * Fix: Initialize container entity when retrieving by container id
 

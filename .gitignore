@@ -1,6 +1,9 @@
 ### Gradle template
 .gradle/
 build/
+.classpath
+.project
+.settings/
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
@@ -20,3 +23,4 @@ hibernate.cfg.xml
 *.html
 *.html.confluence
 container-service-api.md
+/bin/

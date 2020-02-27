@@ -5,6 +5,8 @@ import org.nrg.containers.model.xnat.Scan;
 import org.nrg.framework.event.EventI;
 import org.nrg.xft.security.UserI;
 
+import java.util.HashSet;
+
 @AutoValue
 public abstract class ScanArchiveEventToLaunchCommands implements EventI {
     public abstract Scan scan();
@@ -19,6 +21,6 @@ public abstract class ScanArchiveEventToLaunchCommands implements EventI {
 
     public static ScanArchiveEventToLaunchCommands create(final Scan scan,
                                                           final UserI user) {
-        return create(scan, scan.getProject(user).getId(), user);
+        return create(scan, scan.getProject(user, false, new HashSet<>()).getId(), user);
     }
 }

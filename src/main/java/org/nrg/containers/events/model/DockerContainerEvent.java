@@ -6,12 +6,12 @@ import com.google.common.collect.ImmutableMap;
 import javax.annotation.Nullable;
 import java.util.Date;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @AutoValue
 public abstract class DockerContainerEvent implements ContainerEvent {
-    private static final Pattern exitStatusPattern = Pattern.compile("kill|die|oom");
+    private static final Pattern ignoreStatusPattern = Pattern.compile("kill|destroy");
+    private static final Pattern exitStatusPattern = Pattern.compile("die");
 
     public abstract String status();
     public abstract String containerId();
@@ -19,9 +19,20 @@ public abstract class DockerContainerEvent implements ContainerEvent {
     @Nullable public abstract Long timeNano();
     public abstract ImmutableMap<String, String> attributes();
 
+    public boolean isIgnoreStatus() {
+        // These statuses come after "die" and thus we want to ignore them
+        final String status = status();
+        return status != null && ignoreStatusPattern.matcher(status).matches();
+    }
+
     public boolean isExitStatus() {
-        final Matcher exitStatusMatcher = exitStatusPattern.matcher(status());
-        return exitStatusMatcher.matches();
+        final String status = status();
+        return status != null && exitStatusPattern.matcher(status).matches();
+    }
+
+    public static boolean isSuccessfulStatus(String status){
+        // No way to determine - always exits with "die", have to use exit code
+        return true;
     }
 
     public String exitCode() {

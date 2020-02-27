@@ -184,6 +184,62 @@ sitewideCommandHistoryPanel:
             tag: div#command-history-container
             contents: Loading history entries...
 
+queueSettingsForm:
+    label: "Site-wide JMS Queue Settings"
+    kind: panel.form
+    name: queueSettings
+    id: queue-settings-form
+    contentType: json
+    method: POST
+    element:
+        style:
+            padding: 20px 0
+    action: "/xapi/jms_queues"
+    contents:
+        stagingQueueMin:
+            kind: panel.input.text
+            name: concurrencyMinStagingQueue
+            label: Staging queue min concurrency
+            validation: "onblur integer greaterThan:0"
+            element:
+                title: Set min concurrency for staging queue consumers
+            description: >
+                Specify the minimum number of concurrent consumers in the container service staging JMS
+                queue (performs command resolution and container launch). Default is 10, must be greater than 0.
+        stagingQueueMax:
+            kind: panel.input.text
+            name: concurrencyMaxStagingQueue
+            label: Staging queue max concurrency
+            validation: "onblur integer greaterThan:0"
+            element:
+                title: Set max concurrency for staging queue consumers
+            description: >
+                Specify the maximum number of concurrent consumers in the container service staging JMS
+                queue (performs command resolution and container launch). Default is 20, must be greater than
+                or equal to the minimum concurrency.
+        finalizationQueueMin:
+            kind: panel.input.text
+            name: concurrencyMinFinalizingQueue
+            label: Finalization queue min concurrency
+            validation: "onblur integer greaterThan:0"
+            element:
+                title: Set min concurrency for finalization queue consumers
+            description: >
+                Specify the minimum number of concurrent consumers in the container service finalization JMS
+                queue (performs output uploading catalog insert and refresh). Default is 10, must be greater than 0.
+        finalizationQueueMax:
+            kind: panel.input.text
+            name: concurrencyMaxFinalizingQueue
+            label: Finalization queue max concurrency
+            validation: "onblur integer greaterThan:0"
+            element:
+                title: Set max concurrency for finalization queue consumers
+            description: >
+                Specify the maximum number of concurrent consumers in the container service finalization JMS
+                queue (performs output uploading catalog insert and refresh). Default is 20, must be greater than
+                or equal to the minimum concurrency.
+
+
 #################################################
 ####  Root Site Admin Spawner Config Object  ####
 #################################################
@@ -238,3 +294,11 @@ siteSettings:
             active: false
             contents:
                 ${sitewideCommandHistoryPanel}
+        queueSettingsTab:
+            kind: tab
+            name: queueSettingsTab
+            label: JMS Queue
+            group: containerServiceTabGroup
+            active: false
+            contents:
+                ${queueSettingsForm}

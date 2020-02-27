@@ -29,6 +29,7 @@ public class CommandEventMappingDao extends AbstractHibernateDAO<CommandEventMap
      * If eventType is null, return an emply list.
      *
      * @param eventType Find Commands that are triggered by this eventType.
+     * @param onlyEnabled Limit to enabled commands
      * @return List of Commands.
      */
     public List<CommandEventMapping> findByEventType(final String eventType, final boolean onlyEnabled) {
@@ -37,6 +38,37 @@ public class CommandEventMappingDao extends AbstractHibernateDAO<CommandEventMap
         }
         Map<String, Object> properties = new HashMap<String, Object>();
         properties.put("eventType", eventType);
+        if(onlyEnabled){
+            properties.put("enabled", true);
+        }
+        return findByProperties(properties);
+    }
+    
+    /**
+     * Find CommandIds that are configured for a given project.
+     * If project is null, return an emply list.
+     * 
+     * @param project Find Commands that are configured for this project
+     * @return List of Commands.
+     */
+    public List<CommandEventMapping> findByProject(final String project) {
+        return findByProject(project, true);
+    }
+    
+    /**
+     * Find CommandIds that are configured for a given project.
+     * If project is null, return an emply list.
+     *
+     * @param project Find Commands that are configured for this project
+     * @param onlyEnabled Limit to enabled commands
+     * @return List of Commands.
+     */
+    public List<CommandEventMapping> findByProject(final String project, final boolean onlyEnabled) {
+        if (project == null || StringUtils.isBlank(project)) {
+            return Lists.newArrayList();
+        }
+        Map<String, Object> properties = new HashMap<String, Object>();
+        properties.put("projectId", project);
         if(onlyEnabled){
             properties.put("enabled", true);
         }

@@ -160,8 +160,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         XNAT.dialog.open({
             title: doWhat + ' Container Server Host',
             content: spawn('form'),
-            width: 450,
+            maxBtn: true,
+            width: 600,
             beforeShow: function(obj){
+                containerHostManager.nconstraints = 0;
                 var $formContainer = obj.$modal.find('.xnat-dialog-content');
                 $formContainer.addClass('panel');
                 obj.$modal.find('form').append(
@@ -185,6 +187,19 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             offText: 'OFF',
                             value: 'true'
                         }),
+                        spawn('div.swarm-constraints', [
+                            spawn('p.divider.swarm-constraints-divider', '<strong>Swarm Node Constraints (Optional, only relevant when Swarm mode = ON)</strong>' +
+                                '<br> Use these settings to add site-wide and user-settable swarm node constraints. See the ' +
+                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints">Swarm documentation</a> ' +
+                                'for more information about constraints.'),
+                            spawn('button.new-swarm-constraint.btn.btn-sm.submit', {
+                                html: 'Add Swarm node constraint',
+                                onclick: function(){
+                                    containerHostManager.addSwarmConstraint();
+                                    return false;
+                                }
+                            })
+                        ]),
                         spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Docker Server mount point for your XNAT data.'),
                         XNAT.ui.panel.input.text({
                             name: 'path-translation-xnat-prefix',
@@ -212,14 +227,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         XNAT.ui.panel.input.text({
                             name: 'container-user',
                             label: 'Container User'
-                        }).element
+                        }),
+                        spawn('p.divider', '<strong>Automatically cleanup completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
+                        XNAT.ui.panel.input.switchbox({
+                            name: 'auto-cleanup',
+                            label: 'Automatically cleanup containers?',
+                            onText: 'ON',
+                            offText: 'OFF',
+                            value: 'true'
+                        })
                     ])
                 );
 
                 if (item && isDefined(item.host)) {
                     if (item['cert-path'] === 'null') item['cert-path'] = null;
+                    for (var i = 0; i < item['swarm-constraints'].length; i++) {
+                        containerHostManager.addSwarmConstraint();
+                    }
                     $formContainer.find('form').setValues(item);
                 }
+
+                $('input[name="swarm-mode"]').change();
             },
             buttons: [
                 {
@@ -297,6 +325,71 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
         });
     }
+
+    $(document).on('change', 'input[name="swarm-mode"]', function(){
+        if ($(this).prop('checked')) {
+            $('.swarm-constraints').show();
+        } else {
+            $('.swarm-constraints').hide();
+        }
+    });
+
+    containerHostManager.addSwarmConstraint = function() {
+        var element = spawn('div#swarm-constraint-'+containerHostManager.nconstraints+'.swarm-constraint', [
+            spawn('a#close-'+containerHostManager.nconstraints+'.close', {
+                html: '<i class="fa fa-close"/>',
+                onclick: function(){
+                    var idx = parseInt($(this).prop('id').replace('close-',''));
+                    // Remove all of this constraint, then relabel
+                    $('div#swarm-constraint-'+idx).remove();
+                    // Relabel
+                    for (var i = idx+1; i < containerHostManager.nconstraints; i++){
+                        $('input[name^=swarm-constraints\\['+i+'\\]]').each(function(){
+                            $(this).attr('name', $(this).attr('name').replace(i,i-1));
+                            $(this).prop('id', $(this).prop('id').replace(i,i-1));
+                            if ($(this).data('name')) {
+                                $(this).data('name', $(this).data('name').replace(i,i-1));
+                            }
+                        });
+                        $('div#swarm-constraint-'+i).prop('id', 'swarm-constraint-'+(i-1));
+                        $('a#close-'+i).prop('id', 'close-'+(i-1));
+                    }
+                    containerHostManager.nconstraints--;
+                    return false;
+                }
+            }),
+            XNAT.ui.panel.input.switchbox({
+                name: 'swarm-constraints['+containerHostManager.nconstraints+']:user-settable',
+                label: 'User settable?',
+                onText: 'YES',
+                offText: 'NO',
+                value: 'true',
+                description: 'If "YES", the user launching the container service jobs will be able to set the constraint from the UI. ' +
+                    'If "NO", the constraint will apply to ALL container service jobs.'
+            }),
+            XNAT.ui.panel.input.text({
+                name: 'swarm-constraints['+containerHostManager.nconstraints+']:attribute',
+                label: 'Node attribute',
+                description: 'Attribute you wish to constrain. E.g., node.role or engine.instance.spot'
+            }),
+            XNAT.ui.panel.input.radioGroup({
+                name: 'swarm-constraints['+containerHostManager.nconstraints+']:comparator',
+                label: 'Comparator',
+                items: {0: {label: 'Equals', value: '=='}, 1: {label: 'Does not equal', value: '!='}},
+                value: '=='
+            }),
+            XNAT.ui.panel.input.list({
+                name: 'swarm-constraints['+containerHostManager.nconstraints+']:values',
+                label: 'Possible values for constraint',
+                description: 'Comma-separated list of values on which user can constrain the attribute ' +
+                    '(or a single value if not user-settable). E.g., "worker" or "spot,demand" (do not add quotes). ' +
+                    'The first value listed will be the default.'
+            })
+        ]);
+
+        containerHostManager.nconstraints++;
+        $('button.new-swarm-constraint').before($(element));
+    };
 
     // create table for Container Hosts
     containerHostManager.table = function(container, callback){
@@ -1079,7 +1172,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var clmTable = XNAT.table({
             className: 'enabled-commands xnat-table',
             style: {
-                width: '100%'
+                width: '100%',
+                marginTop: '15px',
+                marginBottom: '15px'
             }
         });
 
@@ -1089,7 +1184,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             .th('<b>XNAT Actions</b>')
             .th('<b>Site-wide Config</b>')
             .th('<b>Version</b>')
-            .th({ width: '100', html: '<b>Actions</b>' });
+            .th({ width: 180, html: '<b>Actions</b>' });
 
         function viewLink(item, text){
             return spawn('a.link|href=#!', {
@@ -1252,12 +1347,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             });
         }
 
-        function deleteImage(image,force) {
+        function deleteImage(image,force,retries) {
             var content;
+            retries = retries || 0;
+            var retryStr = (retries > 0) ? 'RE-ATTEMPT to ' : '';
             force = force || false;
             if (!force) {
                 content = spawn('div',[
-                    spawn('p','Are you sure you\'d like to delete the '+image.tags[0]+' image?'),
+                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.tags[0]+' image?'),
                     spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
                 ]);
             } else {
@@ -1284,7 +1381,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 fail: function(e){
                                     if (e.status === 500) {
                                         XNAT.dialog.closeAll();
-                                        deleteImage(image,true);
+                                        if (retries < 3) {
+                                            deleteImage(image,true, ++retries);
+                                        } else {
+                                            errorHandler(e, 'Could not delete image, likely there are running containers using it');
+                                        }
                                     } else {
                                         errorHandler(e, 'Could Not Delete Image');
                                     }
@@ -1478,9 +1579,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
         });
 
-        function basicConfigInput(name,value,required) {
+        function basicConfigInput(name,value) {
             value = (value === undefined || value === null || value == 'null') ? '' : value;
-            return '<input type="text" name="'+name+'" value="'+value+'" />';
+            // Workaround to handle quotes in value string
+            var $input = $(spawn('input', {name: name, type: 'text'}));
+            $input.attr('value', value);
+            return $input.get(0);
         }
 
         function configCheckbox(name,checked,onText,offText){
@@ -1579,7 +1683,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     content: tmpl.html(),
                     width: 850,
                     beforeShow: function(obj){
-                        var $panel = obj.$modal.find('#config-viewer-panel');
+                        var $panel = obj.$modal.find('#config-viewer');
                         $panel.find('input[type=checkbox]').each(function(){
                             $(this).prop('checked',$(this).data('checked'));
                         })
@@ -1590,7 +1694,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             isDefault: true,
                             close: false,
                             action: function(obj){
-                                var $panel = obj.$modal.find('#config-viewer-panel');
+                                var $panel = obj.$modal.find('#config-viewer');
                                 var configObj = { inputs: {}, outputs: {} };
 
                                 // gather input items from table
@@ -2100,6 +2204,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     eventId: 'SessionArchived',
                     context: 'xnat:imageSessionData',
                     label: 'On Session Archive'
+                },
+                {
+                     eventId: 'Merged',
+                     context: 'xnat:imageSessionData',
+                     label: 'On Session Merged'
                 },
                 {
                     eventId: 'ScanArchived',

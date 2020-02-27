@@ -10,11 +10,10 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.xdat.turbine.utils.AdminUtils;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xft.schema.XFTManager;
+import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +29,8 @@ public class DockerStatusUpdater implements Runnable {
     private ContainerControlApi controlApi;
     private DockerServerService dockerServerService;
     private ContainerService containerService;
-
+    final XnatAppInfo xnatAppInfo;
+    
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
     private boolean haveLoggedXftInitFailure = false;
@@ -39,15 +39,19 @@ public class DockerStatusUpdater implements Runnable {
     @SuppressWarnings("SpringJavaAutowiringInspection")
     public DockerStatusUpdater(final ContainerControlApi controlApi,
                                final DockerServerService dockerServerService,
-                               final ContainerService containerService) {
+                               final ContainerService containerService,
+                               final XnatAppInfo xnatAppInfo) {
         this.controlApi = controlApi;
         this.dockerServerService = dockerServerService;
         this.containerService = containerService;
+        this.xnatAppInfo = xnatAppInfo;
     }
 
     @Override
     public void run() {
-        log.trace("Attempting to update status with docker.");
+		if(!xnatAppInfo.isPrimaryNode()) {
+	        return;
+    	}
 
         final String skipMessage = "Skipping attempt to update status.";
 
@@ -65,6 +69,7 @@ public class DockerStatusUpdater implements Runnable {
             dockerServer = dockerServerService.getServer();
         } catch (NotFoundException e) {
             // ignored
+            log.error("Docker server not found");
         }
         if (dockerServer == null) {
             if (!haveLoggedNoServerInDb) {
@@ -102,6 +107,9 @@ public class DockerStatusUpdater implements Runnable {
             haveLoggedXftInitFailure = false;
             haveLoggedNoServerInDb = false;
         } else if (updateReport.successful) {
+            if (updateReport.updateReports.size() > 0) {
+                log.debug("Updated status successfully.");
+            }
             // Reset failure flags
             haveLoggedDockerConnectFailure = false;
             haveLoggedXftInitFailure = false;
@@ -109,6 +117,10 @@ public class DockerStatusUpdater implements Runnable {
         } else {
             log.info("Did not update status successfully.");
         }
+        log.trace("-----------------------------------------------------------------------------");
+        log.trace("DOCKERSTATUSUPDATER: RUN COMPLETE");
+        log.trace("-----------------------------------------------------------------------------");
+   
     }
 
     @Nonnull
@@ -134,27 +146,32 @@ public class DockerStatusUpdater implements Runnable {
     @Nonnull
     private UpdateReport updateServices(final DockerServer dockerServer) {
         final UpdateReport report = UpdateReport.create();
-        for (final Container service : containerService.retrieveNonfinalizedServices()) {
-            // log.debug("Getting Task info for Service {}.", service.serviceId());
+        //TODO : Optimize this code so that waiting ones are handled first
+        for (Container service : containerService.retrieveNonfinalizedServices()) {
             try {
-                controlApi.throwTaskEventForService(dockerServer, service);
-                report.add(UpdateReportEntry.success(service.serviceId()));
-            } catch (ServiceNotFoundException e) {
-                final String msg = String.format("Service %s is in database, but not found on swarm. Setting status to \"Failed\".", service.serviceId());
-                log.error(msg, e);
-                report.add(UpdateReportEntry.failure(service.serviceId(), msg));
-
-                final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory.fromSystem("Failed", "Not found on swarm.");
-                final Container notFound = service.toBuilder()
-                        .status(failedHistoryItem.status())
-                        .statusTime(failedHistoryItem.timeRecorded())
-                        .build();
-
-                containerService.update(notFound);
-
-                ContainerUtils.updateWorkflowStatus(notFound.workflowId(), PersistentWorkflowUtils.FAILED, AdminUtils.getAdminUser());
-            } catch (DockerServerException e) {
-                log.error(String.format("Cannot get Tasks for Service %s.", service.serviceId()), e);
+                log.debug("Getting task info for service {}.", service.toString());
+                try {
+                    // Refresh service status etc. bc it could change while we're processing this list
+                    service = containerService.get(service.databaseId());
+                    if (containerService.isFinalizing(service) ||
+                            containerService.isFailedOrComplete(service, Users.getAdminUser())) {
+                        log.debug("Service {} no longer unfinalized", service.serviceId());
+                    } else if (containerService.isWaiting(service)) {
+                        controlApi.throwWaitingEventForService(service);
+                    } else {
+                        controlApi.throwTaskEventForService(dockerServer, service);
+                    }
+                    report.add(UpdateReportEntry.success(service.serviceId()));
+                } catch (ServiceNotFoundException e) {
+                    // Service not found despite container being active: throw a restart event
+                    controlApi.throwRestartEventForService(service);
+                    report.add(UpdateReportEntry.success(service.serviceId()));
+                } catch (DockerServerException e) {
+                    log.error(String.format("Cannot get tasks for service %s.", service.serviceId()), e);
+                    report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
+                }
+            } catch (Exception e) {
+                log.error(String.format("Unexpected exception trying to update service %s.", service.serviceId()), e);
                 report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
             }
         }
@@ -228,4 +245,6 @@ public class DockerStatusUpdater implements Runnable {
             return updateReportEntry;
         }
     }
+
+	
 }

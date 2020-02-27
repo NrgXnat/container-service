@@ -6,6 +6,7 @@
     "schema-version": "1.0",
     "image": "busybox:latest",
     "command-line": "find /input -type f > /output/files.txt; find /input -type d > /output/dirs.txt",
+    "override-entrypoint": true,
     "mounts": [
         {
             "name": "input",
