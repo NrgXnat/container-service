@@ -7,7 +7,6 @@ import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
-import org.nrg.containers.events.model.SessionArchiveEvent;
 import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerException;

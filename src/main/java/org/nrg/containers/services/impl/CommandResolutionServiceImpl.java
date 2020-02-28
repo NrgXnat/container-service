@@ -53,6 +53,7 @@ import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.model.xnat.Subject;
+import org.nrg.containers.model.xnat.SubjectAssessor;
 import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandResolutionService;
@@ -101,6 +102,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SC
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.STRING;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT_ASSESSOR;
 
 @Slf4j
 @Service
@@ -674,6 +676,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
                                     Subject.class, Subject.uriToModelObject(loadFiles, typesNeeded),
                                     Subject.idToModelObject(userI, loadFiles, typesNeeded));
+                        } else if (type.equals(SUBJECT_ASSESSOR.getName())) {
+                            xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
+                                    SubjectAssessor.class, SubjectAssessor.uriToModelObject(loadFiles, typesNeeded),
+                                    SubjectAssessor.idToModelObject(userI, loadFiles, typesNeeded));
                         } else if (type.equals(SESSION.getName())) {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
                                     Session.class, Session.uriToModelObject(loadFiles, typesNeeded),

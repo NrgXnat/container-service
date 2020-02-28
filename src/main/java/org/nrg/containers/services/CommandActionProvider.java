@@ -8,7 +8,6 @@ import com.google.common.collect.Maps;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
-import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.Resource;
@@ -103,28 +102,28 @@ public class CommandActionProvider extends MultiActionProvider {
         XnatModelObject modelObject = null;
         String objectLabel = "";
         if(eventObject instanceof XnatProjectdata){
-            modelObject = new Project(((XnatProjectdata) eventObject));
+            modelObject = new Project(((XnatProjectdata) eventObject), false, null);
             objectLabel = "project";
         } else if(eventObject instanceof XnatSubjectdataI){
-            modelObject = new Subject((XnatSubjectdataI) eventObject);
+            modelObject = new Subject((XnatSubjectdataI) eventObject, false, null);
             objectLabel = "subject";
         } else if(eventObject instanceof XnatImagesessiondataI
                 && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
-            modelObject = new Session((XnatImagesessiondataI) eventObject);
+            modelObject = new Session((XnatImagesessiondataI) eventObject, false, null);
             objectLabel = "session";
         } else if(eventObject instanceof XnatSubjectassessordataI){
-            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject);
+            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, false, null);
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatImagescandataI){
-            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user);
+            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, false, null);
             String sessionUri = session.getUri();
-            modelObject = new Scan((XnatImagescandataI) eventObject, sessionUri, null);
+            modelObject = new Scan((XnatImagescandataI) eventObject, false, null, sessionUri, null);
             objectLabel = "scan";
         } else if(eventObject instanceof XnatImageassessordataI){
-            modelObject = new Assessor((XnatImageassessordataI) eventObject);
+            modelObject = new Assessor((XnatImageassessordataI) eventObject, false, null);
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatResourcecatalog){
-            modelObject = new Resource((XnatResourcecatalog) eventObject);
+            modelObject = new Resource((XnatResourcecatalog) eventObject, false, null);
             objectLabel = "resource";
         } else {
             log.error(String.format("Container Service does not support Event Object."));
@@ -136,23 +135,19 @@ public class CommandActionProvider extends MultiActionProvider {
             log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
         }
         inputValues.put(objectLabel, objectString);
-        Container container = null;
         try {
             String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
                     (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
             if(Strings.isNullOrEmpty(projectId)) {
-                container = containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+                containerService.queueResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user, null);
             } else {
-                container = containerService.resolveCommandAndLaunchContainer(projectId, wrapperId, inputValues, user);
+                containerService.queueResolveCommandAndLaunchContainer(projectId, wrapperId, 0L, null, inputValues, user, null);
             }
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
         }catch (Throwable e){
             log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage(), e);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
         }
-        if(container != null) {
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container " + container.containerId() + " launched.");
-        }
-
 
     }
 
