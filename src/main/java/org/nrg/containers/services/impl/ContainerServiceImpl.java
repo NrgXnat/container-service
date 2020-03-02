@@ -1671,7 +1671,7 @@ public class ContainerServiceImpl implements ContainerService {
                 log.debug("Skipping. XNAT model object is null.");
                 continue;
             }
-
+            final XnatModelObject xnatObjectToUseAsRoot;
             if (type.equals(SCAN.getName())) {
                 // If the external input is a scan, the workflow will not show up anywhere. So we
                 // use its parent session as the root object instead.

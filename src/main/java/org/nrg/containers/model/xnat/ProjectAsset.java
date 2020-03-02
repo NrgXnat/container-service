@@ -24,9 +24,11 @@ import org.nrg.xnat.exceptions.InvalidArchiveStructure;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 @JsonInclude(Include.NON_NULL)
 public class ProjectAsset extends XnatModelObject {
@@ -41,28 +43,27 @@ public class ProjectAsset extends XnatModelObject {
 
     public ProjectAsset() {}
 
-    public ProjectAsset(final String projectAssetId, final UserI userI) {
+    public ProjectAsset(final String projectAssetId, final UserI userI, final boolean loadFiles,
+                        @Nonnull final Set<String> loadTypes) {
         this.id = projectAssetId;
         loadXnatProjectAssetDataI(userI);
         this.uri = UriParserUtils.getArchiveUri(xnatProjectAssetI);
-        populateProperties(null);
+        populateProperties(null, loadFiles, loadTypes);
     }
 
-    public ProjectAsset(final XnatAbstractprojectassetI xnatProjectAssetI) {
-        this(xnatProjectAssetI, null, null);
-    }
-
-    public ProjectAsset(final XnatAbstractprojectassetI xnatProjectAssetI, final String parentUri, final String rootArchivePath) {
+    public ProjectAsset(final XnatAbstractprojectassetI xnatProjectAssetI, final boolean loadFiles,
+                        @Nonnull final Set<String> loadTypes, final String parentUri, final String rootArchivePath) {
         this.xnatProjectAssetI = xnatProjectAssetI;
         if (parentUri == null) {
             this.uri = UriParserUtils.getArchiveUri(xnatProjectAssetI);
         } else {
             this.uri = parentUri + "/subjects/" + xnatProjectAssetI.getId();
         }
-        populateProperties(rootArchivePath);
+        populateProperties(rootArchivePath, loadFiles, loadTypes);
     }
 
-    private void populateProperties(final String rootArchivePath) {
+    private void populateProperties(final String rootArchivePath, final boolean loadFiles,
+                                    @Nonnull final Set<String> loadTypes) {
         this.id = xnatProjectAssetI.getId();
         this.label = xnatProjectAssetI.getLabel();
         this.xsiType = xnatProjectAssetI.getXSIType();
@@ -77,31 +78,31 @@ public class ProjectAsset extends XnatModelObject {
         this.subjects = Lists.newArrayList();
         for (final XnatSubjectdataI xnatSubjectdataI : xnatProjectAssetI.getSubjects_subject()) {
             if (xnatSubjectdataI instanceof XnatSubjectdata) {
-                subjects.add(new Subject(xnatSubjectdataI, this.uri, rootArchivePath));
+                subjects.add(new Subject(xnatSubjectdataI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
         }
 
         this.sessions = Lists.newArrayList();
         for (final XnatExperimentdataI xnatExperimentdataI : xnatProjectAssetI.getExperiments_experiment()) {
             if (xnatExperimentdataI instanceof XnatImagesessiondataI) {
-                sessions.add(new Session((XnatImagesessiondataI) xnatExperimentdataI, this.uri, rootArchivePath));
+                sessions.add(new Session((XnatImagesessiondataI) xnatExperimentdataI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
         }
 
         this.resources = Lists.newArrayList();
         for (final XnatAbstractresourceI xnatAbstractresourceI : xnatProjectAssetI.getResources_resource()) {
             if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
-                resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, this.uri, rootArchivePath));
+                resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
         }
     }
 
     public static Function<URIManager.ArchiveItemURI, ProjectAsset> uriToModelObject(final boolean loadFiles,
                                                                                      @Nonnull final Set<String> loadTypes) {
+        return new Function<URIManager.ArchiveItemURI, ProjectAsset>() {
             @Nullable
             @Override
             public ProjectAsset apply(@Nullable URIManager.ArchiveItemURI uri) {
-                log.error("Loading Projet Assest by uri not supported because Project Assets do not yet have URI APIs.")
                 return null;
             }
         };
@@ -117,16 +118,16 @@ public class ProjectAsset extends XnatModelObject {
                 }
                 final XnatAbstractprojectasset xnatAbstractprojectasset = XnatAbstractprojectasset.getXnatAbstractprojectassetsById(s, userI, true);
                 if (xnatAbstractprojectasset != null) {
-                    return new ProjectAsset(xnatAbstractprojectasset.getId(), userI);
+                    return new ProjectAsset(xnatAbstractprojectasset.getId(), userI, loadFiles, loadTypes);
                 }
                 return null;
             }
         };
     }
 
-    public Project getProject(final UserI userI) {
+    public Project getProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
         loadXnatProjectAssetDataI(userI);
-        return new Project(xnatProjectAssetI.getProject(), userI);
+        return new Project(xnatProjectAssetI.getProject(), userI, loadFiles, loadTypes);
     }
 
     public void loadXnatProjectAssetDataI(final UserI userI) {

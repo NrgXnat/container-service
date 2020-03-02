@@ -78,19 +78,13 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
 
                 try {
                     // Launch container processing
-                    container = _containerService.resolveCommandAndLaunchContainer(wrapperId, inputValues, user);
+                    _containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, 0L, null, inputValues, user, null);
                     if (log.isDebugEnabled() && container != null) {
                         log.debug("Launched container in response to processing request");
-                        log.debug(container.toString());
-                    } else if (container == null) {
-                        log.error("Failed to create container in response to processing request.");
                     }
                 } catch (Throwable e) {
                     log.error("Failed to launch container in response to processing request.");
                     log.error(e.getMessage());
-                    if (container != null) {
-                        log.error(container.toString());
-                    }
                 }
             } else {
                 log.debug("No container wrapper ID {} found to process clara:trainSession request.", processingId);

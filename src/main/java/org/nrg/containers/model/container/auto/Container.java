@@ -246,7 +246,7 @@ public abstract class Container {
                                    @JsonProperty("reserve-memory") final Long reserveMemory,
                                    @JsonProperty("limit-memory") final Long limitMemory,
                                    @JsonProperty("limit-cpu") final Double limitCpu,
-                                   @JsonProperty("swarm-constraints") final List<String> swarmConstraints) {
+                                   @JsonProperty("swarm-constraints") final List<String> swarmConstraints,
                                    @JsonProperty("runtime") final String runtime,
                                    @JsonProperty("ipc-mode") final String ipcMode,
                                    @JsonProperty("auto-remove") final Boolean autoremove,
@@ -416,7 +416,7 @@ public abstract class Container {
                 .limitMemory(resolvedCommand.limitMemory())
                 .limitCpu(resolvedCommand.limitCpu())
                 .swarmConstraints(resolvedCommand.swarmConstraints())
-                .parentSourceObjectName(resolvedCommand.parentSourceObjectName());
+                .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
                 .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
                 .runtime(resolvedCommand.runtime())
                 .ipcMode(resolvedCommand.ipcMode())

@@ -30,6 +30,7 @@ public class DockerCommandEntity extends CommandEntity {
         setHash(command.hash());
         setPorts(command.ports());
         return super.update(command);
+    }
 
     public static DockerCommandEntity fromPojo(final Command commandPojo) {
         final DockerCommandEntity command = new DockerCommandEntity();

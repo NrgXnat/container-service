@@ -366,7 +366,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
             final String resolvedCommandLine = resolveCommandLine(resolvedCommandLineValuesByReplacementKey);
-            final String resolvedContainerName = resolveContainerName(resolvedInputTrees);
+            final String resolvedContainerName = resolveContainerName(resolvedInputValuesByReplacementKey);
             final Map<String, String> resolvedEnvironmentVariables = resolveEnvironmentVariables(resolvedInputValuesByReplacementKey);
             final String resolvedWorkingDirectory = resolveWorkingDirectory(resolvedInputValuesByReplacementKey);
             final Map<String, String> resolvedPorts = resolvePorts(resolvedInputValuesByReplacementKey);
@@ -374,7 +374,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final List<ResolvedCommand> resolvedWrapupCommands = resolveWrapupCommands(resolvedCommandOutputs, resolvedCommandMounts);
             final Map<String, String> resolvedContainerLabels =
                     command.containerLabels() == null ? null :
-                            resolveContainerLabels(resolvedInputTrees);
+                            resolveContainerLabels(resolvedInputValuesByReplacementKey);
 
             // Populate setup & wrap-up commands with environment variables from parent command
             List<ResolvedCommand> populatedSetupCommands = new ArrayList<>();
@@ -384,8 +384,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         setup.toBuilder()
                              .addEnvironmentVariables(resolvedEnvironmentVariables)
                              .commandLine(resolveCommandLine(resolvedCommandLineValuesByReplacementKey, setup.commandLine()))
-                             .containerLabels(resolveContainerLabels(resolvedInputTrees, setup.containerLabels()))
-                             .containerName(resolveContainerName(resolvedInputTrees, setup.containerName()))
+                             .containerLabels(resolveContainerLabels(resolvedInputValuesByReplacementKey, setup.containerLabels()))
+                             .containerName(resolveContainerName(resolvedInputValuesByReplacementKey, setup.containerName()))
                              .build());
             }
             for(ResolvedCommand wrapup : resolvedWrapupCommands){
@@ -393,8 +393,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         wrapup.toBuilder()
                               .addEnvironmentVariables(resolvedEnvironmentVariables)
                               .commandLine(resolveCommandLine(resolvedCommandLineValuesByReplacementKey, wrapup.commandLine()))
-                              .containerLabels(resolveContainerLabels(resolvedInputTrees, wrapup.containerLabels()))
-                              .containerName(resolveContainerName(resolvedInputTrees, wrapup.containerName()))
+                              .containerLabels(resolveContainerLabels(resolvedInputValuesByReplacementKey, wrapup.containerLabels()))
+                              .containerName(resolveContainerName(resolvedInputValuesByReplacementKey, wrapup.containerName()))
                               .build());
             }
 
@@ -692,8 +692,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                     Project.idToModelObject(userI, loadFiles, typesNeeded, preload));
                         } else if (type.equals(PROJECT_ASSET.getName())) {
                                 xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
-                                        ProjectAsset.class, ProjectAsset.uriToModelObject(),
-                                        ProjectAsset.idToModelObject(userI);
+                                        ProjectAsset.class, ProjectAsset.uriToModelObject(loadFiles, typesNeeded),
+                                        ProjectAsset.idToModelObject(userI, loadFiles, typesNeeded));
                         } else if (type.equals(SUBJECT.getName())) {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
                                     Subject.class, Subject.uriToModelObject(loadFiles, typesNeeded),
@@ -930,7 +930,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 } else {
                     final Project project;
                     if (parentType.equals(PROJECT_ASSET.getName())) {
-                        project = ((ProjectAsset)parentXnatObject).getProject(userI);
+                        project = ((ProjectAsset)parentXnatObject).getProject(userI,false, typesNeeded);
                     } else if (parentType.equals(SUBJECT.getName())) {
                         project = ((Subject)parentXnatObject).getProject(userI, false, typesNeeded);
                     } else if (parentType.equals(SESSION.getName())) {
@@ -2104,67 +2104,53 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             return resolvedCommandOutputs;
         }
 
-        private String resolveContainerName(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees)
+        private String resolveContainerName(final Map<String, String> resolvedInputValuesByReplacementKey)
                 throws CommandResolutionException {
-            return resolveContainerName(resolvedInputTrees, command.containerName());
+            return resolveContainerName(resolvedInputValuesByReplacementKey, command.containerName());
 
         }
 
-        private String resolveContainerName(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
+        private String resolveContainerName(final Map<String, String> resolvedInputValuesByReplacementKey,
                                             final String containerName)
                 throws CommandResolutionException {
             if(Strings.isNullOrEmpty(containerName)){
+                log.info("No container name given to resolve.");
                 return null;
             }
-            log.info("Resolving container-name string: ", containerName);
 
-            // Look through the input tree, and find any command inputs that have uniquely resolved values
-            final Map<String, String> resolvedInputCommandLineValuesByReplacementKey = Maps.newHashMap();
-            for (final ResolvedInputTreeNode<? extends Input> node : resolvedInputTrees) {
-                log.debug("Finding container-name values for input tree with root \"{}\".", node.input().name());
-                resolvedInputCommandLineValuesByReplacementKey.putAll(findUniqueResolvedCommandLineValues(node));
-                log.debug("Done finding container-name values for input tree with root \"{}\".", node.input().name());
-            }
-
-            // Resolve the container-name string using the resolved command-line values
             log.debug("Using resolved container-name values to resolve container-name template string.");
-            final String resolvedContainerName = resolveTemplate(containerName, resolvedInputCommandLineValuesByReplacementKey);
+            final String resolvedContainerName = resolveTemplate(containerName, resolvedInputValuesByReplacementKey);
 
             log.info("Done resolving container-name string.");
-            log.debug("Container-name string: {}", resolvedContainerName);
+            if (log.isDebugEnabled()) {
+                log.debug("Container-name string: {}", resolvedContainerName);
+            }
             return resolvedContainerName;
         }
 
         @Nonnull
-        private Map<String, String> resolveContainerLabels(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees)
+        private Map<String, String> resolveContainerLabels(final Map<String, String> resolvedInputValuesByReplacementKey)
                 throws CommandResolutionException {
-            return resolveContainerLabels(resolvedInputTrees, command.containerLabels());
+            return resolveContainerLabels(resolvedInputValuesByReplacementKey, command.containerLabels());
         }
 
         @Nonnull
-        private Map<String, String> resolveContainerLabels(final @Nonnull List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
+        private Map<String, String> resolveContainerLabels(final Map<String, String> resolvedInputValuesByReplacementKey,
                                                            final @Nonnull Map<String, String> containerLabels)
                 throws CommandResolutionException {
             log.info("Resolving container labels: ", containerLabels);
 
             Map<String, String> resolvedContainerLabels = Maps.newHashMap();
-            // Look through the input tree, and find any command inputs that have uniquely resolved values
-            final Map<String, String> resolvedInputValuesByReplacementKey = Maps.newHashMap();
-            for (final ResolvedInputTreeNode<? extends Input> node : resolvedInputTrees) {
-                log.debug("Finding command-line values for input tree with root \"{}\".", node.input().name());
-                resolvedInputValuesByReplacementKey.putAll(findUniqueResolvedCommandLineValues(node));
-                log.debug("Done finding command-line values for input tree with root \"{}\".", node.input().name());
+            if (containerLabels == null || containerLabels.isEmpty()) {
+                log.info("No container labels to resolve.");
+                return resolvedContainerLabels;
             }
 
-            for(String containerLabelKey : containerLabels.keySet()){
-                resolvedContainerLabels.put(
-                        resolveTemplate(containerLabelKey, resolvedInputValuesByReplacementKey),
-                        resolveTemplate(containerLabels.get(containerLabelKey), resolvedInputValuesByReplacementKey)
-                );
-            }
-
+            resolvedContainerLabels = resolveTemplateMap(containerLabels, resolvedInputValuesByReplacementKey);
             log.info("Done resolving container values.");
-            log.debug("Resolved Container Labels: {}", resolvedContainerLabels);
+            if (log.isDebugEnabled()) {
+                log.debug("Resolved Container Labels: {}", resolvedContainerLabels);
+            }
             return resolvedContainerLabels;
         }
 
