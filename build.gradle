@@ -45,7 +45,7 @@ dependencyManagement {
 
 // I would prefer to use a floating version for docker client, like 8+, but they moved to java 8 and we are stuck on 7.
 // Once we can move to java 8 I want to put this back to a floating version. That way we always get the latest updates.
-def vDockerClient = "8.13.0"
+def vDockerClient = "3.2.0"
 
 def vJsonPath = "2.2.0"
 def vAutoValue = "1.3"
@@ -69,7 +69,7 @@ dependencies {
 
     compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
 
-    implementAndInclude ("com.spotify:docker-client:${vDockerClient}") {
+    implementAndInclude ("org.mandas:docker-client:${vDockerClient}") {
         exclude group: "ch.qos.logback"
         exclude group: "com.fasterxml.jackson.core"
         exclude group: "com.fasterxml.jackson.datatype"

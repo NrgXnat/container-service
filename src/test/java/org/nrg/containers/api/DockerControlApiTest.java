@@ -1,13 +1,13 @@
 package org.nrg.containers.api;
 
 import com.google.common.collect.Lists;
-import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.exceptions.DockerException;
-import com.spotify.docker.client.messages.ContainerConfig;
-import com.spotify.docker.client.messages.ContainerCreation;
-import com.spotify.docker.client.messages.HostConfig;
-import com.spotify.docker.client.messages.Info;
-import com.spotify.docker.client.messages.Version;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.messages.ContainerConfig;
+import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.HostConfig;
+import org.mandas.docker.client.messages.Info;
+import org.mandas.docker.client.messages.Version;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
@@ -202,10 +202,10 @@ public class DockerControlApiTest {
         CLIENT.pull(BUSYBOX_NAME);
         int beforeImageCount = CLIENT.listImages().size();
         controlApi.deleteImageById(BUSYBOX_ID, true);
-        List<com.spotify.docker.client.messages.Image> images = CLIENT.listImages();
+        List<org.mandas.docker.client.messages.Image> images = CLIENT.listImages();
         int afterImageCount = images.size();
         assertThat(afterImageCount+1, is(beforeImageCount));
-        for(com.spotify.docker.client.messages.Image image:images){
+        for(org.mandas.docker.client.messages.Image image:images){
             assertThat(image.id(), is(not(BUSYBOX_ID)));
         }
     }

@@ -5,34 +5,34 @@ import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.spotify.docker.client.DefaultDockerClient;
-import com.spotify.docker.client.DockerCertificates;
-import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.DockerClient.ListImagesParam;
-import com.spotify.docker.client.DockerClient.LogsParam;
-import com.spotify.docker.client.EventStream;
-import com.spotify.docker.client.LogStream;
-import com.spotify.docker.client.auth.ConfigFileRegistryAuthSupplier;
-import com.spotify.docker.client.auth.FixedRegistryAuthSupplier;
-import com.spotify.docker.client.exceptions.ContainerNotFoundException;
-import com.spotify.docker.client.exceptions.DockerCertificateException;
-import com.spotify.docker.client.exceptions.DockerException;
-import com.spotify.docker.client.exceptions.ImageNotFoundException;
-import com.spotify.docker.client.exceptions.ServiceNotFoundException;
-import com.spotify.docker.client.messages.*;
-import com.spotify.docker.client.messages.mount.Mount;
-import com.spotify.docker.client.messages.swarm.ContainerSpec;
-import com.spotify.docker.client.messages.swarm.EndpointSpec;
-import com.spotify.docker.client.messages.swarm.Placement;
-import com.spotify.docker.client.messages.swarm.PortConfig;
-import com.spotify.docker.client.messages.swarm.ReplicatedService;
-import com.spotify.docker.client.messages.swarm.RestartPolicy;
-import com.spotify.docker.client.messages.swarm.ServiceMode;
-import com.spotify.docker.client.messages.swarm.ServiceSpec;
-import com.spotify.docker.client.messages.swarm.Task;
-import com.spotify.docker.client.messages.swarm.TaskSpec;
-import com.spotify.docker.client.messages.swarm.ResourceRequirements;
-import com.spotify.docker.client.messages.swarm.Resources;
+import org.mandas.docker.client.DefaultDockerClient;
+import org.mandas.docker.client.DockerCertificates;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.DockerClient.ListImagesParam;
+import org.mandas.docker.client.DockerClient.LogsParam;
+import org.mandas.docker.client.EventStream;
+import org.mandas.docker.client.LogStream;
+import org.mandas.docker.client.auth.ConfigFileRegistryAuthSupplier;
+import org.mandas.docker.client.auth.FixedRegistryAuthSupplier;
+import org.mandas.docker.client.exceptions.ContainerNotFoundException;
+import org.mandas.docker.client.exceptions.DockerCertificateException;
+import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.exceptions.ImageNotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.messages.*;
+import org.mandas.docker.client.messages.mount.Mount;
+import org.mandas.docker.client.messages.swarm.ContainerSpec;
+import org.mandas.docker.client.messages.swarm.EndpointSpec;
+import org.mandas.docker.client.messages.swarm.Placement;
+import org.mandas.docker.client.messages.swarm.PortConfig;
+import org.mandas.docker.client.messages.swarm.ReplicatedService;
+import org.mandas.docker.client.messages.swarm.RestartPolicy;
+import org.mandas.docker.client.messages.swarm.ServiceMode;
+import org.mandas.docker.client.messages.swarm.ServiceSpec;
+import org.mandas.docker.client.messages.swarm.Task;
+import org.mandas.docker.client.messages.swarm.TaskSpec;
+import org.mandas.docker.client.messages.swarm.ResourceRequirements;
+import org.mandas.docker.client.messages.swarm.Resources;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.DockerContainerEvent;
@@ -61,12 +61,13 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.*;
 
-import static com.spotify.docker.client.DockerClient.EventsParam.since;
-import static com.spotify.docker.client.DockerClient.EventsParam.type;
-import static com.spotify.docker.client.DockerClient.EventsParam.until;
+import static org.mandas.docker.client.DockerClient.EventsParam.since;
+import static org.mandas.docker.client.DockerClient.EventsParam.type;
+import static org.mandas.docker.client.DockerClient.EventsParam.until;
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
 
 @Slf4j
@@ -212,7 +213,7 @@ public class DockerControlApi implements ContainerControlApi {
         );
     }
 
-    private List<com.spotify.docker.client.messages.Image> _getImages(final Map<String, String> params)
+    private List<org.mandas.docker.client.messages.Image> _getImages(final Map<String, String> params)
             throws NoDockerServerException, DockerServerException {
         // Transform param map to ListImagesParam array
         final List<ListImagesParam> dockerParamsList = Lists.newArrayList();
@@ -261,7 +262,7 @@ public class DockerControlApi implements ContainerControlApi {
         throw new NotFoundException(String.format("Could not find image %s", imageId));
     }
 
-    private com.spotify.docker.client.messages.ImageInfo _getImageById(final String imageId, final DockerClient client)
+    private org.mandas.docker.client.messages.ImageInfo _getImageById(final String imageId, final DockerClient client)
         throws DockerServerException, NoDockerServerException, NotFoundException {
         try {
             return client.inspectImage(imageId);
@@ -788,7 +789,7 @@ public class DockerControlApi implements ContainerControlApi {
         try (final DockerClient client = getClient(server, imageNameForSwarmAuth)) {
             if (swarmMode) {
                 log.debug("Inspecting service {}", containerOrServiceId);
-                final com.spotify.docker.client.messages.swarm.Service service = client.inspectService(containerOrServiceId);
+                final org.mandas.docker.client.messages.swarm.Service service = client.inspectService(containerOrServiceId);
                 if (service == null || service.spec() == null) {
                     throw new DockerServerException("Could not start service " + containerOrServiceId + ". Could not inspect service spec.");
                 }
@@ -898,7 +899,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public List<ContainerMessage> getContainers(final Map<String, String> params)
         throws NoDockerServerException, DockerServerException {
-        List<com.spotify.docker.client.messages.Container> containerList;
+        List<org.mandas.docker.client.messages.Container> containerList;
 
         // Transform param map to ListImagesParam array
         final List<DockerClient.ListContainersParam> dockerParamsList = Lists.newArrayList();
@@ -917,10 +918,10 @@ public class DockerControlApi implements ContainerControlApi {
             throw new DockerServerException(e);
         }
         return Lists.newArrayList(
-                Lists.transform(containerList, new Function<com.spotify.docker.client.messages.Container, ContainerMessage>() {
+                Lists.transform(containerList, new Function<org.mandas.docker.client.messages.Container, ContainerMessage>() {
                     @Override
                     @Nullable
-                    public ContainerMessage apply(final @Nullable com.spotify.docker.client.messages.Container container) {
+                    public ContainerMessage apply(final @Nullable org.mandas.docker.client.messages.Container container) {
                         return spotifyToNrg(container);
                     }
                 })
@@ -1181,7 +1182,7 @@ public class DockerControlApi implements ContainerControlApi {
             log.trace("Closed docker event stream.");
 
             return eventList;
-        } catch (InterruptedException | DockerException e) {
+        } catch (IOException | InterruptedException | DockerException e) {
             log.error(e.getMessage(), e);
             throw new DockerServerException(e);
         } catch (DockerServerException e) {
@@ -1269,7 +1270,7 @@ public class DockerControlApi implements ContainerControlApi {
 
             if (taskId == null) {
                 log.trace("Attempting to retrieve swarm task for service: {}", service.toString());
-                final com.spotify.docker.client.messages.swarm.Service serviceResponse = client.inspectService(serviceId);
+                final org.mandas.docker.client.messages.swarm.Service serviceResponse = client.inspectService(serviceId);
                 final String serviceName = serviceResponse.spec().name();
                 if (StringUtils.isBlank(serviceName)) {
                     throw new DockerServerException("Unable to determine service name for serviceId " + serviceId +
@@ -1405,7 +1406,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return NRG Container object
      **/
     @Nullable
-    private ContainerMessage spotifyToNrg(final @Nullable com.spotify.docker.client.messages.Container dockerContainer) {
+    private ContainerMessage spotifyToNrg(final @Nullable org.mandas.docker.client.messages.Container dockerContainer) {
         return dockerContainer == null ? null : ContainerMessage.create(dockerContainer.id(), dockerContainer.status());
     }
 
@@ -1416,7 +1417,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return NRG Container object
      **/
     @Nullable
-    private ContainerMessage spotifyToNrg(final @Nullable com.spotify.docker.client.messages.ContainerInfo dockerContainer) {
+    private ContainerMessage spotifyToNrg(final @Nullable org.mandas.docker.client.messages.ContainerInfo dockerContainer) {
         return dockerContainer == null ? null : ContainerMessage.create(
                 dockerContainer.id(),
                 dockerContainer.state().running() ? "Running" :
