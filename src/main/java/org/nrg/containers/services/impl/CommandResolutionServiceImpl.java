@@ -452,6 +452,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .shmSize(command.shmSize())
                     .network(command.network())
                     .containerLabels(resolvedContainerLabels)
+                    .gpus(command.gpus())
+                    .genericResources(command.genericResources())
                     .build();
 
             log.info("Done resolving command.");

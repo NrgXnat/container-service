@@ -78,6 +78,8 @@ public abstract class Container {
     @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
     @Nullable @JsonProperty("network") public abstract String network();
     @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
+    @JsonProperty("gpus") @Nullable public abstract String gpus();
+    @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
 
     @JsonIgnore
     public boolean isSwarmService() {
@@ -423,7 +425,9 @@ public abstract class Container {
                 .autoRemove(resolvedCommand.autoRemove())
                 .shmSize(resolvedCommand.shmSize())
                 .network(resolvedCommand.network())
-                .containerLabels(resolvedCommand.containerLabels());
+                .containerLabels(resolvedCommand.containerLabels())
+                .gpus(resolvedCommand.gpus())
+                .genericResources(resolvedCommand.genericResources());
     }
 
     public static Builder builder() {
@@ -572,7 +576,8 @@ public abstract class Container {
         public abstract Builder shmSize(Long shmSize);
         public abstract Builder network(String network);
         public abstract Builder containerLabels(Map<String, String> containerLabels);
-
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();

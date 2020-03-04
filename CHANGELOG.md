@@ -4,28 +4,40 @@
 
 
 ## Machine Learning  Demo
+* [CS-6221][]: Added support for Generic Resources in order to request GPU resources on SWARM nodes
 * [CS-6227][]: Added 'datatype-string' property to ProjectAsset, Session, Scan, Assessor, and Resource CS objects.  This string property is populated with output of xnat_object.toString(). Added 'parser' parameter to string-type derived wrapper input.  This parameter can be either an XPath or RegEx string, which will attempt to parse the input.
 
+Docker parameters added
+
+Added container command parameters:
+    
+    container-labels - Map<String,String> corresponding to Docker container labels (default: null)
+    container-name - string(default null - container is named by docker)
+    network - string as named bridge network (default: "bridge")
+    shm-size - long (default: null)
 
 Added container command parameters (Docker Server only - not supported on Swarm services): 
+Parameters added for Docker Server only - not supported on Swarm services: 
+    
     runtime - string (default: null)
     ipc-mode - string (default: null)
     auto-remove - boolean (default: false)
-    shm-size - long (default: null)
-    network - string as named bridge network (default: "bridge")
-    container-labels - Map<String,String> corresponding to Docker container labels (default: null)
-    container-name - string(default null - container is named by docker)
 
 TODO:
+        
         ulimit - list of <string, long, long> ("name","soft","hard") (default: null)
+        --gpus
     
 Added Rest APIs to get containers by name - only works if container was assigned name by Container Service
+    
     /projects/{project}/containers/name/{name} - param: nonfinalized bool
     /container/name/{name} - param: nonfinalized bool
 
 Added project scoped container kill Rest API:
+    
     /projects/{project}/containers/{id}/kill
 
+[CS-6221]: https://issues.xnat.org/browse/XNAT-6221
 [CS-6227]: https://issues.xnat.org/browse/XNAT-6227
 
 ## 2.1.1

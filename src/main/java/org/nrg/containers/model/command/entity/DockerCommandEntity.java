@@ -3,7 +3,6 @@ package org.nrg.containers.model.command.entity;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.Maps;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 
 import javax.annotation.Nonnull;
@@ -41,6 +40,8 @@ public class DockerCommandEntity extends CommandEntity {
         command.setShmSize(commandPojo.shmSize());
         command.setNetwork(commandPojo.network());
         command.setContainerLabels(commandPojo.containerLabels());
+        command.setGpus(commandPojo.gpus());
+        command.setGenericResources(commandPojo.genericResources());
         return command;
     }
 

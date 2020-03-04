@@ -2,12 +2,10 @@ package org.nrg.containers.model.container.entity;
 
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
@@ -74,7 +72,9 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Boolean autoRemove;
     private Long shmSize;
     private String network;
-    private Map<String, String> containerLabels = new HashMap<>();;
+    private Map<String, String> containerLabels = new HashMap<>();
+    private String gpus;
+    private Map<String, String> genericResources = new HashMap<>();
 
 
     public ContainerEntity() {}
@@ -155,6 +155,8 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setShmSize(containerPojo.shmSize());
         this.setNetwork(containerPojo.network());
         this.setContainerLabels(containerPojo.containerLabels());
+        this.setGpus(containerPojo.gpus());
+        this.setGenericResources(containerPojo.genericResources());
 
         return this;
     }
@@ -427,6 +429,17 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.containerLabels = containerLabels == null ? new HashMap<String, String>() : containerLabels;
     }
 
+    public String getGpus() { return gpus; }
+
+    public void setGpus(String gpus) { this.gpus = gpus; }
+
+    @ElementCollection
+    public Map<String, String> getGenericResources() { return genericResources; }
+
+    public void setGenericResources(Map<String, String> genericResources) {
+        this.genericResources = genericResources  == null ? new HashMap<String, String>() : genericResources;
+    }
+
     @ManyToOne
     public ContainerEntity getParentContainerEntity() {
         return parentContainerEntity;
@@ -606,6 +619,8 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("shmSize", shmSize)
                 .add("network", network)
                 .add("containerLabels", containerLabels)
+                .add("gpus", gpus)
+                .add("genericResources", genericResources)
                 .toString();
     }
 }

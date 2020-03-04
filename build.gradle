@@ -45,7 +45,7 @@ dependencyManagement {
 
 // I would prefer to use a floating version for docker client, like 8+, but they moved to java 8 and we are stuck on 7.
 // Once we can move to java 8 I want to put this back to a floating version. That way we always get the latest updates.
-def vDockerClient = "3.2.0"
+def vDockerClient = "4.0.0-SNAPSHOT"
 
 def vJsonPath = "2.2.0"
 def vAutoValue = "1.3"

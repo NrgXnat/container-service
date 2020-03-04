@@ -5,6 +5,8 @@ import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.mandas.docker.client.DefaultDockerClient;
 import org.mandas.docker.client.DockerCertificates;
 import org.mandas.docker.client.DockerClient;
@@ -19,22 +21,34 @@ import org.mandas.docker.client.exceptions.DockerCertificateException;
 import org.mandas.docker.client.exceptions.DockerException;
 import org.mandas.docker.client.exceptions.ImageNotFoundException;
 import org.mandas.docker.client.exceptions.ServiceNotFoundException;
-import org.mandas.docker.client.messages.*;
+import org.mandas.docker.client.messages.ContainerConfig;
+import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.ContainerInfo;
+import org.mandas.docker.client.messages.Event;
+import org.mandas.docker.client.messages.HostConfig;
+import org.mandas.docker.client.messages.Image;
+import org.mandas.docker.client.messages.ImageInfo;
+import org.mandas.docker.client.messages.PortBinding;
+import org.mandas.docker.client.messages.RegistryAuth;
+import org.mandas.docker.client.messages.RegistryConfigs;
+import org.mandas.docker.client.messages.ServiceCreateResponse;
 import org.mandas.docker.client.messages.mount.Mount;
+import org.mandas.docker.client.messages.mount.TmpfsOptions;
 import org.mandas.docker.client.messages.swarm.ContainerSpec;
 import org.mandas.docker.client.messages.swarm.EndpointSpec;
+import org.mandas.docker.client.messages.swarm.NetworkAttachmentConfig;
 import org.mandas.docker.client.messages.swarm.Placement;
 import org.mandas.docker.client.messages.swarm.PortConfig;
 import org.mandas.docker.client.messages.swarm.ReplicatedService;
+import org.mandas.docker.client.messages.swarm.Reservations;
+import org.mandas.docker.client.messages.swarm.ResourceRequirements;
+import org.mandas.docker.client.messages.swarm.ResourceSpec;
+import org.mandas.docker.client.messages.swarm.Resources;
 import org.mandas.docker.client.messages.swarm.RestartPolicy;
 import org.mandas.docker.client.messages.swarm.ServiceMode;
 import org.mandas.docker.client.messages.swarm.ServiceSpec;
 import org.mandas.docker.client.messages.swarm.Task;
 import org.mandas.docker.client.messages.swarm.TaskSpec;
-import org.mandas.docker.client.messages.swarm.ResourceRequirements;
-import org.mandas.docker.client.messages.swarm.Resources;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
@@ -63,7 +77,12 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.mandas.docker.client.DockerClient.EventsParam.since;
 import static org.mandas.docker.client.DockerClient.EventsParam.type;
@@ -339,6 +358,7 @@ public class DockerControlApi implements ContainerControlApi {
 
             return Container.serviceFromResolvedCommand(resolvedCommand,
                     createService(server,
+                            resolvedCommand.containerName(),
                             resolvedCommand.image(),
                             resolvedCommand.commandLine(),
                             resolvedCommand.overrideEntrypoint(),
@@ -349,7 +369,11 @@ public class DockerControlApi implements ContainerControlApi {
                             reserveMemory,
                             limitMemory,
                             limitCpu,
-                            resolvedCommand.swarmConstraints()),
+                            resolvedCommand.swarmConstraints(),
+                            resolvedCommand.shmSize(),
+                            resolvedCommand.network(),
+                            resolvedCommand.containerLabels(),
+                            resolvedCommand.genericResources()),
                     userI.getLogin()
             );
         } else {
@@ -376,7 +400,9 @@ public class DockerControlApi implements ContainerControlApi {
                             resolvedCommand.autoRemove(),
                             resolvedCommand.shmSize(),
                             resolvedCommand.network(),
-                            resolvedCommand.containerLabels()),
+                            resolvedCommand.containerLabels(),
+                            resolvedCommand.gpus(),
+                            resolvedCommand.genericResources()),
                     userI.getLogin()
             );
         }
@@ -444,6 +470,7 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             final String serviceId = createService(server,
+                    container.containerName(),
                     container.dockerImage(),
                     container.commandLine(),
                     overrideEntrypoint,
@@ -454,7 +481,11 @@ public class DockerControlApi implements ContainerControlApi {
                     reserveMemory,
                     limitMemory,
                     limitCpu,
-                    container.swarmConstraints());
+                    container.swarmConstraints(),
+                    container.shmSize(),
+                    container.network(),
+                    container.containerLabels(),
+                    container.genericResources());
             return container.toBuilder()
                     .serviceId(serviceId)
                     .swarm(true)
@@ -483,7 +514,9 @@ public class DockerControlApi implements ContainerControlApi {
                     container.autoRemove(),
                     container.shmSize(),
                     container.network(),
-                    container.containerLabels());
+                    container.containerLabels(),
+                    container.gpus(),
+                    container.genericResources());
 
             return container.toBuilder()
                     .containerId(containerId)
@@ -509,7 +542,9 @@ public class DockerControlApi implements ContainerControlApi {
                                    final Boolean autoRemove,
                                    final Long shmSize,
                                    final String network,
-                                   final Map<String, String> containerLabels)
+                                   final Map<String, String> containerLabels,
+                                   final String gpus,
+                                   final Map<String, String> genericResources)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -520,7 +555,7 @@ public class DockerControlApi implements ContainerControlApi {
                 final String hostPort = portEntry.getValue();
 
                 if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
-                    final PortBinding portBinding = PortBinding.create(null, hostPort);
+                    final PortBinding portBinding = PortBinding.of(null, hostPort);
                     portBindings.put(containerPort + "/tcp", Lists.newArrayList(portBinding));
 
                     portStringList.add("host" + hostPort + "->" + "container" + containerPort);
@@ -552,6 +587,7 @@ public class DockerControlApi implements ContainerControlApi {
                         .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes
                         .memory(1024 * 1024 * limitMemory) // megabytes to bytes
                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
+//                        .deviceRequests(HostConfig.DeviceRequest.builder().)
                         .build();
         if(shmSize != null && shmSize >= 0){
             hostConfig = hostConfig.toBuilder().shmSize(shmSize).build();
@@ -567,6 +603,11 @@ public class DockerControlApi implements ContainerControlApi {
         //    HostConfig.Ulimit node = HostConfig.Ulimit.create(ulimit)
         //    hostConfig.ulimits()
         //}
+
+//        // Use HostConfig.DeviceRequests to request gpus
+//        if (!Strings.isNullOrEmpty(gpus)){
+//            HostConfig.DeviceRequest.builder().driver("nvidia").count(1).capabilities(Arrays.asList("gpu")).
+//        }
 
         final ContainerConfig containerConfig =
                 ContainerConfig.builder()
@@ -628,6 +669,7 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private String createService(final DockerServer server,
+                                 final String containerName,
                                  final String imageName,
                                  final String runCommand,
                                  final boolean overrideEntrypoint,
@@ -638,7 +680,11 @@ public class DockerControlApi implements ContainerControlApi {
                                  final Long reserveMemory,
                                  final Long limitMemory,
                                  final Double limitCpu,
-                                 @Nullable List<String> swarmConstraints)
+                                 @Nullable List<String> swarmConstraints,
+                                 final Long shmSize,
+                                 final String network,
+                                 final Map<String, String> containerLabels,
+                                 final Map<String, String> genericResources)
             throws DockerServerException, ContainerException {
 
         final List<PortConfig> portConfigs = Lists.newArrayList();
@@ -682,6 +728,22 @@ public class DockerControlApi implements ContainerControlApi {
         //add docker socket for 'docker in docker containers'
         mounts.add(Mount.builder().source("/var/run/docker.sock").target("/var/run/docker.sock").readOnly(false).build());
 
+        // Temporary work-around to support configurable shm-size in swarm service
+        // https://github.com/moby/moby/issues/26714
+        if (shmSize != null ){
+            Mount tmpfs = Mount.builder()
+                               .type("tmpfs")
+                               .target("/dev/shm")
+                               .tmpfsOptions(TmpfsOptions.builder()
+                                                         .sizeBytes(shmSize)
+                                                         .build())
+                               .build();
+            if (log.isDebugEnabled()) {
+                log.debug("Creating tmpfs mount to support shm-size in Swarm Service: " + tmpfs.toString());
+            }
+            mounts.add(tmpfs);
+        }
+
         // We get the bind mounts strings here not to use for creating the service,
         // but simply for the debug log
         // The Mount objects are what we need for the service
@@ -698,12 +760,39 @@ public class DockerControlApi implements ContainerControlApi {
                 .env(environmentVariables)
                 .dir(workingDirectory)
                 .mounts(mounts)
-                .user(user);
+                .user(user)
+                .labels(containerLabels);
         if (overrideEntrypoint) {
             containerSpecBuilder.command("/bin/sh", "-c", runCommand);
         } else {
             containerSpecBuilder.args(ShellSplitter.shellSplit(runCommand));
         }
+
+
+        // Build out GPU/generic resources specifications from command definition to swarm/single server spec.
+        List<ResourceSpec> resourceSpecs = null;
+        if (genericResources != null && genericResources.size() > 0){
+            resourceSpecs = new ArrayList<ResourceSpec>();
+            for (String kind : genericResources.keySet()){
+                resourceSpecs.add(
+                        StringUtils.isNumeric(genericResources.get(kind)) ?
+                        ResourceSpec.DiscreteResourceSpec.builder().kind(kind).value(Integer.valueOf(genericResources.get(kind))).build() :
+                        ResourceSpec.NamedResourceSpec.builder().kind(kind).value(genericResources.get(kind)).build()
+                );
+            }
+        }
+
+        // Build named resources and add them to memory reservation requirements
+        ResourceRequirements resourceRequirements = ResourceRequirements.builder()
+                                                                        .reservations(Reservations.builder()
+                                                                                                  .memoryBytes(1024 * 1024 * reserveMemory) // megabytes to bytes
+                                                                                                  .resources(resourceSpecs)
+                                                                                                  .build())
+                                                                        .limits(Resources.builder()
+                                                                                         .memoryBytes(1024 * 1024 * limitMemory) // megabytes to bytes
+                                                                                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
+                                                                                         .build())
+                                                                        .build();
 
         final TaskSpec taskSpec = TaskSpec.builder()
                 .containerSpec(containerSpecBuilder.build())
@@ -711,15 +800,7 @@ public class DockerControlApi implements ContainerControlApi {
                 .restartPolicy(RestartPolicy.builder()
                         .condition("none")
                         .build())
-                .resources(ResourceRequirements.builder()
-                        .reservations(Resources.builder()
-                            .memoryBytes(1024 * 1024 * reserveMemory) // megabytes to bytes
-                            .build())
-                        .limits(Resources.builder()
-                            .memoryBytes(1024 * 1024 * limitMemory) // megabytes to bytes
-                            .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
-                            .build())
-                        .build())
+                .resources(resourceRequirements)
                 .build();
         final ServiceSpec serviceSpec =
                 ServiceSpec.builder()
@@ -732,7 +813,8 @@ public class DockerControlApi implements ContainerControlApi {
                         .endpointSpec(EndpointSpec.builder()
                                 .ports(portConfigs)
                                 .build())
-                        .name(UUID.randomUUID().toString())
+                        .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
+                        .networks(NetworkAttachmentConfig.builder().aliases(network).build())
                         .build();
 
         if (log.isDebugEnabled()) {

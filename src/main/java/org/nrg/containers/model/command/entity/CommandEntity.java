@@ -4,14 +4,29 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
-import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
 import javax.annotation.Nonnull;
-import javax.persistence.*;
-import java.util.*;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.DiscriminatorColumn;
+import javax.persistence.ElementCollection;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.Inheritance;
+import javax.persistence.InheritanceType;
+import javax.persistence.OneToMany;
+import javax.persistence.OrderBy;
+import javax.persistence.Table;
+import javax.persistence.Transient;
+import javax.persistence.UniqueConstraint;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Entity
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
@@ -46,6 +61,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private Long shmSize;
     private String network;
     private Map<String,String> containerLabels;
+    private String gpus;
+    private Map<String, String> genericResources;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -94,6 +111,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setShmSize(command.shmSize());
         this.setNetwork(command.network());
         this.setContainerLabels(command.containerLabels());
+        this.setGpus(command.gpus());
+        this.setGenericResources(command.genericResources());
 
         final List<CommandMountEntity> toRemoveMount = new ArrayList<>();
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
@@ -330,6 +349,18 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
 
     public void setNetwork(String network) { this.network = network; }
 
+    public String getGpus() { return gpus; }
+
+    public void setGpus(String gpus) { this.gpus = gpus; }
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    public Map<String, String> getGenericResources() { return genericResources; }
+
+    public void setGenericResources(Map<String, String> genericResources) {
+        this.genericResources = genericResources == null ?
+            Maps.newHashMap() : genericResources;
+    }
+
     @ElementCollection
     public Map<String, String> getContainerLabels() { return containerLabels; }
 
@@ -501,7 +532,9 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 Objects.equals(this.shmSize, that.shmSize) &&
                 Objects.equals(this.network, that.network) &&
                 Objects.equals(this.containerLabels, that.containerLabels) &&
-                Objects.equals(this.containerName, that.containerName);
+                Objects.equals(this.containerName, that.containerName) &&
+                Objects.equals(this.gpus, that.gpus) &&
+                Objects.equals(this.genericResources, that.genericResources);
     }
 
     @Override
@@ -536,7 +569,9 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("autoRemove", autoRemove)
                 .add("shmSize", shmSize)
                 .add("network", network)
-                .add("containerLabels", containerLabels);
+                .add("containerLabels", containerLabels)
+                .add("gpus", gpus)
+                .add("generic-resources", genericResources);
     }
 
     @Override

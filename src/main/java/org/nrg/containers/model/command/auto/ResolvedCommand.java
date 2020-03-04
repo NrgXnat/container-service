@@ -58,6 +58,8 @@ public abstract class ResolvedCommand {
     @JsonProperty("limit-cpu") @Nullable public abstract Double limitCpu();
     @JsonProperty("swarm-constraints") @Nullable public abstract List<String> swarmConstraints();
     @JsonProperty("parent-source-object-name") @Nullable public abstract String parentSourceObjectName();
+    @JsonProperty("gpus") @Nullable public abstract String gpus();
+    @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
 
     @JsonProperty("external-wrapper-input-values")
     public ImmutableSet<ResolvedCommandInput> externalWrapperInputValues() {
@@ -288,6 +290,8 @@ public abstract class ResolvedCommand {
                 .shmSize(command.shmSize())
                 .network(command.network())
                 .containerLabels(command.containerLabels())
+                .gpus(command.gpus())
+                .genericResources(command.genericResources())
                 .parentSourceObjectName(parentSourceObjectName)
                 .addMount(ResolvedCommandMount.builder()
                         .name("input")
@@ -397,6 +401,8 @@ public abstract class ResolvedCommand {
         public abstract Builder shmSize(Long shmSize);
         public abstract Builder network(String network);
         public abstract Builder containerLabels(Map<String, String> containerLabels);
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
 
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
 

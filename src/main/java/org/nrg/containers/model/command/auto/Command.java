@@ -68,7 +68,8 @@ public abstract class Command {
     @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
     @Nullable @JsonProperty("network") public abstract String network();
     @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
-
+    @Nullable @JsonProperty("gpus") public abstract String gpus();
+    @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
 
@@ -102,7 +103,9 @@ public abstract class Command {
                           @JsonProperty("auto-remove") final Boolean autoRemove,
                           @JsonProperty("shm-size") final Long shmSize,
                           @JsonProperty("network") final String network,
-                          @JsonProperty("container-labels") Map<String, String> containerLabels) {
+                          @JsonProperty("container-labels") Map<String, String> containerLabels,
+                          @JsonProperty("gpus") final String gpus,
+                          @JsonProperty("generic-resources") Map<String, String> genericResources) {
         return builder()
                 .id(id)
                 .name(name)
@@ -134,6 +137,8 @@ public abstract class Command {
                 .shmSize(shmSize)
                 .network(network)
                 .containerLabels(containerLabels)
+                .gpus(gpus)
+                .genericResources(genericResources)
                 .build();
     }
 
@@ -160,6 +165,8 @@ public abstract class Command {
                 .limitCpu(commandEntity.getLimitCpu())
                 .runtime(commandEntity.getRuntime())
                 .ipcMode(commandEntity.getIpcMode())
+                .gpus(commandEntity.getGpus())
+                .genericResources(commandEntity.getGenericResources())
 
                 .environmentVariables(commandEntity.getEnvironmentVariables() == null ?
                         Collections.<String, String>emptyMap() :
@@ -248,6 +255,8 @@ public abstract class Command {
                 .shmSize(creation.shmSize())
                 .network(creation.network())
                 .containerLabels(creation.containerLabels())
+                .gpus(creation.gpus())
+                .genericResources(creation.genericResources())
                 .mounts(creation.mounts() == null ? Collections.<CommandMount>emptyList() : creation.mounts())
                 .environmentVariables(creation.environmentVariables() == null ? Collections.<String, String>emptyMap() : creation.environmentVariables())
                 .ports(creation.ports() == null ? Collections.<String, String>emptyMap() : creation.ports())
@@ -652,7 +661,8 @@ public abstract class Command {
         public abstract Builder shmSize(Long shmSize);
         public abstract Builder network(String network);
         public abstract Builder containerLabels(Map<String, String> containerLabels);
-
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
         public abstract Command build();
     }
 
@@ -1661,6 +1671,8 @@ public abstract class Command {
         @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
         @Nullable @JsonProperty("network") public abstract String network();
         @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
+        @Nullable @JsonProperty("gpus") public abstract String gpus();
+        @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -1691,7 +1703,9 @@ public abstract class Command {
                                       @JsonProperty("auto-remove") final Boolean autoRemove,
                                       @JsonProperty("shm-size") final Long shmSize,
                                       @JsonProperty("network") final String network,
-                                      @JsonProperty("container-labels") final ImmutableMap<String, String> containerLabels) {
+                                      @JsonProperty("container-labels") final ImmutableMap<String, String> containerLabels,
+                                      @JsonProperty("gpus") final String gpus,
+                                      @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
                     containerName, type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
                     mounts == null ? ImmutableList.<CommandMount>of() : ImmutableList.copyOf(mounts),
@@ -1701,7 +1715,7 @@ public abstract class Command {
                     outputs == null ? ImmutableList.<CommandOutput>of() : ImmutableList.copyOf(outputs),
                     commandWrapperCreations == null ? ImmutableList.<CommandWrapperCreation>of() : ImmutableList.copyOf(commandWrapperCreations),
                     reserveMemory, limitMemory, limitCpu, runtime, ipcMode,
-                    autoRemove, shmSize, network, containerLabels);
+                    autoRemove, shmSize, network, containerLabels, gpus, genericResources);
         }
     }
 
@@ -1806,6 +1820,8 @@ public abstract class Command {
         @Nullable public abstract Long shmSize();
         @Nullable public abstract String network();
         @Nullable public abstract ImmutableMap<String, String> containerLabels();
+        @Nullable public abstract String gpus();
+        @Nullable public abstract ImmutableMap<String, String> genericResources();
 
         public static ConfiguredCommand.Builder initialize(final Command command) {
             return builder()
@@ -1836,7 +1852,9 @@ public abstract class Command {
                     .autoRemove(command.autoRemove())
                     .shmSize(command.shmSize())
                     .network(command.network())
-                    .containerLabels(command.containerLabels());
+                    .containerLabels(command.containerLabels())
+                    .gpus(command.gpus())
+                    .genericResources(command.genericResources());
 
         }
 
@@ -1911,6 +1929,8 @@ public abstract class Command {
             public abstract Builder shmSize(Long shmSize);
             public abstract Builder network(String network);
             public abstract Builder containerLabels(Map<String, String> containerLabels);
+            public abstract Builder gpus(String gpus);
+            public abstract Builder genericResources(Map<String, String> genericResources);
 
             public abstract ConfiguredCommand build();
         }
