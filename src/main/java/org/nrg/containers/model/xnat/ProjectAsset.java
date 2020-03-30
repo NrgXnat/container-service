@@ -8,6 +8,7 @@ import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
+import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractprojectassetI;
 import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatExperimentdataI;
@@ -39,6 +40,7 @@ public class ProjectAsset extends XnatModelObject {
     private List<Resource> resources;
     @JsonProperty("project-id") private String projectId;
     private String directory;
+    @JsonProperty("datatype-string") private String datatypeString;
 
 
     public ProjectAsset() {}
@@ -94,6 +96,12 @@ public class ProjectAsset extends XnatModelObject {
             if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
                 resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
+        }
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatProjectAssetI != null){
+            try {
+                datatypeString = xnatProjectAssetI.toString();
+            } catch (Throwable e){ }
         }
     }
 
@@ -153,6 +161,10 @@ public class ProjectAsset extends XnatModelObject {
 
     public void setDirectory(String directory) {
         this.directory = directory;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

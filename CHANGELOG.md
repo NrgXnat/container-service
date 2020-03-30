@@ -4,6 +4,9 @@
 
 
 ## Machine Learning  Demo
+* [CS-6227][]: Added 'datatype-string' property to ProjectAsset, Session, Scan, Assessor, and Resource CS objects.  This string property is populated with output of xnat_object.toString(). Added 'parser' parameter to string-type derived wrapper input.  This parameter can be either an XPath or RegEx string, which will attempt to parse the input.
+
+
 Added container command parameters (Docker Server only - not supported on Swarm services): 
     runtime - string (default: null)
     ipc-mode - string (default: null)
@@ -22,6 +25,8 @@ Added Rest APIs to get containers by name - only works if container was assigned
 
 Added project scoped container kill Rest API:
     /projects/{project}/containers/{id}/kill
+
+[CS-6227]: https://issues.xnat.org/browse/XNAT-6227
 
 ## 2.1.1
 

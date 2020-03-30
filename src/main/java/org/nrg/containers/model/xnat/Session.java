@@ -28,7 +28,6 @@ import org.nrg.xnat.helpers.uri.archive.ExperimentURII;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -41,6 +40,7 @@ public class Session extends XnatModelObject {
     @JsonProperty("project-id") private String projectId;
     @JsonProperty("subject-id") private String subjectId;
     private String directory;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public Session() {}
 
@@ -113,6 +113,13 @@ public class Session extends XnatModelObject {
             for (final XnatImageassessordataI xnatImageassessordataI : xnatImagesessiondataI.getAssessors_assessor()) {
                 assessors.add(new Assessor(xnatImageassessordataI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
+        }
+
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagesessiondataI != null){
+            try {
+                datatypeString = xnatImagesessiondataI.toString();
+            } catch (Throwable e){ }
         }
     }
 
@@ -233,6 +240,10 @@ public class Session extends XnatModelObject {
 
     public void setDirectory(final String directory) {
         this.directory = directory;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

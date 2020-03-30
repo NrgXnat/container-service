@@ -28,7 +28,7 @@ import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerMountResolutionException;
 import org.nrg.containers.exceptions.IllegalInputException;
 import org.nrg.containers.exceptions.UnauthorizedException;
-import org.nrg.containers.model.command.auto.*;
+import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandInput;
 import org.nrg.containers.model.command.auto.Command.CommandMount;
 import org.nrg.containers.model.command.auto.Command.CommandOutput;
@@ -39,10 +39,16 @@ import org.nrg.containers.model.command.auto.Command.CommandWrapperInput;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperOutput;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.Command.Input;
+import org.nrg.containers.model.command.auto.LaunchUi;
+import org.nrg.containers.model.command.auto.PreresolvedInputTreeNode;
+import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommandMount;
 import org.nrg.containers.model.command.auto.ResolvedCommand.ResolvedCommandOutput;
+import org.nrg.containers.model.command.auto.ResolvedCommandMount;
+import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputTreeNode.ResolvedInputTreeValueAndChildren;
+import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
@@ -75,17 +81,31 @@ import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.xml.sax.InputSource;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -629,6 +649,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 case FILE:
                 case FILES:
                 case DIRECTORY:
+                case STRING:
                     return true;
                 default:
                     return false;
@@ -825,6 +846,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.debug("Matcher: \"{}\".", input.matcher());
             final String resolvedMatcher = input.matcher() != null ? resolveTemplate(input.matcher(), resolvedInputValuesByReplacementKey) : null;
 
+            // Resolve the parser, if one was provided
+            log.debug("Parser: \"{}\".", input.parser());
+            final String resolvedParser = input.parser() != null ? resolveTemplate(input.parser(), resolvedInputValuesByReplacementKey) : null;
+
             // Process the input based on its type
             final String type = input.type();
             log.debug("Processing input value as a \"{}\".", type);
@@ -852,7 +877,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     resolvedValues = Collections.emptyList();
                 } else if (parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) ||parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName()) ||
                         parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName()) || parentType.equals(FILE.getName()) || parentType.equals(RESOURCE.getName())) {
-                    final String parentValue = pullStringFromParentJson("$." + propertyToGet, resolvedMatcher, parentJson);
+                    final String parentValue = pullStringFromParentJson("$." + propertyToGet, resolvedMatcher, parentJson, resolvedParser);
                     resolvedXnatObjects = null;
                     resolvedValues = parentValue != null ? Collections.singletonList(parentValue) : Collections.<String>emptyList();
                 } else {
@@ -874,7 +899,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
                 } else if (parentType.equals(RESOURCE.getName())) {
-                    final String parentValue = pullStringFromParentJson("$.directory", resolvedMatcher, parentJson);
+                    final String parentValue = pullStringFromParentJson("$.directory", resolvedMatcher, parentJson, resolvedParser);
                     resolvedXnatObjects = null;
                     resolvedValues = parentValue != null ? Collections.singletonList(parentValue) : Collections.<String>emptyList();
                     // TODO Need to store the root archive directory for these objects
@@ -1244,7 +1269,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         jsonValue = mapper.writeValueAsString(xnatModelObject);
                         if (StringUtils.isNotBlank(propertyToGet)) {
                             resolvedValue = pullStringFromParentJson("$." + propertyToGet,
-                                    null, jsonValue);
+                                    null, jsonValue, resolvedParser);
                         }
                     } catch (JsonProcessingException e) {
                         log.error("Could not serialize model object to json.", e);
@@ -1683,12 +1708,42 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         @Nullable
         private String pullStringFromParentJson(final @Nonnull String rootJsonPathSearch,
                                                 final String resolvedMatcher,
-                                                final String parentJson) {
+                                                final String parentJson,
+                                                final String parser) {
             final String jsonPathSearch = rootJsonPathSearch +
                     (StringUtils.isNotBlank(resolvedMatcher) ? "[?(" + resolvedMatcher + ")]" : "");
             log.info("Attempting to pull value from parent using matcher \"{}\".", jsonPathSearch);
 
-            return jsonPathSearch(parentJson, jsonPathSearch, new TypeRef<String>() {});
+            String jsonPathSearchResult = jsonPathSearch(parentJson, jsonPathSearch, new TypeRef<String>() {});
+            if(Strings.isNullOrEmpty(jsonPathSearchResult) || Strings.isNullOrEmpty(parser)){
+                return jsonPathSearchResult;
+            } else {
+                // parse resultant string with parser
+                String result = null;
+                try {
+                    //Check for XPath & XML
+                    InputSource xml = new InputSource(new StringReader(jsonPathSearchResult));
+                    XPath xPath = XPathFactory.newInstance().newXPath();
+                    result = (String) xPath.evaluate(parser, xml, XPathConstants.STRING);
+                } catch (XPathExpressionException e) {
+                    log.debug("Failed attempt to parse wrapper input: {} with XPath {}. Trying RegEx next.", rootJsonPathSearch, parser);
+                } catch (Throwable e) {
+                    log.error("Error while attempting to parse:\n{} \nwith XMLPath\n {}", jsonPathSearchResult, parser);
+                    e.printStackTrace();
+                }
+                // Xpath failed for some reason, maybe this is a regular expresion.
+                if (result == null){
+                    try {
+                        Matcher matcher = Pattern.compile(parser).matcher(jsonPathSearchResult);
+                        matcher.matches();
+                        result = matcher.group();
+                    } catch (Exception e) {
+                        log.debug("Failed attempt to parse wrapper input: {} with RegEx {}. Returning null.", rootJsonPathSearch, parser);
+                    }
+                }
+                return result;
+            }
+
         }
 
         @Nullable

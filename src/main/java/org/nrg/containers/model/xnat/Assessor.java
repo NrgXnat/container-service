@@ -39,6 +39,7 @@ public class Assessor extends XnatModelObject {
     @JsonProperty("project-id") private String projectId;
     @JsonProperty("session-id") private String sessionId;
     private String directory;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public Assessor() {}
 
@@ -106,6 +107,13 @@ public class Assessor extends XnatModelObject {
                     .filter(r -> r instanceof XnatResourcecatalog)
                     .map(r -> new Resource((XnatResourcecatalog) r, loadFiles, loadTypes, this.uri, rootArchivePath))
                     .collect(Collectors.toList());
+        }
+
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImageassessordataI != null){
+            try {
+                datatypeString = xnatImageassessordataI.toString();
+            } catch (Throwable e){ }
         }
     }
 
@@ -210,6 +218,10 @@ public class Assessor extends XnatModelObject {
 
     public void setDirectory(final String directory) {
         this.directory = directory;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

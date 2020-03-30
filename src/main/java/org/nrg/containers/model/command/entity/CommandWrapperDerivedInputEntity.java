@@ -1,7 +1,6 @@
 package org.nrg.containers.model.command.entity;
 
 import com.google.common.base.MoreObjects;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 
 import javax.annotation.Nonnull;
@@ -34,6 +33,7 @@ public class CommandWrapperDerivedInputEntity {
     private boolean loadChildren = true;
     private Boolean sensitive;
     private boolean multiple = false;
+    private String parser;
 
     private String derivedFromWrapperInput;
     private String derivedFromXnatObjectProperty;
@@ -64,6 +64,7 @@ public class CommandWrapperDerivedInputEntity {
         this.setLoadChildren(commandWrapperInput.loadChildren());
         this.setSensitive(commandWrapperInput.sensitive());
         this.setMultiple(commandWrapperInput.multiple());
+        this.setParser(commandWrapperInput.parser());
         switch (commandWrapperInput.type()) {
             case "string":
                 this.setType(CommandWrapperInputType.STRING);
@@ -265,6 +266,10 @@ public class CommandWrapperDerivedInputEntity {
         this.multiple = multiple != null && multiple;
     }
 
+    public String getParser() { return parser; }
+
+    public void setParser(String parser) { this.parser = parser; }
+
     public String getLabel() {
         return label;
     }
@@ -308,6 +313,7 @@ public class CommandWrapperDerivedInputEntity {
                 .add("loadChildren", loadChildren)
                 .add("sensitive", sensitive)
                 .add("multiple", multiple)
+                .add("parser", parser)
                 .toString();
     }
 }

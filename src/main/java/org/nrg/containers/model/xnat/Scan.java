@@ -45,6 +45,7 @@ public class Scan extends XnatModelObject {
     @JsonProperty("series-description") private String seriesDescription;
     @JsonProperty("start-time") private Object startTime;
     private String uid;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public Scan() {}
 
@@ -100,6 +101,13 @@ public class Scan extends XnatModelObject {
                             loadTypes, this.uri, rootArchivePath));
                 }
             }
+        }
+
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagescandataI != null){
+            try {
+                datatypeString = xnatImagescandataI.toString();
+            } catch (Throwable e){ }
         }
 
     }
@@ -285,6 +293,10 @@ public class Scan extends XnatModelObject {
 
     public void setUid(final String uid) {
         this.uid = uid;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

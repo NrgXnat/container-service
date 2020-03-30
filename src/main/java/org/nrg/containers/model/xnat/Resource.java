@@ -38,6 +38,7 @@ public class Resource extends XnatModelObject {
     @JsonProperty("integer-id") private Integer integerId;
     private String directory;
     private List<XnatFile> files;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public Resource() {}
 
@@ -108,6 +109,13 @@ public class Resource extends XnatModelObject {
                 String checksum = (String) entry[8];
                 files.add(new XnatFile(this.uri, relPath, filePath, tagsCsv, format, content, size, checksum));
             }
+        }
+
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatResourcecatalog != null){
+            try {
+                datatypeString = xnatResourcecatalog.toString();
+            } catch (Throwable e){ }
         }
     }
 
@@ -187,6 +195,10 @@ public class Resource extends XnatModelObject {
 
     public void setFiles(final List<XnatFile> files) {
         this.files = files;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

@@ -1326,6 +1326,7 @@ public abstract class Command {
         @Nullable @JsonProperty("derived-from-xnat-object-property") public abstract String derivedFromXnatObjectProperty();
         @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
         @JsonProperty("multiple") public abstract boolean multiple();
+        @Nullable @JsonProperty("parser") public abstract String parser();
 
         @JsonCreator
         static CommandWrapperDerivedInput create(@JsonProperty("name") final String name,
@@ -1344,7 +1345,8 @@ public abstract class Command {
                                                  @JsonProperty("required") final Boolean required,
                                                  @JsonProperty("load-children") final Boolean loadChildren,
                                                  @JsonProperty("sensitive") final Boolean sensitive,
-                                                 @JsonProperty("multiple") final Boolean multiple) {
+                                                 @JsonProperty("multiple") final Boolean multiple,
+                                                 @JsonProperty("parser") final String parser) {
             return builder()
                     .name(name)
                     .label(label)
@@ -1363,6 +1365,7 @@ public abstract class Command {
                     .loadChildren(loadChildren == null || loadChildren)
                     .sensitive(sensitive)
                     .multiple(multiple != null && multiple)
+                    .parser(parser)
                     .build();
         }
 
@@ -1390,6 +1393,7 @@ public abstract class Command {
                     .loadChildren(wrapperInput.getLoadChildren())
                     .sensitive(wrapperInput.getSensitive())
                     .multiple(wrapperInput.getMultiple())
+                    .parser(wrapperInput.getParser())
                     .build();
         }
 
@@ -1423,6 +1427,7 @@ public abstract class Command {
                     .defaultValue(commandInputConfiguration.defaultValue())
                     .matcher(commandInputConfiguration.matcher())
                     .userSettable(commandInputConfiguration.userSettable())
+                    .parser(this.parser())
                     .build();
         }
 
@@ -1467,6 +1472,7 @@ public abstract class Command {
             public abstract Builder required(final boolean required);
             public abstract Builder loadChildren(final boolean loadChildren);
             public abstract Builder multiple(final boolean multiple);
+            public abstract Builder parser(final String parser);
             public abstract Builder derivedFromWrapperInput(final String derivedFromWrapperInput);
             public abstract Builder derivedFromXnatObjectProperty(final String derivedFromXnatObjectProperty);
 
