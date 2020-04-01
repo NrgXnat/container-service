@@ -37,6 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -102,28 +103,28 @@ public class CommandActionProvider extends MultiActionProvider {
         XnatModelObject modelObject = null;
         String objectLabel = "";
         if(eventObject instanceof XnatProjectdata){
-            modelObject = new Project(((XnatProjectdata) eventObject), false, null);
+            modelObject = new Project(((XnatProjectdata) eventObject), true, Collections.EMPTY_SET);
             objectLabel = "project";
         } else if(eventObject instanceof XnatSubjectdataI){
-            modelObject = new Subject((XnatSubjectdataI) eventObject, false, null);
+            modelObject = new Subject((XnatSubjectdataI) eventObject, true, Collections.EMPTY_SET);
             objectLabel = "subject";
         } else if(eventObject instanceof XnatImagesessiondataI
                 && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
-            modelObject = new Session((XnatImagesessiondataI) eventObject, false, null);
+            modelObject = new Session((XnatImagesessiondataI) eventObject, true, Collections.EMPTY_SET);
             objectLabel = "session";
         } else if(eventObject instanceof XnatSubjectassessordataI){
-            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, false, null);
+            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, true, Collections.EMPTY_SET);
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatImagescandataI){
-            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, false, null);
+            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, true, Collections.EMPTY_SET);
             String sessionUri = session.getUri();
-            modelObject = new Scan((XnatImagescandataI) eventObject, false, null, sessionUri, null);
+            modelObject = new Scan((XnatImagescandataI) eventObject, true, Collections.EMPTY_SET, sessionUri, null);
             objectLabel = "scan";
         } else if(eventObject instanceof XnatImageassessordataI){
-            modelObject = new Assessor((XnatImageassessordataI) eventObject, false, null);
+            modelObject = new Assessor((XnatImageassessordataI) eventObject, true, Collections.EMPTY_SET);
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatResourcecatalog){
-            modelObject = new Resource((XnatResourcecatalog) eventObject, false, null);
+            modelObject = new Resource((XnatResourcecatalog) eventObject, true, Collections.EMPTY_SET);
             objectLabel = "resource";
         } else {
             log.error(String.format("Container Service does not support Event Object."));
