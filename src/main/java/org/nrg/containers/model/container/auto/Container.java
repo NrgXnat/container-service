@@ -845,6 +845,9 @@ public abstract class Container {
         @Nullable @JsonProperty("glob") public abstract String glob();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
         @Nullable @JsonProperty("created") public abstract String created();
         @JsonProperty("handled-by") public abstract String handledBy();
         @Nullable @JsonProperty("via-wrapup-container") public abstract String viaWrapupContainer();
@@ -861,6 +864,9 @@ public abstract class Container {
                                              @JsonProperty("glob") final String glob,
                                              @JsonProperty("label") final String label,
                                              @JsonProperty("format") final String format,
+                                             @JsonProperty("description") final String description,
+                                             @JsonProperty("content") final String content,
+                                             @JsonProperty("tags") final List<String> tags,
                                              @JsonProperty("created") final String created,
                                              @JsonProperty("handled-by") final String handledByWrapperInput,
                                              @JsonProperty("via-wrapup-container") final String viaWrapupContainer) {
@@ -876,6 +882,9 @@ public abstract class Container {
                     .glob(glob)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags == null ? Collections.emptyList() : tags)
                     .created(created)
                     .handledBy(handledByWrapperInput)
                     .viaWrapupContainer(viaWrapupContainer)
@@ -894,6 +903,9 @@ public abstract class Container {
                     containerEntityOutput.getGlob(),
                     containerEntityOutput.getLabel(),
                     containerEntityOutput.getFormat(),
+                    containerEntityOutput.getDescritpion(),
+                    containerEntityOutput.getContent(),
+                    containerEntityOutput.getTags(),
                     containerEntityOutput.getCreated(),
                     containerEntityOutput.getHandledByXnatCommandInput(),
                     containerEntityOutput.getViaWrapupContainer());
@@ -911,6 +923,9 @@ public abstract class Container {
                     resolvedCommandOutput.glob(),
                     resolvedCommandOutput.label(),
                     resolvedCommandOutput.format(),
+                    resolvedCommandOutput.description(),
+                    resolvedCommandOutput.content(),
+                    resolvedCommandOutput.tags(),
                     null,
                     resolvedCommandOutput.handledBy(),
                     resolvedCommandOutput.viaWrapupCommand());
@@ -935,6 +950,9 @@ public abstract class Container {
             public abstract Builder glob(String glob);
             public abstract Builder label(String label);
             public abstract Builder format(String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
             public abstract Builder created(String created);
             public abstract Builder handledBy(String handledBy);
             public abstract Builder viaWrapupContainer(String viaWrapupContainer);

@@ -1,23 +1,11 @@
 package org.nrg.containers.services.impl;
 
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
-
-import java.io.*;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.annotation.Nullable;
-
+import com.google.common.base.Function;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.spotify.docker.client.messages.swarm.TaskStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.action.ClientException;
@@ -51,17 +39,26 @@ import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.restlet.util.XNATRestConstants;
 import org.nrg.xnat.services.archive.CatalogService;
-import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.google.common.base.Function;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import javax.annotation.Nullable;
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import lombok.extern.slf4j.Slf4j;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 
 @Slf4j
 @Service
@@ -464,10 +461,13 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                         log.error(message);
                         throw new UnauthorizedException(message);
                     }
-
+                    String[] tags = null;
+                    if(output.tags() != null) {
+                        tags = output.tags().toArray(new String[output.tags().size()]);
+                    }
                     final XnatResourcecatalog resourcecatalog = catalogService.insertResources(userI, parentUri,
                             toUpload, uploadEventId, true, true,
-                            label, null, output.format(), null);
+                            label, output.description(), output.format(), output.content(), tags);
                     createdUri = UriParserUtils.getArchiveUri(resourcecatalog);
                     if (StringUtils.isBlank(createdUri)) {
                         createdUri = parentUri + "/resources/" + resourcecatalog.getLabel();

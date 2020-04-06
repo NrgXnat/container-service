@@ -2152,6 +2152,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         .path(resolveTemplate(commandOutput.path(), resolvedInputValuesByReplacementKey))
                         .label(resolveTemplate(commandOutputHandler.label(), resolvedInputValuesByReplacementKey))
                         .format(resolveTemplate(commandOutputHandler.format(), resolvedInputValuesByReplacementKey))
+                        .description(resolveTemplate(commandOutputHandler.description(), resolvedInputValuesByReplacementKey))
+                        .content(resolveTemplate(commandOutputHandler.content(), resolvedInputValuesByReplacementKey))
+                        .tags(resolveTemplates(commandOutputHandler.tags(), resolvedInputValuesByReplacementKey))
                         .build());
                 outputHasAtLeastOneLegitHandler = true;
             }
@@ -2702,6 +2705,20 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
             log.debug("Resolved template: \"{}\".", toResolve);
             return toResolve;
+        }
+
+        @Nonnull
+        private List<String> resolveTemplates(final List<String> templates, Map<String, String> valuesMap)
+                throws CommandResolutionException {
+            if(templates == null || templates.isEmpty()){
+                log.debug("No template replacement values found.");
+                return templates;
+            }
+            List<String> resolvedTemplates = new ArrayList<String>();
+            for(String toResolve : templates){
+                resolvedTemplates.add(resolveTemplate(toResolve, valuesMap));
+            }
+            return resolvedTemplates;
         }
 
         /**

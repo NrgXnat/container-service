@@ -11,12 +11,13 @@ import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.entity.CommandEntity;
-import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.container.ContainerInputType;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @AutoValue
@@ -515,6 +516,9 @@ public abstract class ResolvedCommand {
         @JsonProperty("glob") @Nullable public abstract String glob();
         @JsonProperty("label") @Nullable public abstract String label();
         @JsonProperty("format") @Nullable public abstract String format();
+        @JsonProperty("description") @Nullable public abstract String description();
+        @JsonProperty("content") @Nullable public abstract String content();
+        @JsonProperty("tags") @Nullable public abstract ImmutableList<String> tags();
         @JsonProperty("handled-by") public abstract String handledBy();
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
 
@@ -534,6 +538,9 @@ public abstract class ResolvedCommand {
             public abstract Builder glob(String glob);
             public abstract Builder label(String label);
             public abstract Builder format(String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
             public abstract Builder handledBy(String handledBy);
             public abstract Builder viaWrapupCommand(String viaWrapupCommand);
 

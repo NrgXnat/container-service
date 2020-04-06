@@ -1491,6 +1491,9 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
 
         @JsonCreator
         public static CommandWrapperOutput create(@JsonProperty("name") final String name,
@@ -1499,7 +1502,10 @@ public abstract class Command {
                                                   @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                   @JsonProperty("type") final String type,
                                                   @JsonProperty("label") final String label,
-                                                  @JsonProperty("format") final String format) {
+                                                  @JsonProperty("format") final String format,
+                                                  @JsonProperty("description") final String description,
+                                                  @JsonProperty("content") final String content,
+                                                  @JsonProperty("tags") final List<String> tags) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1508,6 +1514,9 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags == null ? Collections.emptyList() : tags)
                     .build();
         }
 
@@ -1524,6 +1533,9 @@ public abstract class Command {
                     .type(wrapperOutput.getType().getName())
                     .label(wrapperOutput.getLabel())
                     .format(wrapperOutput.getFormat())
+                    .description(wrapperOutput.getDescription())
+                    .content(wrapperOutput.getContent())
+                    .tags(wrapperOutput.getTags() == null ? Collections.emptyList() : wrapperOutput.getTags())
                     .build();
         }
 
@@ -1536,6 +1548,9 @@ public abstract class Command {
                     .type(commandWrapperOutputCreation.type())
                     .label(commandWrapperOutputCreation.label())
                     .format(commandWrapperOutputCreation.format())
+                    .description(commandWrapperOutputCreation.description())
+                    .content(commandWrapperOutputCreation.content())
+                    .tags(commandWrapperOutputCreation.tags() == null ? Collections.emptyList() : commandWrapperOutputCreation.tags())
                     .build();
         }
 
@@ -1600,6 +1615,12 @@ public abstract class Command {
             public abstract Builder label(final String label);
 
             public abstract Builder format(final String format);
+
+            public abstract Builder description(String description);
+
+            public abstract Builder content(String content);
+
+            public abstract Builder tags(List<String> tags);
 
             public abstract CommandWrapperOutput build();
         }
@@ -1694,6 +1715,9 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
 
         @JsonCreator
         public static CommandWrapperOutputCreation create(@JsonProperty("name") final String name,
@@ -1703,7 +1727,10 @@ public abstract class Command {
                                                           @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                           @JsonProperty("type") final String type,
                                                           @JsonProperty("label") final String label,
-                                                          @JsonProperty("format") final String format) {
+                                                          @JsonProperty("format") final String format,
+                                                          @JsonProperty("description") final String description,
+                                                          @JsonProperty("content") final String content,
+                                                          @JsonProperty("tags") final List<String> tags) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1712,6 +1739,9 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags == null ? Collections.emptyList() : tags)
                     .build();
         }
 
@@ -1731,6 +1761,9 @@ public abstract class Command {
             public abstract Builder type(final String type);
             public abstract Builder label(final String label);
             public abstract Builder format(final String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
 
             public abstract CommandWrapperOutputCreation build();
         }
