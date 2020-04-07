@@ -1512,6 +1512,9 @@ public class ContainerServiceImpl implements ContainerService {
                     case PROJECT:
                         xsiType = XnatProjectdata.SCHEMA_ELEMENT_NAME;
                         break;
+                    case PROJECT_ASSET:
+                        xsiType = XnatAbstractprojectasset.SCHEMA_ELEMENT_NAME;
+                        break;
                     case SUBJECT:
                         xsiType = XnatSubjectdata.SCHEMA_ELEMENT_NAME;
                         break;

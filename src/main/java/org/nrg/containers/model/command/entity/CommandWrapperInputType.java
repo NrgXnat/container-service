@@ -59,7 +59,8 @@ public enum CommandWrapperInputType {
     }
 
     public static List<String> xnatTypeNames() {
-        return Arrays.asList(DIRECTORY.getName(), FILE.getName(), FILES.getName(), PROJECT.getName(), SUBJECT.getName(),
-                SESSION.getName(), SCAN.getName(), ASSESSOR.getName(), RESOURCE.getName(), CONFIG.getName());
+        return Arrays.asList(DIRECTORY.getName(), FILE.getName(), FILES.getName(), PROJECT.getName(),
+                PROJECT_ASSET.getName(),SUBJECT.getName(), SESSION.getName(), SCAN.getName(), ASSESSOR.getName(),
+                RESOURCE.getName(), CONFIG.getName());
     }
 }

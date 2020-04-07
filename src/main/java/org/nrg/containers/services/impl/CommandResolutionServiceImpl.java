@@ -637,15 +637,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             switch (type) {
                 case PROJECT:
                     return false;
+                case PROJECT_ASSET:
                 case SUBJECT:
                     return parentType == PROJECT;
                 case SESSION:
                     return Arrays.asList(PROJECT, SUBJECT).contains(parentType);
                 case ASSESSOR:
+                    return Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION).contains(parentType);
                 case SCAN:
                     return Arrays.asList(PROJECT, SUBJECT, SESSION).contains(parentType);
                 case RESOURCE:
-                    return Arrays.asList(PROJECT, SUBJECT, SESSION, ASSESSOR, SCAN).contains(parentType);
+                    return Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN).contains(parentType);
                 case FILE:
                 case FILES:
                 case DIRECTORY:
@@ -968,6 +970,60 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     resolvedXnatObjects = Collections.<XnatModelObject>singletonList(project);
                     resolvedValues = Collections.singletonList(project.getUri());
                 }
+            } else if (type.equals(PROJECT_ASSET.getName())) {
+                if (parentXnatObject == null) {
+                    log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
+                    resolvedXnatObjects = Collections.emptyList();
+                    resolvedValues = Collections.emptyList();
+                } else if (!parentType.equals(PROJECT.getName())) {
+                    logIncompatibleTypes(input.type(), parentType);
+                    resolvedXnatObjects = Collections.emptyList();
+                    resolvedValues = Collections.emptyList();
+                } else {  // parent is a project
+                    List<ProjectAsset> childList = matchChildFromParent(
+                            parentJson,
+                            valueCouldContainId,
+                            "project-assets",
+                            "uri",
+                            resolvedMatcher,
+                            new TypeRef<List<ProjectAsset>>() {},
+                            multiple);
+                    if (childList == null || childList.isEmpty()) {
+                        // It is also possible that the value they gave us contains an id
+                        childList = matchChildFromParent(
+                                parentJson,
+                                valueCouldContainId,
+                                "project-assets",
+                                "id",
+                                resolvedMatcher,
+                                new TypeRef<List<ProjectAsset>>() {},
+                                multiple);
+                    }
+                    if (childList == null || childList.isEmpty()) {
+                        // It is also possible that the value they gave us contains a label
+                        childList = matchChildFromParent(
+                                parentJson,
+                                valueCouldContainId,
+                                "project-assets",
+                                "label",
+                                resolvedMatcher,
+                                new TypeRef<List<ProjectAsset>>() {},
+                                multiple);
+                    }
+                    if (childList == null) {
+                        resolvedXnatObjects = Collections.emptyList();
+                        resolvedValues = Collections.emptyList();
+                    } else {
+                        resolvedXnatObjects = Lists.<XnatModelObject>newArrayList(childList);
+                        resolvedValues = Lists.newArrayList(Lists.transform(childList, new Function<ProjectAsset, String>() {
+                            @Override
+                            public String apply(final ProjectAsset projectAsset) {
+                                return projectAsset.getUri();
+                            }
+                        }));
+                    }
+                }
+
             } else if (type.equals(SUBJECT.getName())) {
                 if (parentXnatObject == null) {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
