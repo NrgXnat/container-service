@@ -1551,9 +1551,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 child.input().name(),
                                 resolvedInputValue.value());
 
-                        final Map<String, String> copyOfResolvedInputValuesByReplacementKey = Maps.newHashMap(resolvedInputValuesByReplacementKey);
-                        copyOfResolvedInputValuesByReplacementKey.put(thisNode.input().replacementKey(), resolvedInputValue.value());
-                        resolvedChildNodes.add(resolveNode(child, resolvedInputValue, copyOfResolvedInputValuesByReplacementKey, loadFiles));
+                        resolvedInputValuesByReplacementKey.put(thisNode.input().replacementKey(), resolvedInputValue.value());
+                        resolvedChildNodes.add(resolveNode(child, resolvedInputValue, resolvedInputValuesByReplacementKey, loadFiles));
                     }
                     resolvedValuesAndChildren.add(ResolvedInputTreeNode.ResolvedInputTreeValueAndChildren.create(resolvedInputValue, resolvedChildNodes));
                 } else {
@@ -1561,6 +1560,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                             thisNode.input().name(),
                             resolvedInputValue.value());
                     resolvedValuesAndChildren.add(ResolvedInputTreeNode.ResolvedInputTreeValueAndChildren.create(resolvedInputValue));
+                    resolvedInputValuesByReplacementKey.put(((Input) thisNode.input()).replacementKey(), resolvedInputValue.value());
                 }
             }
 
