@@ -5,10 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.security.UserI;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -35,7 +32,7 @@ public class XnatFile extends XnatModelObject {
                     final Long size,
                     final String checksum) {
         if (parentUri == null) {
-            log.error("Cannot construct a file URI. Parent URI is null.");
+            log.debug("Cannot construct a file URI. Parent URI is null.");
         } else {
             this.uri = parentUri + "/files/" + name;
         }

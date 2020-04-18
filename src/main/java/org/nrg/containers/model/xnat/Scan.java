@@ -104,7 +104,7 @@ public class Scan extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagescandataI != null){
+        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagescandataI != null){
             try {
                 datatypeString = xnatImagescandataI.toString();
             } catch (Throwable e){ }

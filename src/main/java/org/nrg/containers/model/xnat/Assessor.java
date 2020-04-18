@@ -110,14 +110,14 @@ public class Assessor extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImageassessordataI != null){
+        if((loadFiles || loadTypes.contains(CommandWrapperInputType.STRING.getName())) && xnatImageassessordataI != null){
             try {
                 datatypeString = xnatImageassessordataI.toString();
             } catch (Throwable e){ }
         }
     }
 
-    public static Function<URIManager.ArchiveItemURI, Assessor> uriToModelObject(final boolean loadFiles,
+    public static Function<URIManager.ArchiveItemURI, Assessor> uriToModelObject(final UserI userI, final boolean loadFiles,
                                                                                  @Nonnull final Set<String> loadTypes) {
         return new Function<URIManager.ArchiveItemURI, Assessor>() {
             @Nullable
@@ -125,9 +125,12 @@ public class Assessor extends XnatModelObject {
             public Assessor apply(@Nullable URIManager.ArchiveItemURI uri) {
                 if (uri != null &&
                         AssessorURII.class.isAssignableFrom(uri.getClass())) {
-                    final XnatImageassessordata assessor = ((AssessorURII) uri).getAssessor();
+                    XnatImageassessordata assessor = ((AssessorURII) uri).getAssessor();
                     if (assessor != null) {
-                        return new Assessor((AssessorURII) uri, loadFiles, loadTypes);
+                        assessor = XnatImageassessordata.getXnatImageassessordatasById(assessor.getId(), userI, true);
+                        return new Assessor(assessor, loadFiles, loadTypes);
+                        // TODO Loading an Assessor with the following method neglects to load any custom fields into the parent xnat object.  For now, I'm loading indirectly by ID as above.
+                        //return new Assessor((AssessorURII) uri, loadFiles, loadTypes);
                     }
                 } else if (uri != null &&
                         ExptURI.class.isAssignableFrom(uri.getClass())) {

@@ -3,6 +3,7 @@ package org.nrg.containers.services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import org.nrg.containers.model.command.auto.Command;
@@ -23,6 +24,8 @@ import org.nrg.xdat.model.XnatSubjectassessordataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatResourcecatalog;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
+import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
@@ -31,6 +34,7 @@ import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.nrg.xnat.eventservice.model.Subscription;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
+import org.nrg.xnat.utils.WorkflowUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -128,6 +132,7 @@ public class CommandActionProvider extends MultiActionProvider {
             objectLabel = "resource";
         } else {
             log.error(String.format("Container Service does not support Event Object."));
+            return;
         }
         String objectString = modelObject != null ? modelObject.getUri() : "";
         try {
@@ -135,14 +140,32 @@ public class CommandActionProvider extends MultiActionProvider {
         } catch (JsonProcessingException e) {
             log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
         }
-        inputValues.put(objectLabel, objectString);
         try {
+            Command.CommandWrapper wrapper = commandService.getWrapper(wrapperId);
+            ImmutableList<Command.CommandWrapperExternalInput> externalInputs = wrapper.externalInputs();
+            for( Command.CommandWrapperExternalInput externalInput : externalInputs){
+                if(externalInput.type().equalsIgnoreCase(objectLabel)){
+                    objectLabel = externalInput.name();
+                    break;
+                }
+            }
+            String wrapperName = wrapper == null ? null : wrapper.name();
+            inputValues.put(objectLabel, objectString);
             String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
                     (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
+            PersistentWorkflowI workflow = containerService.createContainerWorkflow(modelObject.getUri(), modelObject.getXsiType(),
+                    wrapperName, projectId, user);
+            if (workflow != null){
+                workflow.setStatus(PersistentWorkflowUtils.IN_PROGRESS);
+                workflow.setDetails("Command launched via Event Service");
+                WorkflowUtils.save(workflow, workflow.buildEvent());
+            }
             if(Strings.isNullOrEmpty(projectId)) {
-                containerService.queueResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user, null);
+                containerService.consumeResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user,
+                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow.getWorkflowId().toString());
             } else {
-                containerService.queueResolveCommandAndLaunchContainer(projectId, wrapperId, 0L, null, inputValues, user, null);
+                containerService.consumeResolveCommandAndLaunchContainer(projectId, wrapperId, 0L, null, inputValues, user,
+                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow.getWorkflowId().toString());
             }
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
         }catch (Throwable e){
@@ -208,9 +231,7 @@ public class CommandActionProvider extends MultiActionProvider {
                         inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
                     }
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
-                        if(entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().type() != null &&
-                                (entry.getValue().type().equalsIgnoreCase("string") || entry.getValue().type().equalsIgnoreCase("boolean") || entry.getValue().type().equalsIgnoreCase("integer"))
-                                ) {
+                        if ( entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable() != false && entry.getValue().type() != null ) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
                         }
                     }

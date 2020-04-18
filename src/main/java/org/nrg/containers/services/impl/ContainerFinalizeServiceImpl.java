@@ -98,6 +98,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                                                String project,
                                                @Nullable List<String> filePaths) {
         String admin = siteConfigPreferences.getAdminEmail();
+
+       //TODO: Add configuration parameter to disable status emails
+        if ( admin.contentEquals("administrator@xnat.org") ) {
+            log.error("Container Service status email not sent. Default Admin email not set.");
+            return;
+        }
+
+
         String status = completionStatus ? "Completed" : "Failed";
         String subject = pipelineName + " update: " + status + " processing of " +
                 (xnatLabel !=null ? xnatLabel : xnatId) + " in project " + project;

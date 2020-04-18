@@ -77,6 +77,7 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.URIManager.ArchiveItemURI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.helpers.uri.archive.ScanURII;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -735,7 +736,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                     Scan.idToModelObject(userI, loadFiles, typesNeeded));
                         } else if (type.equals(ASSESSOR.getName())) {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
-                                    Assessor.class, Assessor.uriToModelObject(loadFiles, typesNeeded),
+                                    Assessor.class, Assessor.uriToModelObject(userI, loadFiles, typesNeeded),
                                     Assessor.idToModelObject(userI, loadFiles, typesNeeded));
                         } else {
                             xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
@@ -1153,11 +1154,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (!(parentType.equals(SESSION.getName()))) {
-                    logIncompatibleTypes(input.type(), parentType);
-                    resolvedXnatObjects = Collections.emptyList();
-                    resolvedValues = Collections.emptyList();
-                } else {
+                } else if (parentType.equals(SESSION.getName())){
                     List<Scan> childList = matchChildFromParent(
                             parentJson,
                             valueCouldContainId,
@@ -1189,6 +1186,22 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                             }
                         }));
                     }
+                } else if (parentType.equals(RESOURCE.getName())) {
+                    URIManager.DataURIA parentURI = null;
+                    Scan scan = null;
+                    try {
+                        parentURI = UriParserUtils.parseURI(((Resource) parentXnatObject).getParentUri());
+                    scan = new Scan((ScanURII) parentURI, true, null);
+                    } catch (MalformedURLException e) {
+                        log.error("Could not derive Scan from Resource.", e.getMessage());
+                    }
+                    resolvedXnatObjects = Collections.<XnatModelObject>singletonList(scan);
+                    resolvedValues = Collections.singletonList(scan.getUri());
+
+                } else {
+                    logIncompatibleTypes(input.type(), parentType);
+                    resolvedXnatObjects = Collections.emptyList();
+                    resolvedValues = Collections.emptyList();
                 }
             } else if (type.equals(ASSESSOR.getName())) {
                 if (parentXnatObject == null) {
@@ -1554,12 +1567,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         resolvedInputValuesByReplacementKey.put(thisNode.input().replacementKey(), resolvedInputValue.value());
                         resolvedChildNodes.add(resolveNode(child, resolvedInputValue, resolvedInputValuesByReplacementKey, loadFiles));
                     }
-                    resolvedValuesAndChildren.add(ResolvedInputTreeNode.ResolvedInputTreeValueAndChildren.create(resolvedInputValue, resolvedChildNodes));
+                    resolvedValuesAndChildren.add(ResolvedInputTreeValueAndChildren.create(resolvedInputValue, resolvedChildNodes));
                 } else {
                     log.debug("Input \"{}\" (no children) has resolved value \"{}\".",
                             thisNode.input().name(),
                             resolvedInputValue.value());
-                    resolvedValuesAndChildren.add(ResolvedInputTreeNode.ResolvedInputTreeValueAndChildren.create(resolvedInputValue));
+                    resolvedValuesAndChildren.add(ResolvedInputTreeValueAndChildren.create(resolvedInputValue));
                     resolvedInputValuesByReplacementKey.put(((Input) thisNode.input()).replacementKey(), resolvedInputValue.value());
                 }
             }
@@ -2122,7 +2135,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     }
 
                     // Next check that the user has edit permissions on the handler target input's XNAT object
-                    final URIManager.ArchiveItemURI resourceURI = (URIManager.ArchiveItemURI) uri;
+                    final ArchiveItemURI resourceURI = (ArchiveItemURI) uri;
                     final ArchivableItem item = resourceURI.getSecurityItem();
                     boolean canEdit;
                     try {
