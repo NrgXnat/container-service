@@ -1,7 +1,6 @@
 package org.nrg.containers.events.listeners;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.om.XnatImagesessiondata;
@@ -16,8 +15,6 @@ import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
-import static reactor.bus.selector.Selectors.type;
-
 @Slf4j
 @Service
 public class SessionTransferredListener implements Consumer<Event<WorkflowStatusEvent>> {
@@ -26,7 +23,8 @@ public class SessionTransferredListener implements Consumer<Event<WorkflowStatus
 
     @Autowired
     public SessionTransferredListener(final EventBus eventBus, final NrgEventService eventService) {
-        eventBus.on(type(WorkflowStatusEvent.class), this);
+        // Disable WorkflowStatusEvent listener
+        //eventBus.on(type(WorkflowStatusEvent.class), this);
         this.eventService = eventService;
     }
 
