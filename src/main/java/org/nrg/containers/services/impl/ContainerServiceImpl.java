@@ -928,14 +928,10 @@ public class ContainerServiceImpl implements ContainerService {
                                                       final Container containerOrService,
                                                       final UserI userI) {
 
-        try {
-            final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory
-                    .fromSystem(PersistentWorkflowUtils.FAILED + " (JMS)", e.getMessage());
-            addContainerHistoryItem(containerOrService, failedHistoryItem, userI);
-            cleanupContainers(containerOrService);
-        } catch (DockerServerException | NoDockerServerException ex) {
-            log.error("Unable to cleanup container {}", containerOrService, ex);
-        }
+        final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory
+                .fromSystem(PersistentWorkflowUtils.FAILED + " (JMS)", e.getMessage());
+        addContainerHistoryItem(containerOrService, failedHistoryItem, userI);
+        cleanupContainers(containerOrService);
 
         // email user
         PersistentWorkflowI workflow = getContainerWorkflow(userI, containerOrService);
@@ -962,8 +958,8 @@ public class ContainerServiceImpl implements ContainerService {
 	
     @Override
 	public void consumeFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
-                                final Container containerOrService, final UserI userI) throws
-            NoDockerServerException, ContainerException, NotFoundException, DockerServerException {
+                                final Container containerOrService, final UserI userI)
+            throws ContainerException, NotFoundException {
         try {
             addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(FINALIZING,
                     "Processing finished. Uploading files."), userI);
@@ -1007,13 +1003,13 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void finalize(final String containerId, final UserI userI)
-            throws NotFoundException, ContainerException, NoDockerServerException, DockerServerException {
+            throws NotFoundException, ContainerException {
         finalize(get(containerId), userI);
     }
 
     @Override
     public void finalize(final Container container, final UserI userI)
-            throws ContainerException, DockerServerException, NoDockerServerException {
+            throws ContainerException {
         String status = container.lastHistoryStatus();
         boolean isSuccessfulStatus = status == null || status.equals(FINALIZING) ||
                 (container.isSwarmService() ?
@@ -1024,7 +1020,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void finalize(final Container notFinalized, final UserI userI, final String exitCode, boolean isSuccessfulStatus)
-            throws ContainerException, NoDockerServerException, DockerServerException {
+            throws ContainerException {
         final long databaseId = notFinalized.databaseId();
         log.debug("Beginning finalization for container {}.", databaseId);
         final boolean failed = exitCodeIsFailed(exitCode) || !isSuccessfulStatus;
@@ -1147,8 +1143,9 @@ public class ContainerServiceImpl implements ContainerService {
                         log.info("All wrapup containers for parent Ccntainer {} are finished and not failed. Finalizing container id {}.", parentDatabaseId, parentContainerId);
                         try {
                             ContainerServiceImpl.this.finalize(parent, userI);
-                        } catch (NoDockerServerException | DockerServerException | ContainerException e) {
-                            log.error("Failed to finalize parent Container {} with container id {}.", parentDatabaseId, parentContainerId);
+                        } catch (ContainerException e) {
+                            log.error("Failed to finalize parent Container {} with container id {}.",
+                                    parentDatabaseId, parentContainerId, e);
                         }
                     }
                 };
@@ -1158,15 +1155,20 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
-    private void cleanupContainers(Container finalized)
-            throws DockerServerException, NoDockerServerException {
+    private void cleanupContainers(Container finalized) {
         long databaseId = finalized.databaseId();
         List<Container> toCleanup = new ArrayList<>();
         toCleanup.add(finalized);
         toCleanup.addAll(retrieveSetupContainersForParent(databaseId));
         toCleanup.addAll(retrieveWrapupContainersForParent(databaseId));
         for (Container container : toCleanup) {
-            containerControlApi.removeContainerOrService(container);
+            if (StringUtils.isNotBlank(container.containerOrServiceId())) {
+                try {
+                    containerControlApi.removeContainerOrService(container);
+                } catch (NoDockerServerException | DockerServerException e) {
+                    log.warn("Unable to remove service or container {}", container, e);
+                }
+            }
         }
     }
 
@@ -1174,8 +1176,7 @@ public class ContainerServiceImpl implements ContainerService {
                                                 final Container parent,
                                                 final Runnable successAction,
                                                 final String setupOrWrapup,
-                                                final UserI userI)
-            throws NoDockerServerException, DockerServerException {
+                                                final UserI userI) {
         final long parentDatabaseId = parent.databaseId();
         final String parentContainerId = parent.containerId();
 
