@@ -114,6 +114,7 @@ public class Assessor extends XnatModelObject {
             try {
                 datatypeString = xnatImageassessordataI.toString();
             } catch (Throwable e){ }
+
         }
     }
 

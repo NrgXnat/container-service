@@ -34,8 +34,8 @@ public class SessionTransferredListener implements Consumer<Event<WorkflowStatus
     @Override
     public void accept(Event<WorkflowStatusEvent> event) {
         final WorkflowStatusEvent wfsEvent = event.getData();
-
-        if (wfsEvent.getEntityType().contains("Session")) {
+        String entityType = wfsEvent.getEntityType();
+        if (entityType != null && entityType.contains("Session")) {
             final String eventId = wfsEvent.getEventId();
             if (SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.containsKey(eventId)) {
                 try {

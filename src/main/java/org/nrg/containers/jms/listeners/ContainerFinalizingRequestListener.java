@@ -1,8 +1,6 @@
 package org.nrg.containers.jms.listeners;
 
 import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
@@ -17,6 +15,7 @@ import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Component;
 
 import lombok.extern.slf4j.Slf4j;
+
 @Slf4j
 @Component
 public class ContainerFinalizingRequestListener {
@@ -32,8 +31,7 @@ public class ContainerFinalizingRequestListener {
 
 	@JmsListener(containerFactory = "finalizingQueueListenerFactory", destination = "containerFinalizingRequest")
 	public void onRequest(ContainerFinalizingRequest request)
-			throws UserNotFoundException, NotFoundException, UserInitException, DockerServerException,
-			NoDockerServerException, ContainerException {
+			throws UserNotFoundException, NotFoundException, UserInitException, ContainerException {
 		Container container = containerService.get(request.getId());
 		UserI user = userManagementServiceI.getUser(request.getUsername());
 		if (log.isDebugEnabled()) {
