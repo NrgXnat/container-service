@@ -55,10 +55,13 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.helpers.uri.URIManager;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
+import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -1459,9 +1462,14 @@ public class ContainerServiceImpl implements ContainerService {
 
         String xsiType;
         String xnatId;
+        String scanId = null;
         try {
             // Attempt to parse xnatIdOrUri as URI, from this, get archivable item for workflow
             ResourceData resourceData = catalogService.getResourceDataFromUri(xnatIdOrUri);
+            URIManager.DataURIA uri = resourceData.getUri();
+            if (uri instanceof ExptScanURI) {
+                scanId = ((ExptScanURI) resourceData.getUri()).getScan().getXnatImagescandataId().toString();
+            }
             ArchivableItem item = resourceData.getItem();
             xnatId = item.getId();
             xsiType = item.getXSIType();
@@ -1505,7 +1513,22 @@ public class ContainerServiceImpl implements ContainerService {
                             containerLaunchJustification,
                             ""));
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
-            WorkflowUtils.save(workflow, workflow.buildEvent());
+            if (scanId != null) {
+                workflow.setSrc(scanId);
+            }
+            try {
+                WorkflowUtils.save(workflow, workflow.buildEvent());
+            } catch (PSQLException e) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element.
+                // Let's try to re-save with a new time
+                if (e.getMessage().contains("duplicate key value violates unique constraint \"wrk_workflowdata_u_true\"")) {
+                    workflow.setLaunchTime(Calendar.getInstance().getTime());
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } else {
+                    throw e;
+                }
+            }
             log.debug("Created workflow {}.", workflow.getWorkflowId());
         } catch (Exception e) {
             log.error("Issue creating workflow for {} {}", xnatId, wrapperName, e);
@@ -1533,7 +1556,7 @@ public class ContainerServiceImpl implements ContainerService {
     private PersistentWorkflowI updateWorkflowWithResolvedCommand(@Nullable PersistentWorkflowI workflow,
                                                                   final ResolvedCommand resolvedCommand,
                                                                   final UserI userI) {
-        final XFTItem rootInputObject = findRootInputObject(resolvedCommand, userI);
+        final RootInputObject rootInputObject = findRootInputObject(resolvedCommand, userI);
         if (rootInputObject == null) {
             // We didn't find a root input XNAT object, so we can't make a workflow.
             log.debug("Cannot update workflow, no root input.");
@@ -1545,19 +1568,22 @@ public class ContainerServiceImpl implements ContainerService {
                 // Create it
                 log.debug("Create workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
-                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject,
+                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject.rootObject,
                         EventUtils.newEventInstance(EventUtils.CATEGORY.DATA, EventUtils.TYPE.PROCESS,
                                 resolvedCommand.wrapperName(),
                                 ContainerServiceImpl.containerLaunchJustification,
                                 ""));
+                if (rootInputObject.scanId != null) {
+                    workflow.setSrc(rootInputObject.scanId);
+                }
             } else {
                 // Update it
                 log.debug("Update workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
                 // Update workflow fields
-                workflow.setId(rootInputObject.getIDValue());
-                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject));
-                workflow.setDataType(rootInputObject.getXSIType());
+                workflow.setId(rootInputObject.rootObject.getIDValue());
+                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
+                workflow.setDataType(rootInputObject.rootObject.getXSIType());
                 workflow.setPipelineName(resolvedCommand.wrapperName());
             }
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
@@ -1588,12 +1614,17 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
+    private static class RootInputObject{
+        public XFTItem rootObject = null;
+        public String scanId = null;
+    }
+
     @Nullable
-    private XFTItem findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
+    private RootInputObject findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
         log.debug("Checking input values to find root XNAT input object.");
         final List<ResolvedInputTreeNode<? extends Command.Input>> flatInputTrees = resolvedCommand.flattenInputTrees();
 
-        XFTItem rootInputValue = null;
+        RootInputObject rootInputObject = new RootInputObject();
         for (final ResolvedInputTreeNode<? extends Command.Input> node : flatInputTrees) {
             final Command.Input input = node.input();
             log.debug("Input \"{}\".", input.name());
@@ -1603,8 +1634,8 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
-                    || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
+            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) ||
+                    type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }
@@ -1623,7 +1654,7 @@ public class ContainerServiceImpl implements ContainerService {
                 continue;
             }
 
-            if (rootInputValue != null) {
+            if (rootInputObject.rootObject != null) {
                 // We have already seen one candidate for a root object.
                 // Seeing this one means we have more than one, and won't be able to
                 // uniquely resolve a root object.
@@ -1636,10 +1667,11 @@ public class ContainerServiceImpl implements ContainerService {
             if (type.equals(SCAN.getName())) {
                 // If the external input is a scan, the workflow will not show up anywhere. So we
                 // use its parent session as the root object instead.
-                final XnatModelObject parentSession = ((Scan) inputValueXnatObject).getSession(userI, false,
-                        new HashSet<>());
+                final Scan scan = (Scan) inputValueXnatObject;
+                final XnatModelObject parentSession = scan.getSession(userI, false, new HashSet<>());
                 if (parentSession != null) {
                     xnatObjectToUseAsRoot = parentSession;
+                    rootInputObject.scanId = scan.getIntegerId().toString();
                 } else {
                     // Ok, nevermind, use the scan anyway. It's not a huge thing.
                     xnatObjectToUseAsRoot = inputValueXnatObject;
@@ -1650,14 +1682,14 @@ public class ContainerServiceImpl implements ContainerService {
 
             try {
                 log.debug("Getting input value as XFTItem.");
-                rootInputValue = xnatObjectToUseAsRoot.getXftItem(userI);
+                rootInputObject.rootObject = xnatObjectToUseAsRoot.getXftItem(userI);
             } catch (Throwable t) {
                 // If anything goes wrong, bail out. No workflow.
                 log.error("That didn't work.", t);
                 continue;
             }
 
-            if (rootInputValue == null) {
+            if (rootInputObject.rootObject == null) {
                 // I don't know if this is even possible
                 log.debug("XFTItem is null.");
                 continue;
@@ -1667,7 +1699,7 @@ public class ContainerServiceImpl implements ContainerService {
             log.debug("Found a valid root XNAT input object: {}.", input.name());
         }
 
-        if (rootInputValue == null) {
+        if (rootInputObject.rootObject == null) {
             // Didn't find any candidates
             log.debug("Found no valid root XNAT input object candidates.");
             return null;
@@ -1675,8 +1707,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         // At this point, we know we found a single valid external input value.
         // We can declare the object in that value to be the root object.
-
-        return rootInputValue;
+        return rootInputObject;
     }
 
     @Nonnull
