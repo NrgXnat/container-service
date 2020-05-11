@@ -798,24 +798,25 @@ public class DockerControlApi implements ContainerControlApi {
                 .containerSpec(containerSpecBuilder.build())
                 .placement(Placement.create(swarmConstraints))
                 .restartPolicy(RestartPolicy.builder()
-                        .condition("none")
+                        .condition(RestartPolicy.RESTART_POLICY_NONE)
                         .build())
                 .resources(resourceRequirements)
                 .build();
-        final ServiceSpec serviceSpec =
-                ServiceSpec.builder()
-                        .taskTemplate(taskSpec)
-                        .mode(ServiceMode.builder()
+        ServiceSpec.Builder builder = ServiceSpec.builder();
+        builder.taskTemplate(taskSpec);
+        builder.mode(ServiceMode.builder()
                                 .replicated(ReplicatedService.builder()
-                                        .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
-                                        .build())
-                                .build())
-                        .endpointSpec(EndpointSpec.builder()
-                                .ports(portConfigs)
-                                .build())
-                        .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
-                        .networks(NetworkAttachmentConfig.builder().aliases(network).build())
-                        .build();
+                                                             .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
+                                                             .build())
+                                .build());
+        builder.endpointSpec(EndpointSpec.builder()
+                                         .ports(portConfigs)
+                                         .build());
+        builder.name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName);
+        if(!Strings.isNullOrEmpty(network)){
+            builder.networks(NetworkAttachmentConfig.builder().aliases(network).build());
+        }
+        final ServiceSpec serviceSpec = builder.build();
 
         if (log.isDebugEnabled()) {
             final String message = String.format(
