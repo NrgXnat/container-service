@@ -36,7 +36,6 @@ import org.mandas.docker.client.messages.mount.Mount;
 import org.mandas.docker.client.messages.mount.TmpfsOptions;
 import org.mandas.docker.client.messages.swarm.ContainerSpec;
 import org.mandas.docker.client.messages.swarm.EndpointSpec;
-import org.mandas.docker.client.messages.swarm.NetworkAttachmentConfig;
 import org.mandas.docker.client.messages.swarm.Placement;
 import org.mandas.docker.client.messages.swarm.PortConfig;
 import org.mandas.docker.client.messages.swarm.ReplicatedService;
@@ -802,21 +801,18 @@ public class DockerControlApi implements ContainerControlApi {
                         .build())
                 .resources(resourceRequirements)
                 .build();
-        ServiceSpec.Builder builder = ServiceSpec.builder();
-        builder.taskTemplate(taskSpec);
-        builder.mode(ServiceMode.builder()
-                                .replicated(ReplicatedService.builder()
-                                                             .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
-                                                             .build())
-                                .build());
-        builder.endpointSpec(EndpointSpec.builder()
-                                         .ports(portConfigs)
-                                         .build());
-        builder.name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName);
-        if(!Strings.isNullOrEmpty(network)){
-            builder.networks(NetworkAttachmentConfig.builder().aliases(network).build());
-        }
-        final ServiceSpec serviceSpec = builder.build();
+        final ServiceSpec serviceSpec = ServiceSpec.builder()
+                                                    .taskTemplate(taskSpec)
+                                                    .mode(ServiceMode.builder()
+                                                        .replicated(ReplicatedService.builder()
+                                                                                     .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
+                                                                                     .build())
+                                                        .build())
+                                                    .endpointSpec(EndpointSpec.builder()
+                                                         .ports(portConfigs)
+                                                         .build())
+                                                    .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
+                                            .build();
 
         if (log.isDebugEnabled()) {
             final String message = String.format(
