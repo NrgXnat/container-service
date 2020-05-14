@@ -36,6 +36,7 @@ import org.mandas.docker.client.messages.mount.Mount;
 import org.mandas.docker.client.messages.mount.TmpfsOptions;
 import org.mandas.docker.client.messages.swarm.ContainerSpec;
 import org.mandas.docker.client.messages.swarm.EndpointSpec;
+import org.mandas.docker.client.messages.swarm.NetworkAttachmentConfig;
 import org.mandas.docker.client.messages.swarm.Placement;
 import org.mandas.docker.client.messages.swarm.PortConfig;
 import org.mandas.docker.client.messages.swarm.ReplicatedService;
@@ -767,7 +768,6 @@ public class DockerControlApi implements ContainerControlApi {
             containerSpecBuilder.args(ShellSplitter.shellSplit(runCommand));
         }
 
-
         // Build out GPU/generic resources specifications from command definition to swarm/single server spec.
         List<ResourceSpec> resourceSpecs = null;
         if (genericResources != null && genericResources.size() > 0){
@@ -793,26 +793,36 @@ public class DockerControlApi implements ContainerControlApi {
                                                                                          .build())
                                                                         .build();
 
-        final TaskSpec taskSpec = TaskSpec.builder()
-                .containerSpec(containerSpecBuilder.build())
-                .placement(Placement.create(swarmConstraints))
-                .restartPolicy(RestartPolicy.builder()
-                        .condition(RestartPolicy.RESTART_POLICY_NONE)
-                        .build())
-                .resources(resourceRequirements)
-                .build();
-        final ServiceSpec serviceSpec = ServiceSpec.builder()
-                                                    .taskTemplate(taskSpec)
-                                                    .mode(ServiceMode.builder()
-                                                        .replicated(ReplicatedService.builder()
-                                                                                     .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
-                                                                                     .build())
-                                                        .build())
-                                                    .endpointSpec(EndpointSpec.builder()
-                                                         .ports(portConfigs)
-                                                         .build())
-                                                    .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
-                                            .build();
+        TaskSpec.Builder taskSpecBuilder = TaskSpec.builder();
+        taskSpecBuilder
+            .containerSpec(containerSpecBuilder.build())
+            .placement(Placement.create(swarmConstraints))
+            .restartPolicy(RestartPolicy.builder()
+                    .condition(RestartPolicy.RESTART_POLICY_NONE)
+                    .build())
+            .resources(resourceRequirements);
+        if(!Strings.isNullOrEmpty(network)){
+            taskSpecBuilder.networks(NetworkAttachmentConfig.builder()
+                                                               .target(network).build());
+        }
+        final TaskSpec taskSpec = taskSpecBuilder.build();
+
+        ServiceSpec.Builder serviceSpecBuilder = ServiceSpec.builder();
+        serviceSpecBuilder
+            .taskTemplate(taskSpec)
+            .mode(ServiceMode.builder()
+                .replicated(ReplicatedService.builder()
+                                             .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
+                                             .build())
+                .build())
+            .endpointSpec(EndpointSpec.builder()
+                 .ports(portConfigs)
+                 .build())
+            .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
+            .labels(containerLabels);
+
+        ServiceSpec serviceSpec = serviceSpecBuilder.build();
+
 
         if (log.isDebugEnabled()) {
             final String message = String.format(

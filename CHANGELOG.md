@@ -13,11 +13,15 @@ Added container command parameters:
     
     container-labels - Map<String,String> corresponding to Docker container labels (default: null)
     container-name - string(default null - container is named by docker)
-    network - string as named bridge network (default: "bridge")
     shm-size - long (default: null)
+    network - string as attached network
 
-Added container command parameters (Docker Server only - not supported on Swarm services): 
-Parameters added for Docker Server only - not supported on Swarm services: 
+Swarm Mode only:
+    generic-resources - Map<String, String> corresponding to swarm node generic-resource reservations 
+                     i.e. "vram": "2000"
+
+
+Docker Server only - not supported on Swarm services: 
     
     runtime - string (default: null)
     ipc-mode - string (default: null)
