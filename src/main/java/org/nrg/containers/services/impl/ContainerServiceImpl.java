@@ -1299,21 +1299,30 @@ public class ContainerServiceImpl implements ContainerService {
     public String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         // TODO check user permissions. How?
-        return kill(get(containerId), userI);
+        Container container;
+        try {
+            container = get(containerId);
+        } catch (NotFoundException e){
+            log.debug("containerId: " + containerId + ". Trying to find container by name: " + containerId);
+            container = getByName(containerId, true);
+            if(container == null){
+                throw e;
+            }
+        }
+
+        return kill(container, userI);
     }
 
     @Override
-    public String kill(final String project, final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
-        // TODO check user permissions. How?
-
-        return kill(get(containerId), userI);
+    public String kill(String project, String containerId,
+                       UserI userI) throws NoDockerServerException, DockerServerException, NotFoundException {
+        return kill(containerId, userI);
     }
+
     private String kill(final Container container, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction(ContainerEntity.KILL_STATUS,
                 userI.getLogin()), userI);
-
         String containerDockerId;
         if(container.isSwarmService()){
         	containerDockerId = container.serviceId();
