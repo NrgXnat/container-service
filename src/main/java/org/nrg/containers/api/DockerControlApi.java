@@ -7,6 +7,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.DefaultDockerClient;
 import org.mandas.docker.client.DockerCertificates;
 import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.DockerClient.ListImagesParam;
@@ -15,7 +16,6 @@ import org.mandas.docker.client.EventStream;
 import org.mandas.docker.client.LogStream;
 import org.mandas.docker.client.auth.ConfigFileRegistryAuthSupplier;
 import org.mandas.docker.client.auth.FixedRegistryAuthSupplier;
-import org.mandas.docker.client.builder.jersey.JerseyDockerClientBuilder;
 import org.mandas.docker.client.exceptions.ContainerNotFoundException;
 import org.mandas.docker.client.exceptions.DockerCertificateException;
 import org.mandas.docker.client.exceptions.DockerException;
@@ -1178,14 +1178,15 @@ public class DockerControlApi implements ContainerControlApi {
     private DockerClient getClient(final @Nonnull DockerServer server, final @Nullable String imageName)
             throws DockerServerException {
 
-        JerseyDockerClientBuilder clientBuilder = new JerseyDockerClientBuilder();
-        clientBuilder.uri(server.host());
+        DefaultDockerClient.Builder clientBuilder =
+            DefaultDockerClient.builder()
+                .uri(server.host());
 
         if (StringUtils.isNotBlank(server.certPath())) {
             try {
                 final DockerCertificates certificates =
                     new DockerCertificates(Paths.get(server.certPath()));
-                clientBuilder.dockerCertificates(certificates);
+                clientBuilder = clientBuilder.dockerCertificates(certificates);
             } catch (DockerCertificateException e) {
                 log.error("Could not find docker certificates at {}", server.certPath(), e);
             }

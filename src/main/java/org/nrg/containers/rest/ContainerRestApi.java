@@ -286,7 +286,8 @@ public class ContainerRestApi extends AbstractXapiRestController {
                                 StringUtils.isBlank(lastLine = lines[lines.length - 1].replaceAll(" .*", ""))) {
                             throw new ParseException(null, 0);
                         }
-                        lastTime = Instant.parse(lastLine).plus(1L, ChronoUnit.SECONDS).getEpochSecond();
+                        lastTime = Instant.parse(StringUtils.substringBefore(lastLine, "\r"))
+                                          .plus(1L, ChronoUnit.SECONDS).getEpochSecond();
                     } catch (ParseException e) {
                         lastTime = since == null ? queryTime : since;
                     }
