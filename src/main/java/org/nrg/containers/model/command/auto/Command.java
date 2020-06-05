@@ -1526,7 +1526,7 @@ public abstract class Command {
                     .format(format)
                     .description(description)
                     .content(content)
-                    .tags(tags == null ? Collections.emptyList() : tags)
+                    .tags(tags)
                     .build();
         }
 
@@ -1545,7 +1545,7 @@ public abstract class Command {
                     .format(wrapperOutput.getFormat())
                     .description(wrapperOutput.getDescription())
                     .content(wrapperOutput.getContent())
-                    .tags(wrapperOutput.getTags() == null ? Collections.emptyList() : wrapperOutput.getTags())
+                    .tags(wrapperOutput.getTags())
                     .build();
         }
 
@@ -1560,7 +1560,7 @@ public abstract class Command {
                     .format(commandWrapperOutputCreation.format())
                     .description(commandWrapperOutputCreation.description())
                     .content(commandWrapperOutputCreation.content())
-                    .tags(commandWrapperOutputCreation.tags() == null ? Collections.emptyList() : commandWrapperOutputCreation.tags())
+                    .tags(commandWrapperOutputCreation.tags())
                     .build();
         }
 
