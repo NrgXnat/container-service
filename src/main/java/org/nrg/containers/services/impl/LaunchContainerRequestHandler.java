@@ -20,10 +20,12 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.xdat.security.user.XnatUserProvider;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.processing.handlers.AbstractProcessingOperationHandler;
 import org.nrg.xnat.helpers.processing.handlers.Processes;
 import org.nrg.xnat.services.messaging.processing.ProcessingOperationRequestData;
+import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -78,7 +80,11 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
 
                 try {
                     // Launch container processing
-                    _containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, 0L, null, inputValues, user, null);
+                    String workflowId = containerProcessingRequest.getWorkflowId();
+                    PersistentWorkflowI workflow = workflowId == null ? null :
+                            WorkflowUtils.getUniqueWorkflow(user, containerProcessingRequest.getWorkflowId());
+                    _containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, 0L,
+                            null, inputValues, user, workflow);
                     if (log.isDebugEnabled() && container != null) {
                         log.debug("Launched container in response to processing request");
                     }
