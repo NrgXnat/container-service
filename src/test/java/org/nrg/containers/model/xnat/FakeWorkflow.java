@@ -35,6 +35,7 @@ public class FakeWorkflow implements PersistentWorkflowI {
     private String externalId;
     private String status;
     private String pipelineName;
+    private String src;
 
     /**
      * @return Returns the details.
@@ -279,6 +280,16 @@ public class FakeWorkflow implements PersistentWorkflowI {
      */
     public String getPercentagecomplete() {
         return "";
+    }
+
+    @Override
+    public void setSrc(String src) {
+        this.src = src;
+    }
+
+    @Override
+    public String getSrc() {
+        return src;
     }
 
     /**

@@ -86,7 +86,7 @@ public class LaunchRestApiTest {
     private final String INPUT_JSON = "{\"" + INPUT_NAME + "\": \"" + INPUT_VALUE + "\"}";
     private final String FAKE_CONTAINER_ID = "098zyx";
     private final String FAKE_WORKFLOW_ID = "123456";
-    private final String QUEUED_WF_MSG = "To be assigned, see workflow " + FAKE_WORKFLOW_ID;
+    private final String QUEUED_WF_MSG = FAKE_WORKFLOW_ID;
     private final String QUEUED_MSG = "To be assigned";
 
     private final long WRAPPER_ID = 10L;
@@ -230,7 +230,7 @@ public class LaunchRestApiTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        final String id = (new JSONObject(response)).get("container-id").toString();
+        final String id = (new JSONObject(response)).get("workflow-id").toString();
 
         //Have a root element, so can make a workflow
         assertThat(id, is(QUEUED_WF_MSG));
@@ -252,7 +252,7 @@ public class LaunchRestApiTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        final String id = (new JSONObject(response)).get("container-id").toString();
+        final String id = (new JSONObject(response)).get("workflow-id").toString();
 
         // No root element, no workflow
         assertThat(id, is(QUEUED_MSG));
@@ -300,8 +300,8 @@ public class LaunchRestApiTest {
         final LaunchReport.Success success = bulkLaunchReport.successes().get(0);
         assertThat(success.launchParams(), hasEntry(FAKE_ROOT, FAKE_XNAT_ID));
         assertThat(success.launchParams(), hasEntry(INPUT_NAME, INPUT_VALUE));
-        assertThat(success, instanceOf(LaunchReport.ContainerSuccess.class));
-        assertThat(((LaunchReport.ContainerSuccess) success).containerId(), is(QUEUED_MSG));
+        assertThat(success, instanceOf(LaunchReport.Success.class));
+        assertThat(((LaunchReport.Success) success).workflowId(), is(QUEUED_MSG));
     }
 
     @Test

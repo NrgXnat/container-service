@@ -917,8 +917,8 @@ var XNAT = getObject(XNAT || {});
                                                         messageContent.push( spawn('p',[spawn('strong','Service ID: '),spawn('span',success['service-id']) ]));
                                                     } else {
                                                         messageContent.push( spawn('p',[
-                                                            spawn('strong','Container ID: '),
-                                                            spawn('span',success['container-id'])
+                                                            spawn('strong','Workflow ID: '),
+                                                            spawn('span',success['workflow-id'])
                                                         ]) );
                                                     }
                                                     messageContent.push( spawn('div',prettifyJSON(success.params)) );
@@ -950,11 +950,8 @@ var XNAT = getObject(XNAT || {});
                                             xmodal.loading.close();
                                             var messageContent;
                                             if (data.status === 'success') {
-                                                if ( data['type'] === 'service') {
-                                                    messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}}, 'Service ID: '+data['service-id']);
-                                                } else {
-                                                    messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}}, 'Container ID: '+data['container-id']);
-                                                }
+                                                messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}},
+                                                    'Workflow ID: ' + data['workflow-id']);
                                             } else {
                                                 messageContent = spawn('p', data.message);
                                             }

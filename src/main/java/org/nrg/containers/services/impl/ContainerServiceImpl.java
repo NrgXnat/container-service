@@ -1605,6 +1605,9 @@ public class ContainerServiceImpl implements ContainerService {
                 log.debug("Update workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
                 // Update workflow fields
+                workflow.setType(EventUtils.TYPE.PROCESS);
+                workflow.setPipelineName(resolvedCommand.wrapperName());
+                workflow.setJustification(ContainerServiceImpl.containerLaunchJustification);
                 workflow.setId(rootInputObject.getIDValue());
                 workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject));
                 workflow.setDataType(rootInputObject.getXSIType());

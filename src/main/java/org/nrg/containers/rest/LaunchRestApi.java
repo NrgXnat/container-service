@@ -68,6 +68,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     private static final String ID_REGEX = "\\d+";
     private static final String NAME_REGEX = "\\d*[^\\d]+\\d*";
+    private static final String TO_BE_ASSIGNED = "To be assigned";
 
     private final CommandService commandService;
     private final ContainerService containerService;
@@ -453,11 +454,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
             containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, commandId,
                     wrapperName, allRequestParams, userI, workflow);
 
-            String msg = "To be assigned";
-            if (StringUtils.isNotBlank(workflowid)) {
-                msg += ", see workflow " + workflowid;
-            }
-            return LaunchReport.ContainerSuccess.create(msg, allRequestParams, null, commandId, wrapperId);
+            String msg = StringUtils.isNotBlank(workflowid) ? workflowid : TO_BE_ASSIGNED;
+            return LaunchReport.Success.create(msg, allRequestParams, null, commandId, wrapperId);
 
         } catch (Throwable t) {
             if (workflow != null) {
@@ -570,7 +568,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
                 executorService.submit(() -> {
                     launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI);
                 });
-                reportBuilder.addSuccess(LaunchReport.ContainerSuccess.create("To be assigned",
+                reportBuilder.addSuccess(LaunchReport.Success.create(TO_BE_ASSIGNED,
                         paramsSet, null, commandId, wrapperId));
             } catch (Exception e) {
                 // Most exceptions should be "logged" to the workflow but this is meant to catch
