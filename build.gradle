@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.7-ML-SNAPSHOT"
+        vXnat = "ML-BETA"
     }
 }
 
@@ -13,7 +13,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "2.1.1-ML-SNAPSHOT"
+version vXnat
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -202,8 +202,6 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            from components.java
-
             artifacts {
                 artifact sourceJar
                 artifact javadocJar
