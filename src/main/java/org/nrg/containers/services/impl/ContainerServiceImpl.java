@@ -1454,8 +1454,26 @@ public class ContainerServiceImpl implements ContainerService {
      * @return the workflow
      */
     @Nullable
+    @Override
     public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
                                                        String wrapperName, String projectId, UserI user) {
+        return createContainerWorkflow(xnatIdOrUri, containerInputType, wrapperName, projectId, user, null);
+    }
+
+    /**
+     * Creates a workflow object to be used with container service
+     * @param xnatIdOrUri the xnat ID or URI string of the container's root element
+     * @param containerInputType the container input type of the container's root element
+     * @param wrapperName the wrapper name or id as a string
+     * @param projectId the project ID
+     * @param user the user
+     * @return the workflow
+     */
+    @Nullable
+    @Override
+    public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
+                                                       String wrapperName, String projectId, UserI user,
+                                                       String bulkLaunchId) {
         if (xnatIdOrUri == null) {
             return null;
         }
@@ -1515,6 +1533,9 @@ public class ContainerServiceImpl implements ContainerService {
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
             if (scanId != null) {
                 workflow.setSrc(scanId);
+            }
+            if (bulkLaunchId != null) {
+                workflow.setJobid(bulkLaunchId);
             }
             try {
                 WorkflowUtils.save(workflow, workflow.buildEvent());

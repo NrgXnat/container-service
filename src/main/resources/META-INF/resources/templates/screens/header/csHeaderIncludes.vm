@@ -1,1 +1,2 @@
 <script src="$content.getURI("/scripts/jsonpath/jsonpath.js")"></script>
+<script src="$content.getURI("/scripts/xnat/plugin/containerService/activityMonitoring.js")"></script>
