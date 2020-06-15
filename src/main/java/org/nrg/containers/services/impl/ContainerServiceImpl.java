@@ -87,7 +87,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.7.5";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.7.7";
     public static final String WAITING = "Waiting";
     public static final String FINALIZING = "Finalizing";
     public static final String CREATED = "Created";
@@ -187,12 +187,15 @@ public class ContainerServiceImpl implements ContainerService {
                         }
                     }
                 }
+            } else {
+                log.debug("This is a non-numbered version of XNAT or CS plugin. Skipping compatibility check.");
+                return true;
             }
         } catch (Throwable e){
             e.printStackTrace();
         }
         log.error("Failed to parse current (" + currentVersion + ") or required (" + minRequiredVersion + ") version tags.");
-        return false;
+        return true;
     }
 
     @Override
