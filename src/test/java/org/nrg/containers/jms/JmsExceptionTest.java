@@ -1,5 +1,6 @@
 package org.nrg.containers.jms;
 
+import org.junit.Ignore;
 import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -237,6 +238,7 @@ public class JmsExceptionTest {
 
     @Test
     @DirtiesContext
+    @Ignore
     public void testFinalizingQueueFailure() throws Exception {
         setupServer();
 
