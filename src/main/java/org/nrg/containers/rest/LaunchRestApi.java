@@ -7,7 +7,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.events.model.BulkLaunchEvent;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.CommandValidationException;
@@ -34,6 +33,7 @@ import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
+import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -581,7 +581,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
         final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
                 .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
         List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
-        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, targets.size()));
+        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size()));
         log.debug("Bulk launching on {} targets", targets.size());
 
         int failures = 0;
@@ -606,7 +606,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
         if (failures > 0) {
             // this should be super uncommon
-            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, failures));
+            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
         }
 
         return reportBuilder.build();
