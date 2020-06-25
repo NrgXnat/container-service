@@ -22,7 +22,10 @@ var XNAT = getObject(XNAT || {});
     XNAT.plugin.batchLaunch =
         getObject(XNAT.plugin.batchLaunch || {});
 
-    XNAT.plugin.containerService.updateBulkLaunchProgress = function(itemDivId, detailsTag, jsonobj, lastProgressIdx = -1) {
+    XNAT.plugin.containerService.updateBulkLaunchProgress = function(itemDivId, detailsTag, jsonobj, lastProgressIdx) {
+        if (!lastProgressIdx) {
+            lastProgressIdx = -1;
+        }
         const succeeded = jsonobj['succeeded'];
         const payload = JSON.parse(jsonobj['payload']);
         const total = payload['total'];
@@ -75,6 +78,6 @@ var XNAT = getObject(XNAT || {});
             clazz = succeeded ? 'success' : 'error';
             $progDiv.text(jsonobj['finalMessage']).removeClass('info').addClass(clazz);
         }
-        return [succeeded, lastProgressIdx];
+        return {succeeded: succeeded, lastProgressIdx: lastProgressIdx};
     };
 }));
