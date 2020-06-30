@@ -14,7 +14,7 @@ plugins {
     id "io.franzbecker.gradle-lombok" version "4.0.0"
 }
 
-group "org.nrg"
+group "org.nrg.xnatx.plugins"
 version "2.1.1-SNAPSHOT"
 
 sourceCompatibility = 1.8
@@ -109,8 +109,8 @@ dependencies {
     implementation "org.springframework:spring-webmvc"
     implementation "org.springframework:spring-jms"
     implementation "org.springframework:spring-messaging"
-    implementation group: 'javax.jms', name: 'javax.jms-api', version: '2.0.1'
-    implementation group: 'org.apache.activemq', name: 'activemq-all', version: '5.15.8'
+    implementation "javax.jms:javax.jms-api:2.0.1"
+    implementation "org.apache.activemq:activemq-all:5.15.12"
 
     implementation "io.springfox:springfox-swagger2"
     implementation "io.springfox:springfox-swagger-ui"
@@ -124,8 +124,6 @@ dependencies {
 
     implementation "org.slf4j:slf4j-api"
     implementation "org.slf4j:slf4j-log4j12"
-    annotationProcessor "org.projectlombok:lombok"
-    implementation "org.projectlombok:lombok"
 
     implementation "commons-lang:commons-lang"
 
@@ -158,8 +156,6 @@ dependencies {
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
-    testCompileOnly "org.projectlombok:lombok"
-    testAnnotationProcessor "org.projectlombok:lombok"
 }
 
 task unitTest( type: Test ) {
@@ -232,7 +228,9 @@ jar{
         from gitManifest
     }
     doLast {
-        logger.warn 'WARNING: You should generally run fatJar instead of jar task for this plugin'
+        if (!gradle.taskGraph.hasTask(":fatJar")) {
+            logger.warn 'WARNING: You should generally run fatJar instead of jar task for this plugin'
+        }
     }
 }
 
@@ -255,8 +253,6 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            from components.java
-
             artifacts {
                 artifact sourceJar
                 artifact javadocJar
@@ -318,3 +314,4 @@ publishing {
 def propertyWithDefault(def String property, def Object value) {
     hasProperty(property) ? getProperty(property) : value
 }
+
