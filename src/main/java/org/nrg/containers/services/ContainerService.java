@@ -12,6 +12,7 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 
+import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,10 @@ public interface ContainerService {
     PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
                                                 String wrapperName, String projectId, UserI user)
             throws Exception;
+    PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
+                                                String wrapperName, String projectId, UserI user,
+                                                @Nullable String bulkLaunchId)
+            throws Exception;
 
 
     void queueResolveCommandAndLaunchContainer(String project,
@@ -77,9 +82,9 @@ public interface ContainerService {
     void processEvent(final ContainerEvent event);
     void processEvent(final ServiceTaskEvent event);
 
-    void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException, NoDockerServerException, DockerServerException;
-    void finalize(final Container container, final UserI userI) throws ContainerException, DockerServerException, NoDockerServerException;
-    void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus)	throws ContainerException, NoDockerServerException, DockerServerException;
+    void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException;
+    void finalize(final Container container, final UserI userI) throws ContainerException;
+    void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException;
     
     String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException;
@@ -102,7 +107,7 @@ public interface ContainerService {
                          final boolean isSuccessful,
                          final Container service,
                          final UserI userI)
-            throws NoDockerServerException, ContainerException, NotFoundException, DockerServerException;
+            throws ContainerException, NotFoundException;
 
     /**
      * Restart a service through swarm

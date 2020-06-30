@@ -55,10 +55,13 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.helpers.uri.URIManager;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
+import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -928,14 +931,10 @@ public class ContainerServiceImpl implements ContainerService {
                                                       final Container containerOrService,
                                                       final UserI userI) {
 
-        try {
-            final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory
-                    .fromSystem(PersistentWorkflowUtils.FAILED + " (JMS)", e.getMessage());
-            addContainerHistoryItem(containerOrService, failedHistoryItem, userI);
-            cleanupContainers(containerOrService);
-        } catch (DockerServerException | NoDockerServerException ex) {
-            log.error("Unable to cleanup container {}", containerOrService, ex);
-        }
+        final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory
+                .fromSystem(PersistentWorkflowUtils.FAILED + " (JMS)", e.getMessage());
+        addContainerHistoryItem(containerOrService, failedHistoryItem, userI);
+        cleanupContainers(containerOrService);
 
         // email user
         PersistentWorkflowI workflow = getContainerWorkflow(userI, containerOrService);
@@ -962,8 +961,8 @@ public class ContainerServiceImpl implements ContainerService {
 	
     @Override
 	public void consumeFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
-                                final Container containerOrService, final UserI userI) throws
-            NoDockerServerException, ContainerException, NotFoundException, DockerServerException {
+                                final Container containerOrService, final UserI userI)
+            throws ContainerException, NotFoundException {
         try {
             addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(FINALIZING,
                     "Processing finished. Uploading files."), userI);
@@ -1007,13 +1006,13 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void finalize(final String containerId, final UserI userI)
-            throws NotFoundException, ContainerException, NoDockerServerException, DockerServerException {
+            throws NotFoundException, ContainerException {
         finalize(get(containerId), userI);
     }
 
     @Override
     public void finalize(final Container container, final UserI userI)
-            throws ContainerException, DockerServerException, NoDockerServerException {
+            throws ContainerException {
         String status = container.lastHistoryStatus();
         boolean isSuccessfulStatus = status == null || status.equals(FINALIZING) ||
                 (container.isSwarmService() ?
@@ -1024,7 +1023,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void finalize(final Container notFinalized, final UserI userI, final String exitCode, boolean isSuccessfulStatus)
-            throws ContainerException, NoDockerServerException, DockerServerException {
+            throws ContainerException {
         final long databaseId = notFinalized.databaseId();
         log.debug("Beginning finalization for container {}.", databaseId);
         final boolean failed = exitCodeIsFailed(exitCode) || !isSuccessfulStatus;
@@ -1147,8 +1146,9 @@ public class ContainerServiceImpl implements ContainerService {
                         log.info("All wrapup containers for parent Ccntainer {} are finished and not failed. Finalizing container id {}.", parentDatabaseId, parentContainerId);
                         try {
                             ContainerServiceImpl.this.finalize(parent, userI);
-                        } catch (NoDockerServerException | DockerServerException | ContainerException e) {
-                            log.error("Failed to finalize parent Container {} with container id {}.", parentDatabaseId, parentContainerId);
+                        } catch (ContainerException e) {
+                            log.error("Failed to finalize parent Container {} with container id {}.",
+                                    parentDatabaseId, parentContainerId, e);
                         }
                     }
                 };
@@ -1158,15 +1158,20 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
-    private void cleanupContainers(Container finalized)
-            throws DockerServerException, NoDockerServerException {
+    private void cleanupContainers(Container finalized) {
         long databaseId = finalized.databaseId();
         List<Container> toCleanup = new ArrayList<>();
         toCleanup.add(finalized);
         toCleanup.addAll(retrieveSetupContainersForParent(databaseId));
         toCleanup.addAll(retrieveWrapupContainersForParent(databaseId));
         for (Container container : toCleanup) {
-            containerControlApi.removeContainerOrService(container);
+            if (StringUtils.isNotBlank(container.containerOrServiceId())) {
+                try {
+                    containerControlApi.removeContainerOrService(container);
+                } catch (NoDockerServerException | DockerServerException e) {
+                    log.warn("Unable to remove service or container {}", container, e);
+                }
+            }
         }
     }
 
@@ -1174,8 +1179,7 @@ public class ContainerServiceImpl implements ContainerService {
                                                 final Container parent,
                                                 final Runnable successAction,
                                                 final String setupOrWrapup,
-                                                final UserI userI)
-            throws NoDockerServerException, DockerServerException {
+                                                final UserI userI) {
         final long parentDatabaseId = parent.databaseId();
         final String parentContainerId = parent.containerId();
 
@@ -1450,17 +1454,40 @@ public class ContainerServiceImpl implements ContainerService {
      * @return the workflow
      */
     @Nullable
+    @Override
     public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
                                                        String wrapperName, String projectId, UserI user) {
+        return createContainerWorkflow(xnatIdOrUri, containerInputType, wrapperName, projectId, user, null);
+    }
+
+    /**
+     * Creates a workflow object to be used with container service
+     * @param xnatIdOrUri the xnat ID or URI string of the container's root element
+     * @param containerInputType the container input type of the container's root element
+     * @param wrapperName the wrapper name or id as a string
+     * @param projectId the project ID
+     * @param user the user
+     * @return the workflow
+     */
+    @Nullable
+    @Override
+    public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
+                                                       String wrapperName, String projectId, UserI user,
+                                                       String bulkLaunchId) {
         if (xnatIdOrUri == null) {
             return null;
         }
 
         String xsiType;
         String xnatId;
+        String scanId = null;
         try {
             // Attempt to parse xnatIdOrUri as URI, from this, get archivable item for workflow
             ResourceData resourceData = catalogService.getResourceDataFromUri(xnatIdOrUri);
+            URIManager.DataURIA uri = resourceData.getUri();
+            if (uri instanceof ExptScanURI) {
+                scanId = ((ExptScanURI) resourceData.getUri()).getScan().getXnatImagescandataId().toString();
+            }
             ArchivableItem item = resourceData.getItem();
             xnatId = item.getId();
             xsiType = item.getXSIType();
@@ -1504,7 +1531,25 @@ public class ContainerServiceImpl implements ContainerService {
                             containerLaunchJustification,
                             ""));
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
-            WorkflowUtils.save(workflow, workflow.buildEvent());
+            if (scanId != null) {
+                workflow.setSrc(scanId);
+            }
+            if (bulkLaunchId != null) {
+                workflow.setJobid(bulkLaunchId);
+            }
+            try {
+                WorkflowUtils.save(workflow, workflow.buildEvent());
+            } catch (PSQLException e) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element.
+                // Let's try to re-save with a new time
+                if (e.getMessage().contains("duplicate key value violates unique constraint \"wrk_workflowdata_u_true\"")) {
+                    workflow.setLaunchTime(Calendar.getInstance().getTime());
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } else {
+                    throw e;
+                }
+            }
             log.debug("Created workflow {}.", workflow.getWorkflowId());
         } catch (Exception e) {
             log.error("Issue creating workflow for {} {}", xnatId, wrapperName, e);
@@ -1532,7 +1577,7 @@ public class ContainerServiceImpl implements ContainerService {
     private PersistentWorkflowI updateWorkflowWithResolvedCommand(@Nullable PersistentWorkflowI workflow,
                                                                   final ResolvedCommand resolvedCommand,
                                                                   final UserI userI) {
-        final XFTItem rootInputObject = findRootInputObject(resolvedCommand, userI);
+        final RootInputObject rootInputObject = findRootInputObject(resolvedCommand, userI);
         if (rootInputObject == null) {
             // We didn't find a root input XNAT object, so we can't make a workflow.
             log.debug("Cannot update workflow, no root input.");
@@ -1544,19 +1589,25 @@ public class ContainerServiceImpl implements ContainerService {
                 // Create it
                 log.debug("Create workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
-                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject,
+                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject.rootObject,
                         EventUtils.newEventInstance(EventUtils.CATEGORY.DATA, EventUtils.TYPE.PROCESS,
                                 resolvedCommand.wrapperName(),
                                 ContainerServiceImpl.containerLaunchJustification,
                                 ""));
+                if (rootInputObject.scanId != null) {
+                    workflow.setSrc(rootInputObject.scanId);
+                }
             } else {
                 // Update it
                 log.debug("Update workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
                 // Update workflow fields
-                workflow.setId(rootInputObject.getIDValue());
-                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject));
-                workflow.setDataType(rootInputObject.getXSIType());
+                workflow.setType(EventUtils.TYPE.PROCESS);
+                workflow.setPipelineName(resolvedCommand.wrapperName());
+                workflow.setJustification(ContainerServiceImpl.containerLaunchJustification);
+                workflow.setId(rootInputObject.rootObject.getIDValue());
+                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
+                workflow.setDataType(rootInputObject.rootObject.getXSIType());
                 workflow.setPipelineName(resolvedCommand.wrapperName());
             }
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
@@ -1587,12 +1638,17 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
+    private static class RootInputObject{
+        public XFTItem rootObject = null;
+        public String scanId = null;
+    }
+
     @Nullable
-    private XFTItem findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
+    private RootInputObject findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
         log.debug("Checking input values to find root XNAT input object.");
         final List<ResolvedInputTreeNode<? extends Command.Input>> flatInputTrees = resolvedCommand.flattenInputTrees();
 
-        XFTItem rootInputValue = null;
+        RootInputObject rootInputObject = new RootInputObject();
         for (final ResolvedInputTreeNode<? extends Command.Input> node : flatInputTrees) {
             final Command.Input input = node.input();
             log.debug("Input \"{}\".", input.name());
@@ -1602,8 +1658,8 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
-                    || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
+            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) ||
+                    type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }
@@ -1622,7 +1678,7 @@ public class ContainerServiceImpl implements ContainerService {
                 continue;
             }
 
-            if (rootInputValue != null) {
+            if (rootInputObject.rootObject != null) {
                 // We have already seen one candidate for a root object.
                 // Seeing this one means we have more than one, and won't be able to
                 // uniquely resolve a root object.
@@ -1635,10 +1691,11 @@ public class ContainerServiceImpl implements ContainerService {
             if (type.equals(SCAN.getName())) {
                 // If the external input is a scan, the workflow will not show up anywhere. So we
                 // use its parent session as the root object instead.
-                final XnatModelObject parentSession = ((Scan) inputValueXnatObject).getSession(userI, false,
-                        new HashSet<>());
+                final Scan scan = (Scan) inputValueXnatObject;
+                final XnatModelObject parentSession = scan.getSession(userI, false, new HashSet<>());
                 if (parentSession != null) {
                     xnatObjectToUseAsRoot = parentSession;
+                    rootInputObject.scanId = scan.getIntegerId().toString();
                 } else {
                     // Ok, nevermind, use the scan anyway. It's not a huge thing.
                     xnatObjectToUseAsRoot = inputValueXnatObject;
@@ -1649,14 +1706,14 @@ public class ContainerServiceImpl implements ContainerService {
 
             try {
                 log.debug("Getting input value as XFTItem.");
-                rootInputValue = xnatObjectToUseAsRoot.getXftItem(userI);
+                rootInputObject.rootObject = xnatObjectToUseAsRoot.getXftItem(userI);
             } catch (Throwable t) {
                 // If anything goes wrong, bail out. No workflow.
                 log.error("That didn't work.", t);
                 continue;
             }
 
-            if (rootInputValue == null) {
+            if (rootInputObject.rootObject == null) {
                 // I don't know if this is even possible
                 log.debug("XFTItem is null.");
                 continue;
@@ -1666,7 +1723,7 @@ public class ContainerServiceImpl implements ContainerService {
             log.debug("Found a valid root XNAT input object: {}.", input.name());
         }
 
-        if (rootInputValue == null) {
+        if (rootInputObject.rootObject == null) {
             // Didn't find any candidates
             log.debug("Found no valid root XNAT input object candidates.");
             return null;
@@ -1674,8 +1731,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         // At this point, we know we found a single valid external input value.
         // We can declare the object in that value to be the root object.
-
-        return rootInputValue;
+        return rootInputObject;
     }
 
     @Nonnull

@@ -1,7 +1,6 @@
 package org.nrg.containers.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.jayway.jsonpath.Configuration;
@@ -10,6 +9,7 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
+import org.hamcrest.CoreMatchers;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Rule;
@@ -27,7 +27,6 @@ import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.services.*;
-import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.RoleServiceI;
@@ -49,7 +48,6 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -57,6 +55,7 @@ import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.doNothing;
@@ -86,7 +85,7 @@ public class LaunchRestApiTest {
     private final String INPUT_JSON = "{\"" + INPUT_NAME + "\": \"" + INPUT_VALUE + "\"}";
     private final String FAKE_CONTAINER_ID = "098zyx";
     private final String FAKE_WORKFLOW_ID = "123456";
-    private final String QUEUED_WF_MSG = "To be assigned, see workflow " + FAKE_WORKFLOW_ID;
+    private final String QUEUED_WF_MSG = FAKE_WORKFLOW_ID;
     private final String QUEUED_MSG = "To be assigned";
 
     private final long WRAPPER_ID = 10L;
@@ -204,7 +203,8 @@ public class LaunchRestApiTest {
         when(mockContainerEntityService.save(containerEntity, mockAdmin)).thenReturn(containerEntity);
 
         // Mock queuing
-        when(mockContainerService.createContainerWorkflow(FAKE_XNAT_ID, FAKE_ROOT, WRAPPER_NAME, "", mockAdmin))
+        when(mockContainerService.createContainerWorkflow(eq(FAKE_XNAT_ID), eq(FAKE_ROOT), eq(WRAPPER_NAME),
+                eq(""), eq(mockAdmin), any(String.class)))
                 .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.
@@ -230,7 +230,7 @@ public class LaunchRestApiTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        final String id = (new JSONObject(response)).get("container-id").toString();
+        final String id = (new JSONObject(response)).get("workflow-id").toString();
 
         //Have a root element, so can make a workflow
         assertThat(id, is(QUEUED_WF_MSG));
@@ -252,7 +252,7 @@ public class LaunchRestApiTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        final String id = (new JSONObject(response)).get("container-id").toString();
+        final String id = (new JSONObject(response)).get("workflow-id").toString();
 
         // No root element, no workflow
         assertThat(id, is(QUEUED_MSG));
@@ -289,6 +289,8 @@ public class LaunchRestApiTest {
                 .getContentAsString();
 
         final LaunchReport.BulkLaunchReport bulkLaunchReport = mapper.readValue(response, LaunchReport.BulkLaunchReport.class);
+        assertThat(bulkLaunchReport.pipelineName(), is(WRAPPER_NAME));
+        assertThat(bulkLaunchReport.bulkLaunchId(), CoreMatchers.not(isEmptyOrNullString()));
         assertThat(bulkLaunchReport.successes(), hasSize(2));
         // We are needing to return from bulk UI ASAP so that we don't get a proxy replay of the request. This means we don't get status info (success/failures) in the launch report.
         //assertThat(bulkLaunchReport.successes(), hasSize(1));
@@ -300,8 +302,8 @@ public class LaunchRestApiTest {
         final LaunchReport.Success success = bulkLaunchReport.successes().get(0);
         assertThat(success.launchParams(), hasEntry(FAKE_ROOT, FAKE_XNAT_ID));
         assertThat(success.launchParams(), hasEntry(INPUT_NAME, INPUT_VALUE));
-        assertThat(success, instanceOf(LaunchReport.ContainerSuccess.class));
-        assertThat(((LaunchReport.ContainerSuccess) success).containerId(), is(QUEUED_MSG));
+        assertThat(success, instanceOf(LaunchReport.Success.class));
+        assertThat(success.workflowId(), is(QUEUED_MSG));
     }
 
     @Test

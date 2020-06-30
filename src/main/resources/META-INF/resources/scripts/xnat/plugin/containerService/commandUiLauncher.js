@@ -898,7 +898,8 @@ var XNAT = getObject(XNAT || {});
                                         if (bulkLaunch) {
                                             // bulk launch success returns two arrays -- containers that successfully launched, and containers that failed to launch
                                             var messageContent = [],
-                                                totalLaunchAttempts = data.successes.concat(data.failures).length;
+                                                totalLaunchAttempts = data.successes.concat(data.failures).length,
+                                                bulkLaunchId = data['bulk-launch-id'];
                                             if (data.failures.length > 0) {
                                                 messageContent.push( spawn('div.message',data.successes.length + ' of '+totalLaunchAttempts+' containers successfully queued for launch.') );
                                             } else if(data.successes.length > 0) {
@@ -907,20 +908,17 @@ var XNAT = getObject(XNAT || {});
                                                 errorHandler({
                                                     statusText: 'Something went wrong. No containers were queued for launch.'
                                                 });
+                                                return;
                                             }
 
                                             if (data.successes.length > 0) {
                                                 messageContent.push( spawn('h3',{'style': {'margin-top': '2em' }},'Containers successfully queued') );
 
                                                 data.successes.forEach(function(success){
-                                                    if (success['type'] === 'service') {
-                                                        messageContent.push( spawn('p',[spawn('strong','Service ID: '),spawn('span',success['service-id']) ]));
-                                                    } else {
-                                                        messageContent.push( spawn('p',[
-                                                            spawn('strong','Container ID: '),
-                                                            spawn('span',success['container-id'])
-                                                        ]) );
-                                                    }
+                                                    messageContent.push( spawn('p',[
+                                                        spawn('strong','Workflow ID: '),
+                                                        spawn('span',success['workflow-id'])
+                                                    ]) );
                                                     messageContent.push( spawn('div',prettifyJSON(success.params)) );
                                                 });
                                             }
@@ -946,15 +944,17 @@ var XNAT = getObject(XNAT || {});
                                                     }
                                                 ]
                                             });
+
+                                            XNAT.app.activityTab.start(data['pipeline-name'] + ' batch: ' +
+                                                '<span class="percentComplete">0</span>% complete',
+                                                bulkLaunchId, 'XNAT.plugin.containerService.updateBulkLaunchProgress', 10000);
+
                                         } else {
                                             xmodal.loading.close();
                                             var messageContent;
                                             if (data.status === 'success') {
-                                                if ( data['type'] === 'service') {
-                                                    messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}}, 'Service ID: '+data['service-id']);
-                                                } else {
-                                                    messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}}, 'Container ID: '+data['container-id']);
-                                                }
+                                                messageContent = spawn('p',{ style: { 'word-wrap': 'break-word'}},
+                                                    'Workflow ID: ' + data['workflow-id']);
                                             } else {
                                                 messageContent = spawn('p', data.message);
                                             }

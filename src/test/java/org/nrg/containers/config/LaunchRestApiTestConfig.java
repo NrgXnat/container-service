@@ -6,6 +6,7 @@ import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.rest.LaunchRestApi;
 import org.nrg.containers.services.*;
 import org.nrg.framework.services.ContextService;
+import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -33,12 +34,13 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                        final ContainerService containerService,
                                        final CommandResolutionService commandResolutionService,
                                        final DockerServerService mockDockerServerService,
+                                       final NrgEventService mockNrgEventService,
                                        final UserManagementServiceI mockUserManagementServiceI,
                                        final RoleHolder roleHolder,
                                        final ObjectMapper mapper,
                                        final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new LaunchRestApi(commandService, containerService, commandResolutionService,
-                mockDockerServerService, mockUserManagementServiceI, roleHolder, mapper, threadPoolExecutorFactoryBean);
+                mockDockerServerService, mockNrgEventService, mockUserManagementServiceI, roleHolder, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean
@@ -59,6 +61,11 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public DockerServerService mockDockerServerService() {
         return Mockito.mock(DockerServerService.class);
+    }
+
+    @Bean
+    public NrgEventService mockNrgEventService() {
+        return Mockito.mock(NrgEventService.class);
     }
 
     @Bean
