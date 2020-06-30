@@ -37,6 +37,7 @@ public class FakeWorkflow implements PersistentWorkflowI {
     private String pipelineName;
     private String src;
     private String jobId;
+    private Integer userId;
 
     /**
      * @return Returns the details.
@@ -313,6 +314,15 @@ public class FakeWorkflow implements PersistentWorkflowI {
 
     public String getUsername() {
         return "admin";
+    }
+
+    public void setUserId(Integer userId) {
+        this.userId = userId;
+    }
+
+    @Override
+    public Integer getUserId() {
+        return userId;
     }
 
     public void setEventId(int eventId) {
