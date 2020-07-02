@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "ML-BETA"
+        vXnat = "ML-0.2-SNAPSHOT"
     }
 }
 
