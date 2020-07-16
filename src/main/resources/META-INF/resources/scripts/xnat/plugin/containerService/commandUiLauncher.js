@@ -359,7 +359,7 @@ var XNAT = getObject(XNAT || {});
         var listArray = Array.isArray(valueLabel) ? valueLabel : valueLabel.split(",");
         var elemWrapperContent;
         if (listArray.length > 6) {
-            elemWrapperContent = spawn('textarea',{ 'readonly':true, style: { height: '80px' }},listArray.join('\n'));
+            elemWrapperContent = spawn('textarea',{'disabled': true, style: { height: '80px' }},listArray.join('\n'));
         } else {
             listArray.forEach(function(item,i){
                 listArray[i] = '<li>'+item+'</li>'

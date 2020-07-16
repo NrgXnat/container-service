@@ -45,6 +45,7 @@ var XNAT = getObject(XNAT || {});
         const successCount = payload['successCount'];
         const failureCount = payload['failureCount'];
         let percentComplete = (successCount + failureCount) / total * 100;
+        percentComplete = Math.round((percentComplete + Number.EPSILON) * 100) / 100;
         if (percentComplete === 100 && succeeded == null) {
             percentComplete = 99;
         }
