@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.1.1
+## 2.2.0-INTERNAL
 
-[Not yet released]
+This release focuses on improvements for processing at scale with docker swarm. It requires XNAT 1.7.7-INTERNAL.
 
 ### Features
 
