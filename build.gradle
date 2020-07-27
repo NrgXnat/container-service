@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.7-ACTIVE-SNAPSHOT"
+        vXnat = "1.8.0-ACTIVE-SNAPSHOT"
     }
 }
 
@@ -13,7 +13,7 @@ plugins {
 }
 
 group "org.nrg"
-version "2.1.1-SNAPSHOT"
+version "3.0.0-ACTIVE-SNAPSHOT"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
