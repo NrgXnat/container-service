@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.7.7-SNAPSHOT"
+        vXnat = "1.8.0-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -15,7 +15,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "2.1.1-SNAPSHOT"
+version "3.0.0-SNAPSHOT"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
