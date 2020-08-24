@@ -29,6 +29,7 @@ import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerHistory;
+import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
@@ -249,6 +250,11 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public List<Container> getAll(final Boolean nonfinalized) {
         return toPojo(containerEntityService.getAll(nonfinalized));
+    }
+
+    @Override
+    public List<Container> getPaginated(ContainerPaginatedRequest containerPaginatedRequest) {
+        return toPojo(containerEntityService.getPaginated(containerPaginatedRequest));
     }
 
     @Override

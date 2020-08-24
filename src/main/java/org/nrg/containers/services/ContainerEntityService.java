@@ -7,7 +7,6 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.orm.hibernate.BaseHibernateService;
 import org.nrg.xft.security.UserI;
 
-import javax.annotation.Nonnull;
 import java.util.List;
 
 public interface ContainerEntityService extends BaseHibernateService<ContainerEntity> {

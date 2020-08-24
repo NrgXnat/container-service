@@ -33,6 +33,8 @@ projectCommandConfigsPanel:
         projCommandStylesheet:
         #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
+        tableStyle:
+            tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
 
 projectCommandAutomationPanel:
     kind: panel
@@ -55,8 +57,11 @@ projectCommandHistoryPanel:
     label: Command History
     contents:
         projectCommandHistoryTableContainer:
-            tag: div#command-history-container
-            contents: Loading history entries...
+            tag: div.tab-container
+            contents:
+                dataTableContainer:
+                    tag: div#command-history-container.data-table-container
+                    contents: Loading history entries...
 
 
 projectSettings:

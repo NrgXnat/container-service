@@ -8,6 +8,7 @@ import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
@@ -36,7 +37,7 @@ public interface ContainerService {
     List<Container> getAll(final Boolean nonfinalized, String project);
     List<Container> getAll(String project);
     List<Container> getAll(Boolean nonfinalized);
-
+    List<Container> getPaginated(ContainerPaginatedRequest containerPaginatedRequest);
 
     List<Container> retrieveServices();
     List<Container> retrieveServicesInWaitingState();
