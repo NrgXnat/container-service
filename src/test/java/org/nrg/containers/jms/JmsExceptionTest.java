@@ -262,7 +262,7 @@ public class JmsExceptionTest {
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.FAILED + " (JMS)"));
         assertThat(fakeWorkflow.getDetails(), is(exceptionMsg));
 
-        Thread.sleep(200L); // Pause a sec for email to be attempted
+        Thread.sleep(1000L); // Pause a sec for email to be attempted
 
         Mockito.verify(mockMailService, times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
                 aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), Matchers.<String[]>eq(null),
