@@ -8,10 +8,12 @@ import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 
+import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,8 @@ public interface ContainerService {
     Container getByName(String project, String name, final Boolean nonfinalized);
     Container getByName(String name, final Boolean nonfinalized);
 
+    List<Container> getPaginated(ContainerPaginatedRequest containerPaginatedRequest);
+
     List<Container> retrieveServices();
     List<Container> retrieveServicesInWaitingState();
     List<Container> retrieveNonfinalizedServices();
@@ -56,6 +60,10 @@ public interface ContainerService {
 
     PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
                                                 String wrapperName, String projectId, UserI user)
+            throws Exception;
+    PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
+                                                String wrapperName, String projectId, UserI user,
+                                                @Nullable String bulkLaunchId)
             throws Exception;
 
 

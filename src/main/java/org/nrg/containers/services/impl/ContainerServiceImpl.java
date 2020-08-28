@@ -5,16 +5,21 @@ import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
-import org.nrg.containers.exceptions.*;
+import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.ContainerFinalizationException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
@@ -29,17 +34,29 @@ import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerHistory;
+import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
-import org.nrg.containers.services.*;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
-import org.nrg.xdat.om.*;
+import org.nrg.xdat.om.WrkWorkflowdata;
+import org.nrg.xdat.om.XnatAbstractprojectasset;
+import org.nrg.xdat.om.XnatImageassessordata;
+import org.nrg.xdat.om.XnatImagescandata;
+import org.nrg.xdat.om.XnatImagesessiondata;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatResource;
+import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
@@ -55,10 +72,13 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.helpers.uri.URIManager;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
+import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -69,7 +89,13 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.text.ParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -87,7 +113,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.7.7";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
     public static final String WAITING = "Waiting";
     public static final String FINALIZING = "Finalizing";
     public static final String CREATED = "Created";
@@ -195,7 +221,7 @@ public class ContainerServiceImpl implements ContainerService {
             e.printStackTrace();
         }
         log.error("Failed to parse current (" + currentVersion + ") or required (" + minRequiredVersion + ") version tags.");
-        return true;
+        return false;
     }
 
     @Override
@@ -281,6 +307,11 @@ public class ContainerServiceImpl implements ContainerService {
         return null;
     }
 
+
+    @Override
+    public List<Container> getPaginated(ContainerPaginatedRequest containerPaginatedRequest) {
+        return toPojo(containerEntityService.getPaginated(containerPaginatedRequest));
+    }
 
     @Override
     @Nonnull
@@ -1501,17 +1532,40 @@ public class ContainerServiceImpl implements ContainerService {
      * @return the workflow
      */
     @Nullable
+    @Override
     public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
                                                        String wrapperName, String projectId, UserI user) {
+        return createContainerWorkflow(xnatIdOrUri, containerInputType, wrapperName, projectId, user, null);
+    }
+
+    /**
+     * Creates a workflow object to be used with container service
+     * @param xnatIdOrUri the xnat ID or URI string of the container's root element
+     * @param containerInputType the container input type of the container's root element
+     * @param wrapperName the wrapper name or id as a string
+     * @param projectId the project ID
+     * @param user the user
+     * @return the workflow
+     */
+    @Nullable
+    @Override
+    public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
+                                                       String wrapperName, String projectId, UserI user,
+                                                       String bulkLaunchId) {
         if (xnatIdOrUri == null) {
             return null;
         }
 
         String xsiType;
         String xnatId;
+        String scanId = null;
         try {
             // Attempt to parse xnatIdOrUri as URI, from this, get archivable item for workflow
             ResourceData resourceData = catalogService.getResourceDataFromUri(xnatIdOrUri);
+            URIManager.DataURIA uri = resourceData.getUri();
+            if (uri instanceof ExptScanURI) {
+                scanId = ((ExptScanURI) resourceData.getUri()).getScan().getXnatImagescandataId().toString();
+            }
             ArchivableItem item = resourceData.getItem();
             xnatId = item.getId();
             xsiType = item.getXSIType();
@@ -1558,7 +1612,25 @@ public class ContainerServiceImpl implements ContainerService {
                             containerLaunchJustification,
                             ""));
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
-            WorkflowUtils.save(workflow, workflow.buildEvent());
+            if (scanId != null) {
+                workflow.setSrc(scanId);
+            }
+            if (bulkLaunchId != null) {
+                workflow.setJobid(bulkLaunchId);
+            }
+            try {
+                WorkflowUtils.save(workflow, workflow.buildEvent());
+            } catch (PSQLException e) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element.
+                // Let's try to re-save with a new time
+                if (e.getMessage().contains("duplicate key value violates unique constraint \"wrk_workflowdata_u_true\"")) {
+                    workflow.setLaunchTime(Calendar.getInstance().getTime());
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } else {
+                    throw e;
+                }
+            }
             log.debug("Created workflow {}.", workflow.getWorkflowId());
         } catch (Exception e) {
             log.error("Issue creating workflow for {} {}", xnatId, wrapperName, e);
@@ -1586,7 +1658,7 @@ public class ContainerServiceImpl implements ContainerService {
     private PersistentWorkflowI updateWorkflowWithResolvedCommand(@Nullable PersistentWorkflowI workflow,
                                                                   final ResolvedCommand resolvedCommand,
                                                                   final UserI userI) {
-        final XFTItem rootInputObject = findRootInputObject(resolvedCommand, userI);
+        final RootInputObject rootInputObject = findRootInputObject(resolvedCommand, userI);
         if (rootInputObject == null) {
             // We didn't find a root input XNAT object, so we can't make a workflow.
             log.debug("Cannot update workflow, no root input.");
@@ -1598,11 +1670,14 @@ public class ContainerServiceImpl implements ContainerService {
                 // Create it
                 log.debug("Create workflow for Wrapper {} - Command {} - Image {}.",
                         resolvedCommand.wrapperName(), resolvedCommand.commandName(), resolvedCommand.image());
-                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject,
+                workflow = WorkflowUtils.buildOpenWorkflow(userI, rootInputObject.rootObject,
                         EventUtils.newEventInstance(EventUtils.CATEGORY.DATA, EventUtils.TYPE.PROCESS,
                                 resolvedCommand.wrapperName(),
                                 ContainerServiceImpl.containerLaunchJustification,
                                 ""));
+                if (rootInputObject.scanId != null) {
+                    workflow.setSrc(rootInputObject.scanId);
+                }
             } else {
                 // Update it
                 log.debug("Update workflow for Wrapper {} - Command {} - Image {}.",
@@ -1611,9 +1686,9 @@ public class ContainerServiceImpl implements ContainerService {
                 workflow.setType(EventUtils.TYPE.PROCESS);
                 workflow.setPipelineName(resolvedCommand.wrapperName());
                 workflow.setJustification(ContainerServiceImpl.containerLaunchJustification);
-                workflow.setId(rootInputObject.getIDValue());
-                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject));
-                workflow.setDataType(rootInputObject.getXSIType());
+                workflow.setId(rootInputObject.rootObject.getIDValue());
+                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
+                workflow.setDataType(rootInputObject.rootObject.getXSIType());
                 workflow.setPipelineName(resolvedCommand.wrapperName());
             }
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
@@ -1644,25 +1719,18 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
+    private static class RootInputObject{
+        public XFTItem rootObject = null;
+        public String scanId = null;
+    }
+
     @Nullable
-    private XFTItem findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
+    private RootInputObject findRootInputObject(final ResolvedCommand resolvedCommand, final UserI userI) {
         log.debug("Checking input values to find root XNAT input object.");
         final List<ResolvedInputTreeNode<? extends Command.Input>> flatInputTrees = resolvedCommand.flattenInputTrees();
 
-        XFTItem rootInputValue = null;
+        RootInputObject rootInputObject = new RootInputObject();
         for (final ResolvedInputTreeNode<? extends Command.Input> node : flatInputTrees) {
-
-
-            if (rootInputValue != null) {
-                // We have already seen one candidate for a root object.
-                // Seeing this one means we have more than one, and won't be able to
-                // uniquely resolve a root object.
-
-
-                log.debug("Found another root XNAT input object: {}. I was expecting one. Using first: {}", node.input().name(), rootInputValue.getDBName());
-                continue;
-            }
-
             final Command.Input input = node.input();
             log.debug("Input \"{}\".", input.name());
             if (!(input instanceof Command.CommandWrapperExternalInput)) {
@@ -1671,8 +1739,9 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
-                    || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
+            if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || 
+                    type.equals(SESSION.getName()) || type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || 
+                    type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }
@@ -1690,14 +1759,25 @@ public class ContainerServiceImpl implements ContainerService {
                 log.debug("Skipping. XNAT model object is null.");
                 continue;
             }
+
+            if (rootInputObject.rootObject != null) {
+                // We have already seen one candidate for a root object.
+                // Seeing this one means we have more than one, and won't be able to
+                // uniquely resolve a root object.
+                // We won't be able to make a workflow. We can bail out now.
+                log.debug("Found another root XNAT input object: {}. I was expecting one. Bailing out.", input.name());
+                return null;
+            }
+
             final XnatModelObject xnatObjectToUseAsRoot;
             if (type.equals(SCAN.getName())) {
                 // If the external input is a scan, the workflow will not show up anywhere. So we
                 // use its parent session as the root object instead.
-                final XnatModelObject parentSession = ((Scan) inputValueXnatObject).getSession(userI, false,
-                        new HashSet<>());
+                final Scan scan = (Scan) inputValueXnatObject;
+                final XnatModelObject parentSession = scan.getSession(userI, false, new HashSet<>());
                 if (parentSession != null) {
                     xnatObjectToUseAsRoot = parentSession;
+                    rootInputObject.scanId = scan.getIntegerId().toString();
                 } else {
                     // Ok, nevermind, use the scan anyway. It's not a huge thing.
                     xnatObjectToUseAsRoot = inputValueXnatObject;
@@ -1708,14 +1788,14 @@ public class ContainerServiceImpl implements ContainerService {
 
             try {
                 log.debug("Getting input value as XFTItem.");
-                rootInputValue = xnatObjectToUseAsRoot.getXftItem(userI);
+                rootInputObject.rootObject = xnatObjectToUseAsRoot.getXftItem(userI);
             } catch (Throwable t) {
                 // If anything goes wrong, bail out. No workflow.
                 log.error("That didn't work.", t);
                 continue;
             }
 
-            if (rootInputValue == null) {
+            if (rootInputObject.rootObject == null) {
                 // I don't know if this is even possible
                 log.debug("XFTItem is null.");
                 continue;
@@ -1725,7 +1805,7 @@ public class ContainerServiceImpl implements ContainerService {
             log.debug("Found a valid root XNAT input object: {}.", input.name());
         }
 
-        if (rootInputValue == null) {
+        if (rootInputObject.rootObject == null) {
             // Didn't find any candidates
             log.debug("Found no valid root XNAT input object candidates.");
             return null;
@@ -1733,8 +1813,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         // At this point, we know we found a single valid external input value.
         // We can declare the object in that value to be the root object.
-
-        return rootInputValue;
+        return rootInputObject;
     }
 
     @Nonnull

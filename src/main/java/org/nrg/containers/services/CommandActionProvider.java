@@ -160,6 +160,7 @@ public class CommandActionProvider extends MultiActionProvider {
                 workflow.setDetails("Command launched via Event Service");
                 WorkflowUtils.save(workflow, workflow.buildEvent());
             }
+            // TODO: Container Service launch should be routed through CS Queue (queueResolveCommandAndLaunchContainer)
             if(Strings.isNullOrEmpty(projectId)) {
                 containerService.consumeResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user,
                         (workflow == null || workflow.getWorkflowId() == null) ? null : workflow.getWorkflowId().toString());

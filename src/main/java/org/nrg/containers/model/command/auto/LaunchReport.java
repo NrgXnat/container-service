@@ -90,6 +90,8 @@ public abstract class LaunchReport {
 
     @AutoValue
     public abstract static class BulkLaunchReport {
+        @JsonProperty("bulk-launch-id") public abstract String bulkLaunchId();
+        @JsonProperty("pipeline-name") public abstract String pipelineName();
         @JsonProperty("successes") public abstract ImmutableList<Success> successes();
         @JsonProperty("failures") public abstract ImmutableList<Failure> failures();
 
@@ -98,9 +100,13 @@ public abstract class LaunchReport {
         }
 
         @JsonCreator
-        public static BulkLaunchReport create(@JsonProperty("successes") final List<Success> successes,
+        public static BulkLaunchReport create(@JsonProperty("bulk-launch-id") final String id,
+                                              @JsonProperty("pipeline-name") final String pipelineName,
+                                              @JsonProperty("successes") final List<Success> successes,
                                               @JsonProperty("failures") final List<Failure> failures) {
             return builder()
+                    .bulkLaunchId(id)
+                    .pipelineName(pipelineName)
                     .successes(successes)
                     .failures(failures)
                     .build();
@@ -108,6 +114,8 @@ public abstract class LaunchReport {
 
         @AutoValue.Builder
         public static abstract class Builder {
+            public abstract Builder bulkLaunchId(String id);
+            public abstract Builder pipelineName(String pipelineName);
             public abstract Builder successes(List<Success> successes);
             abstract ImmutableList.Builder<Success> successesBuilder();
             public Builder addSuccess(final @Nonnull Success success) {

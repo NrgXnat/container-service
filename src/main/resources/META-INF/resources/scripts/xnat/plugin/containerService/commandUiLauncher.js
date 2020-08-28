@@ -359,7 +359,7 @@ var XNAT = getObject(XNAT || {});
         var listArray = Array.isArray(valueLabel) ? valueLabel : valueLabel.split(",");
         var elemWrapperContent;
         if (listArray.length > 6) {
-            elemWrapperContent = spawn('textarea',{ 'readonly':true, style: { height: '80px' }},listArray.join('\n'));
+            elemWrapperContent = spawn('textarea',{'disabled': true, style: { height: '80px' }},listArray.join('\n'));
         } else {
             listArray.forEach(function(item,i){
                 listArray[i] = '<li>'+item+'</li>'
@@ -898,7 +898,8 @@ var XNAT = getObject(XNAT || {});
                                         if (bulkLaunch) {
                                             // bulk launch success returns two arrays -- containers that successfully launched, and containers that failed to launch
                                             var messageContent = [],
-                                                totalLaunchAttempts = data.successes.concat(data.failures).length;
+                                                totalLaunchAttempts = data.successes.concat(data.failures).length,
+                                                bulkLaunchId = data['bulk-launch-id'];
                                             if (data.failures.length > 0) {
                                                 messageContent.push( spawn('div.message',data.successes.length + ' of '+totalLaunchAttempts+' containers successfully queued for launch.') );
                                             } else if(data.successes.length > 0) {
@@ -907,6 +908,7 @@ var XNAT = getObject(XNAT || {});
                                                 errorHandler({
                                                     statusText: 'Something went wrong. No containers were queued for launch.'
                                                 });
+                                                return;
                                             }
 
                                             if (data.successes.length > 0) {
@@ -946,6 +948,11 @@ var XNAT = getObject(XNAT || {});
                                                     }
                                                 ]
                                             });
+
+                                            XNAT.app.activityTab.start(data['pipeline-name'] + ' batch: ' +
+                                                '<span class="percentComplete">0</span>% complete',
+                                                bulkLaunchId, 'XNAT.plugin.containerService.updateBulkLaunchProgress', 10000);
+
                                         } else {
                                             xmodal.loading.close();
                                             var messageContent;

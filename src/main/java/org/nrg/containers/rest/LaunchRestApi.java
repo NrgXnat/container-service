@@ -24,6 +24,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.framework.services.NrgEventService;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
@@ -32,6 +33,7 @@ import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
+import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -51,6 +53,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -76,12 +79,14 @@ public class LaunchRestApi extends AbstractXapiRestController {
     private final DockerServerService dockerServerService;
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
+    private final NrgEventService eventService;
 
     @Autowired
     public LaunchRestApi(final CommandService commandService,
                          final ContainerService containerService,
                          final CommandResolutionService commandResolutionService,
                          final DockerServerService dockerServerService,
+                         final NrgEventService eventService,
                          final UserManagementServiceI userManagementService,
                          final RoleHolder roleHolder,
                          final ObjectMapper mapper,
@@ -92,6 +97,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.commandResolutionService = commandResolutionService;
+        this.eventService = eventService;
         this.mapper = mapper;
         this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
     }
@@ -434,6 +440,20 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                          @Nullable final String rootElement,
                                          final Map<String, String> allRequestParams,
                                          final UserI userI) {
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, null);
+    }
+
+    @Nonnull
+    private LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId) {
+
 
         PersistentWorkflowI workflow = null;
         String workflowid = "";
@@ -446,7 +466,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
                 // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
                 workflow = containerService.createContainerWorkflow(xnatIdOrUri, rootElement,
                         StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name()),
-                        StringUtils.defaultString(project, ""), userI);
+                        StringUtils.defaultString(project, ""), userI, bulkLaunchId);
                 workflowid = workflow.getWorkflowId().toString();
             }
 
@@ -558,15 +578,21 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                      final String rootElement,
                                                      final Map<String, String> allRequestParams) throws IOException {
         final UserI userI = getSessionUser();
-        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder();
+        final String bulkLaunchId = generateBulkLaunchId(userI);
+        final String pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
+        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
+                .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
         List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
+        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size()));
         log.debug("Bulk launching on {} targets", targets.size());
+
+        int failures = 0;
         for (final String target : targets) {
             Map<String, String> paramsSet = Maps.newHashMap(allRequestParams);
             paramsSet.put(rootElement, target);
             try {
                 executorService.submit(() -> {
-                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI);
+                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI, bulkLaunchId);
                 });
                 reportBuilder.addSuccess(LaunchReport.Success.create(TO_BE_ASSIGNED,
                         paramsSet, null, commandId, wrapperId));
@@ -576,9 +602,20 @@ public class LaunchRestApi extends AbstractXapiRestController {
                 reportBuilder.addFailure(LaunchReport.Failure.create(e.getMessage() != null ?
                                 e.getMessage() : "Unable to queue container launch",
                         paramsSet, commandId, wrapperId));
+                failures++;
             }
         }
+
+        if (failures > 0) {
+            // this should be super uncommon
+            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
+        }
+
         return reportBuilder.build();
+    }
+
+    private String generateBulkLaunchId(final UserI userI) {
+        return "bulk-" + userI.getLogin() + System.currentTimeMillis() + new Random().nextInt(1000);
     }
 
     /*

@@ -13,6 +13,8 @@ dockerSetupPanel:
         csStylesheet:
             #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
+        tableStyle:
+            tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
         csHistoryScript:
             #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
@@ -181,8 +183,11 @@ sitewideCommandHistoryPanel:
     footer: false
     contents:
         commandHistoryTableContainer:
-            tag: div#command-history-container
-            contents: Loading history entries...
+            tag: div.tab-container
+            contents:
+                dataTableContainer:
+                    tag: div#command-history-container.data-table-container
+                    contents: Loading history entries...
 
 queueSettingsForm:
     label: "Site-wide JMS Queue Settings"

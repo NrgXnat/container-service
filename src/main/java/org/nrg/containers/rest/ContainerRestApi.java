@@ -12,6 +12,7 @@ import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -28,12 +29,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
@@ -42,6 +38,7 @@ import java.text.ParseException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -85,12 +82,15 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Get all Containers")
     @ResponseBody
     public List<Container> getAll(final @RequestParam(required = false) Boolean nonfinalized) {
-        return Lists.transform(containerService.getAll(nonfinalized), new Function<Container, Container>() {
-            @Override
-            public Container apply(final Container input) {
-                return scrubPasswordEnv(input);
-            }
-        });
+        return containerService.getAll(nonfinalized).stream().map(this::scrubPasswordEnv).collect(Collectors.toList());
+    }
+
+    @XapiRequestMapping(value = "/containers", method = POST, restrictTo = Authenticated, consumes = JSON, produces = JSON)
+    @ApiOperation(value = "Get paginated containers per request")
+    @ResponseBody
+    public List<Container> getPaginated(@RequestBody ContainerPaginatedRequest containerPaginatedRequest) {
+        return containerService.getPaginated(containerPaginatedRequest)
+                .stream().map(this::scrubPasswordEnv).collect(Collectors.toList());
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers", method = GET, restrictTo = Authenticated)

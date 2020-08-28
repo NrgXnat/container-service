@@ -36,6 +36,8 @@ public class FakeWorkflow implements PersistentWorkflowI {
     private String status;
     private String pipelineName;
     private String src;
+    private String jobId;
+    private Integer userId;
 
     /**
      * @return Returns the details.
@@ -280,6 +282,26 @@ public class FakeWorkflow implements PersistentWorkflowI {
         return null;
     }
 
+    @Override
+    public void setSrc(String src) {
+        this.src = src;
+    }
+
+    @Override
+    public String getSrc() {
+        return src;
+    }
+
+    @Override
+    public void setJobid(String jobId) {
+        this.jobId = jobId;
+    }
+
+    @Override
+    public String getJobid() {
+        return jobId;
+    }
+
     /**
      * Sets the value for percentageComplete.
      * @param v Value to Set.
@@ -290,6 +312,15 @@ public class FakeWorkflow implements PersistentWorkflowI {
 
     public String getUsername() {
         return "admin";
+    }
+
+    public void setUserId(Integer userId) {
+        this.userId = userId;
+    }
+
+    @Override
+    public Integer getUserId() {
+        return userId;
     }
 
     public void setEventId(int eventId) {
