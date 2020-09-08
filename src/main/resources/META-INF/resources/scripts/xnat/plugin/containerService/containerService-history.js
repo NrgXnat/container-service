@@ -96,7 +96,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         id: {label: 'ID', show: true, op: 'eq', type: 'number'},
         command: {label: 'Command', column: 'commandLine', show: true},
         user: {label: 'User', column: 'userId', show: true},
-        DATE: {label: 'Date', column: 'timestamp', show: true},
+        DATE: {label: 'Date', column: 'statusTime', show: true},
         ROOTELEMENT: {label: 'Root element', show: true},
         status: {label: 'Status', show: true},
     };
@@ -109,6 +109,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 on: [
                     ['click', 'a.view-container-history', viewHistoryDialog]
                 ]
+            },
+            before: {
+                filterCss: {
+                    tag: 'style|type=text/css',
+                    content:
+                        '#' + historyTableContainerId + ' .id { max-width: 90px; } \n'
+                }
             },
             sortable: 'id, user, DATE, status',
             filter: 'id, user, status',
@@ -124,19 +131,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     label: labelMap.DATE['label'],
                     th: {className: 'DATE'},
                     apply: function () {
-                        var timestamp = 0, dateString;
-                        if (this.history.length > 0) {
-                            this.history.forEach(function (h) {
-                                if (h['status'] === 'Created') {
-                                    timestamp = h['time-recorded'];
-                                    dateString = new Date(timestamp);
-                                    dateString = dateString.toISOString().replace('T', ' ').replace('Z', ' ').split('.')[0];
-                                }
-                            });
-                        } else {
-                            dateString = 'N/A';
-                        }
-                        return dateString;
+                        let time = this['status-time'];
+                        return time ? new Date(time).toLocaleString() : 'N/A';
                     }
                 },
                 command: {
