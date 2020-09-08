@@ -114,7 +114,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 filterCss: {
                     tag: 'style|type=text/css',
                     content:
-                        '#' + historyTableContainerId + ' .id { max-width: 90px; } \n'
+                        '#' + historyTableContainerId + ' .id { max-width: 70px; } \n' +
+                        '#' + historyTableContainerId + ' .user { max-width: 100px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
+                        '#' + historyTableContainerId + ' .status { max-width: 120px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
+                        '#' + historyTableContainerId + ' .command { max-width: 200px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
+                        '#' + historyTableContainerId + ' .ROOTELEMENT {max-width: 145px; word-wrap: break-word; overflow-wrap: break-word; }'
                 }
             },
             sortable: 'id, user, DATE, status',
@@ -138,7 +142,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 command: {
                     th: {className: 'command'},
                     label: labelMap.command['label'],
-                    td: { style: { 'max-width': '200px', 'word-wrap': 'break-word', 'overflow-wrap': 'break-word' }},
                     apply: function () {
                         var label, wrapper;
                         if (wrapperList && wrapperList.hasOwnProperty(this['wrapper-id'])) {
@@ -169,7 +172,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 ROOTELEMENT: {
                     th: {className: 'ROOTELEMENT'},
                     label: labelMap.ROOTELEMENT['label'],
-                    td: { style: { 'max-width': '145px', 'word-wrap': 'break-word', 'overflow-wrap': 'break-word' }},
                     apply: function(){
                         var rootElements = this.inputs.filter(function(input){ if (input.type === "wrapper-external") return input });
                         if (rootElements.length) {
