@@ -597,15 +597,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
     };
 
-    historyTable.context = 'site';
-
     historyTable.init = historyTable.refresh = function (context) {
-        if (context !== undefined) {
+        if (context) {
             historyTable.context = context;
         }
-        else context = 'site';
         function setupParams() {
-            if (context !== 'site') {
+            if (context) {
                 XNAT.ui.ajaxTable.filters = XNAT.ui.ajaxTable.filters || {};
                 XNAT.ui.ajaxTable.filters['project'] = {operator: 'eq', value: context, backend: 'hibernate'};
             }
