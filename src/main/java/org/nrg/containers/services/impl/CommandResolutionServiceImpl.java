@@ -1927,7 +1927,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 throw new CommandResolutionException(String.format("No wrapper output handler was configured to handle command output \"%s\".", commandOutput.name()));
             }
             log.debug("Found {} Output Handlers for Command output \"{}\".", commandOutputHandlers.size(), commandOutput.name());
-            boolean outputHasAtLeastOneLegitHandler = false;
 
             for (final CommandWrapperOutput commandOutputHandler : commandOutputHandlers) {
                 log.debug("Found Output Handler \"{}\" for Command output \"{}\". Checking if its target \"{}\" is an input.",
@@ -1971,7 +1970,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         final String message = String.format("Cannot resolve output \"%s\". " +
                                         "Input \"%s\" is supposed to handle the output, but it does not have an XNAT object value.",
                                 commandOutput.name(), commandOutputHandler.targetName());
-                        if (Boolean.TRUE.equals(commandOutput.required()) && !outputHasAtLeastOneLegitHandler) {
+                        if (Boolean.TRUE.equals(commandOutput.required())) {
                             throw new CommandResolutionException(message);
                         } else {
                             log.error("Skipping handler \"{}\".", commandOutputHandler.name());
@@ -1995,7 +1994,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                         "to edit the XNAT object \"%s\".",
                                 commandOutput.name(), commandOutputHandler.targetName(),
                                 userI.getLogin(), parentValue);
-                        if (Boolean.TRUE.equals(commandOutput.required()) && !outputHasAtLeastOneLegitHandler) {
+                        if (Boolean.TRUE.equals(commandOutput.required())) {
                             throw new CommandResolutionException(message);
                         } else {
                             log.error("Skipping handler \"{}\".", commandOutputHandler.name());
@@ -2016,7 +2015,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                         "The handler says the output is supposed to be handled by \"%s\", " +
                                         "but either that isn't an input, or an output, or maybe the input does not have a uniquely resolved value.",
                                 commandOutput.name(), commandOutputHandler.targetName());
-                        if (Boolean.TRUE.equals(commandOutput.required()) && !outputHasAtLeastOneLegitHandler) {
+                        if (Boolean.TRUE.equals(commandOutput.required())) {
                             throw new CommandResolutionException(message);
                         } else {
                             log.error("Skipping handler \"{}\".", commandOutputHandler.name());
@@ -2043,7 +2042,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 commandOutputHandler.name(), commandOutputHandler.type(),
                                 commandOutputHandler.targetName(), otherOutputHandler.type(),
                                 String.join(" OR ", CommandWrapperOutputEntity.Type.supportedParentOutputTypeNames()));
-                        if (Boolean.TRUE.equals(commandOutput.required()) && !outputHasAtLeastOneLegitHandler) {
+                        if (Boolean.TRUE.equals(commandOutput.required())) {
                             throw new CommandResolutionException(message);
                         } else {
                             log.error("Skipping handler \"{}\".", commandOutputHandler.name());
@@ -2068,7 +2067,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         .label(resolveTemplate(commandOutputHandler.label(), resolvedInputValuesByReplacementKey))
                         .format(resolveTemplate(commandOutputHandler.format(), resolvedInputValuesByReplacementKey))
                         .build());
-                outputHasAtLeastOneLegitHandler = true;
             }
 
             return resolvedCommandOutputs;
