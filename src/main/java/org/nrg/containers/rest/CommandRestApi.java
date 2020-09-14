@@ -41,8 +41,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import java.util.List;
 import java.util.Map;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
-import static org.nrg.xdat.security.helpers.AccessLevel.Read;
+import static org.nrg.xdat.security.helpers.AccessLevel.*;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -222,7 +221,7 @@ public class CommandRestApi extends AbstractXapiRestController {
         return commandService.available(project, xsiType, getSessionUser());
     }
 
-    @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType"}, method = GET, restrictTo = Admin)
+    @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType"}, method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Commands sitewide with given XSIType")
     @ResponseBody
     public List<CommandSummaryForContext> availableCommands(final @RequestParam String xsiType)
