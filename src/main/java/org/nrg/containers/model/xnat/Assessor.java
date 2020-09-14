@@ -14,6 +14,7 @@ import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatImageassessordata;
 import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.om.XnatResourcecatalog;
+import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.URIManager;
@@ -21,6 +22,7 @@ import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.helpers.uri.archive.AssessorURII;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptAssessorURI;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
+import org.nrg.xnat.helpers.uri.archive.impl.ProjSubjAssExptURI;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -47,6 +49,8 @@ public class Assessor extends XnatModelObject {
         this.xnatImageassessordataI = assessorURII.getAssessor();
         if (ExptAssessorURI.class.isAssignableFrom(assessorURII.getClass())) {
             parent = ((ExptAssessorURI) assessorURII).getSession();
+        } else if (ProjSubjAssExptURI.class.isAssignableFrom(assessorURII.getClass())) {
+            parent = ((ProjSubjAssExptURI) assessorURII).getSession();
         }
         this.uri = ((URIManager.DataURIA) assessorURII).getUri();
         populateProperties(null, loadFiles, loadTypes);
@@ -80,17 +84,32 @@ public class Assessor extends XnatModelObject {
         this.label = xnatImageassessordataI.getLabel();
         this.xsiType = xnatImageassessordataI.getXSIType();
         this.projectId = xnatImageassessordataI.getProject();
+
+        XnatImageassessordata assessor = null;
+        if (this.xnatImageassessordataI instanceof XnatImageassessordata) {
+            assessor = (XnatImageassessordata) xnatImageassessordataI;
+            parent = assessor.getImageSessionData();
+        } else {
+            parent = XnatImagesessiondata.getXnatImagesessiondatasById(xnatImageassessordataI.getImagesessionId(), Users.getAdminUser(), false);
+        }
+
         this.sessionId = parent == null ? xnatImageassessordataI.getImagesessionId() : parent.getId();
 
         this.directory = null;
-        final XnatImageassessordata assessor = ((XnatImageassessordata) xnatImageassessordataI);
-        final File sessionDir = parent != null ? parent.getSessionDir() : null;
-        if (sessionDir != null && sessionDir.isDirectory()) {
-            final File assessorsDir = new File(sessionDir, "ASSESSORS");
-            if (assessorsDir.isDirectory()) {
-                final File assessorDir = new File(assessorsDir, assessor.getArchiveDirectoryName());
-                if (assessorDir.isDirectory()) {
-                    this.directory = assessorDir.getAbsolutePath();
+        if (parent == null) {
+            // No parent -> treat it like an experiment. (This doesn't really make sense since an Image Assessor
+            // must have a parent...)
+            directory = assessor != null ? assessor.getSessionDir().toString() : null;
+        } else {
+            File sessionDir = parent.getSessionDir();
+            if (sessionDir != null && sessionDir.isDirectory()) {
+                final File assessorsDir = new File(sessionDir, "ASSESSORS");
+                if (assessorsDir.isDirectory()) {
+                    String dirname = assessor != null ? assessor.getArchiveDirectoryName() : label;
+                    final File assessorDir = new File(assessorsDir, dirname);
+                    if (assessorDir.isDirectory()) {
+                        this.directory = assessorDir.getAbsolutePath();
+                    }
                 }
             }
         }
