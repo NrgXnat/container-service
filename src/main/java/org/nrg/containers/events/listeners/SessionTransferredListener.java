@@ -1,7 +1,6 @@
 package org.nrg.containers.events.listeners;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.om.XnatImagesessiondata;

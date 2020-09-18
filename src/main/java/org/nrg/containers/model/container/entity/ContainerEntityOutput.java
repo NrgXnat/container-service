@@ -2,17 +2,19 @@ package org.nrg.containers.model.container.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.MoreObjects;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.container.auto.Container;
 
 import javax.persistence.Column;
+import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
+import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
@@ -29,6 +31,9 @@ public class ContainerEntityOutput implements Serializable {
     private String glob;
     private String label;
     private String format;
+    private String descritpion;
+    private String content;
+    private List<String> tags;
     private String created;
     private String handledByXnatCommandInput;
     private String viaWrapupContainer;
@@ -53,6 +58,9 @@ public class ContainerEntityOutput implements Serializable {
         this.setGlob(containerOutputPojo.glob());
         this.setLabel(containerOutputPojo.label());
         this.setFormat(containerOutputPojo.format());
+        this.setDescritpion(containerOutputPojo.description());
+        this.setContent(containerOutputPojo.content());
+        this.setTags(containerOutputPojo.tags());
         this.setCreated(containerOutputPojo.created());
         this.setHandledByXnatCommandInput(containerOutputPojo.handledBy());
         this.setViaWrapupContainer(containerOutputPojo.viaWrapupContainer());
@@ -163,6 +171,19 @@ public class ContainerEntityOutput implements Serializable {
         this.format = format;
     }
 
+    public String getDescritpion() { return descritpion; }
+
+    public void setDescritpion(String descritpion) { this.descritpion = descritpion; }
+
+    public String getContent() { return content; }
+
+    public void setContent(String content) { this.content = content; }
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    public List<String> getTags() { return tags; }
+
+    public void setTags(List<String> tags) { this.tags = tags; }
+
     public String getHandledByXnatCommandInput() {
         return handledByXnatCommandInput;
     }
@@ -204,6 +225,9 @@ public class ContainerEntityOutput implements Serializable {
                 Objects.equals(this.glob, that.glob) &&
                 Objects.equals(this.label, that.label) &&
                 Objects.equals(this.format, that.format) &&
+                Objects.equals(this.descritpion, that.descritpion) &&
+                Objects.equals(this.content, that.content) &&
+                Objects.equals(this.tags, that.tags) &&
                 Objects.equals(this.handledByXnatCommandInput, that.handledByXnatCommandInput) &&
                 Objects.equals(this.viaWrapupContainer, that.viaWrapupContainer) &&
                 Objects.equals(this.created, that.created);
@@ -228,6 +252,9 @@ public class ContainerEntityOutput implements Serializable {
                 .add("glob", glob)
                 .add("label", label)
                 .add("format", format)
+                .add("description", descritpion)
+                .add("content", content)
+                .add("tags", tags)
                 .add("handledByXnatInput", handledByXnatCommandInput)
                 .add("viaWrapupContainer", viaWrapupContainer)
                 .add("created", created)

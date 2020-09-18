@@ -1,0 +1,285 @@
+package org.nrg.containers.services;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.command.auto.CommandSummaryForContext;
+import org.nrg.containers.model.configuration.CommandConfiguration;
+import org.nrg.containers.model.xnat.Assessor;
+import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Scan;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.Subject;
+import org.nrg.containers.model.xnat.SubjectAssessor;
+import org.nrg.containers.model.xnat.XnatModelObject;
+import org.nrg.xdat.model.XnatImageassessordataI;
+import org.nrg.xdat.model.XnatImagescandataI;
+import org.nrg.xdat.model.XnatImagesessiondataI;
+import org.nrg.xdat.model.XnatSubjectassessordataI;
+import org.nrg.xdat.model.XnatSubjectdataI;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatResourcecatalog;
+import org.nrg.xft.event.persist.PersistentWorkflowI;
+import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.xft.exception.ElementNotFoundException;
+import org.nrg.xft.security.UserI;
+import org.nrg.xnat.eventservice.actions.MultiActionProvider;
+import org.nrg.xnat.eventservice.events.EventServiceEvent;
+import org.nrg.xnat.eventservice.model.Action;
+import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
+import org.nrg.xnat.eventservice.model.Subscription;
+import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
+import org.nrg.xnat.utils.WorkflowUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
+import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
+
+@Service
+public class CommandActionProvider extends MultiActionProvider {
+    private final String DISPLAY_NAME = "Container Service";
+    private final String DESCRIPTION = "This Action Provider facilitates linking Event Service events to Container Service commands.";
+
+    private static final Logger log = LoggerFactory.getLogger(CommandActionProvider.class);
+
+    private final ContainerService containerService;
+    private final CommandService commandService;
+    private final ContainerConfigService containerConfigService;
+    private final ObjectMapper mapper;
+    private SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
+
+    @Autowired
+    public CommandActionProvider(final ContainerService containerService,
+                                 final CommandService commandService,
+                                 final ContainerConfigService containerConfigService,
+                                 final ObjectMapper mapper,
+                                 final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
+        this.containerService = containerService;
+        this.commandService = commandService;
+        this.containerConfigService = containerConfigService;
+        this.mapper = mapper;
+        this.subscriptionDeliveryEntityService = subscriptionDeliveryEntityService;
+
+    }
+
+    @Override
+    public String getDisplayName() {
+        return DISPLAY_NAME;
+    }
+
+    @Override
+    public String getDescription() {
+        return DESCRIPTION;
+    }
+
+    @Override
+    public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
+        final Object eventObject = event.getObject();
+        final long wrapperId;
+        try {
+            wrapperId = Long.parseLong(actionKeyToActionId(subscription.actionKey()));
+        }catch(Exception e){
+            log.error("Could not extract WrapperId from actionKey:" + subscription.actionKey());
+            log.error("Aborting subscription: " + subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.actionKey());
+            return;
+        }
+        final Map<String,String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
+
+        // Setup XNAT Object for Container
+        XnatModelObject modelObject = null;
+        String objectLabel = "";
+        if(eventObject instanceof XnatProjectdata){
+            modelObject = new Project(((XnatProjectdata) eventObject), true, Collections.EMPTY_SET);
+            objectLabel = "project";
+        } else if(eventObject instanceof XnatSubjectdataI){
+            modelObject = new Subject((XnatSubjectdataI) eventObject, true, Collections.EMPTY_SET);
+            objectLabel = "subject";
+        } else if(eventObject instanceof XnatImagesessiondataI
+                && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
+            modelObject = new Session((XnatImagesessiondataI) eventObject, true, Collections.EMPTY_SET);
+            objectLabel = "session";
+        } else if(eventObject instanceof XnatSubjectassessordataI){
+            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, true, Collections.EMPTY_SET);
+            objectLabel = "assessor";
+        } else if(eventObject instanceof XnatImagescandataI){
+            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, true, Collections.EMPTY_SET);
+            String sessionUri = session.getUri();
+            modelObject = new Scan((XnatImagescandataI) eventObject, true, Collections.EMPTY_SET, sessionUri, null);
+            objectLabel = "scan";
+        } else if(eventObject instanceof XnatImageassessordataI){
+            modelObject = new Assessor((XnatImageassessordataI) eventObject, true, Collections.EMPTY_SET);
+            objectLabel = "assessor";
+        } else if(eventObject instanceof XnatResourcecatalog){
+            modelObject = new Resource((XnatResourcecatalog) eventObject, true, Collections.EMPTY_SET);
+            objectLabel = "resource";
+        } else {
+            log.error(String.format("Container Service does not support Event Object."));
+            return;
+        }
+        String objectString = modelObject != null ? modelObject.getUri() : "";
+        try {
+            objectString = mapper.writeValueAsString(modelObject);
+        } catch (JsonProcessingException e) {
+            log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
+        }
+        try {
+            Command.CommandWrapper wrapper = commandService.getWrapper(wrapperId);
+            ImmutableList<Command.CommandWrapperExternalInput> externalInputs = wrapper.externalInputs();
+            for( Command.CommandWrapperExternalInput externalInput : externalInputs){
+                if(externalInput.type().equalsIgnoreCase(objectLabel)){
+                    objectLabel = externalInput.name();
+                    break;
+                }
+            }
+            String wrapperName = wrapper == null ? null : wrapper.name();
+            inputValues.put(objectLabel, objectString);
+            String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
+                    (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
+            PersistentWorkflowI workflow = containerService.createContainerWorkflow(modelObject.getUri(), modelObject.getXsiType(),
+                    wrapperName, projectId, user);
+            if (workflow != null){
+                workflow.setStatus(PersistentWorkflowUtils.IN_PROGRESS);
+                workflow.setDetails("Command launched via Event Service");
+                WorkflowUtils.save(workflow, workflow.buildEvent());
+            }
+            // TODO: Container Service launch should be routed through CS Queue (queueResolveCommandAndLaunchContainer)
+            if(Strings.isNullOrEmpty(projectId)) {
+                containerService.consumeResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user,
+                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow.getWorkflowId().toString());
+            } else {
+                containerService.consumeResolveCommandAndLaunchContainer(projectId, wrapperId, 0L, null, inputValues, user,
+                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow.getWorkflowId().toString());
+            }
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
+        }catch (Throwable e){
+            log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage(), e);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
+        }
+
+    }
+
+
+    @Override
+    public List<Action> getAllActions() {
+        List<Action> actions = new ArrayList<>();
+        List<Command> commands = commandService.getAll();
+        for(Command command : commands){
+            for(Command.CommandWrapper wrapper : command.xnatCommandWrappers()) {
+                actions.add(Action.builder()
+                                  .id(String.valueOf(wrapper.id()))
+                                  .displayName(wrapper.name())
+                                  .description(wrapper.description())
+                                  .provider(this)
+                                  .actionKey(actionIdToActionKey(Long.toString(wrapper.id())))
+                                  .build());
+                }
+            }
+        return actions;
+    }
+
+
+    @Override
+    public List<Action> getActions(String projectId, List<String> xsiTypes, UserI user) {
+        List<Action> actions = new ArrayList<>();
+        if(xsiTypes == null || xsiTypes.isEmpty()){
+            xsiTypes = new ArrayList<>();
+            xsiTypes.add(null);
+        }
+        try {
+            Set<CommandSummaryForContext> available = new HashSet<>();
+            if(projectId != null) {
+                // Project configured Commands
+                xsiTypes.forEach(xsiType ->
+                {
+                    try { available.addAll(commandService.available(projectId, xsiType, user));
+                    } catch (ElementNotFoundException e) { log.error(e.getMessage()); }
+                });
+            } else {
+                // Site configured Commands
+                xsiTypes.forEach(xsiType ->
+                {
+                    try { available.addAll(commandService.available(xsiType, user));
+                    } catch (ElementNotFoundException e) { log.error(e.getMessage()); }
+                });
+            }
+
+            for(CommandSummaryForContext command : available){
+                if(!command.enabled()) continue;
+                Map<String, ActionAttributeConfiguration> attributes = new HashMap<>();
+                try {
+                    ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = null;
+                    if(!Strings.isNullOrEmpty(projectId)) {
+                        inputs = commandService.getProjectConfiguration(projectId, command.wrapperId()).inputs();
+                    } else {
+                        inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
+                    }
+                    for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
+                        if ( entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable() != false && entry.getValue().type() != null ) {
+                            attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Exception getting Command Configuration for command: " + command.commandName() + "\n" + e.getMessage());
+                    e.printStackTrace();
+                }
+
+                actions.add(Action.builder()
+                                  .id(String.valueOf(command.wrapperId()))
+                                  .displayName(command.wrapperName())
+                                  .description(command.wrapperDescription())
+                                  .provider(this)
+                                  .actionKey(actionIdToActionKey(Long.toString(command.wrapperId())))
+                                  .attributes(attributes.isEmpty() ? null : attributes)
+                                  .build());
+            }
+        } catch (Throwable e) {
+            log.error(e.getMessage());
+            e.printStackTrace();
+        }
+        return actions;
+    }
+
+    @Override
+    public Boolean isActionAvailable(final String actionKey, final String projectId, final UserI user) {
+        for (Command command : commandService.getAll()) {
+            for(Command.CommandWrapper wrapper : command.xnatCommandWrappers()){
+                if(Long.toString(wrapper.id()).contentEquals(actionKeyToActionId(actionKey))){
+                    if( (Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForSite(wrapper.id())) ||
+                            (!Strings.isNullOrEmpty(projectId) && containerConfigService.isEnabledForProject(projectId, wrapper.id())) ){
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    ActionAttributeConfiguration CommandInputConfig2ActionAttributeConfig(CommandConfiguration.CommandInputConfiguration commandInputConfiguration){
+        return ActionAttributeConfiguration.builder()
+                                    .description(commandInputConfiguration.description())
+                                    .type(commandInputConfiguration.type())
+                                    .defaultValue(commandInputConfiguration.defaultValue())
+                                    .required(commandInputConfiguration.required())
+                                    .build();
+    }
+
+}

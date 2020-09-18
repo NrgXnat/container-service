@@ -2,38 +2,53 @@ package org.nrg.containers.api;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.spotify.docker.client.DefaultDockerClient;
-import com.spotify.docker.client.DockerCertificates;
-import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.DockerClient.ListImagesParam;
-import com.spotify.docker.client.DockerClient.LogsParam;
-import com.spotify.docker.client.EventStream;
-import com.spotify.docker.client.LogStream;
-import com.spotify.docker.client.auth.ConfigFileRegistryAuthSupplier;
-import com.spotify.docker.client.auth.FixedRegistryAuthSupplier;
-import com.spotify.docker.client.exceptions.ContainerNotFoundException;
-import com.spotify.docker.client.exceptions.DockerCertificateException;
-import com.spotify.docker.client.exceptions.DockerException;
-import com.spotify.docker.client.exceptions.ImageNotFoundException;
-import com.spotify.docker.client.exceptions.ServiceNotFoundException;
-import com.spotify.docker.client.messages.*;
-import com.spotify.docker.client.messages.mount.Mount;
-import com.spotify.docker.client.messages.swarm.ContainerSpec;
-import com.spotify.docker.client.messages.swarm.EndpointSpec;
-import com.spotify.docker.client.messages.swarm.Placement;
-import com.spotify.docker.client.messages.swarm.PortConfig;
-import com.spotify.docker.client.messages.swarm.ReplicatedService;
-import com.spotify.docker.client.messages.swarm.RestartPolicy;
-import com.spotify.docker.client.messages.swarm.ServiceMode;
-import com.spotify.docker.client.messages.swarm.ServiceSpec;
-import com.spotify.docker.client.messages.swarm.Task;
-import com.spotify.docker.client.messages.swarm.TaskSpec;
-import com.spotify.docker.client.messages.swarm.ResourceRequirements;
-import com.spotify.docker.client.messages.swarm.Resources;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.DockerCertificates;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.DockerClient.ListImagesParam;
+import org.mandas.docker.client.DockerClient.LogsParam;
+import org.mandas.docker.client.EventStream;
+import org.mandas.docker.client.LogStream;
+import org.mandas.docker.client.auth.ConfigFileRegistryAuthSupplier;
+import org.mandas.docker.client.auth.FixedRegistryAuthSupplier;
+import org.mandas.docker.client.builder.jersey.JerseyDockerClientBuilder;
+import org.mandas.docker.client.exceptions.ContainerNotFoundException;
+import org.mandas.docker.client.exceptions.DockerCertificateException;
+import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.exceptions.ImageNotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.messages.ContainerConfig;
+import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.ContainerInfo;
+import org.mandas.docker.client.messages.Event;
+import org.mandas.docker.client.messages.HostConfig;
+import org.mandas.docker.client.messages.Image;
+import org.mandas.docker.client.messages.ImageInfo;
+import org.mandas.docker.client.messages.PortBinding;
+import org.mandas.docker.client.messages.RegistryAuth;
+import org.mandas.docker.client.messages.RegistryConfigs;
+import org.mandas.docker.client.messages.ServiceCreateResponse;
+import org.mandas.docker.client.messages.mount.Mount;
+import org.mandas.docker.client.messages.mount.TmpfsOptions;
+import org.mandas.docker.client.messages.swarm.ContainerSpec;
+import org.mandas.docker.client.messages.swarm.EndpointSpec;
+import org.mandas.docker.client.messages.swarm.NetworkAttachmentConfig;
+import org.mandas.docker.client.messages.swarm.Placement;
+import org.mandas.docker.client.messages.swarm.PortConfig;
+import org.mandas.docker.client.messages.swarm.ReplicatedService;
+import org.mandas.docker.client.messages.swarm.Reservations;
+import org.mandas.docker.client.messages.swarm.ResourceRequirements;
+import org.mandas.docker.client.messages.swarm.ResourceSpec;
+import org.mandas.docker.client.messages.swarm.Resources;
+import org.mandas.docker.client.messages.swarm.RestartPolicy;
+import org.mandas.docker.client.messages.swarm.ServiceMode;
+import org.mandas.docker.client.messages.swarm.ServiceSpec;
+import org.mandas.docker.client.messages.swarm.Task;
+import org.mandas.docker.client.messages.swarm.TaskSpec;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
@@ -60,12 +75,18 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
-import static com.spotify.docker.client.DockerClient.EventsParam.since;
-import static com.spotify.docker.client.DockerClient.EventsParam.type;
-import static com.spotify.docker.client.DockerClient.EventsParam.until;
+import static org.mandas.docker.client.DockerClient.EventsParam.since;
+import static org.mandas.docker.client.DockerClient.EventsParam.type;
+import static org.mandas.docker.client.DockerClient.EventsParam.until;
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
 
 @Slf4j
@@ -211,7 +232,7 @@ public class DockerControlApi implements ContainerControlApi {
         );
     }
 
-    private List<com.spotify.docker.client.messages.Image> _getImages(final Map<String, String> params)
+    private List<org.mandas.docker.client.messages.Image> _getImages(final Map<String, String> params)
             throws NoDockerServerException, DockerServerException {
         // Transform param map to ListImagesParam array
         final List<ListImagesParam> dockerParamsList = Lists.newArrayList();
@@ -260,7 +281,7 @@ public class DockerControlApi implements ContainerControlApi {
         throw new NotFoundException(String.format("Could not find image %s", imageId));
     }
 
-    private com.spotify.docker.client.messages.ImageInfo _getImageById(final String imageId, final DockerClient client)
+    private org.mandas.docker.client.messages.ImageInfo _getImageById(final String imageId, final DockerClient client)
         throws DockerServerException, NoDockerServerException, NotFoundException {
         try {
             return client.inspectImage(imageId);
@@ -315,6 +336,14 @@ public class DockerControlApi implements ContainerControlApi {
                 0D :
                 resolvedCommand.limitCpu();
 
+
+        final String runtime = resolvedCommand.runtime() == null ?
+                "" :
+                resolvedCommand.runtime();
+        final String ipcMode = resolvedCommand.ipcMode() == null ?
+                "" :
+                resolvedCommand.ipcMode();
+
         final List<ResolvedCommandMount> resolvedCommandMounts = resolvedCommand.mounts();
         final DockerServer server = getServer();
         if (server.swarmMode()) {
@@ -329,6 +358,7 @@ public class DockerControlApi implements ContainerControlApi {
 
             return Container.serviceFromResolvedCommand(resolvedCommand,
                     createService(server,
+                            resolvedCommand.containerName(),
                             resolvedCommand.image(),
                             resolvedCommand.commandLine(),
                             resolvedCommand.overrideEntrypoint(),
@@ -339,7 +369,11 @@ public class DockerControlApi implements ContainerControlApi {
                             reserveMemory,
                             limitMemory,
                             limitCpu,
-                            resolvedCommand.swarmConstraints()),
+                            resolvedCommand.swarmConstraints(),
+                            resolvedCommand.shmSize(),
+                            resolvedCommand.network(),
+                            resolvedCommand.containerLabels(),
+                            resolvedCommand.genericResources()),
                     userI.getLogin()
             );
         } else {
@@ -351,6 +385,7 @@ public class DockerControlApi implements ContainerControlApi {
             return Container.containerFromResolvedCommand(resolvedCommand,
                     createContainer(server,
                             resolvedCommand.image(),
+                            resolvedCommand.containerName(),
                             resolvedCommand.commandLine(),
                             resolvedCommand.overrideEntrypoint(),
                             bindMounts,
@@ -359,7 +394,15 @@ public class DockerControlApi implements ContainerControlApi {
                             workingDirectory,
                             reserveMemory,
                             limitMemory,
-                            limitCpu),
+                            limitCpu,
+                            runtime,
+                            ipcMode,
+                            resolvedCommand.autoRemove(),
+                            resolvedCommand.shmSize(),
+                            resolvedCommand.network(),
+                            resolvedCommand.containerLabels(),
+                            resolvedCommand.gpus(),
+                            resolvedCommand.genericResources()),
                     userI.getLogin()
             );
         }
@@ -404,6 +447,13 @@ public class DockerControlApi implements ContainerControlApi {
                 0D :
                 container.limitCpu();
 
+        final String runtime = container.runtime() == null ?
+                "" :
+                container.runtime();
+        final String ipcMode = container.ipcMode() == null ?
+                "" :
+                container.ipcMode();
+
         final DockerServer server = getServer();
 
         final List<Container.ContainerMount> containerMounts = container.mounts();
@@ -420,6 +470,7 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             final String serviceId = createService(server,
+                    container.containerName(),
                     container.dockerImage(),
                     container.commandLine(),
                     overrideEntrypoint,
@@ -430,7 +481,11 @@ public class DockerControlApi implements ContainerControlApi {
                     reserveMemory,
                     limitMemory,
                     limitCpu,
-                    container.swarmConstraints());
+                    container.swarmConstraints(),
+                    container.shmSize(),
+                    container.network(),
+                    container.containerLabels(),
+                    container.genericResources());
             return container.toBuilder()
                     .serviceId(serviceId)
                     .swarm(true)
@@ -443,6 +498,7 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             final String containerId = createContainer(server,
+                    container.containerName(),
                     container.dockerImage(),
                     container.commandLine(),
                     overrideEntrypoint,
@@ -452,7 +508,15 @@ public class DockerControlApi implements ContainerControlApi {
                     workingDirectory,
                     reserveMemory,
                     limitMemory,
-                    limitCpu);
+                    limitCpu,
+                    runtime,
+                    ipcMode,
+                    container.autoRemove(),
+                    container.shmSize(),
+                    container.network(),
+                    container.containerLabels(),
+                    container.gpus(),
+                    container.genericResources());
 
             return container.toBuilder()
                     .containerId(containerId)
@@ -463,6 +527,7 @@ public class DockerControlApi implements ContainerControlApi {
 
     private String createContainer(final DockerServer server,
                                    final String imageName,
+                                   final String containerName,
                                    final String runCommand,
                                    final boolean overrideEntrypoint,
                                    final List<String> bindMounts,
@@ -471,7 +536,15 @@ public class DockerControlApi implements ContainerControlApi {
                                    final String workingDirectory,
                                    final Long reserveMemory,
                                    final Long limitMemory,
-                                   final Double limitCpu)
+                                   final Double limitCpu,
+                                   final String runtime,
+                                   final String ipcMode,
+                                   final Boolean autoRemove,
+                                   final Long shmSize,
+                                   final String network,
+                                   final Map<String, String> containerLabels,
+                                   final String gpus,
+                                   final Map<String, String> genericResources)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -482,7 +555,7 @@ public class DockerControlApi implements ContainerControlApi {
                 final String hostPort = portEntry.getValue();
 
                 if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
-                    final PortBinding portBinding = PortBinding.create(null, hostPort);
+                    final PortBinding portBinding = PortBinding.of(null, hostPort);
                     portBindings.put(containerPort + "/tcp", Lists.newArrayList(portBinding));
 
                     portStringList.add("host" + hostPort + "->" + "container" + containerPort);
@@ -504,14 +577,24 @@ public class DockerControlApi implements ContainerControlApi {
 
         final String user = server.containerUser();
 
-        final HostConfig hostConfig =
+        HostConfig hostConfig =
                 HostConfig.builder()
+                        .autoRemove(autoRemove)
+                        .runtime(runtime)
+                        .ipcMode(ipcMode)
                         .binds(bindMounts)
                         .portBindings(portBindings)
                         .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes
                         .memory(1024 * 1024 * limitMemory) // megabytes to bytes
                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
                         .build();
+        if(shmSize != null && shmSize >= 0){
+            hostConfig = hostConfig.toBuilder().shmSize(shmSize).build();
+        }
+        if(!Strings.isNullOrEmpty(network)){
+            hostConfig = hostConfig.toBuilder().networkMode(network).build();
+        }
+
         final ContainerConfig containerConfig =
                 ContainerConfig.builder()
                         .hostConfig(hostConfig)
@@ -523,6 +606,7 @@ public class DockerControlApi implements ContainerControlApi {
                         .env(environmentVariables)
                         .workingDir(workingDirectory)
                         .user(user)
+                        .labels(containerLabels)
                         .build();
 
         if (log.isDebugEnabled()) {
@@ -549,7 +633,12 @@ public class DockerControlApi implements ContainerControlApi {
         }
 
         try (final DockerClient client = getClient(server)) {
-            final ContainerCreation container = client.createContainer(containerConfig);
+            ContainerCreation container = null;
+            if(Strings.isNullOrEmpty(containerName)){
+                container = client.createContainer(containerConfig);
+            } else {
+                container = client.createContainer(containerConfig, containerName);
+            }
 
             final List<String> warnings = container.warnings();
             if (warnings != null) {
@@ -566,6 +655,7 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private String createService(final DockerServer server,
+                                 final String containerName,
                                  final String imageName,
                                  final String runCommand,
                                  final boolean overrideEntrypoint,
@@ -576,7 +666,11 @@ public class DockerControlApi implements ContainerControlApi {
                                  final Long reserveMemory,
                                  final Long limitMemory,
                                  final Double limitCpu,
-                                 @Nullable List<String> swarmConstraints)
+                                 @Nullable List<String> swarmConstraints,
+                                 final Long shmSize,
+                                 final String network,
+                                 final Map<String, String> containerLabels,
+                                 final Map<String, String> genericResources)
             throws DockerServerException, ContainerException {
 
         final List<PortConfig> portConfigs = Lists.newArrayList();
@@ -620,6 +714,22 @@ public class DockerControlApi implements ContainerControlApi {
         //add docker socket for 'docker in docker containers'
         mounts.add(Mount.builder().source("/var/run/docker.sock").target("/var/run/docker.sock").readOnly(false).build());
 
+        // Temporary work-around to support configurable shm-size in swarm service
+        // https://github.com/moby/moby/issues/26714
+        if (shmSize != null ){
+            Mount tmpfs = Mount.builder()
+                               .type("tmpfs")
+                               .target("/dev/shm")
+                               .tmpfsOptions(TmpfsOptions.builder()
+                                                         .sizeBytes(shmSize)
+                                                         .build())
+                               .build();
+            if (log.isDebugEnabled()) {
+                log.debug("Creating tmpfs mount to support shm-size in Swarm Service: " + tmpfs.toString());
+            }
+            mounts.add(tmpfs);
+        }
+
         // We get the bind mounts strings here not to use for creating the service,
         // but simply for the debug log
         // The Mount objects are what we need for the service
@@ -636,42 +746,69 @@ public class DockerControlApi implements ContainerControlApi {
                 .env(environmentVariables)
                 .dir(workingDirectory)
                 .mounts(mounts)
-                .user(user);
+                .user(user)
+                .labels(containerLabels);
         if (overrideEntrypoint) {
             containerSpecBuilder.command("/bin/sh", "-c", runCommand);
         } else {
             containerSpecBuilder.args(ShellSplitter.shellSplit(runCommand));
         }
 
-        final TaskSpec taskSpec = TaskSpec.builder()
-                .containerSpec(containerSpecBuilder.build())
-                .placement(Placement.create(swarmConstraints))
-                .restartPolicy(RestartPolicy.builder()
-                        .condition("none")
-                        .build())
-                .resources(ResourceRequirements.builder()
-                        .reservations(Resources.builder()
-                            .memoryBytes(1024 * 1024 * reserveMemory) // megabytes to bytes
-                            .build())
-                        .limits(Resources.builder()
-                            .memoryBytes(1024 * 1024 * limitMemory) // megabytes to bytes
-                            .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
-                            .build())
-                        .build())
-                .build();
-        final ServiceSpec serviceSpec =
-                ServiceSpec.builder()
-                        .taskTemplate(taskSpec)
-                        .mode(ServiceMode.builder()
-                                .replicated(ReplicatedService.builder()
-                                        .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
-                                        .build())
-                                .build())
-                        .endpointSpec(EndpointSpec.builder()
-                                .ports(portConfigs)
-                                .build())
-                        .name(UUID.randomUUID().toString())
-                        .build();
+        // Build out GPU/generic resources specifications from command definition to swarm/single server spec.
+        List<ResourceSpec> resourceSpecs = null;
+        if (genericResources != null && genericResources.size() > 0){
+            resourceSpecs = new ArrayList<ResourceSpec>();
+            for (String kind : genericResources.keySet()){
+                resourceSpecs.add(
+                        StringUtils.isNumeric(genericResources.get(kind)) ?
+                        ResourceSpec.DiscreteResourceSpec.builder().kind(kind).value(Integer.valueOf(genericResources.get(kind))).build() :
+                        ResourceSpec.NamedResourceSpec.builder().kind(kind).value(genericResources.get(kind)).build()
+                );
+            }
+        }
+
+        // Build named resources and add them to memory reservation requirements
+        ResourceRequirements resourceRequirements = ResourceRequirements.builder()
+                                                                        .reservations(Reservations.builder()
+                                                                                                  .memoryBytes(1024 * 1024 * reserveMemory) // megabytes to bytes
+                                                                                                  .resources(resourceSpecs)
+                                                                                                  .build())
+                                                                        .limits(Resources.builder()
+                                                                                         .memoryBytes(1024 * 1024 * limitMemory) // megabytes to bytes
+                                                                                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
+                                                                                         .build())
+                                                                        .build();
+
+        TaskSpec.Builder taskSpecBuilder = TaskSpec.builder();
+        taskSpecBuilder
+            .containerSpec(containerSpecBuilder.build())
+            .placement(Placement.create(swarmConstraints))
+            .restartPolicy(RestartPolicy.builder()
+                    .condition(RestartPolicy.RESTART_POLICY_NONE)
+                    .build())
+            .resources(resourceRequirements);
+        if(!Strings.isNullOrEmpty(network)){
+            taskSpecBuilder.networks(NetworkAttachmentConfig.builder()
+                                                               .target(network).build());
+        }
+        final TaskSpec taskSpec = taskSpecBuilder.build();
+
+        ServiceSpec.Builder serviceSpecBuilder = ServiceSpec.builder();
+        serviceSpecBuilder
+            .taskTemplate(taskSpec)
+            .mode(ServiceMode.builder()
+                .replicated(ReplicatedService.builder()
+                                             .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
+                                             .build())
+                .build())
+            .endpointSpec(EndpointSpec.builder()
+                 .ports(portConfigs)
+                 .build())
+            .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
+            .labels(containerLabels);
+
+        ServiceSpec serviceSpec = serviceSpecBuilder.build();
+
 
         if (log.isDebugEnabled()) {
             final String message = String.format(
@@ -727,7 +864,7 @@ public class DockerControlApi implements ContainerControlApi {
         try (final DockerClient client = getClient(server, imageNameForSwarmAuth)) {
             if (swarmMode) {
                 log.debug("Inspecting service {}", containerOrServiceId);
-                final com.spotify.docker.client.messages.swarm.Service service = client.inspectService(containerOrServiceId);
+                final org.mandas.docker.client.messages.swarm.Service service = client.inspectService(containerOrServiceId);
                 if (service == null || service.spec() == null) {
                     throw new DockerServerException("Could not start service " + containerOrServiceId + ". Could not inspect service spec.");
                 }
@@ -837,7 +974,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public List<ContainerMessage> getContainers(final Map<String, String> params)
         throws NoDockerServerException, DockerServerException {
-        List<com.spotify.docker.client.messages.Container> containerList;
+        List<org.mandas.docker.client.messages.Container> containerList;
 
         // Transform param map to ListImagesParam array
         final List<DockerClient.ListContainersParam> dockerParamsList = Lists.newArrayList();
@@ -856,10 +993,10 @@ public class DockerControlApi implements ContainerControlApi {
             throw new DockerServerException(e);
         }
         return Lists.newArrayList(
-                Lists.transform(containerList, new Function<com.spotify.docker.client.messages.Container, ContainerMessage>() {
+                Lists.transform(containerList, new Function<org.mandas.docker.client.messages.Container, ContainerMessage>() {
                     @Override
                     @Nullable
-                    public ContainerMessage apply(final @Nullable com.spotify.docker.client.messages.Container container) {
+                    public ContainerMessage apply(final @Nullable org.mandas.docker.client.messages.Container container) {
                         return spotifyToNrg(container);
                     }
                 })
@@ -1027,15 +1164,14 @@ public class DockerControlApi implements ContainerControlApi {
     private DockerClient getClient(final @Nonnull DockerServer server, final @Nullable String imageName)
             throws DockerServerException {
 
-        DefaultDockerClient.Builder clientBuilder =
-            DefaultDockerClient.builder()
-                .uri(server.host());
+        JerseyDockerClientBuilder clientBuilder = new JerseyDockerClientBuilder();
+        clientBuilder.uri(server.host());
 
         if (StringUtils.isNotBlank(server.certPath())) {
             try {
                 final DockerCertificates certificates =
                     new DockerCertificates(Paths.get(server.certPath()));
-                clientBuilder = clientBuilder.dockerCertificates(certificates);
+                clientBuilder.dockerCertificates(certificates);
             } catch (DockerCertificateException e) {
                 log.error("Could not find docker certificates at {}", server.certPath(), e);
             }
@@ -1047,7 +1183,7 @@ public class DockerControlApi implements ContainerControlApi {
             try {
                 final RegistryAuth auth = new ConfigFileRegistryAuthSupplier().authFor(imageName);
                 clientBuilder.registryAuthSupplier(new FixedRegistryAuthSupplier(auth, RegistryConfigs.empty()));
-            } catch (DockerException e) {
+            } catch (Exception e) {
                 log.error("Could not find auth for {}", imageName, e);
             }
         }
@@ -1120,7 +1256,7 @@ public class DockerControlApi implements ContainerControlApi {
             log.trace("Closed docker event stream.");
 
             return eventList;
-        } catch (InterruptedException | DockerException e) {
+        } catch (IOException | InterruptedException | DockerException e) {
             log.error(e.getMessage(), e);
             throw new DockerServerException(e);
         } catch (DockerServerException e) {
@@ -1208,7 +1344,7 @@ public class DockerControlApi implements ContainerControlApi {
 
             if (taskId == null) {
                 log.trace("Attempting to retrieve swarm task for service: {}", service.toString());
-                final com.spotify.docker.client.messages.swarm.Service serviceResponse = client.inspectService(serviceId);
+                final org.mandas.docker.client.messages.swarm.Service serviceResponse = client.inspectService(serviceId);
                 final String serviceName = serviceResponse.spec().name();
                 if (StringUtils.isBlank(serviceName)) {
                     throw new DockerServerException("Unable to determine service name for serviceId " + serviceId +
@@ -1344,7 +1480,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return NRG Container object
      **/
     @Nullable
-    private ContainerMessage spotifyToNrg(final @Nullable com.spotify.docker.client.messages.Container dockerContainer) {
+    private ContainerMessage spotifyToNrg(final @Nullable org.mandas.docker.client.messages.Container dockerContainer) {
         return dockerContainer == null ? null : ContainerMessage.create(dockerContainer.id(), dockerContainer.status());
     }
 
@@ -1355,7 +1491,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @return NRG Container object
      **/
     @Nullable
-    private ContainerMessage spotifyToNrg(final @Nullable com.spotify.docker.client.messages.ContainerInfo dockerContainer) {
+    private ContainerMessage spotifyToNrg(final @Nullable org.mandas.docker.client.messages.ContainerInfo dockerContainer) {
         return dockerContainer == null ? null : ContainerMessage.create(
                 dockerContainer.id(),
                 dockerContainer.state().running() ? "Running" :

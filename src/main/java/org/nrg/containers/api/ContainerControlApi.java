@@ -1,7 +1,7 @@
 package org.nrg.containers.api;
 
-import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;

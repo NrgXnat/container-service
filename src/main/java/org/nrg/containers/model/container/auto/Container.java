@@ -54,6 +54,7 @@ public abstract class Container {
     @Nullable @JsonProperty("task-id") public abstract String taskId();
     @Nullable @JsonProperty("node-id") public abstract String nodeId();
     @JsonProperty("docker-image") public abstract String dockerImage();
+    @Nullable @JsonProperty("container-name") public abstract String containerName();
     @JsonProperty("command-line") public abstract String commandLine();
     @Nullable @JsonProperty("override-entrypoint") public abstract Boolean overrideEntrypoint();
     @Nullable @JsonProperty("working-directory") public abstract String workingDirectory();
@@ -71,6 +72,14 @@ public abstract class Container {
     @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
     @Nullable @JsonProperty("swarm-constraints") public abstract List<String> swarmConstraints();
+    @Nullable @JsonProperty("runtime") public abstract String runtime();
+    @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
+    @Nullable @JsonProperty("auto-remove") public abstract Boolean autoRemove();
+    @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
+    @Nullable @JsonProperty("network") public abstract String network();
+    @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
+    @JsonProperty("gpus") @Nullable public abstract String gpus();
+    @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
 
     @JsonIgnore
     public boolean isSwarmService() {
@@ -223,6 +232,7 @@ public abstract class Container {
                                    @JsonProperty("task-id") final String taskId,
                                    @JsonProperty("node-id") final String nodeId,
                                    @JsonProperty("docker-image") final String dockerImage,
+                                   @JsonProperty("container-name") final String containerName,
                                    @JsonProperty("command-line") final String commandLine,
                                    @JsonProperty("override-entrypoint") final Boolean overrideEntrypoint,
                                    @JsonProperty("working-directory") final String workingDirectory,
@@ -238,7 +248,14 @@ public abstract class Container {
                                    @JsonProperty("reserve-memory") final Long reserveMemory,
                                    @JsonProperty("limit-memory") final Long limitMemory,
                                    @JsonProperty("limit-cpu") final Double limitCpu,
-                                   @JsonProperty("swarm-constraints") final List<String> swarmConstraints) {
+                                   @JsonProperty("swarm-constraints") final List<String> swarmConstraints,
+                                   @JsonProperty("runtime") final String runtime,
+                                   @JsonProperty("ipc-mode") final String ipcMode,
+                                   @JsonProperty("auto-remove") final Boolean autoremove,
+                                   @JsonProperty("shm-size") final Long shmSize,
+                                   @JsonProperty("network") final String network,
+                                   @JsonProperty("container-labels") final Map<String, String> containerLabels)
+    {
 
         return builder()
                 .databaseId(databaseId)
@@ -255,6 +272,7 @@ public abstract class Container {
                 .taskId(taskId)
                 .nodeId(nodeId)
                 .dockerImage(dockerImage)
+                .containerName(containerName)
                 .commandLine(commandLine)
                 .overrideEntrypoint(overrideEntrypoint)
                 .workingDirectory(workingDirectory)
@@ -271,6 +289,12 @@ public abstract class Container {
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
                 .swarmConstraints(swarmConstraints)
+                .runtime(runtime)
+                .ipcMode(ipcMode)
+                .autoRemove(autoremove)
+                .shmSize(shmSize)
+                .network(network)
+                .containerLabels(containerLabels)
                 .build();
     }
 
@@ -293,6 +317,7 @@ public abstract class Container {
                 .taskId(containerEntity.getTaskId())
                 .nodeId(containerEntity.getNodeId())
                 .dockerImage(containerEntity.getDockerImage())
+                .containerName(containerEntity.getContainerName())
                 .commandLine(containerEntity.getCommandLine())
                 .overrideEntrypoint(containerEntity.getOverrideEntrypoint())
                 .workingDirectory(containerEntity.getWorkingDirectory())
@@ -342,6 +367,12 @@ public abstract class Container {
                 .limitMemory(containerEntity.getLimitMemory())
                 .limitCpu(containerEntity.getLimitCpu())
                 .swarmConstraints(containerEntity.getSwarmConstraints())
+                .runtime(containerEntity.getCommandLine())
+                .ipcMode(containerEntity.getIpcMode())
+                .autoRemove(containerEntity.getAutoRemove())
+                .shmSize(containerEntity.getShmSize())
+                .network(containerEntity.getNetwork())
+                .containerLabels(containerEntity.getContainerLabels())
                 .build();
     }
 
@@ -372,6 +403,7 @@ public abstract class Container {
                 .wrapperId(resolvedCommand.wrapperId())
                 .project(resolvedCommand.project())
                 .dockerImage(resolvedCommand.image())
+                .containerName(resolvedCommand.containerName())
                 .commandLine(resolvedCommand.commandLine())
                 .overrideEntrypoint(resolvedCommand.overrideEntrypoint())
                 .workingDirectory(resolvedCommand.workingDirectory())
@@ -386,7 +418,16 @@ public abstract class Container {
                 .limitMemory(resolvedCommand.limitMemory())
                 .limitCpu(resolvedCommand.limitCpu())
                 .swarmConstraints(resolvedCommand.swarmConstraints())
-                .parentSourceObjectName(resolvedCommand.parentSourceObjectName());
+                .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
+                .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
+                .runtime(resolvedCommand.runtime())
+                .ipcMode(resolvedCommand.ipcMode())
+                .autoRemove(resolvedCommand.autoRemove())
+                .shmSize(resolvedCommand.shmSize())
+                .network(resolvedCommand.network())
+                .containerLabels(resolvedCommand.containerLabels())
+                .gpus(resolvedCommand.gpus())
+                .genericResources(resolvedCommand.genericResources());
     }
 
     public static Builder builder() {
@@ -512,6 +553,7 @@ public abstract class Container {
         public abstract Builder userId(String userId);
         public abstract Builder project(String project);
         public abstract Builder dockerImage(String dockerImage);
+        public abstract Builder containerName(String containerName);
         public abstract Builder commandLine(String commandLine);
         public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
         public abstract Builder workingDirectory(String workingDirectory);
@@ -528,6 +570,14 @@ public abstract class Container {
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
         public abstract Builder swarmConstraints(List<String> swarmConstraints);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+        public abstract Builder autoRemove(Boolean autoRemove);
+        public abstract Builder shmSize(Long shmSize);
+        public abstract Builder network(String network);
+        public abstract Builder containerLabels(Map<String, String> containerLabels);
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();
@@ -800,6 +850,9 @@ public abstract class Container {
         @Nullable @JsonProperty("glob") public abstract String glob();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
         @Nullable @JsonProperty("created") public abstract String created();
         @JsonProperty("handled-by") public abstract String handledBy();
         @Nullable @JsonProperty("via-wrapup-container") public abstract String viaWrapupContainer();
@@ -816,6 +869,9 @@ public abstract class Container {
                                              @JsonProperty("glob") final String glob,
                                              @JsonProperty("label") final String label,
                                              @JsonProperty("format") final String format,
+                                             @JsonProperty("description") final String description,
+                                             @JsonProperty("content") final String content,
+                                             @JsonProperty("tags") final List<String> tags,
                                              @JsonProperty("created") final String created,
                                              @JsonProperty("handled-by") final String handledByWrapperInput,
                                              @JsonProperty("via-wrapup-container") final String viaWrapupContainer) {
@@ -831,6 +887,9 @@ public abstract class Container {
                     .glob(glob)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags == null ? Collections.emptyList() : tags)
                     .created(created)
                     .handledBy(handledByWrapperInput)
                     .viaWrapupContainer(viaWrapupContainer)
@@ -849,6 +908,9 @@ public abstract class Container {
                     containerEntityOutput.getGlob(),
                     containerEntityOutput.getLabel(),
                     containerEntityOutput.getFormat(),
+                    containerEntityOutput.getDescritpion(),
+                    containerEntityOutput.getContent(),
+                    containerEntityOutput.getTags(),
                     containerEntityOutput.getCreated(),
                     containerEntityOutput.getHandledByXnatCommandInput(),
                     containerEntityOutput.getViaWrapupContainer());
@@ -866,6 +928,9 @@ public abstract class Container {
                     resolvedCommandOutput.glob(),
                     resolvedCommandOutput.label(),
                     resolvedCommandOutput.format(),
+                    resolvedCommandOutput.description(),
+                    resolvedCommandOutput.content(),
+                    resolvedCommandOutput.tags(),
                     null,
                     resolvedCommandOutput.handledBy(),
                     resolvedCommandOutput.viaWrapupCommand());
@@ -890,6 +955,9 @@ public abstract class Container {
             public abstract Builder glob(String glob);
             public abstract Builder label(String label);
             public abstract Builder format(String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
             public abstract Builder created(String created);
             public abstract Builder handledBy(String handledBy);
             public abstract Builder viaWrapupContainer(String viaWrapupContainer);

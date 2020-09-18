@@ -462,7 +462,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
                 // Can only launch if the user gave us an xsiType that matches
                 // one of the wrapper's contexts
-                if (!xsiTypesMatch(xsiType, wrapper.contexts())) {
+                if (xsiType != null && !xsiTypesMatch(xsiType, wrapper.contexts())) {
                     continue;
                 }
 
@@ -471,12 +471,10 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
                     continue;
                 }
 
-                // Can only launch with a single external input
-                // It seems iffy to me to bake this into the code, but I don't know a way around it.
-                // We don't have any UI right now where a user can sensibly launch
-                //   on two completely unconnected objects.
+                // Removed requirement for only a single external input, as we need to launch with multiple inputs
+                // e.g. clara:trainSession & clara:model
                 final String externalInputName;
-                if (wrapper.externalInputs().size() == 1) {
+                if (wrapper.externalInputs().size() >= 1) {
                     externalInputName = wrapper.externalInputs().get(0).name();
                 } else {
                     continue;

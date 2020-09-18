@@ -1,9 +1,9 @@
 package org.nrg.containers.model.container.auto;
 
 import com.google.auto.value.AutoValue;
-import com.spotify.docker.client.messages.swarm.ContainerStatus;
-import com.spotify.docker.client.messages.swarm.Task;
-import com.spotify.docker.client.messages.swarm.TaskStatus;
+import org.mandas.docker.client.messages.swarm.ContainerStatus;
+import org.mandas.docker.client.messages.swarm.Task;
+import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.annotation.Nonnull;

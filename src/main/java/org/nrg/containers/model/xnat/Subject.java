@@ -24,7 +24,6 @@ import org.nrg.xnat.helpers.uri.archive.SubjectURII;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -35,6 +34,7 @@ public class Subject extends XnatModelObject {
     private List<Session> sessions;
     private List<Resource> resources;
     @JsonProperty("project-id") private String projectId;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public Subject() {}
 
@@ -92,6 +92,12 @@ public class Subject extends XnatModelObject {
                             loadTypes, this.uri, rootArchivePath));
                 }
             }
+        }
+        datatypeString = null;
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatSubjectdataI != null){
+            try {
+                datatypeString = xnatSubjectdataI.toString();
+            } catch (Throwable e){ }
         }
     }
 
@@ -170,6 +176,10 @@ public class Subject extends XnatModelObject {
 
     public void setProjectId(final String projectId) {
         this.projectId = projectId;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
     }
 
     @Override

@@ -58,7 +58,7 @@ Gather all the jars below into your local plugins directory `/path/to/plugins`. 
 * Copy the jar to your plugins directory `$ cp build/libs/transporter-1.0-SNAPSHOT.jar /path/to/plugins/`.
 
 #### Docker client
-* Download the **shaded** jar from [bintray](https://bintray.com/bintray/jcenter/com.spotify%3Adocker-client) or [maven central](http://search.maven.org/#search%7Cga%7C1%7Ccom.spotify.docker-client).
+* Download the **shaded** jar from [bintray](https://bintray.com/bintray/jcenter/org.mandas%3Adocker-client) or [maven central](http://search.maven.org/#search%7Cga%7C1%7Ccom.spotify.docker-client).
 
 ### Setup
 

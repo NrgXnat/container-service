@@ -3,12 +3,15 @@ package org.nrg.containers.model.xnat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
+import org.nrg.xdat.model.XnatAbstractprojectassetI;
 import org.nrg.xdat.model.XnatAbstractresourceI;
+import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xdat.om.XnatSubjectdata;
@@ -21,7 +24,6 @@ import org.nrg.xnat.helpers.uri.archive.ProjectURII;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -30,6 +32,7 @@ public class Project extends XnatModelObject {
     @JsonIgnore private XnatProjectdata xnatProjectdata;
     private List<Resource> resources;
     private List<Subject> subjects;
+    @JsonProperty("project-assets") private List<ProjectAsset> projectAssets;
     private String directory;
 
     public Project() {}
@@ -88,6 +91,15 @@ public class Project extends XnatModelObject {
             for (final XnatAbstractresourceI xnatAbstractresourceI : xnatProjectdata.getResources_resource()) {
                 if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
                     resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles, loadTypes,
+                            this.uri, xnatProjectdata.getRootArchivePath()));
+                }
+            }
+        }
+        this.projectAssets = Lists.newArrayList();
+        if (preload && (loadFiles || loadTypes.contains(CommandWrapperInputType.PROJECT_ASSET.getName()))) {
+            for (final XnatExperimentdata xnatExperimentdata : xnatProjectdata.getExperiments()) {
+                if (xnatExperimentdata instanceof XnatAbstractprojectassetI) {
+                    projectAssets.add(new ProjectAsset((XnatAbstractprojectassetI) xnatExperimentdata, loadFiles, loadTypes,
                             this.uri, xnatProjectdata.getRootArchivePath()));
                 }
             }

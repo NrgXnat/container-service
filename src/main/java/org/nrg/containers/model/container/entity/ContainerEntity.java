@@ -2,7 +2,6 @@ package org.nrg.containers.model.container.entity;
 
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +41,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private String status;
     private Date statusTime;
     private String dockerImage;
+    private String containerName;
     private String commandLine;
     private Boolean overrideEntrypoint;
     private String workingDirectory;
@@ -67,6 +67,15 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Double limitCpu;
     private List<String> swarmConstraints;
     private String project;
+    private String runtime;
+    private String ipcMode;
+    private Boolean autoRemove;
+    private Long shmSize;
+    private String network;
+    private Map<String, String> containerLabels = new HashMap<>();
+    private String gpus;
+    private Map<String, String> genericResources = new HashMap<>();
+
 
     public ContainerEntity() {}
 
@@ -94,6 +103,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setNodeId(containerPojo.nodeId());
         this.setSwarm(containerPojo.swarm());
         this.setDockerImage(containerPojo.dockerImage());
+        this.setContainerName(containerPojo.containerName());
         this.setCommandLine(containerPojo.commandLine());
         this.setOverrideEntrypoint(containerPojo.overrideEntrypoint());
         this.setWorkingDirectory(containerPojo.workingDirectory());
@@ -139,6 +149,14 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setLimitMemory(containerPojo.limitMemory());
         this.setLimitCpu(containerPojo.limitCpu());
         this.setSwarmConstraints(containerPojo.swarmConstraints());
+        this.setRuntime(containerPojo.runtime());
+        this.setIpcMode(containerPojo.ipcMode());
+        this.setAutoRemove(containerPojo.autoRemove());
+        this.setShmSize(containerPojo.shmSize());
+        this.setNetwork(containerPojo.network());
+        this.setContainerLabels(containerPojo.containerLabels());
+        this.setGpus(containerPojo.gpus());
+        this.setGenericResources(containerPojo.genericResources());
 
         return this;
     }
@@ -230,6 +248,10 @@ public class ContainerEntity extends AbstractHibernateEntity {
     public void setDockerImage(final String dockerImage) {
         this.dockerImage = dockerImage;
     }
+
+    public String getContainerName() { return containerName; }
+
+    public void setContainerName(String containerName) { this.containerName = containerName; }
 
     @Column(columnDefinition = "TEXT")
     public String getCommandLine() {
@@ -378,6 +400,44 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setLimitCpu(final Double limitCpu) {
         this.limitCpu = limitCpu;
+    }
+
+    public String getRuntime() { return runtime; }
+
+    public void setRuntime(final String runtime) { this.runtime = runtime; }
+
+    public String getIpcMode() { return ipcMode; }
+
+    public void setIpcMode(String ipcMode) { this.ipcMode = ipcMode; }
+
+    public Boolean getAutoRemove() { return autoRemove; }
+
+    public void setAutoRemove(Boolean autoRemove) { this.autoRemove = autoRemove; }
+
+    public Long getShmSize() { return shmSize; }
+
+    public void setShmSize(Long shmSize) { this.shmSize = shmSize; }
+
+    public String getNetwork() { return network; }
+
+    public void setNetwork(String network) { this.network = network; }
+
+    @ElementCollection
+    public Map<String, String> getContainerLabels() { return containerLabels; }
+
+    public void setContainerLabels(Map<String, String> containerLabels) {
+        this.containerLabels = containerLabels == null ? new HashMap<String, String>() : containerLabels;
+    }
+
+    public String getGpus() { return gpus; }
+
+    public void setGpus(String gpus) { this.gpus = gpus; }
+
+    @ElementCollection
+    public Map<String, String> getGenericResources() { return genericResources; }
+
+    public void setGenericResources(Map<String, String> genericResources) {
+        this.genericResources = genericResources  == null ? new HashMap<String, String>() : genericResources;
     }
 
     @ManyToOne
@@ -538,6 +598,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("status", status)
                 .add("statusTime", statusTime)
                 .add("dockerImage", dockerImage)
+                .add("containerName", containerName)
                 .add("commandLine", commandLine)
                 .add("overrideEntrypoint", overrideEntrypoint)
                 .add("workingDirectory", workingDirectory)
@@ -552,6 +613,14 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("limitMemory", limitMemory)
                 .add("limitCpu", limitCpu)
                 .add("swarmConstraints", swarmConstraints)
+                .add("runtime", runtime)
+                .add("ipcMode", ipcMode)
+                .add("autoRemove", autoRemove)
+                .add("shmSize", shmSize)
+                .add("network", network)
+                .add("containerLabels", containerLabels)
+                .add("gpus", gpus)
+                .add("genericResources", genericResources)
                 .toString();
     }
 }

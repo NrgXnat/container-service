@@ -34,7 +34,7 @@
         <appender-ref ref="containers"/>
     </logger>
     <logger additivity="false" level="INFO" name="org.mandas">
-        <appender-ref ref="spotify"/>
+        <appender-ref ref="mandas"/>
     </logger>
     <logger additivity="false" level="INFO" name="org.nrg.containers.services.impl.CommandResolutionServiceImpl">
         <appender-ref ref="services"/>

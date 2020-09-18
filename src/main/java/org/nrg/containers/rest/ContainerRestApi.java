@@ -44,6 +44,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
+import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -105,7 +106,25 @@ public class ContainerRestApi extends AbstractXapiRestController {
         });
     }
 
-    @XapiRequestMapping(value = "/containers/{id}", method = GET)
+    @XapiRequestMapping(value = "/projects/{project}/containers/name/{name}", method = GET, restrictTo = Authenticated)
+    @ApiOperation(value = "Get Containers by name")
+    @ResponseBody
+    public Container getByName(final @PathVariable @Project String project,
+                         final @PathVariable String name,
+                               final @RequestParam(required = false) Boolean nonfinalized) throws NotFoundException {
+        // TODO: Check user permissions
+        return scrubPasswordEnv(containerService.getByName(project, name, nonfinalized));
+    }
+
+    @XapiRequestMapping(value = "/container/name/{name}", method = GET, restrictTo = Admin)
+    @ApiOperation(value = "Get Containers by database name")
+    @ResponseBody
+    public Container getByName(final @PathVariable String name,
+                               final @RequestParam(required = false) Boolean nonfinalized) throws NotFoundException {
+        return scrubPasswordEnv(containerService.getByName(name, nonfinalized));
+    }
+
+    @XapiRequestMapping(value = "/containers/{id}", method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Containers by database ID")
     @ResponseBody
     public Container get(final @PathVariable String id) throws NotFoundException {
@@ -135,7 +154,19 @@ public class ContainerRestApi extends AbstractXapiRestController {
         return containerService.kill(id, userI);
     }
 
+    @XapiRequestMapping(value = "/projects/{project}/containers/{id}/kill", method = POST, restrictTo = Read)
+    @ApiOperation(value = "Kill Container")
+    @ResponseBody
+    public String kill(final @PathVariable @Project String project,
+                       final @PathVariable String id)
+            throws NotFoundException, NoDockerServerException, DockerServerException {
+        final UserI userI = XDAT.getUserDetails();
+        return containerService.kill(project, id, userI);
+    }
+
     private Container scrubPasswordEnv(final Container container) {
+        if (container == null) { return null; }
+
         final Map<String, String> scrubbedEnvironmentVariables = Maps.newHashMap();
         for (final Map.Entry<String, String> env : container.environmentVariables().entrySet()) {
             scrubbedEnvironmentVariables.put(env.getKey(),
@@ -255,7 +286,8 @@ public class ContainerRestApi extends AbstractXapiRestController {
                                 StringUtils.isBlank(lastLine = lines[lines.length - 1].replaceAll(" .*", ""))) {
                             throw new ParseException(null, 0);
                         }
-                        lastTime = Instant.parse(lastLine).plus(1L, ChronoUnit.SECONDS).getEpochSecond();
+                        lastTime = Instant.parse(StringUtils.substringBefore(lastLine, "\r"))
+                                          .plus(1L, ChronoUnit.SECONDS).getEpochSecond();
                     } catch (ParseException e) {
                         lastTime = since == null ? queryTime : since;
                     }

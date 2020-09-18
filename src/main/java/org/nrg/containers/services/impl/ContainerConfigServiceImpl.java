@@ -141,11 +141,12 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
     private void setCommandConfigurationInternal(final CommandConfigurationInternal commandConfigurationInternal,
                                                  final Scope scope, final String project, final long wrapperId, final String username, final String reason) throws CommandConfigurationException {
         if (scope.equals(Scope.Project) && StringUtils.isBlank(project)) {
-            // TODO error: project can't be blank
+            log.error("Command configuration cannot be found at Project Scope when ProjectID is empty.");
+            return;
         }
-
         if (wrapperId == 0L) {
-            // TODO error
+            log.error("Command configuration cannot be found for wrapperId == 0");
+            return;
         }
 
         String contents = "";
@@ -170,7 +171,7 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
     @Nullable
     private Boolean getCommandIsEnabledConfiguration(final Scope scope, final String project, final long wrapperId) {
         final CommandConfigurationInternal commandConfigurationInternal = getCommandConfiguration(scope, project, wrapperId);
-        return commandConfigurationInternal == null ? null : commandConfigurationInternal.enabled();
+        return commandConfigurationInternal == null ? false : commandConfigurationInternal.enabled();
     }
 
     @Nullable
@@ -208,11 +209,13 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
 
     private void deleteCommandConfiguration(final Scope scope, final String project, final long wrapperId, final String username) throws CommandConfigurationException {
         if (scope.equals(Scope.Project) && StringUtils.isBlank(project)) {
-            // TODO error: project can't be blank
+            log.error("Command configuration cannot be deleted at Project Scope when ProjectID is empty.");
+            return;
         }
 
         if (wrapperId == 0L) {
-            // TODO error
+            log.error("Command configuration cannot be deleted for wrapperId == 0");
+            return;
         }
 
         final CommandConfigurationInternal commandConfigurationInternal = getCommandConfiguration(scope, project, wrapperId);

@@ -15,7 +15,17 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.model.command.entity.*;
+import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.entity.CommandInputEntity;
+import org.nrg.containers.model.command.entity.CommandMountEntity;
+import org.nrg.containers.model.command.entity.CommandOutputEntity;
+import org.nrg.containers.model.command.entity.CommandType;
+import org.nrg.containers.model.command.entity.CommandWrapperDerivedInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperInputType;
+import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandInputConfiguration;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandOutputConfiguration;
 
@@ -36,6 +46,7 @@ public abstract class Command {
     @Nullable @JsonProperty("schema-version") public abstract String schemaVersion();
     @Nullable @JsonProperty("info-url") public abstract String infoUrl();
     @Nullable @JsonProperty("image") public abstract String image();
+    @Nullable @JsonProperty("container-name") public abstract String containerName();
     @JsonProperty("type") public abstract String type();
     @Nullable @JsonProperty("index") public abstract String index();
     @Nullable @JsonProperty("hash") public abstract String hash();
@@ -51,7 +62,14 @@ public abstract class Command {
     @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
     @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
     @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
-
+    @Nullable @JsonProperty("runtime") public abstract String runtime();
+    @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
+    @Nullable @JsonProperty("auto-remove") public abstract Boolean autoRemove();
+    @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
+    @Nullable @JsonProperty("network") public abstract String network();
+    @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
+    @Nullable @JsonProperty("gpus") public abstract String gpus();
+    @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
 
@@ -64,6 +82,7 @@ public abstract class Command {
                           @JsonProperty("schema-version") final String schemaVersion,
                           @JsonProperty("info-url") final String infoUrl,
                           @JsonProperty("image") final String image,
+                          @JsonProperty("container-name") final String containerName,
                           @JsonProperty("type") final String type,
                           @JsonProperty("index") final String index,
                           @JsonProperty("hash") final String hash,
@@ -78,7 +97,15 @@ public abstract class Command {
                           @JsonProperty("xnat") final List<CommandWrapper> xnatCommandWrappers,
                           @JsonProperty("reserve-memory") final Long reserveMemory,
                           @JsonProperty("limit-memory") final Long limitMemory,
-                          @JsonProperty("limit-cpu") final Double limitCpu) {
+                          @JsonProperty("limit-cpu") final Double limitCpu,
+                          @JsonProperty("runtime") final String runtime,
+                          @JsonProperty("ipc-mode") final String ipcMode,
+                          @JsonProperty("auto-remove") final Boolean autoRemove,
+                          @JsonProperty("shm-size") final Long shmSize,
+                          @JsonProperty("network") final String network,
+                          @JsonProperty("container-labels") Map<String, String> containerLabels,
+                          @JsonProperty("gpus") final String gpus,
+                          @JsonProperty("generic-resources") Map<String, String> genericResources) {
         return builder()
                 .id(id)
                 .name(name)
@@ -88,6 +115,7 @@ public abstract class Command {
                 .schemaVersion(schemaVersion)
                 .infoUrl(infoUrl)
                 .image(image)
+                .containerName(containerName)
                 .type(type == null ? CommandEntity.DEFAULT_TYPE.getName() : type)
                 .index(index)
                 .hash(hash)
@@ -103,6 +131,14 @@ public abstract class Command {
                 .reserveMemory(reserveMemory)
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
+                .runtime(runtime)
+                .ipcMode(ipcMode)
+                .autoRemove(autoRemove)
+                .shmSize(shmSize)
+                .network(network)
+                .containerLabels(containerLabels)
+                .gpus(gpus)
+                .genericResources(genericResources)
                 .build();
     }
 
@@ -119,6 +155,7 @@ public abstract class Command {
                 .schemaVersion(commandEntity.getSchemaVersion())
                 .infoUrl(commandEntity.getInfoUrl())
                 .image(commandEntity.getImage())
+                .containerName(commandEntity.getContainerName())
                 .type(commandEntity.getType().getName())
                 .workingDirectory(commandEntity.getWorkingDirectory())
                 .commandLine(commandEntity.getCommandLine())
@@ -126,6 +163,11 @@ public abstract class Command {
                 .reserveMemory(commandEntity.getReserveMemory())
                 .limitMemory(commandEntity.getLimitMemory())
                 .limitCpu(commandEntity.getLimitCpu())
+                .runtime(commandEntity.getRuntime())
+                .ipcMode(commandEntity.getIpcMode())
+                .gpus(commandEntity.getGpus())
+                .genericResources(commandEntity.getGenericResources())
+
                 .environmentVariables(commandEntity.getEnvironmentVariables() == null ?
                         Collections.<String, String>emptyMap() :
                         commandEntity.getEnvironmentVariables())
@@ -172,7 +214,11 @@ public abstract class Command {
                         .hash(((DockerCommandEntity) commandEntity).getHash())
                         .ports(((DockerCommandEntity) commandEntity).getPorts() == null ?
                                 Collections.<String, String>emptyMap() :
-                                Maps.newHashMap(((DockerCommandEntity) commandEntity).getPorts()));
+                                Maps.newHashMap(((DockerCommandEntity) commandEntity).getPorts()))
+                        .autoRemove(((DockerCommandEntity) commandEntity).getAutoRemove())
+                        .shmSize(((DockerCommandEntity) commandEntity).getShmSize())
+                        .network(((DockerCommandEntity) commandEntity).getNetwork())
+                        .containerLabels(((DockerCommandEntity) commandEntity).getContainerLabels());
                 break;
         }
 
@@ -193,6 +239,7 @@ public abstract class Command {
                 .schemaVersion(creation.schemaVersion())
                 .infoUrl(creation.infoUrl())
                 .image(creation.image())
+                .containerName(creation.containerName())
                 .type(creation.type() == null ? CommandEntity.DEFAULT_TYPE.getName() : creation.type())
                 .index(creation.index())
                 .hash(creation.hash())
@@ -202,6 +249,14 @@ public abstract class Command {
                 .reserveMemory(creation.reserveMemory())
                 .limitMemory(creation.limitMemory())
                 .limitCpu(creation.limitCpu())
+                .runtime(creation.runtime())
+                .ipcMode(creation.ipcMode())
+                .autoRemove(creation.autoRemove())
+                .shmSize(creation.shmSize())
+                .network(creation.network())
+                .containerLabels(creation.containerLabels())
+                .gpus(creation.gpus())
+                .genericResources(creation.genericResources())
                 .mounts(creation.mounts() == null ? Collections.<CommandMount>emptyList() : creation.mounts())
                 .environmentVariables(creation.environmentVariables() == null ? Collections.<String, String>emptyMap() : creation.environmentVariables())
                 .ports(creation.ports() == null ? Collections.<String, String>emptyMap() : creation.ports())
@@ -537,6 +592,8 @@ public abstract class Command {
 
         public abstract Builder image(String image);
 
+        public abstract Builder containerName(String containerName);
+
         public abstract Builder type(String type);
 
         public abstract Builder index(String index);
@@ -598,7 +655,14 @@ public abstract class Command {
         public abstract Builder reserveMemory(Long reserveMemory);
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
-
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+        public abstract Builder autoRemove(Boolean autoRemove);
+        public abstract Builder shmSize(Long shmSize);
+        public abstract Builder network(String network);
+        public abstract Builder containerLabels(Map<String, String> containerLabels);
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
         public abstract Command build();
     }
 
@@ -1272,6 +1336,7 @@ public abstract class Command {
         @Nullable @JsonProperty("derived-from-xnat-object-property") public abstract String derivedFromXnatObjectProperty();
         @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
         @JsonProperty("multiple") public abstract boolean multiple();
+        @Nullable @JsonProperty("parser") public abstract String parser();
 
         @JsonCreator
         static CommandWrapperDerivedInput create(@JsonProperty("name") final String name,
@@ -1290,7 +1355,8 @@ public abstract class Command {
                                                  @JsonProperty("required") final Boolean required,
                                                  @JsonProperty("load-children") final Boolean loadChildren,
                                                  @JsonProperty("sensitive") final Boolean sensitive,
-                                                 @JsonProperty("multiple") final Boolean multiple) {
+                                                 @JsonProperty("multiple") final Boolean multiple,
+                                                 @JsonProperty("parser") final String parser) {
             return builder()
                     .name(name)
                     .label(label)
@@ -1309,6 +1375,7 @@ public abstract class Command {
                     .loadChildren(loadChildren == null || loadChildren)
                     .sensitive(sensitive)
                     .multiple(multiple != null && multiple)
+                    .parser(parser)
                     .build();
         }
 
@@ -1336,6 +1403,7 @@ public abstract class Command {
                     .loadChildren(wrapperInput.getLoadChildren())
                     .sensitive(wrapperInput.getSensitive())
                     .multiple(wrapperInput.getMultiple())
+                    .parser(wrapperInput.getParser())
                     .build();
         }
 
@@ -1369,6 +1437,7 @@ public abstract class Command {
                     .defaultValue(commandInputConfiguration.defaultValue())
                     .matcher(commandInputConfiguration.matcher())
                     .userSettable(commandInputConfiguration.userSettable())
+                    .parser(this.parser())
                     .build();
         }
 
@@ -1413,6 +1482,7 @@ public abstract class Command {
             public abstract Builder required(final boolean required);
             public abstract Builder loadChildren(final boolean loadChildren);
             public abstract Builder multiple(final boolean multiple);
+            public abstract Builder parser(final String parser);
             public abstract Builder derivedFromWrapperInput(final String derivedFromWrapperInput);
             public abstract Builder derivedFromXnatObjectProperty(final String derivedFromXnatObjectProperty);
 
@@ -1431,6 +1501,9 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
 
         @JsonCreator
         public static CommandWrapperOutput create(@JsonProperty("name") final String name,
@@ -1439,7 +1512,10 @@ public abstract class Command {
                                                   @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                   @JsonProperty("type") final String type,
                                                   @JsonProperty("label") final String label,
-                                                  @JsonProperty("format") final String format) {
+                                                  @JsonProperty("format") final String format,
+                                                  @JsonProperty("description") final String description,
+                                                  @JsonProperty("content") final String content,
+                                                  @JsonProperty("tags") final List<String> tags) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1448,6 +1524,9 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags)
                     .build();
         }
 
@@ -1464,6 +1543,9 @@ public abstract class Command {
                     .type(wrapperOutput.getType().getName())
                     .label(wrapperOutput.getLabel())
                     .format(wrapperOutput.getFormat())
+                    .description(wrapperOutput.getDescription())
+                    .content(wrapperOutput.getContent())
+                    .tags(wrapperOutput.getTags())
                     .build();
         }
 
@@ -1476,6 +1558,9 @@ public abstract class Command {
                     .type(commandWrapperOutputCreation.type())
                     .label(commandWrapperOutputCreation.label())
                     .format(commandWrapperOutputCreation.format())
+                    .description(commandWrapperOutputCreation.description())
+                    .content(commandWrapperOutputCreation.content())
+                    .tags(commandWrapperOutputCreation.tags())
                     .build();
         }
 
@@ -1541,6 +1626,12 @@ public abstract class Command {
 
             public abstract Builder format(final String format);
 
+            public abstract Builder description(String description);
+
+            public abstract Builder content(String content);
+
+            public abstract Builder tags(List<String> tags);
+
             public abstract CommandWrapperOutput build();
         }
     }
@@ -1558,6 +1649,7 @@ public abstract class Command {
         @Nullable @JsonProperty("schema-version") public abstract String schemaVersion();
         @Nullable @JsonProperty("info-url") public abstract String infoUrl();
         @Nullable @JsonProperty("image") public abstract String image();
+        @Nullable @JsonProperty("container-name") public abstract String containerName();
         @Nullable @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("index") public abstract String index();
         @Nullable @JsonProperty("hash") public abstract String hash();
@@ -1573,6 +1665,14 @@ public abstract class Command {
         @Nullable @JsonProperty("reserve-memory") public abstract Long reserveMemory();
         @Nullable @JsonProperty("limit-memory") public abstract Long limitMemory();
         @Nullable @JsonProperty("limit-cpu") public abstract Double limitCpu();
+        @Nullable @JsonProperty("runtime") public abstract String runtime();
+        @Nullable @JsonProperty("ipc-mode") public abstract String ipcMode();
+        @Nullable @JsonProperty("auto-remove") public abstract Boolean autoRemove();
+        @Nullable @JsonProperty("shm-size") public abstract Long shmSize();
+        @Nullable @JsonProperty("network") public abstract String network();
+        @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
+        @Nullable @JsonProperty("gpus") public abstract String gpus();
+        @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -1582,6 +1682,7 @@ public abstract class Command {
                                       @JsonProperty("schema-version") final String schemaVersion,
                                       @JsonProperty("info-url") final String infoUrl,
                                       @JsonProperty("image") final String image,
+                                      @JsonProperty("container-name") String containerName,
                                       @JsonProperty("type") final String type,
                                       @JsonProperty("index") final String index,
                                       @JsonProperty("hash") final String hash,
@@ -1596,16 +1697,25 @@ public abstract class Command {
                                       @JsonProperty("xnat") final List<CommandWrapperCreation> commandWrapperCreations,
                                       @JsonProperty("reserve-memory") final Long reserveMemory,
                                       @JsonProperty("limit-memory") final Long limitMemory,
-                                      @JsonProperty("limit-cpu") final Double limitCpu) {
+                                      @JsonProperty("limit-cpu") final Double limitCpu,
+                                      @JsonProperty("runtime") final String runtime,
+                                      @JsonProperty("ipcMode") final String ipcMode,
+                                      @JsonProperty("auto-remove") final Boolean autoRemove,
+                                      @JsonProperty("shm-size") final Long shmSize,
+                                      @JsonProperty("network") final String network,
+                                      @JsonProperty("container-labels") final ImmutableMap<String, String> containerLabels,
+                                      @JsonProperty("gpus") final String gpus,
+                                      @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
-                    type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
+                    containerName, type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
                     mounts == null ? ImmutableList.<CommandMount>of() : ImmutableList.copyOf(mounts),
                     environmentVariables == null ? ImmutableMap.<String, String>of() : ImmutableMap.copyOf(environmentVariables),
                     ports == null ? ImmutableMap.<String, String>of() : ImmutableMap.copyOf(ports),
                     inputs == null ? ImmutableList.<CommandInput>of() : ImmutableList.copyOf(inputs),
                     outputs == null ? ImmutableList.<CommandOutput>of() : ImmutableList.copyOf(outputs),
                     commandWrapperCreations == null ? ImmutableList.<CommandWrapperCreation>of() : ImmutableList.copyOf(commandWrapperCreations),
-                    reserveMemory, limitMemory, limitCpu);
+                    reserveMemory, limitMemory, limitCpu, runtime, ipcMode,
+                    autoRemove, shmSize, network, containerLabels, gpus, genericResources);
         }
     }
 
@@ -1619,6 +1729,9 @@ public abstract class Command {
         @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
+        @Nullable @JsonProperty("description") public abstract String description();
+        @Nullable @JsonProperty("content") public abstract String content();
+        @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
 
         @JsonCreator
         public static CommandWrapperOutputCreation create(@JsonProperty("name") final String name,
@@ -1628,7 +1741,10 @@ public abstract class Command {
                                                           @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                           @JsonProperty("type") final String type,
                                                           @JsonProperty("label") final String label,
-                                                          @JsonProperty("format") final String format) {
+                                                          @JsonProperty("format") final String format,
+                                                          @JsonProperty("description") final String description,
+                                                          @JsonProperty("content") final String content,
+                                                          @JsonProperty("tags") final List<String> tags) {
             return builder()
                     .name(name)
                     .commandOutputName(commandOutputName)
@@ -1637,6 +1753,9 @@ public abstract class Command {
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
                     .label(label)
                     .format(format)
+                    .description(description)
+                    .content(content)
+                    .tags(tags == null ? Collections.emptyList() : tags)
                     .build();
         }
 
@@ -1656,6 +1775,9 @@ public abstract class Command {
             public abstract Builder type(final String type);
             public abstract Builder label(final String label);
             public abstract Builder format(final String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
 
             public abstract CommandWrapperOutputCreation build();
         }
@@ -1676,6 +1798,7 @@ public abstract class Command {
         @Nullable public abstract String schemaVersion();
         @Nullable public abstract String infoUrl();
         @Nullable public abstract String image();
+        @Nullable public abstract String containerName();
         public abstract String type();
         @Nullable public abstract String index();
         @Nullable public abstract String hash();
@@ -1691,6 +1814,14 @@ public abstract class Command {
         @Nullable public abstract Long reserveMemory();
         @Nullable public abstract Long limitMemory();
         @Nullable public abstract Double limitCpu();
+        @Nullable public abstract String runtime();
+        @Nullable public abstract String ipcMode();
+        @Nullable public abstract Boolean autoRemove();
+        @Nullable public abstract Long shmSize();
+        @Nullable public abstract String network();
+        @Nullable public abstract ImmutableMap<String, String> containerLabels();
+        @Nullable public abstract String gpus();
+        @Nullable public abstract ImmutableMap<String, String> genericResources();
 
         public static ConfiguredCommand.Builder initialize(final Command command) {
             return builder()
@@ -1702,6 +1833,7 @@ public abstract class Command {
                     .schemaVersion(command.schemaVersion())
                     .infoUrl(command.infoUrl())
                     .image(command.image())
+                    .containerName(command.containerName())
                     .type(command.type())
                     .workingDirectory(command.workingDirectory())
                     .commandLine(command.commandLine())
@@ -1714,7 +1846,16 @@ public abstract class Command {
                     .outputs(command.outputs())
                     .reserveMemory(command.reserveMemory())
                     .limitMemory(command.limitMemory())
-                    .limitCpu(command.limitCpu());
+                    .limitCpu(command.limitCpu())
+                    .runtime(command.runtime())
+                    .ipcMode(command.ipcMode())
+                    .autoRemove(command.autoRemove())
+                    .shmSize(command.shmSize())
+                    .network(command.network())
+                    .containerLabels(command.containerLabels())
+                    .gpus(command.gpus())
+                    .genericResources(command.genericResources());
+
         }
 
         static Builder builder() {
@@ -1731,6 +1872,7 @@ public abstract class Command {
             public abstract Builder schemaVersion(String schemaVersion);
             public abstract Builder infoUrl(String infoUrl);
             public abstract Builder image(String image);
+            public abstract Builder containerName(String containerName);
             public abstract Builder type(String type);
             public abstract Builder index(String index);
             public abstract Builder hash(String hash);
@@ -1781,6 +1923,14 @@ public abstract class Command {
             public abstract Builder reserveMemory(Long reserveMemory);
             public abstract Builder limitMemory(Long limitMemory);
             public abstract Builder limitCpu(Double limitCpu);
+            public abstract Builder runtime(String runtime);
+            public abstract Builder ipcMode(String ipcMode);
+            public abstract Builder autoRemove(Boolean autoRemove);
+            public abstract Builder shmSize(Long shmSize);
+            public abstract Builder network(String network);
+            public abstract Builder containerLabels(Map<String, String> containerLabels);
+            public abstract Builder gpus(String gpus);
+            public abstract Builder genericResources(Map<String, String> genericResources);
 
             public abstract ConfiguredCommand build();
         }

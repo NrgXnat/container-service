@@ -42,11 +42,7 @@ dependencyManagement {
         }
     }
 }
-
-// I would prefer to use a floating version for docker client, like 8+, but they moved to java 8 and we are stuck on 7.
-// Once we can move to java 8 I want to put this back to a floating version. That way we always get the latest updates.
-def vDockerClient = "8.13.0"
-
+def vDockerClient = "4.0.1"
 def vJsonPath = "2.2.0"
 def vAutoValue = "1.3"
 def vPowerMock = "1.7.0"
@@ -69,7 +65,7 @@ dependencies {
 
     compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
 
-    implementAndInclude ("com.spotify:docker-client:${vDockerClient}") {
+    implementAndInclude ("org.mandas:docker-client:${vDockerClient}") {
         exclude group: "ch.qos.logback"
         exclude group: "com.fasterxml.jackson.core"
         exclude group: "com.fasterxml.jackson.datatype"
@@ -129,6 +125,11 @@ dependencies {
 
     implementation "javax.inject:javax.inject"
     implementation "javax.servlet:javax.servlet-api"
+
+    implementAndInclude "org.glassfish.jersey.core:jersey-client:2.30.1"
+    implementAndInclude "org.glassfish.jersey.inject:jersey-hk2:2.30.1"
+    implementAndInclude "org.glassfish.jersey.connectors:jersey-apache-connector:2.30.1"
+    implementAndInclude "org.glassfish.jersey.media:jersey-media-json-jackson:2.30.1"
 
     implementation ("turbine:turbine") {
         transitive = false

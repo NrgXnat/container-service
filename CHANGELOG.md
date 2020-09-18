@@ -1,8 +1,48 @@
 # Changelog
 
-## 2.1.1
+## 3.0.0
 
 [Not yet released]
+
+
+### Features
+
+* [CS-6221][]: Added support for Generic Resources in order to request GPU resources on SWARM nodes
+* [CS-6227][]: Added 'datatype-string' property to ProjectAsset, Session, Scan, Assessor, and Resource CS objects.  This string property is populated with output of xnat_object.toString(). Added 'parser' parameter to string-type derived wrapper input.  This parameter can be either an XPath or RegEx string, which will attempt to parse the input.
+
+###Docker parameters added
+
+* Added container command parameters:
+    
+    container-labels - Map<String,String> corresponding to Docker container labels (default: null)
+    container-name - string(default null - container is named by docker)
+    shm-size - long (default: null)
+    network - string as attached network
+
+* Swarm Mode only:
+    generic-resources - Map<String, String> corresponding to swarm node generic-resource reservations 
+                     i.e. "VRAM": "2000"
+
+
+* Docker Server only - not supported on Swarm services: 
+    
+    runtime - string (default: null)
+    ipc-mode - string (default: null)
+
+    
+* Added Rest APIs to get containers by name - this only works if container was assigned name by Container Service
+    
+    /projects/{project}/containers/name/{name} - param: nonfinalized bool
+    /container/name/{name} - param: nonfinalized bool
+
+* Added project scoped container kill Rest API:
+    
+    /projects/{project}/containers/{id}/kill
+
+[CS-6221]: https://issues.xnat.org/browse/XNAT-6221
+[CS-6227]: https://issues.xnat.org/browse/XNAT-6227
+
+## 2.1.1
 
 ### Features
 
@@ -31,8 +71,8 @@
 * [CS-578][]: Enforce ordering on uploading outputs so that we never try to upload to an object that has yet to be inserted
 * [CS-580][]: Add client-side validation for required inputs
 * [CS-579][]/[CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution. 
+* [CS-592][]: Fixed an issue which caused assessor resources to be ignored in command resolution.
 
-### Other
 
 [CS-54]: https://issues.xnat.org/browse/CS-54
 [CS-575]: https://issues.xnat.org/browse/CS-575

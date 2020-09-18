@@ -25,13 +25,13 @@ projectCommandConfigsPanel:
                     header: false
                     footer: false
         projCommandHistoryScript:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         projCommandConfigScript:
-#           tag: script|src="/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
+            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
         projCommandStylesheet:
-        #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
+            #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
         tableStyle:
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
@@ -50,7 +50,7 @@ projectCommandAutomationPanel:
             id:
         projectCommandAutomationTable:
             tag: div#command-automation-list
-            contents: Table will go here
+            contents: No commands defined
 
 projectCommandHistoryPanel:
     kind: panel

@@ -38,6 +38,8 @@ public class Resource extends XnatModelObject {
     @JsonProperty("integer-id") private Integer integerId;
     private String directory;
     private List<XnatFile> files;
+    @JsonProperty("datatype-string") private String datatypeString;
+    @JsonProperty("parent-uri") private String parentUri;
 
     public Resource() {}
 
@@ -60,14 +62,14 @@ public class Resource extends XnatModelObject {
                     @Nonnull final Set<String> loadTypes,
                     final String parentUri, final String rootArchivePath) {
         this.xnatResourcecatalog = xnatResourcecatalog;
+        this.parentUri = parentUri;
 
         if (parentUri == null) {
-            this.uri = UriParserUtils.getArchiveUri(xnatResourcecatalog); // <-- Does not actually work
-            log.error("Cannot construct a resource URI. Parent URI is null.");
+            this.uri = xnatResourcecatalog.getUri();
+            this.parentUri = UriParserUtils.getArchiveUri(xnatResourcecatalog.getParent());
         } else {
             this.uri = parentUri + "/resources/" + xnatResourcecatalog.getLabel();
         }
-
         populateProperties(rootArchivePath, loadFiles, loadTypes);
     }
 
@@ -89,16 +91,16 @@ public class Resource extends XnatModelObject {
                 throw new RuntimeException("Unable to load catalog for resource " + xnatResourcecatalog
                         + ", have your admin check xdat.log for the cause");
             }
-            final Path parentUri = Paths.get(this.uri + "/files/");
+            final Path parentPath = Paths.get(this.uri + "/files/");
 
             // includeFile = false rather than includeFile = loadFiles because we don't want to retrieve the actual file
             // object from the catalog entry since this will pull remote files into the archive & we want them in build
-            final List<Object[]> entryDetails = CatalogUtils.getEntryDetails(cat, this.directory, parentUri.toString(),
+            final List<Object[]> entryDetails = CatalogUtils.getEntryDetails(cat, this.directory, parentPath.toString(),
                     xnatResourcecatalog, false, null, null, "URI");
 
             for (final Object[] entry : entryDetails) {
                 String uri      = (String) entry[2]; // This is the parentUri + relative path to file
-                String relPath  = parentUri.relativize(Paths.get(uri)).toString(); // get that relative path
+                String relPath  = parentPath.relativize(Paths.get(uri)).toString(); // get that relative path
                 String filePath = Paths.get(this.directory).resolve(relPath).toString(); // append rel path to parent dir
                 String tagsCsv  = (String) entry[4];
                 String format   = (String) entry[5];
@@ -109,6 +111,14 @@ public class Resource extends XnatModelObject {
                 files.add(new XnatFile(this.uri, relPath, filePath, tagsCsv, format, content, size, checksum));
             }
         }
+
+        datatypeString = null;
+        if(loadTypes!= null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatResourcecatalog != null){
+            try {
+                datatypeString = xnatResourcecatalog.toString();
+            } catch (Throwable e){ }
+        }
+
     }
 
     public static Function<URIManager.ArchiveItemURI, Resource> uriToModelObject(final boolean loadFiles,
@@ -187,6 +197,18 @@ public class Resource extends XnatModelObject {
 
     public void setFiles(final List<XnatFile> files) {
         this.files = files;
+    }
+
+    public String getDatatypeString() {
+        return datatypeString;
+    }
+
+    public String getParentUri() {
+        return parentUri;
+    }
+
+    public void setParentUri(String parentUri) {
+        this.parentUri = parentUri;
     }
 
     @Override

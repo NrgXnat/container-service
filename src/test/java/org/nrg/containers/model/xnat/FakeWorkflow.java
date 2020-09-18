@@ -277,11 +277,9 @@ public class FakeWorkflow implements PersistentWorkflowI {
 
     }
 
-    /**
-     * @return Returns the percentageComplete.
-     */
+    @Override
     public String getPercentagecomplete() {
-        return "";
+        return null;
     }
 
     @Override

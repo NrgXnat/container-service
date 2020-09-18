@@ -28,6 +28,9 @@ public class CommandWrapperOutputEntity {
     private Type type;
     private String label;
     private String format;
+    private String description;
+    private String content;
+    private List<String> tags;
 
     public static CommandWrapperOutputEntity fromPojo(final Command.CommandWrapperOutput commandWrapperOutput) {
         return new CommandWrapperOutputEntity().update(commandWrapperOutput);
@@ -44,6 +47,9 @@ public class CommandWrapperOutputEntity {
         this.setViaWrapupCommand(commandWrapperOutput.viaWrapupCommand());
         this.setLabel(commandWrapperOutput.label());
         this.setFormat(commandWrapperOutput.format());
+        this.setDescription(commandWrapperOutput.description());
+        this.setContent(commandWrapperOutput.content());
+        this.setTags(commandWrapperOutput.tags());
 
         switch (commandWrapperOutput.type()) {
             case "Resource":
@@ -137,6 +143,18 @@ public class CommandWrapperOutputEntity {
         this.format = format;
     }
 
+    public String getDescription() { return description; }
+
+    public void setDescription(String description) { this.description = description; }
+
+    public String getContent() { return content; }
+
+    public void setContent(String content) { this.content = content; }
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    public List<String> getTags() { return tags; }
+
+    public void setTags(List<String> tags) { this.tags = tags; }
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -162,6 +180,9 @@ public class CommandWrapperOutputEntity {
                 .add("type", type)
                 .add("label", label)
                 .add("format", format)
+                .add("description", description)
+                .add("content", content)
+                .add("tags", tags)
                 .toString();
     }
 

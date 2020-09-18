@@ -11,12 +11,13 @@ import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.entity.CommandEntity;
-import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.container.ContainerInputType;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @AutoValue
@@ -32,6 +33,7 @@ public abstract class ResolvedCommand {
     @JsonProperty("command-name") public abstract String commandName();
     @JsonProperty("command-description") @Nullable public abstract String commandDescription();
     @JsonProperty("image") public abstract String image();
+    @JsonProperty("container-name") @Nullable public abstract String containerName();
     @JsonProperty("type") public abstract String type();
     @JsonProperty("project") @Nullable public abstract String project();
     @JsonProperty("raw-input-values") public abstract ImmutableMap<String, String> rawInputValues();
@@ -47,9 +49,17 @@ public abstract class ResolvedCommand {
     @JsonProperty("wrapup-commands") public abstract ImmutableList<ResolvedCommand> wrapupCommands();
     @JsonProperty("reserve-memory") @Nullable public abstract Long reserveMemory();
     @JsonProperty("limit-memory") @Nullable public abstract Long limitMemory();
+    @JsonProperty("runtime") @Nullable public abstract String runtime();
+    @JsonProperty("ipc-mode") @Nullable public abstract String ipcMode();
+    @JsonProperty("auto-remove") @Nullable public abstract Boolean autoRemove();
+    @JsonProperty("shm-size") @Nullable public abstract Long shmSize();
+    @JsonProperty("network") @Nullable public abstract String network();
+    @JsonProperty("container-labels") @Nullable public abstract ImmutableMap<String, String> containerLabels();
     @JsonProperty("limit-cpu") @Nullable public abstract Double limitCpu();
     @JsonProperty("swarm-constraints") @Nullable public abstract List<String> swarmConstraints();
     @JsonProperty("parent-source-object-name") @Nullable public abstract String parentSourceObjectName();
+    @JsonProperty("gpus") @Nullable public abstract String gpus();
+    @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
 
     @JsonProperty("external-wrapper-input-values")
     public ImmutableSet<ResolvedCommandInput> externalWrapperInputValues() {
@@ -268,11 +278,20 @@ public abstract class ResolvedCommand {
                 .commandId(command.id())
                 .commandName(command.name())
                 .image(command.image())
+                .containerName(command.containerName())
                 .commandLine(command.commandLine())
                 .workingDirectory(command.workingDirectory())
                 .reserveMemory(command.reserveMemory())
                 .limitMemory(command.limitMemory())
                 .limitCpu(command.limitCpu())
+                .runtime(command.runtime())
+                .ipcMode(command.ipcMode())
+                .autoRemove(command.autoRemove())
+                .shmSize(command.shmSize())
+                .network(command.network())
+                .containerLabels(command.containerLabels())
+                .gpus(command.gpus())
+                .genericResources(command.genericResources())
                 .parentSourceObjectName(parentSourceObjectName)
                 .addMount(ResolvedCommandMount.builder()
                         .name("input")
@@ -302,6 +321,7 @@ public abstract class ResolvedCommand {
         public abstract Builder commandName(String commandDescription);
         public abstract Builder commandDescription(String commandDescription);
         public abstract Builder image(String image);
+        public abstract Builder containerName(String containerName);
         public abstract Builder type(String type);
         public abstract Builder project(String project);
         public abstract Builder rawInputValues(Map<String, String> rawInputValues);
@@ -375,6 +395,15 @@ public abstract class ResolvedCommand {
         public abstract Builder limitMemory(Long limitMemory);
         public abstract Builder limitCpu(Double limitCpu);
         public abstract Builder swarmConstraints(List<String> swarmConstraints);
+        public abstract Builder runtime(String runtime);
+        public abstract Builder ipcMode(String ipcMode);
+        public abstract Builder autoRemove(Boolean autoRemove);
+        public abstract Builder shmSize(Long shmSize);
+        public abstract Builder network(String network);
+        public abstract Builder containerLabels(Map<String, String> containerLabels);
+        public abstract Builder gpus(String gpus);
+        public abstract Builder genericResources(Map<String, String> genericResources);
+
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
 
         public abstract ResolvedCommand build();
@@ -391,6 +420,8 @@ public abstract class ResolvedCommand {
         @Nullable public abstract String commandLabel();
         @Nullable public abstract String commandDescription();
         public abstract String image();
+        @Nullable
+        public abstract String containerName();
         public abstract String type();
         @Nullable public abstract String project();
         public abstract Boolean overrideEntrypoint();
@@ -416,6 +447,7 @@ public abstract class ResolvedCommand {
             public abstract Builder commandLabel(String commandLabel);
             public abstract Builder commandDescription(String commandDescription);
             public abstract Builder image(String image);
+            public abstract Builder containerName(String containerName);
             public abstract Builder type(String type);
             public abstract Builder project(String project);
             public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
@@ -490,6 +522,9 @@ public abstract class ResolvedCommand {
         @JsonProperty("glob") @Nullable public abstract String glob();
         @JsonProperty("label") @Nullable public abstract String label();
         @JsonProperty("format") @Nullable public abstract String format();
+        @JsonProperty("description") @Nullable public abstract String description();
+        @JsonProperty("content") @Nullable public abstract String content();
+        @JsonProperty("tags") @Nullable public abstract ImmutableList<String> tags();
         @JsonProperty("handled-by") public abstract String handledBy();
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
 
@@ -509,6 +544,9 @@ public abstract class ResolvedCommand {
             public abstract Builder glob(String glob);
             public abstract Builder label(String label);
             public abstract Builder format(String format);
+            public abstract Builder description(String description);
+            public abstract Builder content(String content);
+            public abstract Builder tags(List<String> tags);
             public abstract Builder handledBy(String handledBy);
             public abstract Builder viaWrapupCommand(String viaWrapupCommand);
 

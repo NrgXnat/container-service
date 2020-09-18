@@ -757,8 +757,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         height: 220,
                         scroll: false,
                         content: "" +
-                        "<p>Are you sure you'd like to delete the Image Host at <b>" + item.url + "</b>?</p>" +
-                        "<p><b>This action cannot be undone.</b></p>",
+                            "<p>Are you sure you'd like to delete the Image Host at <b>" + item.url + "</b>?</p>" +
+                            "<p><b>This action cannot be undone.</b></p>",
                         okAction: function(){
                             XNAT.xhr.delete({
                                 url: imageHostUrl(false,item.id),
@@ -1238,8 +1238,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         height: 220,
                         scroll: false,
                         content: "" +
-                        "<p>Are you sure you'd like to delete the <b>" + item.name + "</b> command definition?</p>" +
-                        "<p><b>This action cannot be undone.</b></p>",
+                            "<p>Are you sure you'd like to delete the <b>" + item.name + "</b> command definition?</p>" +
+                            "<p><b>This action cannot be undone.</b></p>",
                         okAction: function(){
                             console.log('delete id ' + item.id);
                             XNAT.xhr.delete({
@@ -2061,17 +2061,17 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         $(document).find('#automationCommandSelector')
             .prop('selectedIndex',-1)
             .find('option').each(function(){
-                var $option = $(this);
-                $option.prop('disabled','disabled');
+            var $option = $(this);
+            $option.prop('disabled','disabled');
 
-                var commandContexts = $option.data('contexts') || '';
-                commandContexts = commandContexts.split(' ');
+            var commandContexts = $option.data('contexts') || '';
+            commandContexts = commandContexts.split(' ');
 
-                eventContexts.forEach(function(eventContext){
-                    if (commandContexts.indexOf(eventContext) >= 0) {
-                        $option.prop('disabled',false)
-                    }
-                });
+            eventContexts.forEach(function(eventContext){
+                if (commandContexts.indexOf(eventContext) >= 0) {
+                    $option.prop('disabled',false)
+                }
+            });
         });
     });
 

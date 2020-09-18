@@ -915,10 +915,14 @@ var XNAT = getObject(XNAT || {});
                                                 messageContent.push( spawn('h3',{'style': {'margin-top': '2em' }},'Containers successfully queued') );
 
                                                 data.successes.forEach(function(success){
-                                                    messageContent.push( spawn('p',[
-                                                        spawn('strong','Workflow ID: '),
-                                                        spawn('span',success['workflow-id'])
-                                                    ]) );
+                                                    if (success['type'] === 'service') {
+                                                        messageContent.push( spawn('p',[spawn('strong','Service ID: '),spawn('span',success['service-id']) ]));
+                                                    } else {
+                                                        messageContent.push( spawn('p',[
+                                                            spawn('strong','Workflow ID: '),
+                                                            spawn('span',success['workflow-id'])
+                                                        ]) );
+                                                    }
                                                     messageContent.push( spawn('div',prettifyJSON(success.params)) );
                                                 });
                                             }

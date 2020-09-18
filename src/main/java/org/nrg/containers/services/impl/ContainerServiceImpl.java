@@ -5,16 +5,21 @@ import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.spotify.docker.client.DockerClient;
-import com.spotify.docker.client.messages.swarm.TaskStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
-import org.nrg.containers.exceptions.*;
+import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.ContainerFinalizationException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
@@ -35,12 +40,23 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
-import org.nrg.containers.services.*;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
-import org.nrg.xdat.om.*;
+import org.nrg.xdat.om.WrkWorkflowdata;
+import org.nrg.xdat.om.XnatAbstractprojectasset;
+import org.nrg.xdat.om.XnatImageassessordata;
+import org.nrg.xdat.om.XnatImagescandata;
+import org.nrg.xdat.om.XnatImagesessiondata;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatResource;
+import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
@@ -73,17 +89,31 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.text.ParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.nrg.containers.model.command.entity.CommandType.*;
-import static org.nrg.containers.model.command.entity.CommandWrapperInputType.*;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
+import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.PROJECT_ASSET;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RESOURCE;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
 
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.7.5";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
     public static final String WAITING = "Waiting";
     public static final String FINALIZING = "Finalizing";
     public static final String CREATED = "Created";
@@ -183,6 +213,9 @@ public class ContainerServiceImpl implements ContainerService {
                         }
                     }
                 }
+            } else {
+                log.debug("This is a non-numbered version of XNAT or CS plugin. Skipping compatibility check.");
+                return true;
             }
         } catch (Throwable e){
             e.printStackTrace();
@@ -251,6 +284,29 @@ public class ContainerServiceImpl implements ContainerService {
     public List<Container> getAll(final Boolean nonfinalized) {
         return toPojo(containerEntityService.getAll(nonfinalized));
     }
+
+    @Override
+    public Container getByName(String project, String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized, project);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public Container getByName(String name, Boolean nonfinalized) {
+        List<Container> all = getAll(nonfinalized);
+        for(Container container : all){
+            if (container.containerName() != null && container.containerName().contentEquals(name)){
+                return container;
+            }
+        }
+        return null;
+    }
+
 
     @Override
     public List<Container> getPaginated(ContainerPaginatedRequest containerPaginatedRequest) {
@@ -1277,14 +1333,30 @@ public class ContainerServiceImpl implements ContainerService {
     public String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         // TODO check user permissions. How?
-        return kill(get(containerId), userI);
+        Container container;
+        try {
+            container = get(containerId);
+        } catch (NotFoundException e){
+            log.debug("containerId: " + containerId + ". Trying to find container by name: " + containerId);
+            container = getByName(containerId, true);
+            if(container == null){
+                throw e;
+            }
+        }
+
+        return kill(container, userI);
+    }
+
+    @Override
+    public String kill(String project, String containerId,
+                       UserI userI) throws NoDockerServerException, DockerServerException, NotFoundException {
+        return kill(containerId, userI);
     }
 
     private String kill(final Container container, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction(ContainerEntity.KILL_STATUS,
                 userI.getLogin()), userI);
-
         String containerDockerId;
         if(container.isSwarmService()){
         	containerDockerId = container.serviceId();
@@ -1507,6 +1579,9 @@ public class ContainerServiceImpl implements ContainerService {
                     case PROJECT:
                         xsiType = XnatProjectdata.SCHEMA_ELEMENT_NAME;
                         break;
+                    case PROJECT_ASSET:
+                        xsiType = XnatAbstractprojectasset.SCHEMA_ELEMENT_NAME;
+                        break;
                     case SUBJECT:
                         xsiType = XnatSubjectdata.SCHEMA_ELEMENT_NAME;
                         break;
@@ -1664,8 +1739,9 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             final String type = input.type();
-            if (!(type.equals(PROJECT.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) ||
-                    type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName()))) {
+            if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || 
+                    type.equals(SESSION.getName()) || type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || 
+                    type.equals(RESOURCE.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }

@@ -1,7 +1,7 @@
 package org.nrg.containers.events;
 
 import com.google.common.collect.Lists;
-import com.spotify.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.DockerServerException;
