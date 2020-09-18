@@ -587,7 +587,6 @@ public class DockerControlApi implements ContainerControlApi {
                         .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes
                         .memory(1024 * 1024 * limitMemory) // megabytes to bytes
                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
-//                        .deviceRequests(HostConfig.DeviceRequest.builder().)
                         .build();
         if(shmSize != null && shmSize >= 0){
             hostConfig = hostConfig.toBuilder().shmSize(shmSize).build();
@@ -595,19 +594,6 @@ public class DockerControlApi implements ContainerControlApi {
         if(!Strings.isNullOrEmpty(network)){
             hostConfig = hostConfig.toBuilder().networkMode(network).build();
         }
-        //if(ulimit != null && ulimit.size() > 0){
-        //    for(String ul : ulimit){
-        //        HostConfig.Ulimit.create(ul.split(":").)
-        //    }
-        //
-        //    HostConfig.Ulimit node = HostConfig.Ulimit.create(ulimit)
-        //    hostConfig.ulimits()
-        //}
-
-//        // Use HostConfig.DeviceRequests to request gpus
-//        if (!Strings.isNullOrEmpty(gpus)){
-//            HostConfig.DeviceRequest.builder().driver("nvidia").count(1).capabilities(Arrays.asList("gpu")).
-//        }
 
         final ContainerConfig containerConfig =
                 ContainerConfig.builder()

@@ -15,6 +15,8 @@ import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
+import static reactor.bus.selector.Selectors.type;
+
 @Slf4j
 @Service
 public class SessionTransferredListener implements Consumer<Event<WorkflowStatusEvent>> {
@@ -23,8 +25,7 @@ public class SessionTransferredListener implements Consumer<Event<WorkflowStatus
 
     @Autowired
     public SessionTransferredListener(final EventBus eventBus, final NrgEventService eventService) {
-        // Disable WorkflowStatusEvent listener
-        //eventBus.on(type(WorkflowStatusEvent.class), this);
+        eventBus.on(type(WorkflowStatusEvent.class), this);
         this.eventService = eventService;
     }
 
