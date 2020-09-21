@@ -1013,6 +1013,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 new TypeRef<List<ProjectAsset>>() {},
                                 multiple);
                     }
+                    if (childList == null || childList.isEmpty()) {
+                        // It is also possible that the value they gave us contains a directory
+                        childList = matchChildFromParent(
+                                parentJson,
+                                valueCouldContainId,
+                                "project-assets",
+                                "directory",
+                                resolvedMatcher,
+                                new TypeRef<List<ProjectAsset>>() {},
+                                multiple);
+                    }
                     if (childList == null) {
                         resolvedXnatObjects = Collections.emptyList();
                         resolvedValues = Collections.emptyList();
@@ -1064,6 +1075,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                     valueCouldContainId,
                                     "subjects",
                                     "label",
+                                    resolvedMatcher,
+                                    new TypeRef<List<Subject>>() {},
+                                    multiple);
+                        }
+                        if (childList == null || childList.isEmpty()) {
+                            // It is also possible that the value they gave us contains a directory
+                            childList = matchChildFromParent(
+                                    parentJson,
+                                    valueCouldContainId,
+                                    "subjects",
+                                    "directory",
                                     resolvedMatcher,
                                     new TypeRef<List<Subject>>() {},
                                     multiple);
@@ -1128,6 +1150,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                     new TypeRef<List<Session>>() {},
                                     multiple);
                         }
+                        if (childList == null || childList.isEmpty()) {
+                            // It is also possible that the value they gave us contains a directory
+                            childList = matchChildFromParent(
+                                    parentJson,
+                                    valueCouldContainId,
+                                    "sessions",
+                                    "directory",
+                                    resolvedMatcher,
+                                    new TypeRef<List<Session>>() {},
+                                    multiple);
+                        }
                         if (childList == null) {
                             resolvedXnatObjects = Collections.emptyList();
                             resolvedValues = Collections.emptyList();
@@ -1172,6 +1205,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 valueCouldContainId,
                                 "scans",
                                 "id",
+                                resolvedMatcher,
+                                new TypeRef<List<Scan>>() {},
+                                multiple);
+                    }
+                    if (childList == null || childList.isEmpty()) {
+                        // It is also possible that the value they gave us contains a directory
+                        childList = matchChildFromParent(
+                                parentJson,
+                                valueCouldContainId,
+                                "scans",
+                                "directory",
                                 resolvedMatcher,
                                 new TypeRef<List<Scan>>() {},
                                 multiple);
