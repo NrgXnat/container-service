@@ -464,9 +464,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
             if (rootElement != null && (xnatIdOrUri = allRequestParams.get(rootElement)) != null) {
                 // Note: for scans, this can fail with a duplicate key value violates unique constraint
                 // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
+                String wrapperNameUse = StringUtils.isBlank(wrapperName) && wrapperId != 0 ?
+                        commandService.retrieveWrapper(wrapperId).name() : wrapperName;
                 workflow = containerService.createContainerWorkflow(xnatIdOrUri, rootElement,
-                        StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name()),
-                        StringUtils.defaultString(project, ""), userI, bulkLaunchId);
+                        wrapperNameUse, StringUtils.defaultString(project, ""), userI, bulkLaunchId);
                 workflowid = workflow.getWorkflowId().toString();
             }
 
