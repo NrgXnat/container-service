@@ -96,8 +96,6 @@ public class HibernateCommandEventMappingService extends AbstractHibernateEntity
 
         Subscription toCreate = Subscription.create(subscriptionCreator, user.getLogin());
 
-        eventService.throwExceptionIfNameExists(toCreate);
-
         Subscription created = eventService.createSubscription(toCreate, false);
 
         if(created == null){
