@@ -367,7 +367,7 @@ public abstract class Container {
                 .limitMemory(containerEntity.getLimitMemory())
                 .limitCpu(containerEntity.getLimitCpu())
                 .swarmConstraints(containerEntity.getSwarmConstraints())
-                .runtime(containerEntity.getCommandLine())
+                .runtime(containerEntity.getRuntime())
                 .ipcMode(containerEntity.getIpcMode())
                 .autoRemove(containerEntity.getAutoRemove())
                 .shmSize(containerEntity.getShmSize())
