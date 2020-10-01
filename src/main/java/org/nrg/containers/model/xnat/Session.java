@@ -116,7 +116,7 @@ public class Session extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagesessiondataI != null){
+        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagesessiondataI != null){
             try {
                 datatypeString = xnatImagesessiondataI.toString();
             } catch (Throwable e){ }

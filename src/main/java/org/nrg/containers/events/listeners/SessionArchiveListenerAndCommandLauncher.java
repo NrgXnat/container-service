@@ -31,6 +31,7 @@ import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -67,8 +68,13 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
 
     @Override
     public void accept(Event<SessionMergeOrArchiveEvent> event) {
+        // Skip everything if no entries are found in the Command Automation table
+        if (commandEventMappingService.getAll() == null || commandEventMappingService.getAll().isEmpty()){
+            return;
+        }
+
         final SessionMergeOrArchiveEvent sessionArchivedOrMergedEvent = event.getData();
-        final Session session = new Session(sessionArchivedOrMergedEvent.session(), true, null);
+        final Session session = new Session(sessionArchivedOrMergedEvent.session(), true, Collections.emptySet());
         final String eventId = sessionArchivedOrMergedEvent.eventId();
 
         if (eventId.equals(SESSION_ARCHIVED_EVENT)) {
