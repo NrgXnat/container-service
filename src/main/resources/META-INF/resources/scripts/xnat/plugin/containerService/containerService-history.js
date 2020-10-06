@@ -93,7 +93,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     }
 
     const labelMap = {
-        id: {label: 'ID', show: true, op: 'eq', type: 'number'},
+        // id: {label: 'ID', show: true, op: 'eq', type: 'number'},
         command: {label: 'Command', column: 'commandLine', show: true},
         user: {label: 'User', column: 'userId', show: true},
         DATE: {label: 'Date', column: 'statusTime', show: true},
@@ -104,7 +104,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     function historyTableObject() {
         return {
             table: {
-                classes: "clean fixed-header selectable scrollable-table",
+                classes: "compact fixed-header selectable scrollable-table",
                 style: "width: auto;",
                 on: [
                     ['click', 'a.view-container-history', viewHistoryDialog]
@@ -114,23 +114,23 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 filterCss: {
                     tag: 'style|type=text/css',
                     content:
-                        '#' + historyTableContainerId + ' .id { max-width: 70px; } \n' +
-                        '#' + historyTableContainerId + ' .user { max-width: 100px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
-                        '#' + historyTableContainerId + ' .status { max-width: 120px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
-                        '#' + historyTableContainerId + ' .command { max-width: 200px; word-wrap: break-word; overflow-wrap: break-word; }  \n' +
-                        '#' + historyTableContainerId + ' .ROOTELEMENT {max-width: 145px; word-wrap: break-word; overflow-wrap: break-word; }'
+                        '#' + historyTableContainerId + ' .DATE { width: 160px !important; } \n' +
+                        '#' + historyTableContainerId + ' .command { width: 210px !important; }  \n' +
+                        '#' + historyTableContainerId + ' .user { width: 120px !important; }  \n' +
+                        '#' + historyTableContainerId + ' .ROOTELEMENT {width: 180px !important; }' +
+                        '#' + historyTableContainerId + ' .status { width: 130px !important; }  \n'
                 }
             },
-            sortable: 'id, user, DATE, status',
-            filter: 'id, user, status',
+            sortable: 'user, DATE, status',
+            filter: 'user, status, command, ROOTELEMENT',
             items: {
-                id: {
-                    th: {className: 'id'},
-                    label: labelMap.id['label'],
-                    apply: function(){
-                        return this.id.toString();
-                    }
-                },
+                // id: {
+                //     th: {className: 'id'},
+                //     label: labelMap.id['label'],
+                //     apply: function(){
+                //         return this.id.toString();
+                //     }
+                // },
                 DATE: {
                     label: labelMap.DATE['label'],
                     th: {className: 'DATE'},
@@ -141,6 +141,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 command: {
                     th: {className: 'command'},
+                    td: {className: 'command word-wrapped'},
                     label: labelMap.command['label'],
                     apply: function () {
                         var label, wrapper;
@@ -164,6 +165,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 user: {
                     th: {className: 'user'},
+                    td: {className: 'user word-wrapped'},
                     label: labelMap.user['label'],
                     apply: function () {
                         return this['user-id']
@@ -171,6 +173,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 ROOTELEMENT: {
                     th: {className: 'ROOTELEMENT'},
+                    td: {className: 'ROOTELEMENT word-wrapped'},
                     label: labelMap.ROOTELEMENT['label'],
                     apply: function(){
                         var rootElements = this.inputs.filter(function(input){ if (input.type === "wrapper-external") return input });
@@ -202,6 +205,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 status: {
                     th: {className: 'status'},
+                    td: {className: 'status word-wrapped'},
                     label: labelMap.status['label'],
                     apply: function(){
                         return this['status'];
@@ -597,6 +601,34 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
     };
 
+
+    historyTable.findById = function(e){
+        e.preventDefault();
+
+        var id = $('#container-id-entry').val();
+        if (!id) return false;
+
+        XNAT.xhr.getJSON({
+            url: restUrl('/xapi/containers/'+id),
+            error: function(e){
+                console.warn(e);
+                XNAT.ui.dialog.message('Please enter a valid container ID');
+                $('#container-id-entry').focus();
+            },
+            success: function(data){
+                $('#container-id-entry').val('');
+                historyTable.viewHistoryEntry(data);
+            }
+        })
+    };
+
+    $(document).off('keyup').on('keyup','#container-id-entry',function(e){
+        var val = this.value;
+        if (e.key === 'Enter' || e.keyCode === '13') {
+            historyTable.findById(e);
+        }
+    });
+
     historyTable.init = historyTable.refresh = function (context) {
         if (context) {
             historyTable.context = context;
@@ -617,6 +649,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         XNAT.plugin.containerService.historyTable.commandHistory.load();
 
+        // add a "find by ID" input field after the table renders
+        var target = $('#'+historyTableContainerId),
+            searchHistoryInput = spawn('input#container-id-entry', {
+                type:'text',
+                name: 'findbyid',
+                placeholder: 'Find By ID',
+                size: 12,
+                style: {'font-size':'12px' }}
+            ),
+            searchHistoryButton = spawn(
+                'button.btn2.btn-sm',
+                {
+                    title: 'Find By ID',
+                    onclick: XNAT.plugin.containerService.historyTable.findById
+                },
+                [ spawn('i.fa.fa-search') ]);
+        target.prepend(spawn('div.pull-right',[
+            searchHistoryInput,
+            spacer(4),
+            searchHistoryButton
+        ]));
 
     };
 
