@@ -1098,24 +1098,26 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 language: 'json'
             });
 
+            function referenceUrl(commandDef){
+                return (commandDef['info-url']) ?
+                    spawn('a',{ href: commandDef['info-url'], html: commandDef['info-url'], target: '_blank' }) :
+                    'n/a';
+            }
+
             _editor.openEditor({
                 title: 'Edit Definition For ' + commandDef.name,
                 classes: 'plugin-json',
                 buttons: dialogButtons,
-                height: 680,
-                afterShow: function(dialog, obj){
-                    obj.aceEditor.setReadOnly(false);
-                    dialog.$modal.find('.body .inner').prepend(
-                        spawn('div',[
-                            spawn('p', 'Command ID: '+sanitizedVars['id']),
-                            spawn('p', 'Hash: '+sanitizedVars['hash']),
-                            spawn('p', [
-                                'Command Info URL: ',
-                                (commandDef['info-url']) ? spawn('a',{ href: commandDef['info-url'], html: commandDef['info-url'], target: '_blank' }) : 'n/a'
-                            ])
-                        ])
-                    );
-                }
+                height: 640,
+                before: spawn('!',[
+                    spawn('p', 'Command ID: '+sanitizedVars['id']),
+                    spawn('p', 'Hash: '+sanitizedVars['hash']),
+                    spawn('p', [
+                        'Command Info URL: ',
+                        referenceUrl(commandDef)
+                    ])
+                ])
+
             });
         } else {
             _source = spawn('textarea', '{}');
