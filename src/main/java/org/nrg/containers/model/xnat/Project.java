@@ -6,11 +6,14 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractprojectassetI;
 import org.nrg.xdat.model.XnatAbstractresourceI;
+import org.nrg.xdat.model.XnatProjectdataAliasI;
 import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatResourcecatalog;
@@ -26,7 +29,9 @@ import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+@Slf4j
 @JsonInclude(Include.NON_NULL)
 public class Project extends XnatModelObject {
     @JsonIgnore private XnatProjectdata xnatProjectdata;
@@ -34,6 +39,13 @@ public class Project extends XnatModelObject {
     private List<Subject> subjects;
     @JsonProperty("project-assets") private List<ProjectAsset> projectAssets;
     private String directory;
+    private String title;
+    @JsonProperty("running-title") private String runningTitle;
+    private String description;
+    private String keywords;
+    private String accessibility;
+    private List<String> aliases;
+
 
     public Project() {}
 
@@ -77,7 +89,18 @@ public class Project extends XnatModelObject {
         this.id = xnatProjectdata.getId();
         this.label = xnatProjectdata.getName();
         this.xsiType = xnatProjectdata.getXSIType();
-        this.directory = xnatProjectdata.getRootArchivePath() + xnatProjectdata.getCurrentArc();
+        try {
+            this.directory = xnatProjectdata.getRootArchivePath() + xnatProjectdata.getCurrentArc();
+        } catch (NullPointerException e){log.error("Project could not get root archive path " + e.getMessage());}
+        try {
+            this.accessibility = xnatProjectdata.getPublicAccessibility();
+        } catch (Throwable e){log.error("Could not get project accessibility.", e.getMessage());}
+        this.label = !Strings.isNullOrEmpty(xnatProjectdata.getName()) ? xnatProjectdata.getName() : xnatProjectdata.getId();
+        this.title = xnatProjectdata.getName();
+        this.runningTitle = xnatProjectdata.getDisplayID();
+        this.description = xnatProjectdata.getDescription();
+        this.keywords = xnatProjectdata.getKeywords();
+        this.aliases = xnatProjectdata.getAliases_alias().stream().map(XnatProjectdataAliasI::getAlias).collect(Collectors.toList());
 
         this.subjects = Lists.newArrayList();
         if (preload && loadTypes.contains(CommandWrapperInputType.SUBJECT.getName())) {
@@ -195,6 +218,30 @@ public class Project extends XnatModelObject {
         this.directory = directory;
     }
 
+    public String getTitle() { return title; }
+
+    public void setTitle(String title) { this.title = title; }
+
+    public String getRunningTitle() { return runningTitle; }
+
+    public void setRunningTitle(String runningTitle) { this.runningTitle = runningTitle; }
+
+    public String getDescription() { return description; }
+
+    public void setDescription(String description) { this.description = description; }
+
+    public String getKeywords() { return keywords; }
+
+    public void setKeywords(String keywords) { this.keywords = keywords; }
+
+    public List<String> getAliases() { return aliases; }
+
+    public void setAliases(List<String> aliases) { this.aliases = aliases; }
+
+    public String getAccessibility() { return accessibility; }
+
+    public void setAccessibility(String accessibility) { this.accessibility = accessibility; }
+
     @Override
     public XFTItem getXftItem(final UserI userI) {
         loadXnatProjectdata(userI);
@@ -215,15 +262,19 @@ public class Project extends XnatModelObject {
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatProjectdata, directory, resources, subjects);
+        return Objects.hash(super.hashCode(), xnatProjectdata, projectAssets, directory, resources, subjects,
+                title, runningTitle, description, keywords, aliases, accessibility);
     }
-
 
     @Override
     public String toString() {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
+                .add("title", title)
+                .add("running-title", runningTitle)
+                .add("description", description)
                 .add("directory", directory)
                 .add("resources", resources)
+                .add("project-assets", projectAssets)
                 .add("subjects", subjects)
                 .toString();
     }

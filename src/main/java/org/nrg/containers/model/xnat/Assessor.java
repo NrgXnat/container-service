@@ -42,6 +42,7 @@ public class Assessor extends XnatModelObject {
     @JsonProperty("session-id") private String sessionId;
     private String directory;
     @JsonProperty("datatype-string") private String datatypeString;
+    private String name;
 
     public Assessor() {}
 
@@ -85,6 +86,9 @@ public class Assessor extends XnatModelObject {
         this.label = xnatImageassessordataI.getLabel();
         this.xsiType = xnatImageassessordataI.getXSIType();
         this.projectId = xnatImageassessordataI.getProject();
+        try {
+            this.name = (String) ((XnatImageassessordata) xnatImageassessordataI).getItem().getProperty("name");
+        }catch (Throwable e){}
 
         XnatImageassessordata assessor = null;
         if (this.xnatImageassessordataI instanceof XnatImageassessordata) {
@@ -245,6 +249,10 @@ public class Assessor extends XnatModelObject {
 
     public String getDatatypeString() {
         return datatypeString;
+    }
+
+    public String getName() {
+        return name;
     }
 
     @Override
