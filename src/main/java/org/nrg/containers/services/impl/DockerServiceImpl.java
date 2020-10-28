@@ -110,10 +110,10 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public String pingHub(final long hubId, final String username, final String password)
+    public String pingHub(final long hubId, final String username, final String password, final String token, final String email)
             throws DockerServerException, NoDockerServerException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
-        return pingHub(hub, username, password);
+        return pingHub(hub, username, password, token, email);
     }
 
     @Override
@@ -124,18 +124,19 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public String pingHub(final String hubName, final String username, final String password)
+    public String pingHub(final String hubName, final String username, final String password, final String token, final String email)
             throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubName);
-        return pingHub(hub, username, password);
+        return pingHub(hub, username, password, token, email);
     }
 
     private String pingHub(final DockerHub hub) throws DockerServerException, NoDockerServerException {
-        return pingHub(hub, null, null);
+        return pingHub(hub, null, null, null, null);
     }
 
-    private String pingHub(final DockerHub hub, final String username, final String password) throws DockerServerException, NoDockerServerException {
-        return controlApi.pingHub(hub, username, password);
+    private String pingHub(final DockerHub hub, final String username, final String password, final String token, final String email)
+            throws DockerServerException, NoDockerServerException {
+        return controlApi.pingHub(hub, username, password, token, email);
     }
 
     @Nullable
@@ -170,9 +171,10 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerImage pullFromHub(final long hubId, final String imageName, final boolean saveCommands, final String username, final String password)
+    public DockerImage pullFromHub(final long hubId, final String imageName, final boolean saveCommands,
+                                   final String username, final String password, final String token, final String email)
             throws DockerServerException, NoDockerServerException, NotFoundException {
-        return pullFromHub(dockerHubService.getHub(hubId), imageName, saveCommands, username, password);
+        return pullFromHub(dockerHubService.getHub(hubId), imageName, saveCommands, username, password, token, email);
     }
 
     @Override
@@ -182,9 +184,10 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerImage pullFromHub(final String hubName, final String imageName, final boolean saveCommands, final String username, final String password)
+    public DockerImage pullFromHub(final String hubName, final String imageName, final boolean saveCommands,
+                                   final String username, final String password, final String token, final String email)
             throws DockerServerException, NoDockerServerException, NotFoundException, NotUniqueException {
-        return pullFromHub(dockerHubService.getHub(hubName), imageName, saveCommands, username, password);
+        return pullFromHub(dockerHubService.getHub(hubName), imageName, saveCommands, username, password, token, email);
     }
 
     @Override
@@ -195,16 +198,18 @@ public class DockerServiceImpl implements DockerService {
 
     private DockerImage pullFromHub(final DockerHub hub, final String imageName, final boolean saveCommands)
             throws NoDockerServerException, DockerServerException, NotFoundException {
-        return pullFromHub(hub, imageName, saveCommands, null, null);
+        return pullFromHub(hub, imageName, saveCommands, hub.username(), hub.password(), hub.token(), hub.email());
     }
 
     private DockerImage pullFromHub(final DockerHub hub,
                                     final String imageName,
                                     final boolean saveCommands,
                                     final String username,
-                                    final String password)
+                                    final String password,
+                                    final String token,
+                                    final String email)
             throws NoDockerServerException, DockerServerException, NotFoundException {
-        final DockerImage dockerImage = controlApi.pullImage(imageName, hub, username, password);
+        final DockerImage dockerImage = controlApi.pullImage(imageName, hub, username, password, token, email);
         if (saveCommands) {
             saveFromImageLabels(imageName, dockerImage);
         }

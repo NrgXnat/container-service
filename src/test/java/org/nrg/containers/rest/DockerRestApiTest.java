@@ -52,6 +52,7 @@ import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.isIn;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
@@ -131,7 +132,8 @@ public class DockerRestApiTest {
 
         // Have to use the do().when() construction because the when().do() throws an Exception
         doReturn("OK")
-                .when(mockContainerControlApi).pingHub(Mockito.any(DockerHub.class), Mockito.anyString(), Mockito.anyString());
+                .when(mockContainerControlApi).pingHub(Mockito.any(DockerHub.class), Mockito.anyString(), Mockito.anyString(),
+                Mockito.anyString(), Mockito.anyString());
         doReturn(MOCK_CONTAINER_SERVER).when(mockDockerServerService).getServer();
     }
 
@@ -268,7 +270,8 @@ public class DockerRestApiTest {
                         .with(testSecurityContext());
 
         final DockerHub dockerHub = DockerHub.DEFAULT;
-        final DockerHub privateHub = DockerHub.create(10L, "my hub", "http://localhost", false);
+        final DockerHub privateHub = DockerHub.create(10L, "my hub", "http://localhost", false,
+                "hub_user", "hub_pass", "hub@email.com", "1234567890qwerty");
         final List<DockerHub> hubs = Lists.newArrayList(dockerHub, privateHub);
         final List<DockerHubWithPing> hubsWithPing = Lists.newArrayList(
                 DockerHubWithPing.create(dockerHub, true),
@@ -291,7 +294,8 @@ public class DockerRestApiTest {
         final String pathTemplate = "/docker/hubs/%d";
 
         final long privateHubId = 10L;
-        final DockerHub privateHub = DockerHub.create(privateHubId, "my hub", "http://localhost", false);
+        final DockerHub privateHub = DockerHub.create(privateHubId, "my hub", "http://localhost", false,
+                "hub_user", "hub_pass", "hub@email.com", "1234567890qwerty");
         final DockerHubWithPing privateHubWithPing = DockerHubWithPing.create(privateHub, true);
         final DockerHub defaultHub = DockerHub.DEFAULT;
         final DockerHubWithPing defaultHubWithPing = DockerHubWithPing.create(defaultHub, true);
@@ -330,7 +334,13 @@ public class DockerRestApiTest {
                         .getResponse()
                         .getContentAsString();
         final DockerHubWithPing privateHubResponse = mapper.readValue(privateHubResponseStr, DockerHubWithPing.class);
-        assertThat(privateHubResponse, is(privateHubWithPing));
+        assertThat(privateHubResponse.name(), is(privateHubWithPing.name()));
+        assertThat(privateHubResponse.url(), is(privateHubWithPing.url()));
+        assertThat(privateHubResponse.username(), is(privateHubWithPing.username()));
+        assertThat("Password should not be readable.", privateHubResponse.password(), is(not(equalTo(privateHubWithPing.password()))));
+        assertThat(privateHubResponse.token(), is(privateHubWithPing.token()));
+        assertThat(privateHubResponse.email(), is(privateHubWithPing.email()));
+        assertThat(privateHubResponse.ping(), is(privateHubWithPing.ping()));
     }
 
     @Test
@@ -338,7 +348,8 @@ public class DockerRestApiTest {
         final String pathTemplate = "/docker/hubs/%s";
 
         final String privateHubName = "my hub";
-        final DockerHub privateHub = DockerHub.create(10L, privateHubName, "http://localhost", false);
+        final DockerHub privateHub = DockerHub.create(10L, privateHubName, "http://localhost", false,
+                "hub_user", "hub_pass", "hub@email.com", "1234567890qwerty");
         final DockerHubWithPing privateHubWithPing = DockerHubWithPing.create(privateHub, true);
         final DockerHub defaultHub = DockerHub.DEFAULT;
         final DockerHubWithPing defaultHubWithPing = DockerHubWithPing.create(defaultHub, true);
@@ -377,8 +388,13 @@ public class DockerRestApiTest {
                         .getResponse()
                         .getContentAsString();
         final DockerHubWithPing privateHubResponse = mapper.readValue(privateHubResponseStr, DockerHubWithPing.class);
-        assertThat(privateHubResponse, is(privateHubWithPing));
-    }
+        assertThat(privateHubResponse.name(), is(privateHubWithPing.name()));
+        assertThat(privateHubResponse.url(), is(privateHubWithPing.url()));
+        assertThat(privateHubResponse.username(), is(privateHubWithPing.username()));
+        assertThat("Password should not be readable.", privateHubResponse.password(), is(not(equalTo(privateHubWithPing.password()))));
+        assertThat(privateHubResponse.token(), is(privateHubWithPing.token()));
+        assertThat(privateHubResponse.email(), is(privateHubWithPing.email()));
+        assertThat(privateHubResponse.ping(), is(privateHubWithPing.ping()));    }
 
     @Test
     public void testCreateHub() throws Exception {
@@ -392,7 +408,8 @@ public class DockerRestApiTest {
                 "}";
         final DockerHub hubToCreate = mapper.readValue(hubToCreateJson, DockerHub.class);
 
-        final DockerHub created = DockerHub.create(10L, "a hub name", "http://localhost", false);
+        final DockerHub created = DockerHub.create(10L, "a hub name", "http://localhost", false,
+                null, null, null, null);
         final DockerHubWithPing createdAndPingged = DockerHubWithPing.create(created, true);
 
         when(mockDockerHubService.create(hubToCreate)).thenReturn(created);
@@ -439,7 +456,8 @@ public class DockerRestApiTest {
 
         when(mockDockerHubService.getHub(defaultHubName)).thenReturn(defaultHub);
         when(mockDockerHubService.getHub(defaultHubId)).thenReturn(defaultHub);
-        doReturn("OK").when(mockContainerControlApi).pingHub(Mockito.eq(defaultHub), anyString(), anyString());
+        doReturn("OK").when(mockContainerControlApi).pingHub(Mockito.eq(defaultHub), anyString(), anyString(),
+                anyString(), anyString());
 
         mockMvc.perform(get(pathById)
                         .with(authentication(ADMIN_AUTH))

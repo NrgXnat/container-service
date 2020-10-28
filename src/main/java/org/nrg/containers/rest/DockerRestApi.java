@@ -158,7 +158,8 @@ public class DockerRestApi extends AbstractXapiRestController {
             throws NrgServiceRuntimeException {
         final UserI userI = XDAT.getUserDetails();
         if (hub != null) {
-            final DockerHub toUpdate = id == hub.id() ? hub : DockerHub.create(id, hub.name(), hub.url(), setDefault);
+            final DockerHub toUpdate = id == hub.id() ? hub : DockerHub.create(id, hub.name(), hub.url(), setDefault,
+                    hub.username(), hub.password(), hub.email(), hub.token());
 
             if (!setDefault) {
                 dockerService.updateHub(toUpdate);
@@ -196,7 +197,7 @@ public class DockerRestApi extends AbstractXapiRestController {
                           final @RequestParam(value = "username", required = false) String username,
                           final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException {
-        return dockerService.pingHub(id, username, password);
+        return dockerService.pingHub(id, username, password, null, null);
     }
 
     @XapiRequestMapping(value = "/hubs/{name:" + NAME_REGEX + "}/ping", method = GET)
@@ -206,7 +207,7 @@ public class DockerRestApi extends AbstractXapiRestController {
                           final @RequestParam(value = "username", required = false) String username,
                           final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException, NotUniqueException {
-        return dockerService.pingHub(name, username, password);
+        return dockerService.pingHub(name, username, password, null, null);
     }
 
     @XapiRequestMapping(value = "/hubs/{id:" + ID_REGEX + "}/pull", params = {"image"}, method = POST, restrictTo = Admin)
@@ -214,11 +215,11 @@ public class DockerRestApi extends AbstractXapiRestController {
     public void pullImageFromHub(final @PathVariable long id,
                                  final @RequestParam(value = "image") String image,
                                  final @RequestParam(value = "save-commands", defaultValue = "true") Boolean saveCommands,
-                                 final @RequestParam(value = "username", required = false) String username,
-                                 final @RequestParam(value = "password", required = false) String password)
+                                 final @RequestParam(value = "username", required = true) String username,
+                                 final @RequestParam(value = "password", required = true) String password)
             throws DockerServerException, NotFoundException, NoDockerServerException, BadRequestException {
         checkImageOrThrow(image);
-        dockerService.pullFromHub(id, image, saveCommands, username, password);
+        dockerService.pullFromHub(id, image, saveCommands, username, password, null, null);
     }
 
     @XapiRequestMapping(value = "/hubs/{name:" + NAME_REGEX + "}/pull", params = {"image"}, method = POST, restrictTo = Admin)
@@ -226,11 +227,31 @@ public class DockerRestApi extends AbstractXapiRestController {
     public void pullImageFromHub(final @PathVariable String name,
                                  final @RequestParam(value = "image") String image,
                                  final @RequestParam(value = "save-commands", defaultValue = "true") Boolean saveCommands,
-                                 final @RequestParam(value = "username", required = false) String username,
-                                 final @RequestParam(value = "password", required = false) String password)
+                                 final @RequestParam(value = "username", required = true) String username,
+                                 final @RequestParam(value = "password", required = true) String password)
             throws DockerServerException, NotFoundException, NoDockerServerException, NotUniqueException, BadRequestException {
         checkImageOrThrow(image);
-        dockerService.pullFromHub(name, image, saveCommands, username, password);
+        dockerService.pullFromHub(name, image, saveCommands, username, password, null, null);
+    }
+
+    @XapiRequestMapping(value = "/hubs/{id:" + ID_REGEX + "}/pull", params = {"image", "!username", "!password"}, method = POST, restrictTo = Admin)
+    @ApiOperation(value = "Pull image from Docker Hub by ID")
+    public void pullImageFromHub(final @PathVariable long id,
+                                 final @RequestParam(value = "image") String image,
+                                 final @RequestParam(value = "save-commands", defaultValue = "true") Boolean saveCommands)
+            throws DockerServerException, NotFoundException, NoDockerServerException, BadRequestException {
+        checkImageOrThrow(image);
+        dockerService.pullFromHub(id, image, saveCommands);
+    }
+
+    @XapiRequestMapping(value = "/hubs/{name:" + NAME_REGEX + "}/pull", params = {"image", "!username", "!password"}, method = POST, restrictTo = Admin)
+    @ApiOperation(value = "Pull image from Docker Hub by Name")
+    public void pullImageFromHub(final @PathVariable String name,
+                                 final @RequestParam(value = "image") String image,
+                                 final @RequestParam(value = "save-commands", defaultValue = "true") Boolean saveCommands)
+            throws DockerServerException, NotFoundException, NoDockerServerException, NotUniqueException, BadRequestException {
+        checkImageOrThrow(image);
+        dockerService.pullFromHub(name, image, saveCommands);
     }
 
     @XapiRequestMapping(value = "/pull", params = {"image"}, method = POST, restrictTo = Admin)

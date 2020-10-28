@@ -191,7 +191,8 @@ public class DockerControlApiTest {
         exception.expect(imageNotFoundException(privateImageName));
         controlApi.pullImage(privateImageName, DOCKER_HUB);
 
-        final DockerImage test = controlApi.pullImage(privateImageName, DOCKER_HUB, "xnattest", "windmill susanna portico");
+        final DockerImage test = controlApi.pullImage(privateImageName, DOCKER_HUB, "xnattest", "windmill susanna portico",
+                "farfegnugen", "holla@me.com");
         assertNotNull(test);
     }
 

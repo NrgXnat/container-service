@@ -26,7 +26,7 @@ public interface ContainerControlApi {
     boolean canConnect();
 
     String pingHub(DockerHub hub) throws DockerServerException, NoDockerServerException;
-    String pingHub(DockerHub hub, String username, String password) throws DockerServerException, NoDockerServerException;
+    String pingHub(DockerHub hub, String username, String password, String token, String email) throws DockerServerException, NoDockerServerException;
 
     List<DockerImage> getAllImages() throws NoDockerServerException, DockerServerException;
     DockerImage getImageById(final String imageId) throws NotFoundException, DockerServerException, NoDockerServerException;
@@ -34,7 +34,7 @@ public interface ContainerControlApi {
 
     DockerImage pullImage(String name) throws NoDockerServerException, DockerServerException, NotFoundException;
     DockerImage pullImage(String name, DockerHub hub) throws NoDockerServerException, DockerServerException, NotFoundException;
-    DockerImage pullImage(String name, DockerHub hub, String username, String password) throws NoDockerServerException, DockerServerException, NotFoundException;
+    DockerImage pullImage(String name, DockerHub hub, String username, String password, String token, String email) throws NoDockerServerException, DockerServerException, NotFoundException;
 
     Container createContainerOrSwarmService(final ResolvedCommand dockerCommand, final UserI userI) throws NoDockerServerException, DockerServerException, ContainerException;
     Container createContainerOrSwarmService(final Container container, final UserI userI) throws NoDockerServerException, DockerServerException, ContainerException;

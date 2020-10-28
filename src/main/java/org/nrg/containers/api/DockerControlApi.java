@@ -161,16 +161,17 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     @Nonnull
     public String pingHub(final @Nonnull DockerHub hub) throws DockerServerException, NoDockerServerException {
-        return pingHub(hub, null, null);
+        return pingHub(hub, null, null, null, null);
     }
 
     @Override
     @Nonnull
-    public String pingHub(final @Nonnull DockerHub hub, final @Nullable String username, final @Nullable String password)
+    public String pingHub(final @Nonnull DockerHub hub, final @Nullable String username, final @Nullable String password,
+                          final @Nullable String token, final @Nullable String email)
             throws DockerServerException, NoDockerServerException {
         int status = 500;
         try (final DockerClient client = getClient()) {
-            status = client.auth(registryAuth(hub, username, password, true));
+            status = client.auth(registryAuth(hub, username, password, token, email, true));
         } catch (Exception e) {
             log.error(e.getMessage());
             throw new DockerServerException(e);
@@ -179,13 +180,16 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     @Nullable
-    private RegistryAuth registryAuth(final @Nullable DockerHub hub, final @Nullable String username, final @Nullable String password) {
-        return registryAuth(hub, username, password, false);
+    private RegistryAuth registryAuth(final @Nullable DockerHub hub, final @Nullable String username,
+                                      final @Nullable String password, final @Nullable String token,
+                                      final @Nullable String email) {
+        return registryAuth(hub, username, password, token, email, false);
     }
 
     @Nullable
     private RegistryAuth registryAuth(final @Nullable DockerHub hub, final @Nullable String username,
-                                      final @Nullable String password, boolean forPing) {
+                                      final @Nullable String password, final @Nullable String token,
+                                      final @Nullable String email, boolean forPing) {
         // TODO "forPing" is a hack. client.auth() needs a RegistryAuth object; it doesn't default to config.json
         //  as client.pull() does. This is because the RegistryAuthSupplier associates RegistryAuth objects with
         //  image names, not hubs
@@ -194,8 +198,10 @@ public class DockerControlApi implements ContainerControlApi {
         }
         return RegistryAuth.builder()
                 .serverAddress(hub.url())
-                .username(username == null ? "" : username)
-                .password(password == null ? "" : password)
+                .username(username == null ? hub.username() : username)
+                .password(password == null ? hub.password() : password)
+                .identityToken(token == null ? hub.token() : token)
+                .email(email == null ? hub.email() : email)
                 .build();
     }
 
@@ -916,14 +922,18 @@ public class DockerControlApi implements ContainerControlApi {
     @Nullable
     public DockerImage pullImage(final String name, final @Nullable DockerHub hub)
             throws NoDockerServerException, DockerServerException, NotFoundException {
-        return pullImage(name, hub, null, null);
+        return hub != null ?
+                pullImage(name, hub, hub.username(), hub.password(), hub.token(), hub.email()) :
+                pullImage(name, hub, null, null, null, null);
     }
 
     @Override
     @Nullable
-    public DockerImage pullImage(final String name, final @Nullable DockerHub hub, final @Nullable String username, final @Nullable String password) throws NoDockerServerException, DockerServerException, NotFoundException {
+    public DockerImage pullImage(final String name, final @Nullable DockerHub hub, final @Nullable String username,
+                                 final @Nullable String password, final @Nullable String token, final @Nullable String email)
+            throws NoDockerServerException, DockerServerException, NotFoundException {
         final DockerClient client = getClient();
-        _pullImage(name, registryAuth(hub, username, password), client);  // We want to throw NotFoundException here if the image is not found on the hub
+        _pullImage(name, hub != null ? registryAuth(hub, username, password, token, email) : null, client);  // We want to throw NotFoundException here if the image is not found on the hub
         try {
             return getImageById(name, client);  // We don't want to throw NotFoundException from here. If we can't find the image here after it has been pulled, that is a server error.
         } catch (NotFoundException e) {

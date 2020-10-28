@@ -27,17 +27,17 @@ public interface DockerService {
     void deleteHub(long id) throws DockerHubDeleteDefaultException;
     void deleteHub(String name) throws DockerHubDeleteDefaultException, NotUniqueException;
     String pingHub(long hubId) throws DockerServerException, NoDockerServerException, NotFoundException;
-    String pingHub(long hubId, String username, String password) throws DockerServerException, NoDockerServerException, NotFoundException;
+    String pingHub(long hubId, String username, String password, String token, String email) throws DockerServerException, NoDockerServerException, NotFoundException;
     String pingHub(String hubName) throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException;
-    String pingHub(String hubName, String username, String password)
+    String pingHub(String hubName, String username, String password, String token, String email)
             throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException;
     DockerImage pullFromHub(long hubId, String imageName, boolean saveCommands)
             throws DockerServerException, NoDockerServerException, NotFoundException;
-    DockerImage pullFromHub(long hubId, String imageName, boolean saveCommands, String username, String password)
+    DockerImage pullFromHub(long hubId, String imageName, boolean saveCommands, String username, String password, String token, String email)
             throws DockerServerException, NoDockerServerException, NotFoundException;
     DockerImage pullFromHub(String hubName, String imageName, boolean saveCommands)
             throws DockerServerException, NoDockerServerException, NotFoundException, NotUniqueException;
-    DockerImage pullFromHub(String hubName, String imageName, boolean saveCommands, String username, String password)
+    DockerImage pullFromHub(String hubName, String imageName, boolean saveCommands, String username, String password, String token, String email)
             throws DockerServerException, NoDockerServerException, NotFoundException, NotUniqueException;
     DockerImage pullFromHub(String imageName, boolean saveCommands)
             throws DockerServerException, NoDockerServerException, NotFoundException;

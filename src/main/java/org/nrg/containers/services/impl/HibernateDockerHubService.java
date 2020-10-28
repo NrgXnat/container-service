@@ -191,4 +191,5 @@ public class HibernateDockerHubService
     private boolean isDefault(final long id) {
         return containerConfigService.getDefaultDockerHubId() == id;
     }
+
 }

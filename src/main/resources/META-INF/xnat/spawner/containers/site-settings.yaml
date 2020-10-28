@@ -54,6 +54,26 @@ imageHostsPanel:
                             name: url
                             label: URL
                             validation: url not-empty
+#                        email:
+#                            kind: panel.input.text
+#                            id: hub-email
+#                            name: email
+#                            label: Email
+#                        token:
+#                            kind: panel.input.text
+#                            id: hub-token
+#                            name: token
+#                            label: Token
+                        username:
+                            kind: panel.input.text
+                            id: hub-username
+                            name: username
+                            label: Username
+                        password:
+                            kind: panel.input.password
+                            id: hub-password
+                            name: password
+                            label: Access Token
         imageHostTable:
             tag: "div#image-host-manager"
 
