@@ -200,7 +200,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             ])
         ]);
 
-        return spawn('div.data-table-container',[
+        return spawn('div.data-table-wrapper.clean',[
             tableHeader,
             tableBody
         ]);

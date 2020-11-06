@@ -206,7 +206,7 @@ sitewideCommandHistoryPanel:
             tag: div.tab-container
             contents:
                 dataTableContainer:
-                    tag: div#command-history-container.data-table-container
+                    tag: div#command-history-container.data-table-wrapper.clean
                     contents: Loading history entries...
 
 queueSettingsForm:
