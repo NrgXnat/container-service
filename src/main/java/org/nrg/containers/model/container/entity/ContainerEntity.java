@@ -75,6 +75,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private Map<String, String> containerLabels = new HashMap<>();
     private String gpus;
     private Map<String, String> genericResources = new HashMap<>();
+    private Map<String, String> ulimits;
 
 
     public ContainerEntity() {}
@@ -157,6 +158,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setContainerLabels(containerPojo.containerLabels());
         this.setGpus(containerPojo.gpus());
         this.setGenericResources(containerPojo.genericResources());
+        this.setUlimits(containerPojo.ulimits());
 
         return this;
     }
@@ -440,6 +442,15 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.genericResources = genericResources  == null ? new HashMap<String, String>() : genericResources;
     }
 
+    @ElementCollection
+    public Map<String, String> getUlimits() { return ulimits; }
+
+    public void setUlimits(Map<String, String> ulimits) {
+        this.ulimits = ulimits == null ?
+        Maps.newHashMap() : ulimits;
+    }
+
+
     @ManyToOne
     public ContainerEntity getParentContainerEntity() {
         return parentContainerEntity;
@@ -621,6 +632,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("containerLabels", containerLabels)
                 .add("gpus", gpus)
                 .add("genericResources", genericResources)
+                .add("ulimits", ulimits)
                 .toString();
     }
 }

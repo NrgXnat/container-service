@@ -107,28 +107,28 @@ public class CommandActionProvider extends MultiActionProvider {
         XnatModelObject modelObject = null;
         String objectLabel = "";
         if(eventObject instanceof XnatProjectdata){
-            modelObject = new Project(((XnatProjectdata) eventObject), true, Collections.EMPTY_SET);
+            modelObject = new Project(((XnatProjectdata) eventObject), true, Collections.emptySet());
             objectLabel = "project";
         } else if(eventObject instanceof XnatSubjectdataI){
-            modelObject = new Subject((XnatSubjectdataI) eventObject, true, Collections.EMPTY_SET);
+            modelObject = new Subject((XnatSubjectdataI) eventObject, true, Collections.emptySet());
             objectLabel = "subject";
         } else if(eventObject instanceof XnatImagesessiondataI
                 && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
-            modelObject = new Session((XnatImagesessiondataI) eventObject, true, Collections.EMPTY_SET);
+            modelObject = new Session((XnatImagesessiondataI) eventObject, true, Collections.emptySet());
             objectLabel = "session";
         } else if(eventObject instanceof XnatSubjectassessordataI){
-            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, true, Collections.EMPTY_SET);
+            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, true, Collections.emptySet());
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatImagescandataI){
-            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, true, Collections.EMPTY_SET);
+            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, true, Collections.emptySet());
             String sessionUri = session.getUri();
-            modelObject = new Scan((XnatImagescandataI) eventObject, true, Collections.EMPTY_SET, sessionUri, null);
+            modelObject = new Scan((XnatImagescandataI) eventObject, true, Collections.emptySet(), sessionUri, null);
             objectLabel = "scan";
         } else if(eventObject instanceof XnatImageassessordataI){
-            modelObject = new Assessor((XnatImageassessordataI) eventObject, true, Collections.EMPTY_SET);
+            modelObject = new Assessor((XnatImageassessordataI) eventObject, true, Collections.emptySet());
             objectLabel = "assessor";
         } else if(eventObject instanceof XnatResourcecatalog){
-            modelObject = new Resource((XnatResourcecatalog) eventObject, true, Collections.EMPTY_SET);
+            modelObject = new Resource((XnatResourcecatalog) eventObject, true, Collections.emptySet());
             objectLabel = "resource";
         } else {
             log.error(String.format("Container Service does not support Event Object."));

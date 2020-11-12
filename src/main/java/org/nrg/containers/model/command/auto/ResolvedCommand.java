@@ -60,6 +60,7 @@ public abstract class ResolvedCommand {
     @JsonProperty("parent-source-object-name") @Nullable public abstract String parentSourceObjectName();
     @JsonProperty("gpus") @Nullable public abstract String gpus();
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
+    @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
 
     @JsonProperty("external-wrapper-input-values")
     public ImmutableSet<ResolvedCommandInput> externalWrapperInputValues() {
@@ -292,6 +293,7 @@ public abstract class ResolvedCommand {
                 .containerLabels(command.containerLabels())
                 .gpus(command.gpus())
                 .genericResources(command.genericResources())
+                .ulimits(command.ulimits())
                 .parentSourceObjectName(parentSourceObjectName)
                 .addMount(ResolvedCommandMount.builder()
                         .name("input")
@@ -403,6 +405,7 @@ public abstract class ResolvedCommand {
         public abstract Builder containerLabels(Map<String, String> containerLabels);
         public abstract Builder gpus(String gpus);
         public abstract Builder genericResources(Map<String, String> genericResources);
+        public abstract Builder ulimits(Map<String, String> ulimits);
 
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
 

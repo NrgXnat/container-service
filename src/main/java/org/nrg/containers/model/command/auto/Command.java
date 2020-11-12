@@ -70,6 +70,7 @@ public abstract class Command {
     @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
     @Nullable @JsonProperty("gpus") public abstract String gpus();
     @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
+    @Nullable @JsonProperty("ulimits") public abstract ImmutableMap<String, String> ulimits();
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
 
@@ -105,7 +106,8 @@ public abstract class Command {
                           @JsonProperty("network") final String network,
                           @JsonProperty("container-labels") Map<String, String> containerLabels,
                           @JsonProperty("gpus") final String gpus,
-                          @JsonProperty("generic-resources") Map<String, String> genericResources) {
+                          @JsonProperty("generic-resources") Map<String, String> genericResources,
+                          @JsonProperty("ulimits") final Map<String, String> ulimits) {
         return builder()
                 .id(id)
                 .name(name)
@@ -139,6 +141,7 @@ public abstract class Command {
                 .containerLabels(containerLabels)
                 .gpus(gpus)
                 .genericResources(genericResources)
+                .ulimits(ulimits)
                 .build();
     }
 
@@ -167,6 +170,7 @@ public abstract class Command {
                 .ipcMode(commandEntity.getIpcMode())
                 .gpus(commandEntity.getGpus())
                 .genericResources(commandEntity.getGenericResources())
+                .ulimits(commandEntity.getUlimits())
 
                 .environmentVariables(commandEntity.getEnvironmentVariables() == null ?
                         Collections.<String, String>emptyMap() :
@@ -257,6 +261,7 @@ public abstract class Command {
                 .containerLabels(creation.containerLabels())
                 .gpus(creation.gpus())
                 .genericResources(creation.genericResources())
+                .ulimits(creation.ulimits())
                 .mounts(creation.mounts() == null ? Collections.<CommandMount>emptyList() : creation.mounts())
                 .environmentVariables(creation.environmentVariables() == null ? Collections.<String, String>emptyMap() : creation.environmentVariables())
                 .ports(creation.ports() == null ? Collections.<String, String>emptyMap() : creation.ports())
@@ -336,6 +341,16 @@ public abstract class Command {
                 return commandName + input;
             }
         };
+
+        if(ulimits() != null) {
+            for( String ulimit : ulimits().values()){
+                if(ulimit.isEmpty() || (ulimit.contains(":") && ulimit.split(":").length > 2 )){
+                    errors.add(commandName + " incorrect ulimit format: " + ulimit + ". Should be \"name\" : \"softlimit:hardlimit\" or \"name\" : \"limit\"");
+                } else {
+
+                }
+            }
+        }
 
         final Set<String> mountNames = Sets.newHashSet();
         for (final CommandMount mount : mounts()) {
@@ -663,6 +678,7 @@ public abstract class Command {
         public abstract Builder containerLabels(Map<String, String> containerLabels);
         public abstract Builder gpus(String gpus);
         public abstract Builder genericResources(Map<String, String> genericResources);
+        public abstract Builder ulimits(Map<String, String> ulimits);
         public abstract Command build();
     }
 
@@ -1673,6 +1689,7 @@ public abstract class Command {
         @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
         @Nullable @JsonProperty("gpus") public abstract String gpus();
         @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
+        @Nullable @JsonProperty("ulimits") public abstract Map<String, String> ulimits();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -1705,7 +1722,8 @@ public abstract class Command {
                                       @JsonProperty("network") final String network,
                                       @JsonProperty("container-labels") final ImmutableMap<String, String> containerLabels,
                                       @JsonProperty("gpus") final String gpus,
-                                      @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources) {
+                                      @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources,
+                                      @JsonProperty("ulimits") final Map<String, String> ulimits) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
                     containerName, type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
                     mounts == null ? ImmutableList.<CommandMount>of() : ImmutableList.copyOf(mounts),
@@ -1715,7 +1733,7 @@ public abstract class Command {
                     outputs == null ? ImmutableList.<CommandOutput>of() : ImmutableList.copyOf(outputs),
                     commandWrapperCreations == null ? ImmutableList.<CommandWrapperCreation>of() : ImmutableList.copyOf(commandWrapperCreations),
                     reserveMemory, limitMemory, limitCpu, runtime, ipcMode,
-                    autoRemove, shmSize, network, containerLabels, gpus, genericResources);
+                    autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits);
         }
     }
 
@@ -1822,6 +1840,7 @@ public abstract class Command {
         @Nullable public abstract ImmutableMap<String, String> containerLabels();
         @Nullable public abstract String gpus();
         @Nullable public abstract ImmutableMap<String, String> genericResources();
+        @Nullable public abstract ImmutableMap<String, String> ulimits();
 
         public static ConfiguredCommand.Builder initialize(final Command command) {
             return builder()
@@ -1854,7 +1873,8 @@ public abstract class Command {
                     .network(command.network())
                     .containerLabels(command.containerLabels())
                     .gpus(command.gpus())
-                    .genericResources(command.genericResources());
+                    .genericResources(command.genericResources())
+                    .ulimits(command.ulimits());
 
         }
 
@@ -1931,6 +1951,7 @@ public abstract class Command {
             public abstract Builder containerLabels(Map<String, String> containerLabels);
             public abstract Builder gpus(String gpus);
             public abstract Builder genericResources(Map<String, String> genericResources);
+            public abstract Builder ulimits(Map<String, String> ulimits);
 
             public abstract ConfiguredCommand build();
         }

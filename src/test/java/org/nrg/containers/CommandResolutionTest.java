@@ -1,6 +1,7 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.jayway.jsonpath.Configuration;
@@ -18,8 +19,6 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.config.IntegrationTestConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
@@ -38,7 +37,12 @@ import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandInputConfiguration;
 import org.nrg.containers.model.configuration.CommandConfigurationInternal;
 import org.nrg.containers.model.server.docker.DockerServerBase;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.Assessor;
+import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Scan;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerConfigService;
@@ -57,7 +61,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -70,7 +78,8 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.when;
 
 @Slf4j
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -764,6 +773,9 @@ public class CommandResolutionTest {
                         .containerHostPath("/container/path")
                         .fromWrapperInput("derivedInput")
                         .build())
+                .containerLabels(ImmutableMap.of("label_key", "label_value"))
+                .genericResources(ImmutableMap.of("GenericResourceKey", "GenericResourceLabel"))
+                .ulimits(ImmutableMap.of("ulimit01", "-1", "ulimit02", "123:456"))
                 .build();
 
         final String resolvedCommandJson = mapper.writeValueAsString(resolvedCommand);

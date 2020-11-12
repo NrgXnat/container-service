@@ -63,6 +63,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private Map<String,String> containerLabels;
     private String gpus;
     private Map<String, String> genericResources;
+    private Map<String, String> ulimits;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -113,6 +114,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setContainerLabels(command.containerLabels());
         this.setGpus(command.gpus());
         this.setGenericResources(command.genericResources());
+        this.setUlimits(command.ulimits());
 
         final List<CommandMountEntity> toRemoveMount = new ArrayList<>();
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
@@ -361,6 +363,14 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
             Maps.newHashMap() : genericResources;
     }
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    public Map<String, String> getUlimits() { return ulimits; }
+
+    public void setUlimits(Map<String, String> ulimits) {
+        this.ulimits = ulimits == null ?
+        Maps.newHashMap() : ulimits;
+    }
+
     @ElementCollection
     public Map<String, String> getContainerLabels() { return containerLabels; }
 
@@ -534,7 +544,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 Objects.equals(this.containerLabels, that.containerLabels) &&
                 Objects.equals(this.containerName, that.containerName) &&
                 Objects.equals(this.gpus, that.gpus) &&
-                Objects.equals(this.genericResources, that.genericResources);
+                Objects.equals(this.genericResources, that.genericResources) &&
+                Objects.equals(this.ulimits, that.ulimits);
     }
 
     @Override
@@ -571,7 +582,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("network", network)
                 .add("containerLabels", containerLabels)
                 .add("gpus", gpus)
-                .add("generic-resources", genericResources);
+                .add("generic-resources", genericResources)
+                .add("ulimits", ulimits);
     }
 
     @Override

@@ -379,7 +379,8 @@ public class DockerControlApi implements ContainerControlApi {
                             resolvedCommand.shmSize(),
                             resolvedCommand.network(),
                             resolvedCommand.containerLabels(),
-                            resolvedCommand.genericResources()),
+                            resolvedCommand.genericResources(),
+                            resolvedCommand.ulimits()),
                     userI.getLogin()
             );
         } else {
@@ -408,7 +409,8 @@ public class DockerControlApi implements ContainerControlApi {
                             resolvedCommand.network(),
                             resolvedCommand.containerLabels(),
                             resolvedCommand.gpus(),
-                            resolvedCommand.genericResources()),
+                            resolvedCommand.genericResources(),
+                            resolvedCommand.ulimits()),
                     userI.getLogin()
             );
         }
@@ -491,7 +493,8 @@ public class DockerControlApi implements ContainerControlApi {
                     container.shmSize(),
                     container.network(),
                     container.containerLabels(),
-                    container.genericResources());
+                    container.genericResources(),
+                    container.ulimits());
             return container.toBuilder()
                     .serviceId(serviceId)
                     .swarm(true)
@@ -522,7 +525,8 @@ public class DockerControlApi implements ContainerControlApi {
                     container.network(),
                     container.containerLabels(),
                     container.gpus(),
-                    container.genericResources());
+                    container.genericResources(),
+                    container.ulimits());
 
             return container.toBuilder()
                     .containerId(containerId)
@@ -550,7 +554,8 @@ public class DockerControlApi implements ContainerControlApi {
                                    final String network,
                                    final Map<String, String> containerLabels,
                                    final String gpus,
-                                   final Map<String, String> genericResources)
+                                   final Map<String, String> genericResources,
+                                   final Map<String, String> ulimits)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -599,6 +604,26 @@ public class DockerControlApi implements ContainerControlApi {
         }
         if(!Strings.isNullOrEmpty(network)){
             hostConfig = hostConfig.toBuilder().networkMode(network).build();
+        }
+
+        if(!ulimits.isEmpty()){
+            List<HostConfig.Ulimit> hostUlimits = new ArrayList<>();
+            for(Map.Entry<String, String> ulimit : ulimits.entrySet()) {
+                String softLimit = ulimit.getValue().contains(":") ?
+                        ulimit.getValue().split(":")[0] :
+                        ulimit.getValue();
+                String hardLimit = ulimit.getValue().contains(":") ?
+                        (ulimit.getValue().split(":").length > 1 ?
+                                ulimit.getValue().split(":")[1] :
+                                ulimit.getValue()) :
+                        ulimit.getValue();
+
+                hostUlimits.add(HostConfig.Ulimit.builder().name(ulimit.getKey())
+                                                 .soft(Long.parseLong(softLimit))
+                                                 .hard(Long.parseLong(hardLimit))
+                                                 .build());
+            }
+            hostConfig = hostConfig.toBuilder().ulimits(hostUlimits).build();
         }
 
         final ContainerConfig containerConfig =
@@ -676,7 +701,8 @@ public class DockerControlApi implements ContainerControlApi {
                                  final Long shmSize,
                                  final String network,
                                  final Map<String, String> containerLabels,
-                                 final Map<String, String> genericResources)
+                                 final Map<String, String> genericResources,
+                                 final Map<String, String> ulimits)
             throws DockerServerException, ContainerException {
 
         final List<PortConfig> portConfigs = Lists.newArrayList();
@@ -734,6 +760,11 @@ public class DockerControlApi implements ContainerControlApi {
                 log.debug("Creating tmpfs mount to support shm-size in Swarm Service: " + tmpfs.toString());
             }
             mounts.add(tmpfs);
+        }
+
+        if (ulimits == null || ulimits.isEmpty()){
+            log.debug("Ulimits command configuration ignored in service mode.  Ulimits should be set at the dockerd node level in Swarm mode.");
+            log.debug(ulimits.toString());
         }
 
         // We get the bind mounts strings here not to use for creating the service,

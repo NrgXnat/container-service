@@ -80,6 +80,7 @@ public abstract class Container {
     @Nullable @JsonProperty("container-labels") public abstract ImmutableMap<String, String> containerLabels();
     @JsonProperty("gpus") @Nullable public abstract String gpus();
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
+    @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
 
     @JsonIgnore
     public boolean isSwarmService() {
@@ -427,7 +428,8 @@ public abstract class Container {
                 .network(resolvedCommand.network())
                 .containerLabels(resolvedCommand.containerLabels())
                 .gpus(resolvedCommand.gpus())
-                .genericResources(resolvedCommand.genericResources());
+                .genericResources(resolvedCommand.genericResources())
+                .ulimits(resolvedCommand.ulimits());
     }
 
     public static Builder builder() {
@@ -578,6 +580,7 @@ public abstract class Container {
         public abstract Builder containerLabels(Map<String, String> containerLabels);
         public abstract Builder gpus(String gpus);
         public abstract Builder genericResources(Map<String, String> genericResources);
+        public abstract Builder ulimits(Map<String, String> ulimits);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();

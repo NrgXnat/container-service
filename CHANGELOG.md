@@ -28,7 +28,7 @@
     
     runtime - string (default: null)
     ipc-mode - string (default: null)
-
+    ulimits - Map<String, String> where each entry is a string label and a value comprised of the desired ULimit softlimit:hardlimit
     
 * Added Rest APIs to get containers by name - this only works if container was assigned name by Container Service
     

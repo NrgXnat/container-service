@@ -42,6 +42,7 @@ public class DockerCommandEntity extends CommandEntity {
         command.setContainerLabels(commandPojo.containerLabels());
         command.setGpus(commandPojo.gpus());
         command.setGenericResources(commandPojo.genericResources());
+        command.setUlimits(commandPojo.ulimits());
         return command;
     }
 

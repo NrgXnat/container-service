@@ -541,6 +541,9 @@ public class ContainerServiceImpl implements ContainerService {
                 resolvedCommand = resolvedCommand.toBuilder().project(project).build();
             }
 
+            // If not in swarm mode, pull command images to Docker server
+             resolvedCommand.image();
+
             // Launch resolvedCommand
             log.trace("Launching command for wfid {}", workflowid);
             Container container = launchResolvedCommand(resolvedCommand, userI, workflow);

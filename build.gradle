@@ -42,7 +42,7 @@ dependencyManagement {
         }
     }
 }
-def vDockerClient = "4.0.1"
+def vDockerClient = "4.0.2"
 def vJsonPath = "2.2.0"
 def vAutoValue = "1.3"
 def vPowerMock = "1.7.0"

@@ -454,6 +454,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .containerLabels(resolvedContainerLabels)
                     .gpus(command.gpus())
                     .genericResources(command.genericResources())
+                    .ulimits(command.ulimits())
                     .build();
 
             log.info("Done resolving command.");
