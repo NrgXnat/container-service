@@ -1,8 +1,5 @@
 package org.nrg.containers.rest;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
@@ -20,7 +18,8 @@ import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
-import org.nrg.xdat.XDAT;
+import org.nrg.xdat.security.helpers.Groups;
+import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
@@ -29,15 +28,28 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import javax.servlet.http.HttpServletResponse;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -82,15 +94,22 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Get all Containers")
     @ResponseBody
     public List<Container> getAll(final @RequestParam(required = false) Boolean nonfinalized) {
-        return containerService.getAll(nonfinalized).stream().map(this::scrubPasswordEnv).collect(Collectors.toList());
+        final UserI userI = getSessionUser();
+        return containerService.getAll(nonfinalized).stream()
+                               .filter(c -> isUserOwnerOrAdmin(userI, c))
+                               .map(this::scrubPasswordEnv)
+                               .collect(Collectors.toList());
     }
 
     @XapiRequestMapping(value = "/containers", method = POST, restrictTo = Authenticated, consumes = JSON, produces = JSON)
     @ApiOperation(value = "Get paginated containers per request")
     @ResponseBody
     public List<Container> getPaginated(@RequestBody ContainerPaginatedRequest containerPaginatedRequest) {
-        return containerService.getPaginated(containerPaginatedRequest)
-                .stream().map(this::scrubPasswordEnv).collect(Collectors.toList());
+        final UserI userI = getSessionUser();
+        return containerService.getPaginated(containerPaginatedRequest).stream()
+                               .map(this::scrubPasswordEnv)
+                               .map(c -> isUserOwnerOrAdmin(userI, c) ? c : scrubProtectedData(c))
+                               .collect(Collectors.toList());
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers", method = GET, restrictTo = Authenticated)
@@ -98,12 +117,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ResponseBody
     public List<Container> getAll(final @PathVariable @Project String project,
                                   final @RequestParam(required = false) Boolean nonfinalized) {
-        return Lists.transform(containerService.getAll(nonfinalized, project), new Function<Container, Container>() {
-            @Override
-            public Container apply(final Container input) {
-                return scrubPasswordEnv(input);
-            }
-        });
+        final UserI userI = getSessionUser();
+        return containerService.getAll(nonfinalized, project).stream()
+                               .filter(c -> isUserOwnerOrAdmin(userI, c))
+                               .map(this::scrubPasswordEnv)
+                               .collect(Collectors.toList());
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers/name/{name}", method = GET, restrictTo = Authenticated)
@@ -112,8 +130,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
     public Container getByName(final @PathVariable @Project String project,
                          final @PathVariable String name,
                                final @RequestParam(required = false) Boolean nonfinalized) throws NotFoundException {
-        // TODO: Check user permissions
-        return scrubPasswordEnv(containerService.getByName(project, name, nonfinalized));
+        final UserI userI = getSessionUser();
+        Container container = scrubPasswordEnv(containerService.getByName(project, name, nonfinalized));
+        return isUserOwnerOrAdmin(userI, container) ?
+                container :
+                scrubProtectedData(container);
     }
 
     @XapiRequestMapping(value = "/container/name/{name}", method = GET, restrictTo = Admin)
@@ -128,12 +149,20 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Get Containers by database ID")
     @ResponseBody
     public Container get(final @PathVariable String id) throws NotFoundException {
-        return scrubPasswordEnv(containerService.get(id));
+        final UserI userI = getSessionUser();
+        Container container = scrubPasswordEnv(containerService.get(id));
+        return isUserOwnerOrAdmin(userI, container) ?
+                container :
+                scrubProtectedData(container);
     }
 
-    @XapiRequestMapping(value = "/containers/{id}", method = DELETE)
+    @XapiRequestMapping(value = "/containers/{id}", method = DELETE, restrictTo = Authenticated)
     @ApiOperation(value = "Get Container by container server ID")
-    public ResponseEntity<Void> delete(final @PathVariable String id) {
+    public ResponseEntity<Void> delete(final @PathVariable String id) throws NotFoundException, UnauthorizedException {
+        final UserI userI = getSessionUser();
+        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
+            throw new UnauthorizedException(String.format("User %s cannot delete container %s", userI.getLogin(), id));
+        }
         containerService.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -141,16 +170,19 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Admin)
     @ApiOperation(value = "Finalize Container")
     public void finalize(final @PathVariable String id) throws NotFoundException, ContainerException, DockerServerException, NoDockerServerException {
-        final UserI userI = XDAT.getUserDetails();
+        final UserI userI = getSessionUser();
         containerService.finalize(id, userI);
     }
 
-    @XapiRequestMapping(value = "/containers/{id}/kill", method = POST)
+    @XapiRequestMapping(value = "/containers/{id}/kill", method = POST, restrictTo = Authenticated)
     @ApiOperation(value = "Kill Container")
     @ResponseBody
     public String kill(final @PathVariable String id)
-            throws NotFoundException, NoDockerServerException, DockerServerException {
-        final UserI userI = XDAT.getUserDetails();
+            throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
+        final UserI userI = getSessionUser();
+        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
+            throw new UnauthorizedException(String.format("User %s cannot kill container %s", userI.getLogin(), id));
+        }
         return containerService.kill(id, userI);
     }
 
@@ -159,15 +191,18 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ResponseBody
     public String kill(final @PathVariable @Project String project,
                        final @PathVariable String id)
-            throws NotFoundException, NoDockerServerException, DockerServerException {
-        final UserI userI = XDAT.getUserDetails();
+            throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
+        final UserI userI = getSessionUser();
+        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
+            throw new UnauthorizedException(String.format("User %s cannot kill container %s", userI.getLogin(), id));
+        }
         return containerService.kill(project, id, userI);
     }
 
     private Container scrubPasswordEnv(final Container container) {
         if (container == null) { return null; }
 
-        final Map<String, String> scrubbedEnvironmentVariables = Maps.newHashMap();
+        final Map<String, String> scrubbedEnvironmentVariables = new HashMap<>();
         for (final Map.Entry<String, String> env : container.environmentVariables().entrySet()) {
             scrubbedEnvironmentVariables.put(env.getKey(),
                     env.getKey().equals("XNAT_PASS") ? "******" : env.getValue());
@@ -175,7 +210,33 @@ public class ContainerRestApi extends AbstractXapiRestController {
         return container.toBuilder().environmentVariables(scrubbedEnvironmentVariables).build();
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logs", method = GET)
+    private Boolean isUserOwnerOrAdmin(UserI user, Container container){
+        return (Groups.isSiteAdmin(user) || Groups.hasAllDataAccess(user) ||
+                Permissions.isProjectOwner(user, container.project()) ||
+                user.getLogin().contentEquals(container.userId()));
+    }
+
+    private Container scrubProtectedData(final Container c){
+        return Container.builder()
+                        .databaseId(c.databaseId())
+                        .commandId(c.commandId())
+                        .status(c.status())
+                        .statusTime(c.statusTime())
+                        .wrapperId(c.wrapperId())
+                        .userId(c.userId())
+                        .project(c.project())
+                        .dockerImage(c.dockerImage())
+                        .commandLine(StringUtils.isBlank(c.commandLine()) ? "" : "[REDACTED]")
+                        .environmentVariables(new HashMap<>())
+                        .ports(c.ports())
+                        .mounts(new ArrayList<>())
+                        .inputs(new ArrayList<>())
+                        .outputs(new ArrayList<>())
+                        .history(new ArrayList<>())
+                        .build();
+    }
+
+    @XapiRequestMapping(value = "/containers/{containerId}/logs", method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Container logs",
             notes = "Return stdout and stderr logs as a zip")
     public void getLogs(final @PathVariable String containerId,
@@ -205,7 +266,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logs/{file}", method = GET)
+    @XapiRequestMapping(value = "/containers/{containerId}/logs/{file}", method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
     public ResponseEntity<String> getLog(final @PathVariable String containerId,
@@ -217,7 +278,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                 .body(doGetLog(containerId, file));
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET)
+    @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> pollLog(final @PathVariable String containerId,
@@ -241,7 +302,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
 
     private Map<String, Object> doGetLog(String containerId, String file, Long since, Long bytesRead, boolean loadAll)
             throws NotFoundException, IOException {
-        final UserI user = XDAT.getUserDetails();
+        final UserI user = getSessionUser();
         Integer sinceInt = null;
         try {
             sinceInt = since == null ? null : Math.toIntExact(since);
