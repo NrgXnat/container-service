@@ -525,7 +525,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
 
             // check logs and populate buttons at bottom of modal
-            if (key === 'log-paths' && ('container-id' in historyEntry)) {
+            if (key === 'log-paths' && (('container-id' in historyEntry) || ('service-id' in historyEntry))) {
                 historyDialogButtons.push({
                     label: 'View StdOut.log',
                     close: false,
