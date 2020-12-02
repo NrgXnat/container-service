@@ -1427,8 +1427,9 @@ public class ContainerServiceImpl implements ContainerService {
     @Nullable
     private InputStream getLogStream(final Container container, final String logFileName,
                                      boolean withTimestamps, final Integer since) {
+        final boolean containerDone = isFailedOrComplete(container, null);
         final String logPath = container.getLogPath(logFileName);
-        if (StringUtils.isBlank(logPath)) {
+        if (!containerDone) {
             try {
                 DockerClient.LogsParam sincePrm = since != null ? DockerClient.LogsParam.since(since) : null;
                 DockerClient.LogsParam timestampPrm =  DockerClient.LogsParam.timestamps(withTimestamps);
@@ -1455,7 +1456,7 @@ public class ContainerServiceImpl implements ContainerService {
             } catch (NoDockerServerException | DockerServerException e) {
                 log.debug("No {} log for {}", logFileName, container.databaseId());
             }
-        } else {
+        } else if (!StringUtils.isBlank(logPath)) {
             // If log path is not blank, that means we have saved the logs to a file (processing has completed). Read it now.
             try {
                 return new FileInputStream(logPath);
