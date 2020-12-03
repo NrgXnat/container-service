@@ -311,6 +311,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     /*
     LAUNCH CONTAINERS
      */
+
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/launch"}, method = POST)
     @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
             notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
@@ -529,7 +530,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable long commandId,
+    public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @PathVariable String rootElement,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
@@ -540,7 +541,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable long wrapperId,
+    public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable long wrapperId,
                                                     final @PathVariable String rootElement,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
         log.info("Bulk launch requested for wrapper id {}.", wrapperId);
@@ -551,7 +552,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @Project String project,
+    public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @PathVariable String rootElement,
@@ -564,7 +565,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
-    public LaunchReport.BulkLaunchReport bulklaunch(final @PathVariable @Project String project,
+    public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long wrapperId,
                                                     final @PathVariable String rootElement,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
@@ -618,6 +619,156 @@ public class LaunchRestApi extends AbstractXapiRestController {
     private String generateBulkLaunchId(final UserI userI) {
         return "bulk-" + userI.getLogin() + System.currentTimeMillis() + new Random().nextInt(1000);
     }
+
+    /*
+    Deprecated launch APIs - we should drop these in 1.8.1
+     */
+
+    /*
+    DEPRECATED LAUNCH CONTAINERS
+     */
+    @Deprecated
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = POST)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "Deprecated API - Prefer /wrappers/{wrapperId}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams2(final @PathVariable long wrapperId,
+                                                                  final @RequestParam Map<String, String> allRequestParams) {
+        return launchCommandWQueryParams(wrapperId, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /wrappers/{wrapperId}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody2(final @PathVariable long wrapperId,
+                                                               final @RequestBody Map<String, String> allRequestParams) {
+        return launchCommandWJsonBody(wrapperId, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/launch"},
+            method = POST, restrictTo = Read)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "Replaced by /projects/{project}/wrapper/{wrapperId}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams2(final @PathVariable @Project String project,
+                                                                  final @PathVariable long wrapperId,
+                                                                  final @RequestParam Map<String, String> allRequestParams) {
+        return launchCommandWQueryParams(project, wrapperId, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"},
+            method = POST, consumes = {JSON}, restrictTo = Read)
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /projects/{project}/wrappers/{wrapperId}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody2(final @PathVariable @Project String project,
+                                                               final @PathVariable long wrapperId,
+                                                               final @RequestBody Map<String, String> allRequestParams) {
+        return launchCommandWJsonBody(project, wrapperId, null, allRequestParams);
+    }
+
+    /*
+    DEPRECATED LAUNCH COMMAND + WRAPPER BY NAME
+     */
+    @Deprecated
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"},
+            method = POST)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "Replaced by /commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams2(final @PathVariable long commandId,
+                                                                  final @PathVariable String wrapperName,
+                                                                  final @RequestParam Map<String, String> allRequestParams){
+        return launchCommandWQueryParams(commandId, wrapperName, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"},
+            method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody2(final @PathVariable long commandId,
+                                                               final @PathVariable String wrapperName,
+                                                               final @RequestBody Map<String, String> allRequestParams) {
+        return launchCommandWJsonBody(commandId, wrapperName, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"},
+            method = POST, restrictTo = Read)
+    @ApiOperation(value = "Resolve a command from the variable values in the query params, and launch it",
+            notes = "Replaced by /projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWQueryParams2(final @PathVariable @Project String project,
+                                                                  final @PathVariable long commandId,
+                                                                  final @PathVariable String wrapperName,
+                                                                  final @RequestParam Map<String, String> allRequestParams) {
+        return launchCommandWQueryParams(project, commandId, wrapperName, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"},
+            method = POST, consumes = {JSON}, restrictTo = Read)
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch including xsiType as rootElement parameter.")
+    public ResponseEntity<LaunchReport> launchCommandWJsonBody2(final @PathVariable @Project String project,
+                                                               final @PathVariable long commandId,
+                                                               final @PathVariable String wrapperName,
+                                                               final @RequestBody Map<String, String> allRequestParams) {
+        return launchCommandWJsonBody(project, commandId, wrapperName, null, allRequestParams);
+    }
+
+
+    /*
+    DEPRECATED BULK LAUNCH
+     */
+    @Deprecated
+    @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"},
+            method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
+    @ResponseBody
+    public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable long commandId,
+                                                    final @PathVariable String wrapperName,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        return bulkLaunch(commandId, wrapperName, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/wrappers/{wrapperId}/bulklaunch"}, method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /wrappers/{wrapperId}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
+    @ResponseBody
+    public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable long wrapperId,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        return bulkLaunch(wrapperId, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"},
+            method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
+    @ResponseBody
+    public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable @Project String project,
+                                                    final @PathVariable long commandId,
+                                                    final @PathVariable String wrapperName,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        log.info("Bulk launch requested for command {}, wrapper name {}, project {}.", commandId, wrapperName, project);
+        return bulkLaunch(project, commandId, wrapperName, null, allRequestParams);
+    }
+
+    @Deprecated
+    @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"},
+            method = POST, consumes = {JSON})
+    @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
+            notes = "Replaced by /projects/{project}/wrappers/{wrapperId}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
+    @ResponseBody
+    public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable @Project String project,
+                                                    final @PathVariable long wrapperId,
+                                                    final @RequestBody Map<String, String> allRequestParams) throws IOException {
+        return bulkLaunch(project, wrapperId, null, allRequestParams);
+    }
+
+
 
     /*
     EXCEPTION HANDLING
