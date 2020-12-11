@@ -1248,6 +1248,9 @@ var XNAT = getObject(XNAT || {});
         if (XNAT.data.context.isImageSession && document.getElementById('selectable-table-scans')) {
             var xsiScanType = xsiType.replace('Session','Scan');
 
+            // CSS hack: remove scrolling restrictions to allow display of inline run menu
+            $('#selectable-table-scans').find('.data-table-wrapper').css('overflow-x','inherit');
+
             XNAT.xhr.getJSON({
                 url: rootUrl('/xapi/commands/available?project=' + projectId + '&xsiType=' + xsiScanType),
                 success: function (data) {
