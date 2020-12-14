@@ -334,8 +334,8 @@ public class DockerRestApi extends AbstractXapiRestController {
     }
 
     private void checkImageOrThrow(final String image) throws BadRequestException {
-        if (!image.contains("/")) {
-            throw new BadRequestException(String.format("Cannot pull an image by ID."));
+        if (!image.contains("/") && image.contains("sha256:")) {
+            throw new BadRequestException(String.format("Cannot pull an image by sha256 ID. Use image label instead."));
         }
     }
 
