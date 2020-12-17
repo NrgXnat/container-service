@@ -988,6 +988,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         var $form = obj.$modal.find('form');
                         var $image = $form.find('input[name=image]');
                         var $tag = $form.find('input[name=tag]');
+                        var hubId = $form.find('select[name=hubId]').find('option:selected').val();
+                        var pullUrl = (hubId) ? '/xapi/docker/hubs/'+hubId+'/pull' : '/xapi/docker/pull';
 
                         if ($image.val().indexOf(':') > 0) {
                             // if the tag is included in the image title, move it to the tag field
@@ -1023,7 +1025,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             xmodal.loading.open({ title: 'Submitting Pull Request' });
 
                             XNAT.xhr.post({
-                                url: csrfUrl('/xapi/docker/pull?save-commands=true&image='+imageName),
+                                url: csrfUrl(pullUrl+'?save-commands=true&image='+imageName),
                                 success: function() {
                                     xmodal.loading.close();
                                     XNAT.dialog.closeAll();
@@ -1032,7 +1034,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                     XNAT.ui.banner.top(2000, 'Pull request complete.', 'success');
                                 },
                                 fail: function(e) {
-                                    errorHandler(e, 'Could Not Pull Image');
+                                    errorHandler(e, 'Could Not Pull Image from selected Hub');
                                 }
                             })
                         }
