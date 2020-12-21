@@ -91,7 +91,7 @@ public class CommandActionProvider extends MultiActionProvider {
 
     @Override
     public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
-        final Object eventObject = event.getObject();
+        final Object eventObject = event.getObject(user);
         final long wrapperId;
         try {
             wrapperId = Long.parseLong(actionKeyToActionId(subscription.actionKey()));
