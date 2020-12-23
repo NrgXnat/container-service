@@ -12,6 +12,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.security.helpers.Users;
+import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +56,7 @@ public class DockerStatusUpdater implements Runnable {
 
         final String skipMessage = "Skipping attempt to update status.";
 
-        if (!XFTManager.isInitialized()) {
+        if (!XFTManager.isInitialized() || !XDATServlet.isDatabasePopulateOrUpdateCompleted()) {
             if (!haveLoggedXftInitFailure) {
                 log.info("XFT is not initialized. " + skipMessage);
                 haveLoggedXftInitFailure = true;
