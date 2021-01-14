@@ -19,6 +19,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private String containerUser;
     private List<DockerServerEntitySwarmConstraint> swarmConstraints = new ArrayList<>();
     private boolean autoCleanup = true;
+    private Integer maxConcurrentFinalizingJobs;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -35,6 +36,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.pullImagesOnXnatInit = dockerServer.pullImagesOnXnatInit();
         this.containerUser = dockerServer.containerUser();
         this.autoCleanup = dockerServer.autoCleanup();
+        this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -174,6 +176,14 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.autoCleanup = autoCleanup == null ? true : autoCleanup;
     }
 
+    public Integer getMaxConcurrentFinalizingJobs() {
+        return maxConcurrentFinalizingJobs;
+    }
+
+    public void setMaxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs) {
+        this.maxConcurrentFinalizingJobs = maxConcurrentFinalizingJobs;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -213,13 +223,14 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.pullImagesOnXnatInit, that.pullImagesOnXnatInit) &&
                 Objects.equals(this.containerUser, that.containerUser) &&
                 Objects.equals(this.autoCleanup, that.autoCleanup) &&
+                Objects.equals(this.maxConcurrentFinalizingJobs, that.maxConcurrentFinalizingJobs) &&
                 constrEqual;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(name, host, certPath, lastEventCheckTime, swarmMode, pathTranslationXnatPrefix,
-                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints);
+                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs);
     }
 
 }

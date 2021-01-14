@@ -1485,6 +1485,17 @@ public class DockerControlApi implements ContainerControlApi {
         eventService.triggerEvent(waitingTaskEvent);
     }
 
+    @Override
+    public Integer getFinalizingThrottle() {
+        try {
+            DockerServer server = getServer();
+            return server.swarmMode() ? server.maxConcurrentFinalizingJobs() : null;
+        } catch (NoDockerServerException e) {
+            log.error("Unable to find server to determine finalizing queue throttle", e);
+            return null;
+        }
+    }
+
     /**
      * Convert spotify-docker Image object to xnat-container Image object
      *

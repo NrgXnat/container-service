@@ -89,13 +89,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -115,6 +109,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 public class ContainerServiceImpl implements ContainerService {
     private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
     public static final String WAITING = "Waiting";
+    public static final String _WAITING = "_Waiting";
     public static final String FINALIZING = "Finalizing";
     public static final String STAGING = "Staging";
     public static final String CREATED = "Created";
@@ -334,6 +329,23 @@ public class ContainerServiceImpl implements ContainerService {
         List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
         if (workflows == null || workflows.size() == 0) {
             log.info("No containers are in {} state", status);
+            return null;
+        }
+        return workflows;
+    }
+
+    @Nullable
+    private List<WrkWorkflowdata> getContainerWorkflowsByStatuses(List<String> statuses, UserI user) {
+        final CriteriaCollection cc = new CriteriaCollection("AND");
+        cc.addClause("wrk:workFlowData.justification", containerLaunchJustification);
+        final CriteriaCollection cco = new CriteriaCollection("OR");
+        for (String status : statuses) {
+            cco.addClause("wrk:workFlowData.status", status);
+        }
+        cc.add(cco);
+        List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
+        if (workflows == null || workflows.size() == 0) {
+            log.info("No containers are in {} state", statuses);
             return null;
         }
         return workflows;
@@ -931,16 +943,18 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
 		if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
-			log.debug("Adding to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
-                    count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
-                    containerOrService.status());
-			addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
-			        request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
-                    userI);
-			try {
-                XDAT.sendJmsRequest(request);
-            } catch (Exception e) {
-                recoverFromQueueingFailureFinalizing(e, containerOrService, userI);
+            Integer limit = containerControlApi.getFinalizingThrottle();
+            if (canFinalize(limit, userI, containerOrService, request)) {
+                log.debug("Added to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
+                        count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
+                        containerOrService.status());
+                try {
+                    XDAT.sendJmsRequest(request);
+                } catch (Exception e) {
+                    recoverFromQueueingFailureFinalizing(e, containerOrService, userI);
+                }
+            } else {
+                log.debug("Throttling finalizing queue container id {} must wait", request.getId());
             }
 		} else {
 			log.debug("Already in finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
@@ -948,6 +962,18 @@ public class ContainerServiceImpl implements ContainerService {
                     containerOrService.status());
 		}
 	}
+
+    private synchronized boolean canFinalize(Integer limit, UserI user, Container containerOrService,
+                                             ContainerFinalizingRequest request) {
+        List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
+        boolean canFinalize = limit == null || wfs == null || wfs.size() < limit;
+        if (canFinalize) {
+            addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
+                    request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
+                    user);
+        }
+        return canFinalize;
+    }
 
     private void recoverFromQueueingFailureFinalizing(Exception e,
                                                       final Container containerOrService,

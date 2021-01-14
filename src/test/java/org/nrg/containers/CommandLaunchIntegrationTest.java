@@ -253,7 +253,7 @@ public class CommandLaunchIntegrationTest {
         }
         dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null));
+                false, null, true, null, null));
 
         CLIENT = controlApi.getClient();CLIENT = controlApi.getClient();
         TestingUtils.pullBusyBox(CLIENT);

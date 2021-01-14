@@ -235,6 +235,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             onText: 'ON',
                             offText: 'OFF',
                             value: 'true'
+                        }),
+                        spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time, only relevant for Swarm mode.'),
+                        XNAT.ui.panel.input.text({
+                            name: 'max-concurrent-finalizing-jobs',
+                            label: 'Max concurrent finalizing jobs',
+                            description: 'Leave blank for no throttling'
                         })
                     ])
                 );
