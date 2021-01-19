@@ -1617,7 +1617,7 @@ public class ContainerServiceImpl implements ContainerService {
                             ""));
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
             if (scanId != null) {
-                workflow.setSrc(scanId);
+                workflow.setScanId(scanId);
             }
             if (bulkLaunchId != null) {
                 workflow.setJobid(bulkLaunchId);
@@ -1627,6 +1627,8 @@ public class ContainerServiceImpl implements ContainerService {
             } catch (PSQLException e) {
                 // Note: for scans, this can fail with a duplicate key value violates unique constraint
                 // (id, pipeline_name, launch_time) since they'll share a root element.
+                // XNAT-6606 added scanId to the uniqueness constraint, but this doesn't auto-update, so we'll leave
+                // this check just in case
                 // Let's try to re-save with a new time
                 if (e.getMessage().contains("duplicate key value violates unique constraint \"wrk_workflowdata_u_true\"")) {
                     workflow.setLaunchTime(Calendar.getInstance().getTime());
