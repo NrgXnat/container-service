@@ -40,6 +40,7 @@ import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
@@ -76,6 +77,7 @@ import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
 import static org.powermock.api.mockito.PowerMockito.*;
 
 
@@ -83,7 +85,7 @@ import static org.powermock.api.mockito.PowerMockito.*;
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class})
+        PersistentWorkflowUtils.class, XDATServlet.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
@@ -187,9 +189,11 @@ public class ContainerCleanupIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        // Use powermock to mock out the static method XFTManager.isInitialized()
+        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
         mockStatic(XFTManager.class);
         when(XFTManager.isInitialized()).thenReturn(true);
+        mockStatic(XDATServlet.class);
+        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
         mockStatic(WorkflowUtils.class);
@@ -352,7 +356,7 @@ public class ContainerCleanupIntegrationTest {
                 false, null, autoCleanup, null));
 
         CLIENT = controlApi.getClient();
-        CLIENT.pull("busybox:latest");
+        TestingUtils.pullBusyBox(CLIENT);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
@@ -362,7 +366,7 @@ public class ContainerCleanupIntegrationTest {
         setupServer();
         final Command willSucceed = commandService.create(Command.builder()
                 .name("will-succeed")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine("/bin/sh -c \"echo hi; exit 0\"")
                 .addCommandWrapper(CommandWrapper.builder()
@@ -398,7 +402,7 @@ public class ContainerCleanupIntegrationTest {
         setupServer();
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine("/bin/sh -c \"echo hi; exit 1\"")
                 .addCommandWrapper(CommandWrapper.builder()
@@ -593,7 +597,7 @@ public class ContainerCleanupIntegrationTest {
 
         final Command setup = commandService.create(Command.builder()
                 .name("setup")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine(setupCmd)
                 .type("docker-setup")
@@ -602,7 +606,7 @@ public class ContainerCleanupIntegrationTest {
 
         final Command wrapup = commandService.create(Command.builder()
                 .name("wrapup")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine(wrapupCmd)
                 .type("docker-wrapup")
@@ -611,7 +615,7 @@ public class ContainerCleanupIntegrationTest {
 
         final Command main = commandService.create(Command.builder()
                 .name("main")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine(cmd)
                 .mounts(

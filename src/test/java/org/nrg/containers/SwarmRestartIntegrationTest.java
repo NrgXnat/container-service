@@ -39,6 +39,7 @@ import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
@@ -79,7 +80,8 @@ import static org.powermock.api.mockito.PowerMockito.*;
 @Slf4j
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class, PersistentWorkflowUtils.class})
+@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
+        PersistentWorkflowUtils.class, XDATServlet.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
@@ -171,9 +173,11 @@ public class SwarmRestartIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        // Use powermock to mock out the static method XFTManager.isInitialized()
+        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
         mockStatic(XFTManager.class);
         when(XFTManager.isInitialized()).thenReturn(true);
+        mockStatic(XDATServlet.class);
+        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
         mockStatic(WorkflowUtils.class);
@@ -219,7 +223,7 @@ public class SwarmRestartIntegrationTest {
                 false, null, true, null));
 
         CLIENT = controlApi.getClient();
-        CLIENT.pull("busybox:latest");
+        TestingUtils.pullBusyBox(CLIENT);
 
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));

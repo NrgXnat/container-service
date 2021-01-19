@@ -22,6 +22,7 @@ import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mandas.docker.client.exceptions.ImageNotFoundException;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -42,6 +43,7 @@ import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
@@ -64,6 +66,7 @@ import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nullable;
@@ -87,13 +90,14 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
 import static org.powermock.api.mockito.PowerMockito.*;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class})
+        PersistentWorkflowUtils.class, XDATServlet.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
@@ -199,9 +203,11 @@ public class CommandLaunchIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        // Use powermock to mock out the static method XFTManager.isInitialized()
+        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
         mockStatic(XFTManager.class);
         when(XFTManager.isInitialized()).thenReturn(true);
+        mockStatic(XDATServlet.class);
+        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
         mockStatic(WorkflowUtils.class);
@@ -249,8 +255,8 @@ public class CommandLaunchIntegrationTest {
                 swarmMode, null, null, null,
                 false, null, true, null));
 
-        CLIENT = controlApi.getClient();
-        CLIENT.pull("busybox:latest");
+        CLIENT = controlApi.getClient();CLIENT = controlApi.getClient();
+        TestingUtils.pullBusyBox(CLIENT);
     }
 
     @After
@@ -286,8 +292,6 @@ public class CommandLaunchIntegrationTest {
     public void testFakeReconAll() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        CLIENT.pull("busybox:latest");
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String commandJsonFile = Paths.get(dir, "/fakeReconAllCommand.json").toString();
@@ -537,8 +541,6 @@ public class CommandLaunchIntegrationTest {
         // This test fails on Circle CI because we cannot mount local directories into containers
         assumeThat(testIsOnCircleCi, is(false));
 
-        CLIENT.pull("busybox:latest");
-
         final Path setupCommandDirPath = Paths.get(ClassLoader.getSystemResource("setupCommand").toURI());
         final String setupCommandDir = setupCommandDirPath.toString().replace("%20", " ");
 
@@ -660,8 +662,6 @@ public class CommandLaunchIntegrationTest {
 
         // This test fails on Circle CI because we cannot mount local directories into containers
         assumeThat(testIsOnCircleCi, is(false));
-
-        CLIENT.pull("busybox:latest");
 
         final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
         final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
@@ -807,11 +807,9 @@ public class CommandLaunchIntegrationTest {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
-        CLIENT.pull("busybox:latest");
-
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine("/bin/sh -c \"exit 1\"")
                 .addCommandWrapper(CommandWrapper.builder()
@@ -852,8 +850,6 @@ public class CommandLaunchIntegrationTest {
     public void testEntrypointIsPreserved() throws Exception {
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
-        CLIENT.pull("busybox:latest");
-
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testEntrypointIsPreserved");
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
@@ -889,8 +885,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testEntrypointIsRemoved() throws Exception {
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        CLIENT.pull("busybox:latest");
 
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testEntrypointIsRemoved");
@@ -930,12 +924,10 @@ public class CommandLaunchIntegrationTest {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
-        CLIENT.pull("busybox:latest");
-
         final String workingDirectory = "/usr/local/bin";
         final Command command = commandService.create(Command.builder()
                 .name("command")
-                .image("busybox:latest")
+                .image(BUSYBOX)
                 .version("0")
                 .commandLine("pwd")
                 .workingDirectory(workingDirectory)
@@ -1020,8 +1012,6 @@ public class CommandLaunchIntegrationTest {
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        CLIENT.pull("busybox:latest");
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testScanUpload").toString();
@@ -1135,8 +1125,6 @@ public class CommandLaunchIntegrationTest {
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        CLIENT.pull("busybox:latest");
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testAssessorUpload").toString();

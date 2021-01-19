@@ -36,6 +36,7 @@ public class FakeWorkflow implements PersistentWorkflowI {
     private String status;
     private String pipelineName;
     private String src;
+    private String scanId;
     private String jobId;
     private Integer userId;
 
@@ -142,6 +143,16 @@ public class FakeWorkflow implements PersistentWorkflowI {
      */
     public void setId(String v) {
         id = v;
+    }
+
+    @Override
+    public String getScanId() {
+        return scanId;
+    }
+
+    @Override
+    public void setScanId(String v) {
+        this.scanId = v;
     }
 
     /**

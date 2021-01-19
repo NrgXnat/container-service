@@ -5,6 +5,7 @@ import com.google.common.collect.Maps;
 import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.exceptions.ContainerNotFoundException;
 import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.exceptions.ImageNotFoundException;
 import org.mandas.docker.client.messages.ContainerInfo;
 import org.mandas.docker.client.messages.swarm.Service;
 import org.mandas.docker.client.messages.swarm.Task;
@@ -54,6 +55,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class TestingUtils {
+    public static final String BUSYBOX = "busybox:latest";
+
     public static void commitTransaction() {
         TestTransaction.flagForCommit();
         TestTransaction.end();
@@ -361,6 +364,14 @@ public class TestingUtils {
 
         when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
                 .thenReturn(setupWrapupWorkflow);
+    }
+
+    public static void pullBusyBox(DockerClient client) throws Exception {
+        try {
+            client.inspectImage(BUSYBOX);
+        } catch (ImageNotFoundException e) {
+            client.pull(BUSYBOX);
+        }
     }
 }
 

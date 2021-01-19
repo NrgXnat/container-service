@@ -103,8 +103,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         String admin = siteConfigPreferences.getAdminEmail();
 
        //TODO: Add configuration parameter to disable status emails
-        if ( admin.contentEquals("administrator@xnat.org") ) {
-            log.error("Container Service status email not sent. Default Admin email not set.");
+        if (admin == null || admin.equals("administrator@xnat.org")) {
+            log.warn("Container Service status email not sent. Default admin email not set.");
             return;
         }
 
