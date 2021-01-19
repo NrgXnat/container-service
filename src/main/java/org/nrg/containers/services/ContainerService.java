@@ -49,7 +49,6 @@ public interface ContainerService {
 
     void checkQueuedContainerJobs(UserI user);
     void checkWaitingContainerJobs(UserI user);
-    void resetFinalizingStatusToWaitingOrFailed();
 
     List<Container> retrieveSetupContainersForParent(long parentId);
     List<Container> retrieveWrapupContainersForParent(long parentId);
@@ -99,9 +98,11 @@ public interface ContainerService {
     InputStream getLogStream(long id, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
     InputStream getLogStream(String containerId, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
     InputStream getLogStream(String containerId, String logFileName, boolean withTimestamps, Integer since) throws NotFoundException;
-	boolean isWaiting(Container service);
-	boolean isFinalizing(Container service);
-    boolean isFailedOrComplete(Container service, UserI user);
+	boolean isWaiting(Container containerOrService);
+	boolean isFinalizing(Container containerOrService);
+    boolean containerStatusIsTerminal(Container containerOrService);
+
+    boolean fixWorkflowContainerStatusMismatch(Container containerOrService, UserI user);
 
     void queueFinalize(final String exitCodeString,
                        final boolean isSuccessful,

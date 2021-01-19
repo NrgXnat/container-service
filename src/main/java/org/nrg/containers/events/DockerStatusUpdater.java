@@ -155,8 +155,10 @@ public class DockerStatusUpdater implements Runnable {
                     // Refresh service status etc. bc it could change while we're processing this list
                     service = containerService.get(service.databaseId());
                     if (containerService.isFinalizing(service) ||
-                            containerService.isFailedOrComplete(service, Users.getAdminUser())) {
+                            containerService.containerStatusIsTerminal(service)) {
                         log.debug("Service {} no longer unfinalized", service.serviceId());
+                    } else if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
+                        log.debug("Service {} had workflow <> status mismatch", service.serviceId());
                     } else if (containerService.isWaiting(service)) {
                         controlApi.throwWaitingEventForService(service);
                     } else {

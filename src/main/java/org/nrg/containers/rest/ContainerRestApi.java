@@ -302,7 +302,6 @@ public class ContainerRestApi extends AbstractXapiRestController {
 
     private Map<String, Object> doGetLog(String containerId, String file, Long since, Long bytesRead, boolean loadAll)
             throws NotFoundException, IOException {
-        final UserI user = getSessionUser();
         Integer sinceInt = null;
         try {
             sinceInt = since == null ? null : Math.toIntExact(since);
@@ -311,7 +310,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         }
 
         long queryTime = System.currentTimeMillis() / 1000L;
-        boolean containerDone = containerService.isFailedOrComplete(containerService.get(containerId), user);
+        boolean containerDone = containerService.containerStatusIsTerminal(containerService.get(containerId));
         final InputStream logStream = containerService.getLogStream(containerId, file, true, sinceInt);
 
         String logContent;

@@ -116,6 +116,7 @@ public class ContainerServiceImpl implements ContainerService {
     private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
     public static final String WAITING = "Waiting";
     public static final String FINALIZING = "Finalizing";
+    public static final String STAGING = "Staging";
     public static final String CREATED = "Created";
     public static final String setupStr = "Setup";
     public static final String wrapupStr = "Wrapup";
@@ -347,7 +348,8 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void checkQueuedContainerJobs(UserI user) {
-        List<WrkWorkflowdata> workflows = getContainerWorkflowsByStatus(PersistentWorkflowUtils.QUEUED, user);
+        List<WrkWorkflowdata> workflows = getContainerWorkflowsByStatus(
+                ContainerRequest.inQueueStatusPrefix + PersistentWorkflowUtils.QUEUED, user);
         if (workflows == null) return;
         for (final WrkWorkflowdata wrk : workflows) {
             try {
@@ -359,20 +361,17 @@ public class ContainerServiceImpl implements ContainerService {
                 // TODO ultimately we should re-queue this, but for now just fail it
                 log.info("Failing container workflow wfid {} because it was queued for more than 5 hours " +
                         "and nothing remains in the staging queue", wrk.getWorkflowId());
-                wrk.setStatus(PersistentWorkflowUtils.FAILED + " (Queue)");
-                wrk.setDetails("Workflow queued for more than 5 hours, needs relaunch");
-                WorkflowUtils.save(wrk, wrk.buildEvent());
-            } catch (XFTInitException | ElementNotFoundException| FieldNotFoundException | ParseException e) {
+                updateWorkflow(wrk, PersistentWorkflowUtils.FAILED + " (Queue)",
+                        "Workflow queued for more than 5 hours, needs relaunch");
+            } catch (XFTInitException | ElementNotFoundException | FieldNotFoundException | ParseException e) {
                 log.error("Unable to determine mod time for wfid {}", wrk.getWorkflowId());
-            } catch (Exception e) {
-                log.error("Unable to save updated workflow {}", wrk.getWorkflowId());
             }
 
             containerFinalizeService.sendContainerStatusUpdateEmail(user, false, wrk.getPipelineName(),
                     wrk.getId(), null, wrk.getExternalid(), null);
         }
-
     }
+
     @Override
     public void checkWaitingContainerJobs(UserI user) {
         List<WrkWorkflowdata> workflows = getContainerWorkflowsByStatus(ContainerRequest.inQueueStatusPrefix +
@@ -395,47 +394,6 @@ public class ContainerServiceImpl implements ContainerService {
                 log.error("Unable to determine mod time for wfid {}", wrk.getWorkflowId());
             } catch (NotFoundException e) {
                 log.error("Unable to find container with service or container id {}", containerId);
-            }
-        }
-    }
-
-    @Override
-    public void resetFinalizingStatusToWaitingOrFailed() {
-    	List<ContainerEntity> finalizingContainerEntities = containerEntityService.retrieveContainersInFinalizingState();
-    	if (finalizingContainerEntities == null || finalizingContainerEntities.size() == 0) {
-    		log.info("Appears that no containers are in orphaned {} state", FINALIZING);
-    		return;
-    	}
-        List<Container> finalizingContainers  = toPojo(finalizingContainerEntities);
-        //Now update the finalizing state to Waiting or Failed
-        for (final Container s : finalizingContainers) {
-            Container containerOrService = retrieve(s.databaseId());
-            if (containerOrService == null) {
-                continue;
-            }
-            log.info("Found container {} workflow {} in possibly abandoned {} state",
-                    containerOrService.containerOrServiceId(), containerOrService.workflowId(), FINALIZING);
-            final String userLogin = containerOrService.userId();
-            try {
-                final UserI userI = Users.getUser(userLogin);
-                Date now = new Date();
-                Date lastStatusTime = containerOrService.statusTime();
-                Long diffHours = lastStatusTime == null ? null :
-                        (now.getTime() - lastStatusTime.getTime()) / (60 * 60 * 1000) % 24;
-                if (diffHours != null && diffHours < 72) {
-                    addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(WAITING,
-                            "Reset status from Finalizing to Waiting." ), userI);
-                    log.info("Updated container {} to {} state", containerOrService, WAITING);
-                } else {
-                    addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED +
-                            " ("+FINALIZING+")", FINALIZING + " for more than 72 Hours"), userI);
-                    log.info("Updated container {} to {} state", containerOrService, PersistentWorkflowUtils.FAILED);
-                    PersistentWorkflowI wrk = getContainerWorkflow(userI, containerOrService);
-                    containerFinalizeService.sendContainerStatusUpdateEmail(userI, false,
-                            wrk.getPipelineName(), wrk.getId(), null, wrk.getExternalid(), null);
-                }
-            } catch (UserNotFoundException | UserInitException e) {
-                log.error("Could not update container status. Could not get user details for user {}", userLogin, e);
             }
         }
     }
@@ -500,10 +458,8 @@ public class ContainerServiceImpl implements ContainerService {
                 request.getWrapperId(), request.getCommandId(), request.getWrapperName(),
                 request.getInputValues(), request.getUsername(), request.getWorkflowid());
 
-        // Update: don't use JMS indicator for staging queue since staging tasks are added to the JMS queue manually (here)
-        // rather than automatically by status as in finalizing
-
         try {
+            updateWorkflow(workflow, ContainerRequest.inQueueStatusPrefix + PersistentWorkflowUtils.QUEUED);
             XDAT.sendJmsRequest(request);
         } catch (Exception e) {
             handleFailure(workflow, e, "JMS");
@@ -529,6 +485,7 @@ public class ContainerServiceImpl implements ContainerService {
         PersistentWorkflowI workflow = null;
         if (workflowid != null) {
             workflow = WorkflowUtils.getUniqueWorkflow(userI, workflowid);
+            updateWorkflow(workflow, STAGING, "Command resolution");
         }
 
         try {
@@ -1053,21 +1010,54 @@ public class ContainerServiceImpl implements ContainerService {
         String status = containerOrService.status();
     	return status != null && status.startsWith(WAITING);
     }
+
     @Override
     public boolean isFinalizing(Container containerOrService){
         String status = containerOrService.status();
-    	return status != null && (status.startsWith(ContainerRequest.inQueueStatusPrefix) || status.equals(FINALIZING));
+    	return status != null && (status.startsWith(ContainerRequest.inQueueStatusPrefix + WAITING) || status.equals(FINALIZING));
     }
+
     @Override
-    public boolean isFailedOrComplete(Container containerOrService, UserI user){
+    public boolean containerStatusIsTerminal(Container containerOrService){
         ContainerEntity entity = ContainerEntity.fromPojo(containerOrService);
-        if (entity.statusIsTerminal()) {
-            return true;
-        }
-        final String status = containerOrService.getWorkflowStatus(user);
-        return status != null &&
-                (status.startsWith(PersistentWorkflowUtils.FAILED) || status.startsWith(PersistentWorkflowUtils.COMPLETE));
+        return entity.statusIsTerminal();
     }
+
+    /**
+     * If workflow thinks the container is "done" (failed, complete, whatever), but container thinks it is active,
+     * update container status to match workflow
+     *
+     * @param containerOrService the container
+     * @param user the user
+     * @return true if status modified
+     */
+    @Override
+    public boolean fixWorkflowContainerStatusMismatch(Container containerOrService, UserI user) {
+        final String status = containerOrService.getWorkflowStatus(user);
+        // if null or not a terminal workflow status, don't change
+        if (status == null ||
+                (!status.startsWith(PersistentWorkflowUtils.FAILED) && !status.startsWith(PersistentWorkflowUtils.COMPLETE))) {
+            return false;
+        }
+        if (status.equals(containerOrService.status()) || containerStatusIsTerminal(containerOrService)) {
+            // statuses are the same or at least both terminal
+            return false;
+        }
+
+        // container still thinks it is active, but workflow is terminal
+        try {
+            killWithoutHistory(containerOrService);
+        } catch (NoDockerServerException | DockerServerException | NotFoundException e) {
+            log.error("Attempted to kill container {} due to workflow in status {}",
+                    containerOrService.containerOrServiceId(), status, e);
+        }
+        log.info("Setting container {} status to \"{}\" to match workflow.", containerOrService.databaseId(), status);
+        ContainerHistory failureHist = ContainerHistory.fromSystem(status,
+                "Manual update to match workflow status");
+        addContainerHistoryItem(containerOrService, failureHist, user);
+        return true;
+    }
+
 
     @Override
     public void finalize(final String containerId, final UserI userI)
@@ -1360,13 +1350,18 @@ public class ContainerServiceImpl implements ContainerService {
             throws NoDockerServerException, DockerServerException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction(ContainerEntity.KILL_STATUS,
                 userI.getLogin()), userI);
+        return killWithoutHistory(container);
+    }
+
+    private String killWithoutHistory(final Container container)
+            throws NoDockerServerException, DockerServerException, NotFoundException {
         String containerDockerId;
         if(container.isSwarmService()){
-        	containerDockerId = container.serviceId();
+            containerDockerId = container.serviceId();
             containerControlApi.killService(containerDockerId);
         }else{
-        	containerDockerId = container.containerId();
-        	containerControlApi.killContainer(containerDockerId);
+            containerDockerId = container.containerId();
+            containerControlApi.killContainer(containerDockerId);
         }
         return containerDockerId;
     }
@@ -1427,7 +1422,7 @@ public class ContainerServiceImpl implements ContainerService {
     @Nullable
     private InputStream getLogStream(final Container container, final String logFileName,
                                      boolean withTimestamps, final Integer since) {
-        final boolean containerDone = isFailedOrComplete(container, null);
+        final boolean containerDone = containerStatusIsTerminal(container);
         final String logPath = container.getLogPath(logFileName);
         if (!containerDone) {
             try {
@@ -1516,13 +1511,32 @@ public class ContainerServiceImpl implements ContainerService {
         statusSuffix = StringUtils.isNotBlank(statusSuffix) ?  " (" + statusSuffix + ")" : "";
 
         String status = PersistentWorkflowUtils.FAILED + statusSuffix;
+        updateWorkflow(workflow, status, details);
+    }
 
+    /**
+     * Update workflow status and details and save
+     * @param workflow the workflow
+     * @param status the status
+     */
+    private void updateWorkflow(@Nullable PersistentWorkflowI workflow, @Nonnull String status) {
+        updateWorkflow(workflow, status, null);
+    }
+
+    /**
+     * Update workflow status and details and save
+     * @param workflow the workflow
+     * @param status the status
+     * @param details the details (optional)
+     */
+    private void updateWorkflow(@Nullable PersistentWorkflowI workflow, @Nonnull String status, @Nullable String details) {
+        if (workflow == null) return;
         try {
             workflow.setStatus(status);
             workflow.setDetails(details);
-        	WorkflowUtils.save(workflow, workflow.buildEvent());
+            WorkflowUtils.save(workflow, workflow.buildEvent());
         } catch(Exception e) {
-        	log.error("Unable to update workflow {} and set it to {} status", workflow.getWorkflowId(), status, e);
+            log.error("Unable to update workflow {} and set it to {} status", workflow.getWorkflowId(), status, e);
         }
     }
 
