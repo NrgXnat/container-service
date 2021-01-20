@@ -343,7 +343,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws ElementNotFoundException, FieldNotFoundException, XFTInitException, ParseException {
         Date now = new Date();
         Date modTime = wrk.getItem().getMeta().getDateProperty("last_modified");
-        return (now.getTime() - modTime.getTime()) / (60 * 60 * 1000) % 24;
+        return (now.getTime() - modTime.getTime()) / (60 * 60 * 1000 * 24);
     }
 
     @Override
