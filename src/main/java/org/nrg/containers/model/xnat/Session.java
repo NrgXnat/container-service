@@ -41,6 +41,7 @@ public class Session extends XnatModelObject {
     @JsonProperty("subject-id") private String subjectId;
     private String directory;
     @JsonProperty("datatype-string") private String datatypeString;
+    @JsonProperty("visit-id") private String visitId;
 
     public Session() {}
 
@@ -84,6 +85,7 @@ public class Session extends XnatModelObject {
         this.xsiType = xnatImagesessiondataI.getXSIType();
         this.projectId = xnatImagesessiondataI.getProject();
         this.subjectId = xnatImagesessiondataI.getSubjectId();
+        this.visitId = xnatImagesessiondataI.getVisitId();
 
         try {
             this.directory = ((XnatExperimentdata) xnatImagesessiondataI).getCurrentSessionFolder(true);
@@ -246,6 +248,14 @@ public class Session extends XnatModelObject {
         return datatypeString;
     }
 
+    public String getVisitId() {
+        return visitId;
+    }
+
+    public void setVisitId(String visitId) {
+        this.visitId = visitId;
+    }
+
     @Override
     public XFTItem getXftItem(final UserI userI) {
         loadXnatImagesessiondata(userI);
@@ -264,12 +274,14 @@ public class Session extends XnatModelObject {
                 Objects.equals(this.resources, that.resources) &&
                 Objects.equals(this.projectId, that.projectId) &&
                 Objects.equals(this.subjectId, that.subjectId) &&
-                Objects.equals(this.directory, that.directory);
+                Objects.equals(this.directory, that.directory) &&
+                Objects.equals(this.visitId, that.visitId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatImagesessiondataI, scans, assessors, resources, projectId, subjectId, directory);
+        return Objects.hash(super.hashCode(), xnatImagesessiondataI, scans, assessors, resources, projectId,
+                subjectId, directory, visitId);
     }
 
     @Override
@@ -281,6 +293,7 @@ public class Session extends XnatModelObject {
                 .add("projectId", projectId)
                 .add("subjectId", subjectId)
                 .add("directory", directory)
+                .add("visitId", visitId)
                 .toString();
     }
 }
