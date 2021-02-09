@@ -338,14 +338,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                         xmodal.closeAll();
                                     },
                                     fail: function(e) {
-                                        xmodal.alert({
-                                            title: 'Error',
-                                            content: '<p><strong>Error '+e.status+'</strong></p><p>'+e.statusText+'</p>',
-                                            okAction: function(){
-                                                XNAT.dialog.closeAll();
-                                                xmodal.closeAll();
-                                            }
-                                        });
+                                        if (e.status.toString() === '201') {
+                                            XNAT.ui.banner.top(2000, '<b>"' + wrapperName + '"</b> updated.', 'success');
+                                            XNAT.dialog.closeAll();
+                                            xmodal.closeAll();
+                                        }
+                                        else errorHandler(e, 'Could Not Update Config Definition');
                                     }
                                 })
                             }
