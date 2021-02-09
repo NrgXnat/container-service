@@ -1747,7 +1747,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                         XNAT.ui.banner.top(1000, '<b>"' + wrapperName + '"</b> updated.', 'success');
                                         XNAT.dialog.closeAll();
                                     },
-                                    fail: function(e){ errorHandler(e, 'Could Not Update Config Definition'); }
+                                    fail: function(e){
+                                        if (e.status.toString() === '201') {
+                                            console.log('"' + wrapperName + '" updated');
+                                            XNAT.ui.banner.top(1000, '<b>"' + wrapperName + '"</b> updated.', 'success');
+                                            XNAT.dialog.closeAll();
+                                        }
+                                        else errorHandler(e, 'Could Not Update Config Definition');
+                                    }
                                 });
                             }
                         },
