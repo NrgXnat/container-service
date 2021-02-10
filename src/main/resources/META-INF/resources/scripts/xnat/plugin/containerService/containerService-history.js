@@ -122,7 +122,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
             },
             sortable: 'user, DATE, status',
-            filter: 'user, status, command, ROOTELEMENT',
+            filter: 'user, status, command',
             items: {
                 // id: {
                 //     th: {className: 'id'},
