@@ -330,7 +330,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 // POST the updated command config
                                 XNAT.xhr.postJSON({
                                     url: configUrl(commandId,wrapperName,'enabled=true'),
-                                    dataType: 'json',
+                                    // dataType: 'json',
                                     data: JSON.stringify(configObj),
                                     success: function() {
                                         XNAT.ui.banner.top(2000, '<b>"' + wrapperName + '"</b> updated.', 'success');
@@ -338,12 +338,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                         xmodal.closeAll();
                                     },
                                     fail: function(e) {
-                                        if (e.status.toString() === '201') {
-                                            XNAT.ui.banner.top(2000, '<b>"' + wrapperName + '"</b> updated.', 'success');
-                                            XNAT.dialog.closeAll();
-                                            xmodal.closeAll();
-                                        }
-                                        else errorHandler(e, 'Could Not Update Config Definition');
+                                        errorHandler(e, 'Could Not Update Config Definition');
                                     }
                                 })
                             }
