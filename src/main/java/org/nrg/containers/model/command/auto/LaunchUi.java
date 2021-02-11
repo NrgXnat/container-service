@@ -516,6 +516,8 @@ public abstract class LaunchUi {
                 uiInputType = UiInputType.SELECT;
             } else if (input.type().equals(CommandInputEntity.Type.MULTISELECT.getName())) {
                 uiInputType = UiInputType.MULTISELECT;
+            } else if (input.type().equals(CommandInputEntity.Type.FILE.getName())) {
+                uiInputType = UiInputType.FILE;
             } else {
                 // This input is a simple string or number. Make it editable.
                 uiInputType = UiInputType.TEXT;
@@ -677,7 +679,8 @@ public abstract class LaunchUi {
         SELECT("select-one"),
         MULTISELECT("select-many"),
         STATIC("static"),
-        DERIVED("derived");
+        DERIVED("derived"),
+        FILE("file");
 
         public final String name;
 

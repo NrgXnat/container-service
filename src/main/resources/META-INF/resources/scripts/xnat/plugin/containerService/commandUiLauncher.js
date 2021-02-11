@@ -113,7 +113,7 @@ var XNAT = getObject(XNAT || {});
      */
 
     var helptext = function(description) {
-        return (description) ? '' : spawn('div.description',description);
+        return (description) ? spawn('div.description',description) : '';
     };
     var vertSpace = function(condensed) {
         return (condensed) ? '' : spawn('br.clear');
@@ -404,6 +404,57 @@ var XNAT = getObject(XNAT || {});
         );
     };
 
+    var fileConfigInput = function(input) {
+        var name = input.name || input.label,
+            label = input.label,
+            dataProps = {},
+            attr = (input.disabled) ? { 'disabled':'disabled' } : {},
+            classes = ['panel-input','panel-element'],
+            description = input.description || '',
+            required = input.required || false;
+
+        if (required) {
+            description += ' (Required)';
+        }
+
+        const cacheUri = '/user/cache/resources/' + new Date().getTime() + '/files/';
+        let fileForm = XNAT.ui.input.upload({
+            method: 'PUT',
+            multiple: false,
+            url: '/data' + cacheUri,
+            appendFilename: true,
+            automatic: true,
+            dragdrop: true,
+            name: name + '-file',
+            afterUploadSuccess: function(filenames) {
+                $('input[name=' + name + ']').val(cacheUri + filenames[0]);
+            },
+            removeFiles: function(filenames) {
+                $('input[name=' + name + ']').val('');
+            }
+        }).element;
+
+        let hiddenInput = XNAT.ui.input.hidden({
+            name: name,
+            value: '',
+            data: dataProps,
+            classes: required ? 'required' : '',
+            attr: attr
+        }).element;
+
+        return spawn(
+            'div', { className: classes.join(' '), data: dataProps }, [
+                spawn('label.element-label', label),
+                spawn('div.element-wrapper', { style: { 'word-wrap': 'break-word' } }, [
+                    fileForm,
+                    helptext(description),
+                    hiddenInput
+                ]),
+                spawn('br.clear')
+            ]
+        );
+    };
+
     launcher.errorMessages = [];
 
     launcher.formInputs = function(input) {
@@ -467,6 +518,9 @@ var XNAT = getObject(XNAT || {});
                 break;
             case 'derived':
                 formPanelElements.push(derivedConfigInput(input));
+                break;
+            case 'file':
+                formPanelElements.push(fileConfigInput(input));
                 break;
             case 'ignore':
                 break;

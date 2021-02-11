@@ -72,6 +72,10 @@ public class CommandInputEntity implements Serializable {
             case "select-many":
                 this.setType(Type.MULTISELECT);
                 break;
+            case "file":
+            case "File":
+                this.setType(Type.FILE);
+                break;
             default:
                 this.setType(DEFAULT_TYPE);
         }
@@ -277,7 +281,8 @@ public class CommandInputEntity implements Serializable {
         BOOLEAN("boolean"),
         NUMBER("number"),
         SELECT("select-one"),
-        MULTISELECT("select-many");
+        MULTISELECT("select-many"),
+        FILE("file");
 
         public final String name;
 
