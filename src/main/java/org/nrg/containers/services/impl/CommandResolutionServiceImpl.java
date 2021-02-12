@@ -381,7 +381,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final String resolvedWorkingDirectory = resolveWorkingDirectory(resolvedInputValuesByReplacementKey);
             final Map<String, String> resolvedPorts = resolvePorts(resolvedInputValuesByReplacementKey);
             final List<ResolvedCommandMount> resolvedCommandMounts = resolveCommandMounts(resolvedInputTrees, resolvedInputValuesByReplacementKey);
-            moveInputFilesToBuildDir(resolvedInputTrees, resolvedCommandMounts, resolvedCommandLineValuesByReplacementKey);
+            copyInputFilesToBuildDir(resolvedInputTrees, resolvedCommandMounts, resolvedCommandLineValuesByReplacementKey);
             final String resolvedCommandLine = resolveCommandLine(resolvedCommandLineValuesByReplacementKey);
             final List<ResolvedCommand> resolvedWrapupCommands = resolveWrapupCommands(resolvedCommandOutputs, resolvedCommandMounts);
             final Map<String, String> resolvedContainerLabels =
@@ -453,7 +453,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             return resolvedCommand;
         }
 
-        private void moveInputFilesToBuildDir(List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
+        private void copyInputFilesToBuildDir(List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
                                               List<ResolvedCommandMount> resolvedCommandMounts,
                                               Map<String, String> resolvedCommandLineValuesByReplacementKey)
                 throws CommandResolutionException {
@@ -487,9 +487,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     File xnatLoc = Paths.get(mount.xnatHostPath()).resolve(relativePath).toFile();
                     File f = userDataCache.getUserDataCacheFile(userI, relativePath);
                     try {
-                        FileUtils.moveFile(f, xnatLoc);
+                        FileUtils.copyFile(f, xnatLoc);
                     } catch (IOException e) {
-                        log.error("Unable to move file {} to build dir {}", f, xnatLoc, e);
+                        log.error("Unable to copy file {} to build dir {}", f, xnatLoc, e);
                         continue;
                     }
 
