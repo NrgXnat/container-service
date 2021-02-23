@@ -13,7 +13,6 @@ public enum CommandWrapperInputType {
     STRING("string"),
     BOOLEAN("boolean"),
     NUMBER("number"),
-    FILE_INPUT("file"),
     DIRECTORY("Directory"),
     FILES("File[]"),
     FILE("File"),
@@ -25,7 +24,8 @@ public enum CommandWrapperInputType {
     SCAN("Scan"),
     ASSESSOR("Assessor"),
     RESOURCE("Resource"),
-    CONFIG("Config");
+    CONFIG("Config"),
+    FILE_INPUT("file");
 
     private final String name;
 
