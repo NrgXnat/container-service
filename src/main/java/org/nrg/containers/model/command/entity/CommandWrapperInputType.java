@@ -52,7 +52,7 @@ public enum CommandWrapperInputType {
     @Nullable
     public static CommandWrapperInputType fromName(String text) {
         for (CommandWrapperInputType e : CommandWrapperInputType.values()) {
-            if (e.name.equalsIgnoreCase(text)) {
+            if (e.name.equals(text)) {
                 return e;
             }
         }

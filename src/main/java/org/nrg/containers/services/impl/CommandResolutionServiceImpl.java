@@ -693,6 +693,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 case RESOURCE:
                     return Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN).contains(parentType);
                 case FILE:
+                case FILE_INPUT:
                 case FILES:
                 case DIRECTORY:
                 case STRING:
