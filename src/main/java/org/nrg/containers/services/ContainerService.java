@@ -90,7 +90,8 @@ public interface ContainerService {
     void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException;
     void finalize(final Container container, final UserI userI) throws ContainerException;
     void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException;
-    
+
+    boolean canKill(final String containerId, final UserI userI);
     String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 

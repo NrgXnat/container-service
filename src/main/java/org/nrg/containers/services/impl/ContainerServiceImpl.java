@@ -1350,6 +1350,31 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
+    public boolean canKill(String containerId, UserI userI) {
+        try {
+            Container containerOrService = get(containerId);
+            verifyKillPermission(null, containerOrService, userI);
+            // if verifyKillPermission doesn't throw UnauthorizedException, user has permission to kill
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void verifyKillPermission(@Nullable String project, Container containerOrService, UserI userI)
+            throws UnauthorizedException {
+        if (!(userI.getLogin().equals(containerOrService.userId()) || Groups.hasAllDataAdmin(userI))) {
+            try {
+                project = StringUtils.firstNonBlank(containerOrService.project(), project);
+                if (!Permissions.isProjectOwner(userI, project)) {
+                    throw new UnauthorizedException("User cannot terminate this container or service");
+                }
+            } catch (Exception e) {
+                throw new UnauthorizedException("Unable to determine user permissions", e);
+            }
+        }
+    }
+
     @Override
     public String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
@@ -1361,16 +1386,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
         // User who launched the container, all data admins, and project owners can terminate
         Container containerOrService = get(containerId);
-        if (!(userI.getLogin().equals(containerOrService.userId()) || Groups.hasAllDataAdmin(userI))) {
-            try {
-                project = StringUtils.firstNonBlank(containerOrService.project(), project);
-                if (!Permissions.isProjectOwner(userI, project)) {
-                    throw new UnauthorizedException("User cannot terminate this container or service");
-                }
-            } catch (Exception e) {
-                throw new UnauthorizedException("Unable to determine user permissions", e);
-            }
-        }
+        verifyKillPermission(project, containerOrService, userI);
         return kill(containerOrService, userI);
     }
 
