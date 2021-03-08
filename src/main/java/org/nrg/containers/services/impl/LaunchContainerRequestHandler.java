@@ -1,5 +1,5 @@
 /*
- * xnatx-clara: org.nrg.xnatx.plugins.clara.services.impl.TrainingSessionLaunchListener
+ * xnatx-ml: org.nrg.xnatx.plugins.ml.services.impl.TrainingSessionLaunchListener
  * XNAT http://www.xnat.org
  * Copyright (c) 2019, Washington University School of Medicine
  * All Rights Reserved
@@ -58,7 +58,7 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
             // Validate container and input
             Container container = null;
             String project = parameters.get("project");
-            List<CommandSummaryForContext> available = _commandService.available(project,"clara:trainSession", user);
+            List<CommandSummaryForContext> available = _commandService.available(project,"ml:trainSession", user);
             if(available != null &&
                     available.size() > 0 &&
                     wrapperId != null &&
@@ -93,7 +93,7 @@ public class LaunchContainerRequestHandler extends AbstractProcessingOperationHa
                     log.error(e.getMessage());
                 }
             } else {
-                log.debug("No container wrapper ID {} found to process clara:trainSession request.", processingId);
+                log.debug("No container wrapper ID {} found to process ml:trainSession request.", processingId);
             }
 
         } catch (Throwable e) {
