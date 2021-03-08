@@ -58,6 +58,8 @@ import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatResource;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.helpers.Groups;
+import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
@@ -1350,26 +1352,26 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public String kill(final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
-        // TODO check user permissions. How?
-        Container container;
-        try {
-            container = get(containerId);
-        } catch (NotFoundException e){
-            log.debug("containerId: " + containerId + ". Trying to find container by name: " + containerId);
-            container = getByName(containerId, true);
-            if(container == null){
-                throw e;
-            }
-        }
-
-        return kill(container, userI);
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
+        return kill(null, containerId, userI);
     }
 
     @Override
-    public String kill(String project, String containerId,
-                       UserI userI) throws NoDockerServerException, DockerServerException, NotFoundException {
-        return kill(containerId, userI);
+    public String kill(@Nullable String project, String containerId, UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
+        // User who launched the container, all data admins, and project owners can terminate
+        Container containerOrService = get(containerId);
+        if (!(userI.getLogin().equals(containerOrService.userId()) || Groups.hasAllDataAdmin(userI))) {
+            try {
+                project = StringUtils.firstNonBlank(containerOrService.project(), project);
+                if (!Permissions.isProjectOwner(userI, project)) {
+                    throw new UnauthorizedException("User cannot terminate this container or service");
+                }
+            } catch (Exception e) {
+                throw new UnauthorizedException("Unable to determine user permissions", e);
+            }
+        }
+        return kill(containerOrService, userI);
     }
 
     private String kill(final Container container, final UserI userI)

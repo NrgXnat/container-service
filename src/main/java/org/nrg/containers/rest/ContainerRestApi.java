@@ -179,11 +179,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ResponseBody
     public String kill(final @PathVariable String id)
             throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
-        final UserI userI = getSessionUser();
-        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
-            throw new UnauthorizedException(String.format("User %s cannot kill container %s", userI.getLogin(), id));
-        }
-        return containerService.kill(id, userI);
+        return containerService.kill(id, getSessionUser());
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers/{id}/kill", method = POST, restrictTo = Read)
@@ -192,11 +188,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
     public String kill(final @PathVariable @Project String project,
                        final @PathVariable String id)
             throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
-        final UserI userI = getSessionUser();
-        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
-            throw new UnauthorizedException(String.format("User %s cannot kill container %s", userI.getLogin(), id));
-        }
-        return containerService.kill(project, id, userI);
+        return containerService.kill(project, id, getSessionUser());
     }
 
     private Container scrubPasswordEnv(final Container container) {

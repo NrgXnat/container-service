@@ -5,6 +5,7 @@ import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
@@ -91,7 +92,7 @@ public interface ContainerService {
     void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException;
     
     String kill(final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException;
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
     Map<String, InputStream> getLogStreams(long id) throws NotFoundException, NoDockerServerException, DockerServerException;
     Map<String, InputStream> getLogStreams(String containerId) throws NotFoundException, NoDockerServerException, DockerServerException;
@@ -123,6 +124,6 @@ public interface ContainerService {
      */
     boolean restartService(Container service, UserI user);
     String kill(final String project, final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException;
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
 }
