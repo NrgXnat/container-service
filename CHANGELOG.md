@@ -1,8 +1,27 @@
 # Changelog
 
-## 3.0.0
+## 3.1.0
 
 [Not yet released]
+
+### Features
+
+### Bugfixes
+
+### Updates
+
+* [CS-651][]: Updated [docker-client api library](https://github.com/dmandalidis/docker-client) to 5.0.1 
+
+* Reduced logging level from INFO/DEBUG to WARN
+
+* Refactored queue request handler to process ml:trainSession, rather than clara:trainSession.
+
+[CS-651]: https://issues.xnat.org/browse/CS-651
+
+
+## 3.0.0
+
+[Released 2020-03-04](https://bitbucket.org/xnatdev/container-service/src/3.0.0/).
 
 
 ### Features
@@ -10,32 +29,31 @@
 * [CS-6221][]: Added support for Generic Resources in order to request GPU resources on SWARM nodes
 * [CS-6227][]: Added 'datatype-string' property to ProjectAsset, Session, Scan, Assessor, and Resource CS objects.  This string property is populated with output of xnat_object.toString(). Added 'parser' parameter to string-type derived wrapper input.  This parameter can be either an XPath or RegEx string, which will attempt to parse the input.
 
-###Docker parameters added
 
-* Added container command parameters:
+#### Added container command parameters:
     
     container-labels - Map<String,String> corresponding to Docker container labels (default: null)
     container-name - string(default null - container is named by docker)
     shm-size - long (default: null)
     network - string as attached network
 
-* Swarm Mode only:
+##### Swarm Mode only
     generic-resources - Map<String, String> corresponding to swarm node generic-resource reservations 
                      i.e. "VRAM": "2000"
 
 
-* Docker Server only - not supported on Swarm services: 
+##### Docker Server only - not supported on Swarm services: 
     
     runtime - string (default: null)
     ipc-mode - string (default: null)
     ulimits - Map<String, String> where each entry is a string label and a value comprised of the desired ULimit softlimit:hardlimit
     
-* Added Rest APIs to get containers by name - this only works if container was assigned name by Container Service
+#### Added Rest APIs to get containers by name - this only works if container was assigned name by Container Service
     
     /projects/{project}/containers/name/{name} - param: nonfinalized bool
     /container/name/{name} - param: nonfinalized bool
 
-* Added project scoped container kill Rest API:
+#### Added project scoped container kill Rest API:
     
     /projects/{project}/containers/{id}/kill
 

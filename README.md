@@ -1,14 +1,14 @@
-# XNAT Container Service [![Circle CI](https://circleci.com/gh/NrgXnat/container-service.svg?style=svg)](https://circleci.com/gh/NrgXnat/container-service)
+# XNAT Container Service 
 
 [XNAT](http://www.xnat.org/) plugin for controlling containers (primarily [Docker](https://www.docker.com/) containers).
 
-To use it, you will need an XNAT running 1.7.6+. Get the `containers-<version>-fat` jar (through one of the methods below) and put it into your `{xnat.home}/plugins` directory. Restart tomcat and you are ready to run containers. See the [guide to getting started](https://wiki.xnat.org/display/CS/Getting+Started).
+To use it, you will need an XNAT running 1.8.0+. Get the `containers-<version>-fat` jar (through one of the methods below) and put it into your `{xnat.home}/plugins` directory. Restart tomcat and you are ready to run containers. See the [guide to getting started](https://wiki.xnat.org/display/CS/Getting+Started).
 
-This document is cross-posted on the [XNAT wiki](https://wiki.xnat.org/display/CS/Introduction) and the README in the [source repository](https://github.com/NrgXnat/container-service).
+This document is cross-posted on the [XNAT wiki](https://wiki.xnat.org/display/CS/Introduction) and the README in the [source repository](https://bitbucket.org/xnatdev/container-service).
 
 ## Getting the jar
 ### Download
-Releases are posted to the repository's [Releases tab](https://github.com/NrgXnat/container-service/releases) on GitHub. Download the version you want (probably the latest release) and [deploy it to XNAT](#deploy-to-XNAT).
+Releases are posted to the repository's [Downloads page](https://bitbucket.org/xnatdev/container-service/downloads/) on Bitbucket. Download the version you want (probably the latest release) and [deploy it to XNAT](#deploy-to-XNAT).
 
 ### Build the jar
 If you clone the source repository, you can build an XNAT plugin jar by running
