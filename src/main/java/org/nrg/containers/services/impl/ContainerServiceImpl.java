@@ -567,7 +567,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws NoDockerServerException, DockerServerException, ContainerException {
 
         log.info("Preparing to launch resolved command.");
-        final ResolvedCommand preparedToLaunch = prepareToLaunch(resolvedCommand, parent, userI);
+        final ResolvedCommand preparedToLaunch = prepareToLaunch(resolvedCommand, parent, userI, workflow);
 
         if (resolvedCommand.type().equals(DOCKER_SETUP.getName()) && workflow != null) {
             // Create a new workflow for setup (wrapup doesn't come through this method, gets its workflow
@@ -673,7 +673,10 @@ public class ContainerServiceImpl implements ContainerService {
     private Container launchContainerFromDbObject(final Container toLaunch, final UserI userI, final boolean restart)
             throws DockerServerException, NoDockerServerException, ContainerException {
 
-        final Container preparedToLaunch = restart ? toLaunch : prepareToLaunch(toLaunch, userI);
+        final String workflowId = toLaunch.workflowId();
+        PersistentWorkflowI workflow = workflowId != null ? WorkflowUtils.getUniqueWorkflow(userI, workflowId) : null;
+
+        final Container preparedToLaunch = restart ? toLaunch : prepareToLaunch(toLaunch, userI, workflow);
 
         log.info("Creating docker container for {} container {}.", toLaunch.subtype(), toLaunch.databaseId());
         final Container createdContainerOrService = containerControlApi.createContainerOrSwarmService(preparedToLaunch, userI);
@@ -682,9 +685,7 @@ public class ContainerServiceImpl implements ContainerService {
         containerEntityService.update(fromPojo(createdContainerOrService));
 
         // Update workflow if we have one
-        String workflowid = toLaunch.workflowId();
-        if (StringUtils.isNotBlank(workflowid)) {
-            PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI, workflowid);
+        if (workflow != null) {
             updateWorkflowWithContainer(workflow, createdContainerOrService);
         }
 
@@ -696,10 +697,11 @@ public class ContainerServiceImpl implements ContainerService {
     @Nonnull
     private ResolvedCommand prepareToLaunch(final ResolvedCommand resolvedCommand,
                                             final Container parent,
-                                            final UserI userI) {
+                                            final UserI userI,
+                                            final PersistentWorkflowI workflow) {
 
         ResolvedCommand.Builder builder = resolvedCommand.toBuilder()
-                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI));
+                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI, workflow));
 
         if (parent != null) {
             if (resolvedCommand.project() == null) {
@@ -713,21 +715,26 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Nonnull
     private Container prepareToLaunch(final Container toLaunch,
-                                      final UserI userI) {
+                                      final UserI userI,
+                                      final PersistentWorkflowI workflow) {
         return toLaunch.toBuilder()
-                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI))
+                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI, workflow))
                 .build();
     }
 
-    private Map<String, String> getDefaultEnvironmentVariablesForLaunch(final UserI userI) {
+    private Map<String, String> getDefaultEnvironmentVariablesForLaunch(final UserI userI, final PersistentWorkflowI workflow) {
         final AliasToken token = aliasTokenService.issueTokenForUser(userI);
         final String processingUrl = (String)siteConfigPreferences.getProperty("processingUrl");
         final String xnatHostUrl = StringUtils.isBlank(processingUrl) ? siteConfigPreferences.getSiteUrl() : processingUrl;
+        final String workflowId = workflow != null ? workflow.getWorkflowId().toString() : "";
+        final String eventId = workflow != null ? workflow.buildEvent().getEventId().toString() : "";
 
         final Map<String, String> defaultEnvironmentVariables = new HashMap<>();
         defaultEnvironmentVariables.put("XNAT_USER", token.getAlias());
         defaultEnvironmentVariables.put("XNAT_PASS", token.getSecret());
         defaultEnvironmentVariables.put("XNAT_HOST", xnatHostUrl);
+        defaultEnvironmentVariables.put("XNAT_WORKFLOW_ID", workflowId);
+        defaultEnvironmentVariables.put("XNAT_EVENT_ID", eventId);
 
         return defaultEnvironmentVariables;
     }

@@ -368,6 +368,8 @@ public class CommandLaunchIntegrationTest {
         expectedEnvironmentVariables.put("XNAT_USER", FAKE_ALIAS);
         expectedEnvironmentVariables.put("XNAT_PASS", FAKE_SECRET);
         expectedEnvironmentVariables.put("XNAT_HOST", FAKE_HOST);
+        expectedEnvironmentVariables.put("XNAT_WORKFLOW_ID",  Integer.toString(fakeWorkflow.getWorkflowId()));
+        expectedEnvironmentVariables.put("XNAT_EVENT_ID",  fakeWorkflow.buildEvent().getEventId().toString());
         assertThat(execution.environmentVariables(), is(expectedEnvironmentVariables));
 
 
@@ -476,6 +478,8 @@ public class CommandLaunchIntegrationTest {
         expectedEnvironmentVariables.put("XNAT_USER", FAKE_ALIAS);
         expectedEnvironmentVariables.put("XNAT_PASS", FAKE_SECRET);
         expectedEnvironmentVariables.put("XNAT_HOST", FAKE_HOST);
+        expectedEnvironmentVariables.put("XNAT_WORKFLOW_ID",  Integer.toString(fakeWorkflow.getWorkflowId()));
+        expectedEnvironmentVariables.put("XNAT_EVENT_ID",  fakeWorkflow.buildEvent().getEventId().toString());
         assertThat(execution.environmentVariables(), is(expectedEnvironmentVariables));
 
         // mounts
