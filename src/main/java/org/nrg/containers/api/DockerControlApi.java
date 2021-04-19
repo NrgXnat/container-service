@@ -364,8 +364,8 @@ public class DockerControlApi implements ContainerControlApi {
 
             return Container.serviceFromResolvedCommand(resolvedCommand,
                     createService(server,
-                            resolvedCommand.containerName(),
                             resolvedCommand.image(),
+                            resolvedCommand.containerName(),
                             resolvedCommand.commandLine(),
                             resolvedCommand.overrideEntrypoint(),
                             mounts,
@@ -478,8 +478,8 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             final String serviceId = createService(server,
-                    container.containerName(),
                     container.dockerImage(),
+                    container.containerName(),
                     container.commandLine(),
                     overrideEntrypoint,
                     mounts,
@@ -505,10 +505,9 @@ public class DockerControlApi implements ContainerControlApi {
             for (final Container.ContainerMount mount : containerMounts) {
                 bindMounts.add(mount.toBindMountString());
             }
-
             final String containerId = createContainer(server,
-                    container.containerName(),
                     container.dockerImage(),
+                    container.containerName(),
                     container.commandLine(),
                     overrideEntrypoint,
                     bindMounts,
@@ -555,7 +554,7 @@ public class DockerControlApi implements ContainerControlApi {
                                    final Map<String, String> containerLabels,
                                    final String gpus,
                                    final Map<String, String> genericResources,
-                                   final Map<String, String> ulimits)
+                                   @Nullable final Map<String, String> ulimits)
             throws DockerServerException, ContainerException {
 
         final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
@@ -606,7 +605,7 @@ public class DockerControlApi implements ContainerControlApi {
             hostConfig = hostConfig.toBuilder().networkMode(network).build();
         }
 
-        if(!ulimits.isEmpty()){
+        if(ulimits != null && !ulimits.isEmpty()){
             List<HostConfig.Ulimit> hostUlimits = new ArrayList<>();
             for(Map.Entry<String, String> ulimit : ulimits.entrySet()) {
                 String softLimit = ulimit.getValue().contains(":") ?
@@ -686,8 +685,8 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private String createService(final DockerServer server,
-                                 final String containerName,
                                  final String imageName,
+                                 final String containerName,
                                  final String runCommand,
                                  final boolean overrideEntrypoint,
                                  final List<Mount> mounts,
@@ -702,7 +701,7 @@ public class DockerControlApi implements ContainerControlApi {
                                  final String network,
                                  final Map<String, String> containerLabels,
                                  final Map<String, String> genericResources,
-                                 final Map<String, String> ulimits)
+                                 @Nullable final Map<String, String> ulimits)
             throws DockerServerException, ContainerException {
 
         final List<PortConfig> portConfigs = Lists.newArrayList();
@@ -763,8 +762,7 @@ public class DockerControlApi implements ContainerControlApi {
         }
 
         if (ulimits == null || ulimits.isEmpty()){
-            log.debug("Ulimits command configuration ignored in service mode.  Ulimits should be set at the dockerd node level in Swarm mode.");
-            log.debug(ulimits.toString());
+            log.debug("Ulimits command configuration ignored in service mode.  Ulimits should be set at the dockerd node level in Swarm mode. ulimits={}", ulimits);
         }
 
         // We get the bind mounts strings here not to use for creating the service,
