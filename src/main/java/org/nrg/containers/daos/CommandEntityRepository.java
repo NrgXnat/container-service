@@ -10,6 +10,7 @@ import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.command.entity.DockerCommandEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.orm.hibernate.AbstractHibernateDAO;
 import org.springframework.stereotype.Repository;
@@ -61,6 +62,7 @@ public class CommandEntityRepository extends AbstractHibernateDAO<CommandEntity>
         Hibernate.initialize(commandWrapperEntity.getExternalInputs());
         Hibernate.initialize(commandWrapperEntity.getDerivedInputs());
         Hibernate.initialize(commandWrapperEntity.getOutputHandlers());
+        Hibernate.initialize(commandWrapperEntity.getOrchestrations());
     }
 
     @Nullable
@@ -164,6 +166,11 @@ public class CommandEntityRepository extends AbstractHibernateDAO<CommandEntity>
     }
 
     public void delete(final @Nonnull CommandWrapperEntity commandWrapperEntity) {
+        commandWrapperEntity.getOrchestrations().forEach(owe -> {
+            OrchestrationEntity oe = owe.getOrchestrationEntity();
+            oe.removeWrapper(owe);
+            oe.setEnabled(false);
+        });
         commandWrapperEntity.getCommandEntity().getCommandWrapperEntities().remove(commandWrapperEntity);
         getSession().delete(commandWrapperEntity);
     }

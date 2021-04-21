@@ -27,6 +27,8 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.*;
@@ -148,10 +150,11 @@ public class IntegrationTestConfig {
                                              final SiteConfigPreferences siteConfigPreferences,
                                              final ContainerFinalizeService containerFinalizeService,
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
-                                             final CatalogService catalogService) {
+                                             final CatalogService catalogService,
+                                             final OrchestrationEntityService mockOrchestrationEntityService) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
                         commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
-                        containerFinalizeService, mockXnatAppInfo, catalogService);
+                        containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationEntityService);
     }
 
     @Bean
@@ -212,6 +215,11 @@ public class IntegrationTestConfig {
     }
 
     @Bean
+    public OrchestrationEntityService mockOrchestrationEntityService() {
+        return Mockito.mock(OrchestrationEntityService.class);
+    }
+
+    @Bean
     public ContextService contextService(final ApplicationContext applicationContext) {
         final ContextService contextService = new ContextService();
         contextService.setApplicationContext(applicationContext);
@@ -258,6 +266,8 @@ public class IntegrationTestConfig {
                 CommandWrapperExternalInputEntity.class,
                 CommandWrapperDerivedInputEntity.class,
                 CommandWrapperOutputEntity.class,
+                OrchestrationEntity.class,
+                OrchestratedWrapperEntity.class,
                 ContainerEntity.class,
                 ContainerEntityHistory.class,
                 ContainerEntityInput.class,

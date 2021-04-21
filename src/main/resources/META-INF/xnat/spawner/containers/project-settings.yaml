@@ -25,16 +25,17 @@ projectCommandConfigsPanel:
                     header: false
                     footer: false
         projCommandHistoryScript:
-            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         projCommandConfigScript:
-            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-projectSettings.js"
+        jqueryUi:
+            tag: script|src="~/scripts/lib/jquery-ui/jquery-ui.min.js"
         projCommandStylesheet:
-            #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
         tableStyle:
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
+        jqueryUiCss:
+            tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/lib/jquery-ui/jquery-ui.css"
 
 projectCommandAutomationPanel:
     kind: panel
@@ -51,6 +52,19 @@ projectCommandAutomationPanel:
         projectCommandAutomationTable:
             tag: div#command-automation-list
             contents: No commands defined
+
+projectCommandOrchestrationPanel:
+    kind: panel
+    name: projectCommandOrchestrationPanel
+    label: Command Orchestration
+    contents:
+        projectCommandOrchestrationNote:
+            tag: div.message
+            contents:
+                "Setup orchestration of multiple commands, which will run sequentially as long as predecessors complete without error."
+        projectCommandOrchestrationTable:
+            tag: div#command-orchestration
+            contents: Loading...
 
 projectCommandHistoryPanel:
     kind: panel
@@ -87,6 +101,13 @@ projectSettings:
             active: false
             contents:
                 ${projectCommandAutomationPanel}
+        projectCommandOrchestrationTab:
+            kind: tab
+            label: Command Orchestration
+            group: containerServiceProjectTabGroup
+            active: false
+            contents:
+                ${projectCommandOrchestrationPanel}
         projectCommandHistoryTab:
             kind: tab
             label: Command History

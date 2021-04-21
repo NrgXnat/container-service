@@ -24,7 +24,10 @@ public class ContainerUtils {
             return;
         }
         log.debug("Found workflow {}.", workflow.getWorkflowId());
+        updateWorkflowStatus(workflow, status, details);
+    }
 
+    public static void updateWorkflowStatus(final PersistentWorkflowI workflow, final String status, @Nullable String details) {
         if (StringUtils.isBlank(details)) {
             details = "";
         }

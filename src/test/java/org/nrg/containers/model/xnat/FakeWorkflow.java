@@ -39,6 +39,8 @@ public class FakeWorkflow implements PersistentWorkflowI {
     private String scanId;
     private String jobId;
     private Integer userId;
+    private String currentStepId;
+    private String nextStepId;
 
     /**
      * @return Returns the details.
@@ -177,6 +179,11 @@ public class FakeWorkflow implements PersistentWorkflowI {
         return null;
     }
 
+    @Override
+    public Date getCurrentStepLaunchTimeDate() {
+        return null;
+    }
+
     /**
      * Sets the value for current_step_launch_time.
      * @param v Value to Set.
@@ -189,7 +196,7 @@ public class FakeWorkflow implements PersistentWorkflowI {
      * @return Returns the current_step_id.
      */
     public String getCurrentStepId() {
-        return null;
+        return currentStepId;
     }
 
     /**
@@ -197,7 +204,17 @@ public class FakeWorkflow implements PersistentWorkflowI {
      * @param v Value to Set.
      */
     public void setCurrentStepId(String v) {
+        currentStepId = v;
+    }
 
+    @Override
+    public String getNextStepId() {
+        return nextStepId;
+    }
+
+    @Override
+    public void setNextStepId(String v) {
+        nextStepId = v;
     }
 
     /**

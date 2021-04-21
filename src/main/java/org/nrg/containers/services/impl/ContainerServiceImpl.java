@@ -3,6 +3,9 @@ package org.nrg.containers.services.impl;
 
 import com.google.common.base.Function;
 import com.google.common.base.Strings;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
@@ -38,14 +41,13 @@ import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
+import org.nrg.containers.model.orchestration.auto.Orchestration;
+import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
-import org.nrg.containers.services.CommandResolutionService;
-import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerEntityService;
-import org.nrg.containers.services.ContainerFinalizeService;
-import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.*;
 import org.nrg.containers.utils.ContainerUtils;
+import org.nrg.framework.constants.Scope;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
@@ -92,6 +94,8 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.text.ParseException;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -128,6 +132,10 @@ public class ContainerServiceImpl implements ContainerService {
     private final ContainerFinalizeService containerFinalizeService;
     private final XnatAppInfo xnatAppInfo;
     private final CatalogService catalogService;
+    private final OrchestrationEntityService orchestrationEntityService;
+
+
+    private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
 
     @Autowired
     public ContainerServiceImpl(final ContainerControlApi containerControlApi,
@@ -138,7 +146,8 @@ public class ContainerServiceImpl implements ContainerService {
                                 final SiteConfigPreferences siteConfigPreferences,
                                 final ContainerFinalizeService containerFinalizeService,
                                 final XnatAppInfo xnatAppInfo,
-                                final CatalogService catalogService) {
+                                final CatalogService catalogService,
+                                final OrchestrationEntityService orchestrationEntityService) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -148,6 +157,19 @@ public class ContainerServiceImpl implements ContainerService {
         this.containerFinalizeService = containerFinalizeService;
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
+        this.orchestrationEntityService = orchestrationEntityService;
+
+        buildCache();
+    }
+
+    private void buildCache() {
+        CacheLoader<OrchestrationIdentifier, Optional<Orchestration>> loader = new CacheLoader<OrchestrationIdentifier, Optional<Orchestration>>() {
+            @Override
+            public Optional<Orchestration> load(@Nonnull OrchestrationIdentifier oi) {
+                return Optional.ofNullable(orchestrationEntityService.findWhereWrapperIsFirst(oi));
+            }
+        };
+        orchestrationCache = CacheBuilder.newBuilder().expireAfterAccess(10, TimeUnit.SECONDS).build(loader);
     }
 
     @Override
@@ -1621,6 +1643,15 @@ public class ContainerServiceImpl implements ContainerService {
     public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
                                                        String wrapperName, String projectId, UserI user,
                                                        String bulkLaunchId) {
+        return createContainerWorkflow(xnatIdOrUri, containerInputType, wrapperName, projectId, user, bulkLaunchId, null, 0);
+    }
+
+    @Nullable
+    @Override
+    public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
+                                                       String wrapperName, String projectId, UserI user,
+                                                       @Nullable String bulkLaunchId, @Nullable Long orchestrationId,
+                                                       int orchestrationOrder) {
         if (xnatIdOrUri == null) {
             return null;
         }
@@ -1686,6 +1717,10 @@ public class ContainerServiceImpl implements ContainerService {
             }
             if (bulkLaunchId != null) {
                 workflow.setJobid(bulkLaunchId);
+            }
+            if (orchestrationId != null) {
+                workflow.setNextStepId(orchestrationId.toString());
+                workflow.setCurrentStepId(Integer.toString(orchestrationOrder));
             }
             try {
                 WorkflowUtils.save(workflow, workflow.buildEvent());
@@ -1758,10 +1793,24 @@ public class ContainerServiceImpl implements ContainerService {
                 workflow.setPipelineName(resolvedCommand.wrapperName());
                 workflow.setJustification(ContainerServiceImpl.containerLaunchJustification);
                 workflow.setId(rootInputObject.rootObject.getIDValue());
-                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
                 workflow.setDataType(rootInputObject.rootObject.getXSIType());
                 workflow.setPipelineName(resolvedCommand.wrapperName());
+                if (StringUtils.isBlank(workflow.getExternalid())) {
+                    // Only reset external ID if we don't have one, otherwise this can change from shared to primary project
+                    workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
+                }
             }
+
+            String project = workflow.getExternalid();
+            if (StringUtils.isNotBlank(project) && workflow.getNextStepId() == null) {
+                // check if this is the start of an orchestrated sequence, WorkflowStatusEventOrchestrationListener will handle later steps
+                final Orchestration orchestration = getOrchestrationWhereWrapperIsFirst(project, resolvedCommand.wrapperId());
+                if (orchestration != null) {
+                    workflow.setNextStepId(Long.toString(orchestration.getId()));
+                    workflow.setCurrentStepId("0");
+                }
+            }
+
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
             WorkflowUtils.save(workflow, workflow.buildEvent());
             log.debug("Updated workflow {}.", workflow.getWorkflowId());
@@ -1769,6 +1818,24 @@ public class ContainerServiceImpl implements ContainerService {
             log.error("Could not create/update workflow.", e);
         }
         return workflow;
+    }
+
+    @Nullable
+    private Orchestration getOrchestrationWhereWrapperIsFirst(final String project, long wrapperId)
+            throws ExecutionException {
+        return getOrchestrationWhereWrapperIsFirst(project, wrapperId, 0L, null);
+    }
+
+    @Override
+    @Nullable
+    public Orchestration getOrchestrationWhereWrapperIsFirst(final String project,
+                                                             long wrapperId,
+                                                             final long commandId,
+                                                             @Nullable final String wrapperName)
+            throws ExecutionException {
+        OrchestrationIdentifier oi = new OrchestrationIdentifier(Scope.Project, project, wrapperId,
+                commandId, wrapperName);
+        return orchestrationCache.get(oi).orElse(null);
     }
 
     /**
