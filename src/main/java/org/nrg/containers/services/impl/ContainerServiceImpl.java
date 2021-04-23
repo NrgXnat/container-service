@@ -47,7 +47,6 @@ import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.*;
 import org.nrg.containers.utils.ContainerUtils;
-import org.nrg.framework.constants.Scope;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
@@ -132,7 +131,7 @@ public class ContainerServiceImpl implements ContainerService {
     private final ContainerFinalizeService containerFinalizeService;
     private final XnatAppInfo xnatAppInfo;
     private final CatalogService catalogService;
-    private final OrchestrationEntityService orchestrationEntityService;
+    private final OrchestrationService orchestrationService;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -147,7 +146,7 @@ public class ContainerServiceImpl implements ContainerService {
                                 final ContainerFinalizeService containerFinalizeService,
                                 final XnatAppInfo xnatAppInfo,
                                 final CatalogService catalogService,
-                                final OrchestrationEntityService orchestrationEntityService) {
+                                final OrchestrationService orchestrationService) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -157,7 +156,7 @@ public class ContainerServiceImpl implements ContainerService {
         this.containerFinalizeService = containerFinalizeService;
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
-        this.orchestrationEntityService = orchestrationEntityService;
+        this.orchestrationService = orchestrationService;
 
         buildCache();
     }
@@ -166,7 +165,7 @@ public class ContainerServiceImpl implements ContainerService {
         CacheLoader<OrchestrationIdentifier, Optional<Orchestration>> loader = new CacheLoader<OrchestrationIdentifier, Optional<Orchestration>>() {
             @Override
             public Optional<Orchestration> load(@Nonnull OrchestrationIdentifier oi) {
-                return Optional.ofNullable(orchestrationEntityService.findWhereWrapperIsFirst(oi));
+                return Optional.ofNullable(orchestrationService.findWhereWrapperIsFirst(oi));
             }
         };
         orchestrationCache = CacheBuilder.newBuilder().expireAfterAccess(10, TimeUnit.SECONDS).build(loader);
@@ -1833,8 +1832,7 @@ public class ContainerServiceImpl implements ContainerService {
                                                              final long commandId,
                                                              @Nullable final String wrapperName)
             throws ExecutionException {
-        OrchestrationIdentifier oi = new OrchestrationIdentifier(Scope.Project, project, wrapperId,
-                commandId, wrapperName);
+        OrchestrationIdentifier oi = new OrchestrationIdentifier(project, wrapperId, commandId, wrapperName);
         return orchestrationCache.get(oi).orElse(null);
     }
 

@@ -145,7 +145,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             };
         }
         projectCommandOptions[wrapperId].enabled = wrapper.enabled;
-        projCommandOrchestrationManager.updateEnabled(wrapperId, wrapper.enabled);
     }
 
     function anyCommandsEnabled() {
@@ -503,6 +502,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             checkbox.value = enabled;
                             wrapperList[wrapper.id].enabled = enabled;
                             refreshCommandWrapperList(wrapper.id);
+                            projCommandOrchestrationManager.init();
                             XNAT.ui.banner.top(2000, '<b>' + wrapper.name+ '</b> ' + status, 'success');
                         }
                     });
@@ -641,6 +641,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
             })
         });
+    };
+
+    projCommandConfigManager.refresh = projCommandConfigManager.refreshTable = function(container){
+        var $manager = $$(container||'div#proj-command-config-list-container');
+
+        $manager.html('');
+        $manager.append(projCommandConfigManager.table({id: 'project-commands', className: '' }));
+        projCommandConfigManager.setMasterEnableSwitch();
     };
 
     projCommandConfigManager.init = function(container){
@@ -1017,423 +1025,97 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     // Orchestration
     console.log('commandOrchestration.js');
 
-    let projCommandOrchestrationManager,
-        disabledMsg = 'Orchestration currently disabled. To [re]enable orchestration, ensure you have selected at least ' +
-            'two commands and click "Save". Note that changing the first command may change the context of the ' +
-            'orchestration, thus changing the available downstream commands. If you see a warning icon like the one ' +
-            'next to this message, this means the command you had previously selected is no longer enabled or has an ' +
-            'incompatible context (hover over the icon to see the reason). If you need to [re]enable commands, you may ' +
-            'do so from the "Configure Commands" tab.',
-        enabledMsg = 'Orchestration currently enabled';
+    let projCommandOrchestrationManager;
 
     XNAT.plugin.containerService.projCommandOrchestrationManager = projCommandOrchestrationManager =
         getObject(XNAT.plugin.containerService.projCommandOrchestrationManager || {});
 
-    projCommandOrchestrationManager.rendered = false;
-    projCommandOrchestrationManager.contexts = [];
-
-    function appendDisabledWarning(select, title = 'This command is currently disabled') {
-        removeDisabledWarning(select);
-        select.after(spawn('div.disabled-warning', {style: 'display: inline-block'}, [
-            spacer(5),
-            spawn('span.text-warning', {title: title},
-                [spawn('i.fa.fa-exclamation-triangle')])
-        ]));
-    }
-    function removeDisabledWarning(select) {
-        const warningElement = select.parent().find('.disabled-warning');
-        if (warningElement.length > 0) {
-            warningElement.remove();
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    $(document).on('change','.orchestrationWrapperSelect', function() {
-        removeDisabledWarning($(this));
-    });
-
-    $(document).on('change','.orchestrationWrapperSelect.first', function(){
-        projCommandOrchestrationManager.contexts = $(this).find('option:selected').data('contexts').split(' ');
-
-        // disable any command that doesn't match the available contexts for the parent
-        $('.orchestrationWrapperSelect:not(.first)').each(function(){
-            const $select = $(this);
-            let selectedAndDisabled = false;
-            $select.find('option').each(function(){
-                const $option = $(this);
-                if ($option.text() === '') {
-                    return;
-                }
-                $option.prop('disabled', true);
-
-                let commandContexts = $option.data('contexts') || '';
-                commandContexts = commandContexts.split(' ');
-
-                if (commandContexts.filter(c => projCommandOrchestrationManager.contexts.includes(c)).length > 0) {
-                    $option.prop('disabled', false);
-                }
-
-                if ($option.is(':selected') && $option.prop('disabled')) {
-                    selectedAndDisabled = true;
-                }
-            });
-
-            if (selectedAndDisabled) {
-                projCommandOrchestrationManager.disable();
-                appendDisabledWarning($select, 'This command runs in a different context than its predecessor');
-            } else {
-                removeDisabledWarning($select);
-            }
-        });
-    });
-
-    projCommandOrchestrationManager.updateEnabled = function(wrapperId, enabled) {
-        const options = $('select.orchestrationWrapperSelect option[value="' + wrapperId + '"]');
-        const selectedOptions = options.filter(":selected");
-        if (selectedOptions.length > 0) {
-            if (enabled) {
-                selectedOptions.each(function() {
-                    removeDisabledWarning($(this).parent());
-                });
-            } else {
-                // disable entire orchestration if one of the previously used commands is now not enabled
-                projCommandOrchestrationManager.disable();
-                selectedOptions.each(function(){
-                    appendDisabledWarning($(this).parent());
-                });
-            }
-        }
-        options.prop('disabled', !enabled);
-    };
-
-    projCommandOrchestrationManager.setupForm = function($manager, enabled) {
+    projCommandOrchestrationManager.table = function() {
         const projectId = getProjectId();
-        const firstDesc = 'This command will determine the context (project, subject, session, etc) for the ' +
-            'subsequent commands. Changing it may disable orchestration if previously-selected commands are no longer ' +
-            'in context.';
 
-        function spawnNameInput(name) {
-            return XNAT.ui.panel.input.text({
-                label: 'Name',
-                value: name || '',
-                id: 'orchestration-name',
-                description: 'Enter a name for the orchestration, this will display when a batch-launch initiates the ' +
-                    'orchestration.'
-            });
-        }
-
-        function setFirst(firstSel, prev) {
-            firstSel.find('option').prop('disabled', false);
-            firstSel.parents('div.element-wrapper').find('div.description').text(firstDesc);
-            firstSel.addClass('first');
-            if (prev) {
-                prev.removeClass('first');
-                prev.parents('div.element-wrapper').find('div.description').text('');
-            }
-            if (prev || removeDisabledWarning(firstSel)) {
-                firstSel.change();
-            }
-        }
-
-        function makeFormattedOptions(wid) {
-            let formattedOptions = [spawn('option',{ selected: true })];
-            Object.values(projectCommandOptions).forEach(function(option){
-                let disabled = !option.enabled;
-                if (!disabled && projCommandOrchestrationManager.contexts.length > 0) {
-                    disabled |= option.contexts.filter(c => projCommandOrchestrationManager.contexts.includes(c)).length === 0
-                }
-
-                formattedOptions.push(spawn('option',{
-                    value: option['wrapper-id'],
-                    data: { contexts: option.contexts.join(' ') },
-                    html: option.label,
-                    disabled: disabled,
-                    selected: wid && wid === option['wrapper-id']
-                }));
-            });
-            return formattedOptions;
-        }
-
-        function spawnWrapperSelect(i, wid) {
-            return spawn('div.panel-element', [
-                spawn('label.element-label', {style: 'cursor:move'}, 'Command'),
-                spawn('div.element-wrapper',[
-                    spawn('label',[
-                        spawn ('select', {
-                            classes: 'orchestrationWrapperSelect ' + (i===0 ? 'first' : ''),
-                            disabled: !isAdmin,
-                        }, makeFormattedOptions(wid)),
-                        spawn('span.close.text-error', {
-                            style: 'cursor:pointer',
-                            title: 'Remove command',
-                            onclick: function(){
-                                if (!isAdmin) {
-                                    return;
-                                }
-                                const parentPanel = $(this).closest('div.panel-element');
-                                if (parentPanel.find('.orchestrationWrapperSelect.first').length > 0) {
-                                    const firstSel = $('div#orchestrationWrappers').find('.orchestrationWrapperSelect:not(.first)').first();
-                                    setFirst(firstSel);
-                                }
-                                parentPanel.remove();
-                            }
-                        }, [spawn('i.fa.fa-close')])
-                    ]),
-                    spawn('div.description', i===0 ? firstDesc : ''),
-                ]),
-                spawn('div.clear')
-            ]);
-        }
-
-        function addCommandButton() {
-            $manager.append(spawn('div.panel-element',[
-                spawn('div.element-wrapper',[
-                    spawn('button.btn.btn-sm', {
-                        html: 'Add command',
-                        onclick: function(){
-                            const parent = $('div#orchestrationWrappers');
-                            parent.append(spawnWrapperSelect($('.orchestrationWrapperSelect').length));
-                            parent.sortable('refresh');
-                        }
-                    })
-                ])
-            ]));
-            $manager.append(spawn('div.clear'));
-        }
-
-        // start rendering
-        $manager.empty();
-        if (!isAdmin) {
-            $manager.append(spawn('div', {
-                classes: 'panel-element error',
-            }, 'Only site administrators can setup/manage orchestration'));
-        }
-
-        $manager.append(spawn('div#enabled-message', {
-            classes: 'panel-element ' + (enabled ? 'success' : 'warning'),
-            style: 'display: none'
-        }, enabled ? enabledMsg : disabledMsg));
-        let wrappers = [];
-        if (projCommandOrchestrationManager.stored) {
-            $manager.append(spawnNameInput(projCommandOrchestrationManager.stored.name));
-            projCommandOrchestrationManager.stored.wrapperIds.forEach(function(wid, i){
-                wrappers.push(spawnWrapperSelect(i, wid));
-            });
-            $manager.append(spawn('div#orchestrationWrappers', wrappers));
-            $('.orchestrationWrapperSelect.first').change();
-            $('.orchestrationWrapperSelect option:selected').each(function() {
-                if ($(this).prop('disabled')) {
-                    appendDisabledWarning($(this).parent());
-                }
-            });
-            $('#enabled-message').show();
-        } else {
-            $manager.append(spawnNameInput());
-            wrappers.push(spawnWrapperSelect(0));
-            wrappers.push(spawnWrapperSelect(1));
-            $manager.append(spawn('div#orchestrationWrappers', wrappers));
-        }
-        if (isAdmin) {
-            $('div#orchestrationWrappers').sortable({
-                update: function() {
-                    const parent = $('div#orchestrationWrappers');
-                    const firstSel = parent.find('.orchestrationWrapperSelect').first();
-                    if (!firstSel.hasClass('first')) {
-                        setFirst(firstSel, parent.find('.orchestrationWrapperSelect.first'));
-                    }
-                }
-            });
-            addCommandButton();
-        }
-
-        const saveBtn = spawn('button.save-command-orchestration.btn.btn-sm.submit', {
-            html: 'Save',
-            disabled: !isAdmin,
-            onclick: function(){
-                if (!isAdmin) {
-                    return;
-                }
-                const waitDialog = XNAT.ui.dialog.static.wait('Saving...');
-                const data = {
-                    'name': $('#orchestration-name').val(),
-                    'enabled': true,
-                    'scope': 'Project',
-                    'scopedItemId': projectId,
-                    'wrapperIds': []
-                };
-                data.wrapperIds = $('select.orchestrationWrapperSelect').map(function() {
-                   return $(this).val();
-                }).get();
-                const errors = [];
-                if (!data.name) {
-                    errors.push(spawn('li', 'You must specify a name for the orchestration'));
-                }
-                if (data.wrapperIds.length < 2 || data.wrapperIds.includes('')) {
-                    errors.push(spawn('li', 'You must select 2 or more commands, remove any blank entries, ' +
-                        'and ensure no warnings are present'));
-                }
-                if (errors.length > 0) {
-                    waitDialog.close();
-                    xmodal.alert({
-                        title: 'Errors in form',
-                        content: spawn('ul', errors),
-                        okAction: function () {
-                            xmodal.closeAll();
-                        }
-                    });
-                    return;
-                }
-                if (projCommandOrchestrationManager.stored) {
-                    data.id = projCommandOrchestrationManager.stored.id;
-                }
-                XNAT.xhr.postJSON({
-                    url: csrfUrl('/xapi/orchestration'),
-                    data: JSON.stringify(data),
-                    success: function(data) {
-                        projCommandOrchestrationManager.stored = data;
-                        $('#enabled-message').text(enabledMsg).addClass('success').removeClass('warning').show();
-                        $('.command-orchestration-action').show();
-                        XNAT.ui.banner.top(2000, '<b>Success!</b> Command orchestration saved', 'success');
-                    },
-                    error: function(e){
-                        errorHandler(e,'Unable to save orchestration');
-                    },
-                    complete: function() {
-                        waitDialog.close();
-                    }
-                });
+        // initialize the table - we'll add to it below
+        const coTable = XNAT.table({
+            className: 'xnat-table compact',
+            style: {
+                width: '100%',
+                marginTop: '15px',
+                marginBottom: '15px'
             }
         });
 
-        const deleteBtn = spawn('button#delete-command-orchestration.command-orchestration-action.btn.btn-sm', {
-            html: 'Delete',
-            disabled: !isAdmin,
-            style: 'display: none',
-            onclick: function(){
-                if (!isAdmin) {
-                    return;
-                }
-                xmodal.confirm({
-                    height: 220,
-                    scroll: false,
-                    content: "" +
-                        "<p>Are you sure you'd like to delete this orchestration?</p>" +
-                        "<p><b>This action cannot be undone.</b></p>",
-                    okAction: function(){
-                        const waitDialog = XNAT.ui.dialog.static.wait('Deleting...');
+        // add table header row
+        coTable.tr()
+            .th('<b>Name</b>')
+            .th('<b>Commands</b>')
+            .th({ width: 91, html: '<b>Selected</b>' });
+
+        function radioBtn(checked, o) {
+            const ckbox = spawn('input.orchestration-select', {
+                type: 'radio',
+                name: 'orchestration-select',
+                checked: checked,
+                disabled: o && !o.enabled,
+                value: 'true',
+                onchange: function () {
+                    let radio = $(this);
+                    if (o) {
+                        XNAT.xhr.put({
+                            url: rootUrl('/xapi/orchestration/project/' + projectId + '?orchestrationId=' + o.id),
+                            success: function () {
+                                XNAT.ui.banner.top(1000, 'Orchestration <b>' + o.name + '</b> added', 'success');
+                                projCommandConfigManager.refreshTable();
+                            },
+                            fail: function (e) {
+                                errorHandler(e);
+                                radio.prop('checked', false);
+                            }
+                        });
+                    } else {
                         XNAT.xhr.delete({
-                            url: csrfUrl('/xapi/orchestration/' + projCommandOrchestrationManager.stored.id),
-                            success: function(){
-                                projCommandOrchestrationManager.stored = undefined;
-                                $('#orchestrationWrappers').remove();
-                                $('#enabled-message').hide();
-                                $('.command-orchestration-action').hide();
-                                XNAT.ui.banner.top(2000, '<b>Success!</b> Command orchestration removed', 'success');
+                            url: rootUrl('/xapi/orchestration/project/' + projectId),
+                            success: function () {
+                                XNAT.ui.banner.top(1000, 'Orchestration removed', 'success');
                             },
-                            error: function(e){
-                                errorHandler(e,'Unable to remove orchestration');
-                            },
-                            complete: function() {
-                                waitDialog.close();
+                            fail: function (e) {
+                                errorHandler(e);
+                                radio.prop('checked', false);
                             }
                         });
                     }
-                });
-            }
-        });
-
-        const disableBtn = spawn('button#disabe-command-orchestration.command-orchestration-action.btn.btn-sm', {
-            html: 'Disable',
-            disabled: !isAdmin,
-            style: 'display: none',
-            onclick: function(){
-                if (!isAdmin) {
-                    return;
                 }
-                const waitDialog = XNAT.ui.dialog.static.wait('Disabling...');
-                XNAT.xhr.put({
-                    url: csrfUrl('/xapi/orchestration/' + projCommandOrchestrationManager.stored.id + '/disable'),
-                    success: function(){
-                        projCommandOrchestrationManager.stored.enabled = false;
-                        $('#enabled-message').text(disabledMsg).addClass('warning').removeClass('success').show();
-                        XNAT.ui.banner.top(2000, '<b>Success!</b> Command orchestration disabled', 'success');
-                    },
-                    error: function(e){
-                        errorHandler(e,'Unable to disable orchestration');
-                    },
-                    complete: function() {
-                        waitDialog.close();
-                    }
-                });
-            }
-        });
+            });
 
-        $('#project-command-orchestration-panel .panel-footer').append(spawn('!', [
-            spawn('div.pull-right', [
-                deleteBtn,
-                spacer(5),
-                disableBtn,
-                spacer(5),
-                saveBtn,
-            ]),
-            spawn('div.clear')
-        ]));
-
-        if (projCommandOrchestrationManager.stored) {
-            $('.command-orchestration-action').show();
+            return spawn('div.center', [ckbox]);
         }
-        projCommandOrchestrationManager.rendered = true;
-    };
 
-    projCommandOrchestrationManager.stored = null;
-    projCommandOrchestrationManager.init = function() {
-        let $manager = $('div#command-orchestration');
         XNAT.xhr.getJSON({
-            url: restUrl('/xapi/orchestration'),
-            data: {'project': getProjectId()},
+            url: rootUrl('/xapi/orchestration/project/' + projectId),
             success: function(data) {
-                projCommandOrchestrationManager.stored = data;
-                projCommandOrchestrationManager.setupForm($manager, data.enabled);
+                // add option for none
+                coTable.tr({ 'style': { 'background-color': '#f3f3f3' }})
+                    .td({className: 'name', html: 'No orchestration', colSpan: 2})
+                    .td([ spawn('div',[radioBtn(!data.selectedOrchestrationId, null)]) ])
+
+                data.availableOrchestrations.forEach(function(o) {
+                    coTable.tr()
+                        .td(o.name)
+                        .td($.map(o.wrapperIds, function(wid) {
+                            return projectCommandOptions[wid].label;
+                        }).join(', '))
+                        .td([ spawn('div',[radioBtn(data.selectedOrchestrationId === o.id, o)]) ])
+                })
             },
             error: function(xhr) {
-                if (xhr.status === 404) {
-                    if (Object.keys(projectCommandOptions).length > 0) {
-                        projCommandOrchestrationManager.setupForm($manager, null);
-                    } else {
-                        $manager.empty();
-                        if (projCommandOrchestrationManager.stored) {
-                            projCommandOrchestrationManager.disable();
-                        }
-                        $manager.append(
-                            spawn('p',{'style': { 'margin-top': '1em' }}, 'Cannot configure command orchestration. ' +
-                                'No commands are enabled for this project.')
-                        );
-                    }
-                } else {
-                    errorHandler(xhr);
-                }
+                errorHandler(xhr);
             }
         });
+
+        return coTable.table;
     };
 
-    projCommandOrchestrationManager.disable = function() {
-        if (!projCommandOrchestrationManager.stored || !projCommandOrchestrationManager.stored.enabled ||
-            !projCommandOrchestrationManager.rendered) {
-            return;
-        }
-        $('#enabled-message').text(disabledMsg).removeClass('success').addClass('warning').show();
-        $.ajax({
-            method: 'PUT',
-            url: restUrl('/xapi/orchestration/' + projCommandOrchestrationManager.stored.id + '/disable'),
-            success: function() {
-                projCommandOrchestrationManager.stored.enabled = false;
-                XNAT.ui.banner.top(2000, 'Command orchestration <b>disabled</b>', 'warning');
-            },
-            error: function(xhr) {
-                errorHandler(xhr, 'Error disabling orchestration');
-            }
-        });
-    }
+    projCommandOrchestrationManager.init = function() {
+        const $manager = $('div#command-orchestration');
+        $manager.empty();
+        $manager.append(projCommandOrchestrationManager.table());
+    };
 }));

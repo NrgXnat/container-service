@@ -61,7 +61,7 @@ projectCommandOrchestrationPanel:
         projectCommandOrchestrationNote:
             tag: div.message
             contents:
-                "Setup orchestration of multiple commands, which will run sequentially as long as predecessors complete without error."
+                "Enable command orchestration for this project. Currently, only one orchestration per project is supported."
         projectCommandOrchestrationTable:
             tag: div#command-orchestration
             contents: Loading...

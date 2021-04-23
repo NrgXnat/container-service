@@ -8,6 +8,8 @@ import org.nrg.containers.daos.DockerHubDao;
 import org.nrg.containers.model.dockerhub.DockerHubEntity;
 import org.nrg.containers.services.ContainerConfigService;
 import org.nrg.containers.services.DockerHubService;
+import org.nrg.containers.services.OrchestrationEntityService;
+import org.nrg.containers.services.OrchestrationProjectEntityService;
 import org.nrg.containers.services.impl.ContainerConfigServiceImpl;
 import org.nrg.containers.services.impl.HibernateDockerHubService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,7 +39,7 @@ public class DockerHubEntityTestConfig {
     @Bean
     public ContainerConfigService containerConfigService(final ConfigService configService,
                                                          final ObjectMapper objectMapper) {
-        return new ContainerConfigServiceImpl(configService, objectMapper);
+        return new ContainerConfigServiceImpl(configService, objectMapper, Mockito.mock(OrchestrationProjectEntityService.class), Mockito.mock(OrchestrationEntityService.class));
     }
 
     @Bean

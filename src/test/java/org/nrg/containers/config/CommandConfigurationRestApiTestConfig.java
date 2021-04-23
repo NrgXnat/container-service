@@ -3,12 +3,12 @@ package org.nrg.containers.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
+import org.nrg.containers.daos.CommandEntityRepository;
+import org.nrg.containers.daos.OrchestrationEntityDao;
+import org.nrg.containers.daos.OrchestrationProjectEntityDao;
 import org.nrg.containers.rest.CommandConfigurationRestApi;
-import org.nrg.containers.services.CommandEntityService;
-import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerConfigService;
-import org.nrg.containers.services.impl.CommandServiceImpl;
-import org.nrg.containers.services.impl.ContainerConfigServiceImpl;
+import org.nrg.containers.services.*;
+import org.nrg.containers.services.impl.*;
 import org.nrg.framework.services.ContextService;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -49,7 +49,7 @@ public class CommandConfigurationRestApiTestConfig extends WebSecurityConfigurer
     @Bean
     public ContainerConfigService containerConfigService(final ConfigService configService,
                                                          final ObjectMapper objectMapper) {
-        return new ContainerConfigServiceImpl(configService, objectMapper);
+        return new ContainerConfigServiceImpl(configService, objectMapper, Mockito.mock(OrchestrationProjectEntityService.class), Mockito.mock(OrchestrationEntityService.class));
     }
 
     @Bean

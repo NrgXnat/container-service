@@ -5,9 +5,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.ContainerService;
-import org.nrg.containers.services.OrchestrationEntityService;
+import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.utils.ContainerUtils;
-import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.event.entities.WorkflowStatusEvent;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
@@ -29,16 +28,16 @@ import static reactor.bus.selector.Selectors.type;
 @Component
 public class WorkflowStatusEventOrchestrationListener implements Consumer<Event<WorkflowStatusEvent>> {
     private final ContainerService containerService;
-    private final OrchestrationEntityService orchestrationEntityService;
+    private final OrchestrationService orchestrationService;
     private final UserManagementServiceI userManagementServiceI;
 
     @Autowired
     public WorkflowStatusEventOrchestrationListener(final ContainerService containerService,
-                                                    final OrchestrationEntityService orchestrationEntityService,
+                                                    final OrchestrationService orchestrationService,
                                                     final UserManagementServiceI userManagementServiceI,
                                                     final EventBus eventBus) {
         this.containerService = containerService;
-        this.orchestrationEntityService = orchestrationEntityService;
+        this.orchestrationService = orchestrationService;
         this.userManagementServiceI = userManagementServiceI;
         eventBus.on(type(WorkflowStatusEvent.class), this);
     }
@@ -59,7 +58,7 @@ public class WorkflowStatusEventOrchestrationListener implements Consumer<Event<
             final Container containerOrService = containerService.get(containerId);
             final long wrapperId = containerOrService.wrapperId();
             int stepIdx = Integer.parseInt(StringUtils.defaultIfBlank(workflow.getCurrentStepId(), "0"));
-            final Command.CommandWrapper nextWrapper = orchestrationEntityService.findNextWrapper(orchestrationId,
+            final Command.CommandWrapper nextWrapper = orchestrationService.findNextWrapper(orchestrationId,
                     stepIdx, wrapperId);
             if (nextWrapper == null) {
                 return;

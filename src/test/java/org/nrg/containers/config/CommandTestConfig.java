@@ -16,7 +16,9 @@ import org.nrg.containers.model.command.entity.DockerSetupCommandEntity;
 import org.nrg.containers.model.command.entity.DockerWrapupCommandEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.OrchestrationProjectEntityService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.services.AliasTokenService;
@@ -83,7 +85,8 @@ public class CommandTestConfig {
                 CommandWrapperDerivedInputEntity.class,
                 CommandWrapperOutputEntity.class,
                 OrchestrationEntity.class,
-                OrchestratedWrapperEntity.class);
+                OrchestratedWrapperEntity.class,
+                OrchestrationProjectEntity.class);
         return bean;
     }
 

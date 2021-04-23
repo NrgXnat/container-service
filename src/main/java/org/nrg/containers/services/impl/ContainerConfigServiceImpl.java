@@ -9,6 +9,8 @@ import org.nrg.config.exceptions.ConfigServiceException;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.model.configuration.CommandConfigurationInternal;
 import org.nrg.containers.services.ContainerConfigService;
+import org.nrg.containers.services.OrchestrationEntityService;
+import org.nrg.containers.services.OrchestrationProjectEntityService;
 import org.nrg.framework.constants.Scope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,12 +24,18 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
 
     private final ConfigService configService;
     private final ObjectMapper mapper;
+    private final OrchestrationProjectEntityService orchestrationProjectEntityService;
+    private final OrchestrationEntityService orchestrationEntityService;
 
     @Autowired
     public ContainerConfigServiceImpl(final ConfigService configService,
-                                      final ObjectMapper mapper) {
+                                      final ObjectMapper mapper,
+                                      final OrchestrationProjectEntityService orchestrationProjectEntityService,
+                                      final OrchestrationEntityService orchestrationEntityService) {
         this.configService = configService;
         this.mapper = mapper;
+        this.orchestrationProjectEntityService = orchestrationProjectEntityService;
+        this.orchestrationEntityService = orchestrationEntityService;
     }
 
     @Override
@@ -136,6 +144,14 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
                         .enabled(enabled)
                         .build();
         setCommandConfigurationInternal(toSet, scope, project, wrapperId, username, reason);
+
+        if (!enabled) {
+            if (scope == Scope.Project) {
+                orchestrationProjectEntityService.checkAndDisable(project, wrapperId);
+            } else {
+                orchestrationEntityService.checkAndDisable(wrapperId);
+            }
+        }
     }
 
     private void setCommandConfigurationInternal(final CommandConfigurationInternal commandConfigurationInternal,

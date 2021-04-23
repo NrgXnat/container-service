@@ -142,6 +142,7 @@ dependencies {
         transitive = false
     }
 
+    implementation group: 'javax.interceptor', name: 'javax.interceptor-api', version: '1.2.2'
     testImplementation "junit:junit"
     testImplementation "org.hamcrest:hamcrest-library"
     testImplementation "org.springframework:spring-test"

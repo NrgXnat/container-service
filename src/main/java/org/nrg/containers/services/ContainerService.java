@@ -138,9 +138,10 @@ public interface ContainerService {
      * @param wrapperId the wrapper id
      * @param commandId the command id
      * @param wrapperName the wrapper name
-     * @return orchestration id or null if none
+     * @return orchestration or null if none
      * @throws ExecutionException for issues querying the orchestration entity
      */
+    @Nullable
     Orchestration getOrchestrationWhereWrapperIsFirst(final String project,
                                                       long wrapperId,
                                                       final long commandId,

@@ -45,15 +45,15 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final SiteConfigPreferences siteConfigPreferences,
                                              final ContainerFinalizeService containerFinalizeService,
                                              final CatalogService catalogService,
-                                             final OrchestrationEntityService mockOrchestrationEntityService) {
+                                             final OrchestrationService mockOrchestrationService) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
                 commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
-                null, catalogService, mockOrchestrationEntityService);
+                null, catalogService, mockOrchestrationService);
     }
 
     @Bean
-    public OrchestrationEntityService mockOrchestrationEntityService() {
-        return Mockito.mock(OrchestrationEntityService.class);
+    public OrchestrationService mockOrchestrationService() {
+        return Mockito.mock(OrchestrationService.class);
     }
 
     @Bean

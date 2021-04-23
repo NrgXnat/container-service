@@ -1,16 +1,15 @@
 package org.nrg.containers.services.impl;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.daos.OrchestrationEntityDao;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
+import org.nrg.containers.model.orchestration.auto.OrchestrationProject;
 import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
-import org.nrg.containers.services.CommandEntityService;
-import org.nrg.containers.services.OrchestrationEntityService;
-import org.nrg.framework.constants.Scope;
+import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
+import org.nrg.containers.services.*;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntityService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,21 +19,38 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.security.InvalidParameterException;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @Transactional
 public class OrchestrationEntityServiceImpl extends AbstractHibernateEntityService<OrchestrationEntity, OrchestrationEntityDao>
         implements OrchestrationEntityService {
-    private final CommandEntityService commandEntityService;
+    private final OrchestrationProjectEntityService orchestrationProjectEntityService;
 
     @Autowired
-    public OrchestrationEntityServiceImpl(final CommandEntityService commandEntityService) {
-        this.commandEntityService = commandEntityService;
+    public OrchestrationEntityServiceImpl(final OrchestrationProjectEntityService orchestrationProjectEntityService) {
+        this.orchestrationProjectEntityService = orchestrationProjectEntityService;
+    }
+
+    @Override
+    public Orchestration createOrUpdate(Orchestration orchestration, List<CommandWrapperEntity> wrapperList)
+            throws NotFoundException {
+        boolean create = orchestration.getId() == 0L;
+        OrchestrationEntity oe;
+        if (create) {
+            oe = new OrchestrationEntity();
+            populate(oe, orchestration.getName(), wrapperList);
+            OrchestrationEntity created = create(oe);
+            return created.toPojo();
+        } else {
+            oe = get(orchestration.getId());
+            populate(oe, orchestration.getName(), wrapperList);
+            oe.setEnabled(true);
+            update(oe);
+            return oe.toPojo();
+        }
     }
 
     @Nullable
@@ -57,97 +73,116 @@ public class OrchestrationEntityServiceImpl extends AbstractHibernateEntityServi
     }
 
     @Override
-    public Orchestration createOrUpdate(Orchestration orchestration)
-            throws NotFoundException {
-        boolean create = orchestration.getId() == 0L;
-        validatePojo(orchestration, create);
-        OrchestrationEntity oe;
-        if (create) {
-            oe = new OrchestrationEntity();
-            populateFromPojo(oe, orchestration);
-            OrchestrationEntity created = create(oe);
-            return created.toPojo();
-        } else {
-            oe = get(orchestration.getId());
-            populateFromPojo(oe, orchestration);
-            oe.setEnabled(true);
-            getDao().update(oe);
-            return oe.toPojo();
+    public List<Long> setEnabled(long id, boolean enabled) throws NotFoundException {
+        OrchestrationEntity oe = get(id);
+        setEnabled(oe, enabled);
+        return oe.getWrapperList().stream().map(OrchestratedWrapperEntity::wrapperId).collect(Collectors.toList());
+    }
+
+    @Override
+    public void setEnabled(OrchestrationEntity oe, boolean enabled) {
+        oe.setEnabled(enabled);
+        if (!enabled) {
+            oe.clearProjects();
         }
+        update(oe);
+    }
+
+    @Override
+    public List<Orchestration> getAllPojos() {
+        final List<OrchestrationEntity> list = getDao().findAllWithDisabledAndOrder();
+        if (getInitialize()) {
+            for (final OrchestrationEntity entity : list) {
+                initialize(entity);
+            }
+        }
+        return list.stream().map(OrchestrationEntity::toPojo).collect(Collectors.toList());
+    }
+
+    @Override
+    public OrchestrationProject getAvailableForProject(String project) {
+        List<Orchestration> orchestrations = getAllPojos();
+        OrchestrationProjectEntity selected = orchestrationProjectEntityService.find(project);
+        return new OrchestrationProject(orchestrations, selected == null ? null :
+                selected.getOrchestrationEntity().getId());
     }
 
     @Override
     @Nonnull
-    public Orchestration find(Scope scope, String scopedItemId) throws NotFoundException {
-        OrchestrationEntity oe = getDao().findScoped(scope, scopedItemId);
-        if (oe == null) {
-            throw new NotFoundException("Could not find entity with scope " + scope + " and ID " + scopedItemId);
+    public List<Long> setProjectOrchestration(String project, long orchestrationId)
+            throws NotFoundException {
+        OrchestrationEntity oe = get(orchestrationId);
+        OrchestrationProjectEntity ope = orchestrationProjectEntityService.find(project);
+        boolean create = ope == null;
+        if (create) {
+            ope = new OrchestrationProjectEntity();
+            ope.setProjectId(project);
+        } else {
+            ope.getOrchestrationEntity().removeProject(ope);
         }
-        return oe.toPojo();
+        List<Long> wrapperIds;
+        if (!oe.isEnabled()) {
+            throw new InvalidParameterException("Orchestration " + oe.getName() + " (" +
+                    oe.getId()+ ") cannot be added to a project because it is not enabled.");
+        }
+        oe.addProject(ope);
+        wrapperIds = oe.getWrapperList().stream().map(OrchestratedWrapperEntity::wrapperId).collect(Collectors.toList());
+
+        if (create) {
+            orchestrationProjectEntityService.create(ope);
+        } else {
+            orchestrationProjectEntityService.update(ope);
+        }
+        return wrapperIds;
     }
 
     @Override
-    public void disable(long id) throws NotFoundException {
-        OrchestrationEntity oe = get(id);
-        oe.setEnabled(false);
-        getDao().update(oe);
+    public void removeProjectOrchestration(String project) {
+        OrchestrationProjectEntity ope = orchestrationProjectEntityService.find(project);
+        if (ope == null) {
+            return;
+        }
+        ope.getOrchestrationEntity().removeProject(ope);
+        orchestrationProjectEntityService.delete(ope);
+    }
+
+    @Override
+    public synchronized void checkAndDisable(long wrapperId) {
+        for (OrchestrationEntity oe : getDao().findEnabledUsingWrapper(wrapperId)) {
+            setEnabled(oe, false);
+        }
+        flush();
+    }
+
+    @Override
+    @Nullable
+    public Orchestration findForProject(String project) {
+        OrchestrationProjectEntity ope = orchestrationProjectEntityService.find(project);
+        if (ope == null) {
+            return null;
+        }
+        return ope.getOrchestrationEntity().toPojo();
     }
 
     @Nullable
-    public Orchestration findWhereWrapperIsFirst(Orchestration.OrchestrationIdentifier oi) {
-        OrchestrationEntity oe = getDao().findScopedAndEnabled(oi.scope, oi.scopedItemId);
-        if (oe == null) {
+    public Orchestration findWhereWrapperIsFirst(String project, long firstWrapperId) {
+        OrchestrationProjectEntity ope = orchestrationProjectEntityService.find(project);
+        if (ope == null) {
             return null;
         }
-        if (oi.firstWrapperId == 0L) {
-            try {
-                oi.firstWrapperId = commandEntityService.getWrapperId(oi.commandId, oi.wrapperName);
-            } catch (NotFoundException e) {
-                return null;
-            }
-        }
-        return oe.getWrapperList().get(0).wrapperId() == oi.firstWrapperId ? oe.toPojo() : null;
+        OrchestrationEntity oe = ope.getOrchestrationEntity();
+        return oe.isEnabled() && oe.getWrapperList().get(0).wrapperId() == firstWrapperId ? oe.toPojo() : null;
     }
 
-    private void validatePojo(Orchestration orchestration, boolean create)
-            throws InvalidParameterException {
-        if (StringUtils.isBlank(orchestration.getScope())) {
-            throw new InvalidParameterException("Scope not specified");
-        }
-        if (StringUtils.isBlank(orchestration.getScopedItemId()) && !Scope.Site.name().equals(orchestration.getScope())) {
-            throw new InvalidParameterException("Scoped item ID required for scope " + orchestration.getScope());
-        }
-        if (create &&
-                getDao().findScoped(Scope.valueOf(orchestration.getScope()), orchestration.getScopedItemId()) != null) {
-            throw new InvalidParameterException(orchestration.getScope() + " " + orchestration.getScopedItemId() +
-                    " already has orchestration configured: update using id or delete and recreate.");
-        }
-        if (orchestration.getWrapperIds().size() < 2) {
-            throw new InvalidParameterException("Orchestration of fewer than two wrappers is not allowed");
-        }
-    }
 
-    private void populateFromPojo(OrchestrationEntity oe, Orchestration orchestration) throws NotFoundException {
-        oe.setName(orchestration.getName());
-        oe.setScopedItemId(orchestration.getScopedItemId());
-        oe.setScope(Scope.valueOf(orchestration.getScope()));
+    private void populate(OrchestrationEntity oe, String name, List<CommandWrapperEntity> wrapperList) {
+        oe.setName(name);
         oe.clearWrapperList();
-        Set<String> contexts = new HashSet<>();
-        List<Long> wrapperIds = orchestration.getWrapperIds();
-        for (int i = 0; i < wrapperIds.size(); i++) {
+        for (int i = 0; i < wrapperList.size(); i++) {
             OrchestratedWrapperEntity we;
             we = new OrchestratedWrapperEntity();
             we.setOrchestratedOrder(i);
-            CommandWrapperEntity cwe = commandEntityService.getWrapper(wrapperIds.get(i));
-            if (i == 0) {
-                contexts.addAll(cwe.getContexts());
-            } else {
-                contexts.retainAll(cwe.getContexts());
-                if (contexts.isEmpty()) {
-                    throw new InvalidParameterException("Wrappers must all have a common context");
-                }
-            }
-            we.setCommandWrapperEntity(cwe);
+            we.setCommandWrapperEntity(wrapperList.get(i));
             oe.addWrapper(we);
         }
     }
