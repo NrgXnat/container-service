@@ -20,6 +20,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private List<DockerServerEntitySwarmConstraint> swarmConstraints = new ArrayList<>();
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
+    private Boolean defaultServer;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -37,6 +38,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.containerUser = dockerServer.containerUser();
         this.autoCleanup = dockerServer.autoCleanup();
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
+        this.defaultServer = dockerServer.defaultServer();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -167,6 +169,14 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         swarmConstraint.setDockerServerEntity(null);
     }
 
+    public Boolean isDefaultServer() {
+        return defaultServer;
+    }
+
+    public void setDefaultServer(Boolean defaultServer) {
+        this.defaultServer = defaultServer;
+    }
+
     @Column(columnDefinition = "boolean default true")
     public boolean isAutoCleanup() {
         return autoCleanup;
@@ -215,6 +225,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         }
 
         return swarmMode == that.swarmMode &&
+                Objects.equals(defaultServer,that.defaultServer) &&
                 Objects.equals(this.name, that.name) &&
                 Objects.equals(this.host, that.host) &&
                 Objects.equals(this.certPath, that.certPath) &&
@@ -230,7 +241,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     @Override
     public int hashCode() {
         return Objects.hash(name, host, certPath, lastEventCheckTime, swarmMode, pathTranslationXnatPrefix,
-                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs);
+                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
+                maxConcurrentFinalizingJobs, defaultServer);
     }
 
 }

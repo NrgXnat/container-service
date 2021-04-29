@@ -67,7 +67,7 @@ public class DockerStatusUpdater implements Runnable {
         // Since XFT is up, we should be able to connect to the database and read the docker server
         DockerServer dockerServer = null;
         try {
-            dockerServer = dockerServerService.getServer();
+            dockerServer = dockerServerService.getDefaultServer();
         } catch (NotFoundException e) {
             // ignored
             log.error("Docker server not found");

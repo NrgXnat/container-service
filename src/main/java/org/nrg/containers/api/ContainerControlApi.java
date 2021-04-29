@@ -23,7 +23,9 @@ import java.util.Map;
 
 public interface ContainerControlApi {
     String ping() throws NoDockerServerException, DockerServerException;
+    String ping(DockerServer server) throws NoDockerServerException, DockerServerException;
     boolean canConnect();
+    boolean canConnect(DockerServer server);
 
     String pingHub(DockerHub hub) throws DockerServerException, NoDockerServerException;
     String pingHub(DockerHub hub, String username, String password, String token, String email) throws DockerServerException, NoDockerServerException;

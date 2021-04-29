@@ -171,7 +171,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             log.debug("Creating launch UI.");
             return LaunchUi.create(partiallyResolvedCommand,
                     commandConfiguration.inputs(),
-                    dockerServerService.getServer(),
+                    dockerServerService.getDefaultServer(),
                     false);
         } catch (Throwable t) {
             log.error("Error getting launch UI.", t);
@@ -298,7 +298,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             log.debug("Creating launch UI.");
             return LaunchUi.create(partiallyResolvedCommand,
                     commandConfiguration.inputs(),
-                    dockerServerService.getServer(),
+                    dockerServerService.getDefaultServer(),
                     true);
         } catch (Throwable t) {
             log.error("Error getting launch UI.", t);

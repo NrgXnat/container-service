@@ -1,14 +1,6 @@
 package org.nrg.containers;
 
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -23,12 +15,9 @@ import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.QueueConsumerTestConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
-import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.*;
 import org.nrg.containers.services.*;
@@ -146,9 +135,9 @@ public class QueueConsumerTest {
             }
         }
 
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
+        dockerServerService.setDefaultServer(DockerServer.create(0L, "Test server", containerHost, certPath,
                 false, null, null, null,
-                false, null, true,null, null));
+                false, null, true,null, null, null));
 
         // Mock the userI
         mockUser = mock(UserI.class);

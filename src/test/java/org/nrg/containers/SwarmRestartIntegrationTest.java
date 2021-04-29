@@ -218,9 +218,9 @@ public class SwarmRestartIntegrationTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
+        dockerServerService.setDefaultServer(DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null));
+                false, null, true, null, null, null));
 
         CLIENT = controlApi.getClient();
         TestingUtils.pullBusyBox(CLIENT);

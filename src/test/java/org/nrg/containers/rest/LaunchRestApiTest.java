@@ -145,7 +145,7 @@ public class LaunchRestApiTest {
         final String containerServerName = "testy test";
         final String containerHost = "unix:///var/run/docker.sock";
         final DockerServer dockerServer = DockerServer.create(containerServerName, containerHost);
-        when(mockDockerServerService.getServer()).thenReturn(dockerServer);
+        when(mockDockerServerService.getDefaultServer()).thenReturn(dockerServer);
 
         // Mock the userI
         final String url = "mock://url";
@@ -333,7 +333,7 @@ public class LaunchRestApiTest {
                 .thenReturn(partiallyResolvedCommand);
 
         final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,
-                mockCommandConfiguration.inputs(), mockDockerServerService.getServer(), false);
+                mockCommandConfiguration.inputs(), mockDockerServerService.getDefaultServer(), false);
 
         final String path = String.format(pathTemplate, project, WRAPPER_ID);
         final MockHttpServletRequestBuilder request = get(path)

@@ -9,7 +9,6 @@ import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
 import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
 import org.mandas.docker.client.messages.swarm.Node;
 import org.mandas.docker.client.messages.swarm.NodeInfo;
 import org.mandas.docker.client.messages.swarm.NodeSpec;
@@ -298,8 +297,8 @@ public class SwarmConstraintsIntegrationTest {
     public void testThatServicesRunWithoutConstraints() throws Exception {
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null);
-        dockerServerService.setServer(server);
+                false, null, true, null, null, null);
+        dockerServerService.setDefaultServer(server);
         setClient();
 
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
@@ -316,8 +315,8 @@ public class SwarmConstraintsIntegrationTest {
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
                 false, null, true,
-                Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList(), null);
-        dockerServerService.setServer(server);
+                Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList(), null, null);
+        dockerServerService.setDefaultServer(server);
         setClient();
 
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
@@ -477,8 +476,8 @@ public class SwarmConstraintsIntegrationTest {
         // We need a client so we have to create a server, we'll update it shortly
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null);
-        DockerServerBase.DockerServer curServer = dockerServerService.setServer(server);
+                false, null, true, null, null, null);
+        DockerServerBase.DockerServer curServer = dockerServerService.setDefaultServer(server);
         setClient();
 
         // target manager bc every swarm has one and we want to test a non-label constraint
@@ -569,8 +568,8 @@ public class SwarmConstraintsIntegrationTest {
 
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 false, null, null, null,
-                false, null, true, constraints, null);
-        dockerServerService.setServer(server);
+                false, null, true, constraints, null, null);
+        dockerServerService.setDefaultServer(server);
         setClient();
 
         Map<String, String> userInputs = new HashMap<>();

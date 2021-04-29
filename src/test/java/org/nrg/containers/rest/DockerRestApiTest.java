@@ -65,12 +65,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -134,7 +134,10 @@ public class DockerRestApiTest {
         doReturn("OK")
                 .when(mockContainerControlApi).pingHub(Mockito.any(DockerHub.class), Mockito.anyString(), Mockito.anyString(),
                 Mockito.anyString(), Mockito.anyString());
-        doReturn(MOCK_CONTAINER_SERVER).when(mockDockerServerService).getServer();
+        doReturn("OK")
+                .when(mockContainerControlApi).ping(any(DockerServer.class));
+        doReturn(MOCK_CONTAINER_SERVER).when(mockDockerServerService).getDefaultServer();
+        doReturn(MOCK_CONTAINER_SERVER).when(mockDockerServerService).getServer(any(long.class));
     }
 
     @Test
@@ -161,7 +164,7 @@ public class DockerRestApiTest {
         assertThat(responseServer, is(MOCK_CONTAINER_SERVER.updateEventCheckTime(responseServer.lastEventCheckTime())));
 
 
-        when(mockDockerServerService.getServer()).thenThrow(NOT_FOUND_EXCEPTION);
+        when(mockDockerServerService.getDefaultServer()).thenThrow(NOT_FOUND_EXCEPTION);
 
         // Not found
         final String exceptionResponse =
@@ -174,7 +177,7 @@ public class DockerRestApiTest {
     }
 
     @Test
-    public void testSetServer() throws Exception {
+    public void testAddServer() throws Exception {
 
         final String path = "/docker/server";
 
@@ -189,14 +192,15 @@ public class DockerRestApiTest {
                         .with(csrf())
                         .with(testSecurityContext());
 
-        when(mockDockerServerService.setServer(any(DockerServer.class))).thenReturn(MOCK_CONTAINER_SERVER);
+        when(mockDockerServerService.getServer(any(Long.class))).thenReturn(MOCK_CONTAINER_SERVER);
+        when(mockDockerServerService.addServer(any(DockerServer.class))).thenReturn(MOCK_CONTAINER_SERVER.toBuilder().id(1L).build());
 
-        verify(mockDockerServerService, times(0)).setServer(any(DockerServer.class)); // Method has been called once
+        verify(mockDockerServerService, times(0)).addServer(any(DockerServer.class)); // Method has not been called
 
         mockMvc.perform(request)
                 .andExpect(status().isCreated());
 
-        verify(mockDockerServerService, times(1)).setServer(any(DockerServer.class)); // Method has been called once
+        verify(mockDockerServerService, times(1)).addServer(any(DockerServer.class)); // Method has been called once
 
         // TODO figure out why the non-admin tests are failing and fix them. The code seems fine on a live XNAT.
         // // Now test setting the server with a non-admin user
@@ -216,7 +220,35 @@ public class DockerRestApiTest {
         //                 .getContentAsString();
         //
         // assertThat(exceptionResponseNonAdmin, containsString(NON_ADMIN_USERNAME));
-        // verify(mockContainerControlApi, times(1)).setServer(MOCK_CONTAINER_SERVER); // Method has still been called only once
+        // verify(mockContainerControlApi, times(1)).addServer(MOCK_CONTAINER_SERVER); // Method has still been called only once
+
+    }
+
+    @Test
+    public void testUpdateServer() throws Exception {
+
+        final String path = "/docker/server";
+
+        final String containerServerJson =
+                mapper.writeValueAsString(MOCK_CONTAINER_SERVER);
+
+        final MockHttpServletRequestBuilder request =
+                put(path)
+                        .content(containerServerJson)
+                        .contentType(JSON)
+                        .with(authentication(ADMIN_AUTH))
+                        .with(csrf())
+                        .with(testSecurityContext());
+
+        when(mockDockerServerService.getServer(any(Long.class))).thenReturn(MOCK_CONTAINER_SERVER.toBuilder().id(1L).build());
+
+        verify(mockDockerServerService, times(0)).update(any(DockerServer.class)); // Method has not been called
+
+        mockMvc.perform(request)
+                .andExpect(status().isCreated());
+
+        verify(mockDockerServerService, times(1)).update(any(DockerServer.class)); // Method has been called once
+
 
     }
 

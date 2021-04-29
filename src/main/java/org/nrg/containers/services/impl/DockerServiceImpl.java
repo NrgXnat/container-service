@@ -5,6 +5,7 @@ import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.exceptions.DockerServerDeleteDefaultException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
@@ -217,22 +218,51 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerServerWithPing getServer() throws NotFoundException {
-        final DockerServer dockerServer = dockerServerService.getServer();
-        final boolean ping = controlApi.canConnect();
+    public DockerServerWithPing getDefaultServer() throws NotFoundException {
+        final DockerServer dockerServer = dockerServerService.getDefaultServer();
+        final boolean ping = controlApi.canConnect(dockerServer);
         return DockerServerWithPing.create(dockerServer, ping);
     }
 
     @Override
-    public DockerServerWithPing setServer(final DockerServer server) {
-        final DockerServer dockerServer = dockerServerService.setServer(server);
-        final boolean ping = controlApi.canConnect();
+    public DockerServerWithPing updateServer(final DockerServer server) {
+        DockerServer defaultServer = null;
+        try {
+            defaultServer = dockerServerService.getDefaultServer();
+        } catch (Exception e){}
+        if (defaultServer != null &&
+                server.defaultServer() &&
+                server.id() != defaultServer.id()) {
+            // Undefault the old default server
+            dockerServerService.update(defaultServer.toBuilder().defaultServer(false).build());
+        }
+        dockerServerService.update(server);
+        final DockerServer dockerServer = dockerServerService.getServer(server.id());
+        final boolean ping = controlApi.canConnect(dockerServer);
         return DockerServerWithPing.create(dockerServer, ping);
+    }
+
+    @Override
+    public DockerServerWithPing addServer(DockerServer server) throws NotFoundException {
+        DockerServer dockerServer = dockerServerService.addServer(server);
+        final boolean ping = controlApi.canConnect(dockerServer);
+        return DockerServerWithPing.create(dockerServer, ping);
+    }
+
+    @Override
+    public void deleteServer(Long id) throws NotFoundException, DockerServerDeleteDefaultException {
+        dockerServerService.deleteServer(id);
     }
 
     @Override
     public String ping() throws NoDockerServerException, DockerServerException {
         return controlApi.ping();
+    }
+
+    @Override
+    public String ping(Long id) throws NoDockerServerException, DockerServerException {
+        DockerServer server = dockerServerService.getServer(id);
+        return controlApi.ping(server);
     }
 
     @Override
@@ -248,7 +278,7 @@ public class DockerServiceImpl implements DockerService {
         // TODO once I have multiple docker servers, I will have to go ask all of them for their images
         final DockerServer dockerServer;
         try {
-            dockerServer = dockerServerService.getServer();
+            dockerServer = dockerServerService.getDefaultServer();
         } catch (NotFoundException e) {
             throw new NoDockerServerException(e);
         }

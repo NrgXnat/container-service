@@ -42,7 +42,7 @@ public class CheckDockerImagesArePresent extends AbstractInitializingTask {
     protected void callImpl() throws InitializingTaskException {
         final DockerServerBase.DockerServerWithPing dockerServerWithPing;
         try {
-            dockerServerWithPing = dockerService.getServer();
+            dockerServerWithPing = dockerService.getDefaultServer();
         } catch (NotFoundException e) {
             throw new InitializingTaskException(RequiresInitialization);
         }

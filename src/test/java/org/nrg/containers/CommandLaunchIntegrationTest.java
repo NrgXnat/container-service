@@ -22,7 +22,6 @@ import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -66,7 +65,6 @@ import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nullable;
@@ -251,9 +249,9 @@ public class CommandLaunchIntegrationTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
+        dockerServerService.setDefaultServer(DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null));
+                false, null, true, null, null, null));
 
         CLIENT = controlApi.getClient();CLIENT = controlApi.getClient();
         TestingUtils.pullBusyBox(CLIENT);

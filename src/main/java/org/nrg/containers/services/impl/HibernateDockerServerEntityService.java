@@ -13,7 +13,12 @@ public class HibernateDockerServerEntityService
         extends AbstractHibernateEntityService<DockerServerEntity, DockerServerEntityRepository>
         implements DockerServerEntityService {
     @Override
-    public DockerServerEntity getServer() {
-        return getDao().getUniqueEnabledServer();
+    public DockerServerEntity getDefaultServer() {
+        return getDao().getDefaultServer();
+    }
+
+    @Override
+    public DockerServerEntity getServer(Long id) {
+        return getDao().findById(id);
     }
 }

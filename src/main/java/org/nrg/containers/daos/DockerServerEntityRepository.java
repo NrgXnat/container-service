@@ -1,13 +1,14 @@
 package org.nrg.containers.daos;
 
 import org.hibernate.Hibernate;
-import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.framework.orm.hibernate.AbstractHibernateDAO;
 import org.springframework.stereotype.Repository;
 
 import java.util.Date;
+import java.util.List;
+import java.util.Objects;
 
 @Repository
 public class DockerServerEntityRepository extends AbstractHibernateDAO<DockerServerEntity> {
@@ -27,32 +28,24 @@ public class DockerServerEntityRepository extends AbstractHibernateDAO<DockerSer
         }
     }
 
-    public static DockerServerEntity create(final DockerServerBase.DockerServer dockerServer) {
-        return new DockerServerEntity().update(dockerServer);
-    }
 
-    public DockerServerEntity getUniqueEnabledServer() {
+    public DockerServerEntity getDefaultServer() {
         final DockerServerEntity dockerServerEntity = (DockerServerEntity) getSession()
-                .createQuery("select server from DockerServerEntity as server where server.enabled = true")
+                .createQuery("select server from DockerServerEntity as server where server.enabled = true and server.defaultServer = true")
                 .uniqueResult();
         initialize(dockerServerEntity);
         return dockerServerEntity;
     }
 
-    public long getUniqueEnabledServerId() {
-        final Long serverId = (Long) getSession()
-                .createQuery("select server.id from DockerServerEntity as server where server.enabled = true")
-                .uniqueResult();
-        return serverId == null ? 0L : serverId;
-    }
-
     @Override
     public DockerServerEntity create(final DockerServerEntity dockerServerEntity) {
-        // We only allow one enabled server at a time. To create this one, we must disable
-        // the previous one.
-        final DockerServerEntity currentlyEnabledServer = getUniqueEnabledServer();
-        if (currentlyEnabledServer != null) {
-            disableServer(currentlyEnabledServer);
+        // We only allow one default server at a time.
+        // If this one is set as default, remove default setting from the previous one.
+        if (dockerServerEntity.isDefaultServer()) {
+            final DockerServerEntity currentDefaultServer = getDefaultServer();
+            if (currentDefaultServer != null) {
+                undefaultServer(currentDefaultServer);
+            }
         }
         final Long id = (Long) super.create(dockerServerEntity);
         dockerServerEntity.setId(id);
@@ -61,19 +54,14 @@ public class DockerServerEntityRepository extends AbstractHibernateDAO<DockerSer
 
     @Override
     public void update(final DockerServerEntity dockerServerEntity) {
-        if (dockerServerEntity.isEnabled() && dockerServerEntity.getId() != getUniqueEnabledServerId()) {
-            // If the caller wants to update this server to be "enabled", we want to disable
-            // the currently enabled server. Unless they are the same.
-            disableServer(getUniqueEnabledServer());
-        }
         super.update(dockerServerEntity);
     }
 
-    private void disableServer(final DockerServerEntity currentlyEnabledServer) {
+    private void undefaultServer(final DockerServerEntity currentlyEnabledServer) {
         final Date now = new Date();
-        currentlyEnabledServer.setEnabled(false);
-        currentlyEnabledServer.setDisabled(now);
+        currentlyEnabledServer.setDefaultServer(false);
         currentlyEnabledServer.setTimestamp(now);
         getSession().update(currentlyEnabledServer);
     }
+
 }

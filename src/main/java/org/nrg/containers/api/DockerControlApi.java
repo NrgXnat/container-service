@@ -107,20 +107,30 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     @Nonnull
-    private DockerServer getServer() throws NoDockerServerException {
+    private DockerServer getDefaultServer() throws NoDockerServerException {
         try {
-            return dockerServerService.getServer();
+            return dockerServerService.getDefaultServer();
         } catch (NotFoundException e) {
             throw new NoDockerServerException(e);
         }
     }
 
-    @Override
-    public String ping() throws NoDockerServerException, DockerServerException {
-        return ping(getServer());
+    @Nonnull
+    private DockerServer getServer(Long id) throws NoDockerServerException {
+            DockerServer server = dockerServerService.getServer(id);
+            if (server == null) {
+                throw new NoDockerServerException("No Docker Server found with matching ID.");
+            }
+            return server;
     }
 
-    private String ping(final DockerServer dockerServer) throws DockerServerException {
+    @Override
+    public String ping() throws NoDockerServerException, DockerServerException {
+        return ping(getDefaultServer());
+    }
+
+    @Override
+    public String ping(final DockerServer dockerServer) throws DockerServerException {
         return dockerServer.swarmMode() ? pingSwarmMaster(dockerServer) : pingServer(dockerServer);
     }
 
@@ -144,17 +154,26 @@ public class DockerControlApi implements ContainerControlApi {
         return "OK";
     }
 
+    @Deprecated
     @Override
     public boolean canConnect() {
         try {
-            final String pingResult = ping();
-            return StringUtils.isNotBlank(pingResult) && pingResult.equals("OK");
+            return canConnect(getDefaultServer());
         } catch (NoDockerServerException e) {
             log.error(e.getMessage());
-        } catch (DockerServerException ignored) {
-            // Any actual errors have already been logged. We can safely ignore them here.
         }
+        return false;
+    }
 
+    @Override
+    public boolean canConnect(DockerServer dockerServer) {
+        try {
+            final String pingResult;
+            pingResult = ping(dockerServer);
+            return StringUtils.isNotBlank(pingResult) && pingResult.equals("OK");
+        } catch (DockerServerException e) {
+            log.error(e.getMessage());
+        }
         return false;
     }
 
@@ -351,7 +370,7 @@ public class DockerControlApi implements ContainerControlApi {
                 resolvedCommand.ipcMode();
 
         final List<ResolvedCommandMount> resolvedCommandMounts = resolvedCommand.mounts();
-        final DockerServer server = getServer();
+        final DockerServer server = getDefaultServer();
         if (server.swarmMode()) {
             final List<Mount> mounts = new ArrayList<>(resolvedCommandMounts.size());
             for (final ResolvedCommandMount resolvedCommandMount : resolvedCommandMounts) {
@@ -462,7 +481,7 @@ public class DockerControlApi implements ContainerControlApi {
                 "" :
                 container.ipcMode();
 
-        final DockerServer server = getServer();
+        final DockerServer server = getDefaultServer();
 
         final List<Container.ContainerMount> containerMounts = container.mounts();
         final Boolean overrideEntrypointMayBeNull = container.overrideEntrypoint();
@@ -887,7 +906,7 @@ public class DockerControlApi implements ContainerControlApi {
 
     @Override
     public void startContainer(final Container containerOrService) throws DockerServerException, NoDockerServerException {
-        startContainer(containerOrService, getServer());
+        startContainer(containerOrService, getDefaultServer());
     }
 
     private void startContainer(final Container containerOrService,
@@ -1105,7 +1124,7 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private LogStream logStream(final Container container, final LogsParam logType) throws DockerServerException, NoDockerServerException, DockerException, InterruptedException {
-        final DockerServer server = getServer();
+        final DockerServer server = getDefaultServer();
         return server.swarmMode() && container.isSwarmService() ?
                 getClient(server).serviceLogs(container.serviceId(), logType) :
                 getClient(server).logs(container.containerId(), logType);
@@ -1191,7 +1210,7 @@ public class DockerControlApi implements ContainerControlApi {
     @VisibleForTesting
     @Nonnull
     public DockerClient getClient() throws NoDockerServerException, DockerServerException {
-        return getClient(getServer());
+        return getClient(getDefaultServer());
     }
 
     @Nonnull
@@ -1341,7 +1360,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public void removeContainerOrService(final Container container)
             throws NoDockerServerException, DockerServerException {
-        final DockerServer server = getServer();
+        final DockerServer server = getDefaultServer();
         if (!server.autoCleanup()) {
             return;
         }
@@ -1369,7 +1388,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     @Nullable
     public ServiceTask getTaskForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException {
-        return getTaskForService(getServer(), service);
+        return getTaskForService(getDefaultServer(), service);
     }
 
     @Override
@@ -1447,7 +1466,7 @@ public class DockerControlApi implements ContainerControlApi {
 
     @Override
     public void throwTaskEventForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException {
-        throwTaskEventForService(getServer(), service);
+        throwTaskEventForService(getDefaultServer(), service);
     }
 
     @Override
@@ -1486,7 +1505,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public Integer getFinalizingThrottle() {
         try {
-            DockerServer server = getServer();
+            DockerServer server = getDefaultServer();
             return server.swarmMode() ? server.maxConcurrentFinalizingJobs() : null;
         } catch (NoDockerServerException e) {
             log.error("Unable to find server to determine finalizing queue throttle", e);

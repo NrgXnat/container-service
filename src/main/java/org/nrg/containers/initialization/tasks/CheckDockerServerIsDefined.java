@@ -49,7 +49,7 @@ public class CheckDockerServerIsDefined extends AbstractInitializingTask {
         if (serverPrefsBeanDefined) {
             log.debug("A docker server prefs bean does exist. Saving it in the database.");
             final DockerServer convertedPrefsBean = DockerServer.create(dockerServerPrefsBean);
-            dockerServerService.setServer(convertedPrefsBean);
+            dockerServerService.setDefaultServer(convertedPrefsBean);
             log.debug("All done.");
             return;
         } else {
@@ -58,6 +58,6 @@ public class CheckDockerServerIsDefined extends AbstractInitializingTask {
 
         // Nothing in DB and no prefs beans. Just make the default.
         log.debug("Creating default docker server: default socket connection.");
-        dockerServerService.setServer(DockerServer.DEFAULT_SOCKET);
+        dockerServerService.setDefaultServer(DockerServer.DEFAULT_SOCKET);
     }
 }

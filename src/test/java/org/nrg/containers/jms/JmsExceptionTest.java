@@ -305,9 +305,9 @@ public class JmsExceptionTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServerBase.DockerServer.create(0L, "Test server", containerHost, certPath,
+        dockerServerService.setDefaultServer(DockerServerBase.DockerServer.create(0L, "Test server", containerHost, certPath,
                 false, null, null, null,
-                false, null, true, null, null));
+                false, null, true, null, null, null));
 
         String img = "busybox:latest";
         CLIENT = controlApi.getClient();

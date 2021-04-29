@@ -119,7 +119,7 @@ public class CommandRestApiTest {
         final String containerServerName = "testy test";
         final String containerHost = "unix:///var/run/docker.sock";
         final DockerServer dockerServer = DockerServer.create(containerServerName, containerHost);
-        when(mockDockerServerService.getServer()).thenReturn(dockerServer);
+        when(mockDockerServerService.getDefaultServer()).thenReturn(dockerServer);
 
         // Mock the userI
         final UserI admin = mock(UserI.class);

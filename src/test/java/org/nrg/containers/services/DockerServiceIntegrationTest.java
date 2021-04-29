@@ -98,7 +98,7 @@ public class DockerServiceIntegrationTest {
             }
         }
 
-        dockerServerService.setServer(DockerServer.create("name", containerHost));
+        dockerServerService.setDefaultServer(DockerServer.create("name", containerHost));
 
         // Mock the userI
         mockUser = Mockito.mock(UserI.class);

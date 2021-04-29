@@ -264,7 +264,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
             try {
                 log.debug("Getting docker server to read path prefixes.");
-                final DockerServerBase.DockerServerWithPing dockerServer = dockerService.getServer();
+                final DockerServerBase.DockerServerWithPing dockerServer = dockerService.getDefaultServer();
                 pathTranslationXnatPrefix = dockerServer.pathTranslationXnatPrefix();
                 pathTranslationContainerHostPrefix = dockerServer.pathTranslationDockerPrefix();
             } catch (NotFoundException e) {
@@ -2987,7 +2987,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private List<String> resolveSwarmConstraints() {
             DockerServerBase server;
             try {
-                server = dockerServerService.getServer();
+                server = dockerServerService.getDefaultServer();
             } catch (NotFoundException e) {
                 log.error(e.getMessage(), e);
                 return null;

@@ -7,11 +7,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.exceptions.BadRequestException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.exceptions.NotUniqueException;
-import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
@@ -47,9 +43,7 @@ import java.util.List;
 
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
-import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
-import static org.springframework.web.bind.annotation.RequestMethod.GET;
-import static org.springframework.web.bind.annotation.RequestMethod.POST;
+import static org.springframework.web.bind.annotation.RequestMethod.*;
 
 @XapiRestController
 @RequestMapping(value = "/docker")
@@ -85,32 +79,66 @@ public class DockerRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = "/server", method = GET, produces = JSON)
     @ResponseBody
     public DockerServerWithPing getServer() throws NotFoundException {
-        return dockerService.getServer();
+        return dockerService.getDefaultServer();
     }
 
-    @ApiOperation(value = "Set Docker server configuration",
+    @ApiOperation(value = "Add Docker server configuration",
             notes = "Save new Docker server configuration values")
     @ApiResponses({
             @ApiResponse(code = 201, message = "The Docker server configuration was saved"),
             @ApiResponse(code = 400, message = "Must set the \"host\" property in request body"),
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/server", method = POST, restrictTo = Admin)
-    public ResponseEntity<DockerServerWithPing> setServer(final @RequestBody DockerServer dockerServer)
-            throws JsonProcessingException, UnauthorizedException, BadRequestException {
+    public ResponseEntity<DockerServerWithPing> addServer(final @RequestBody DockerServer dockerServer)
+            throws JsonProcessingException, UnauthorizedException, BadRequestException, NotFoundException {
         if (StringUtils.isBlank(dockerServer.host())) {
             throw new BadRequestException("Must set the \"host\" property in request body.");
         }
 
-        final DockerServerWithPing server = dockerService.setServer(dockerServer);
+        final DockerServerWithPing server = dockerService.addServer(dockerServer);
         return new ResponseEntity<>(server, HttpStatus.CREATED);
     }
 
+    @ApiOperation(value = "Update Docker server configuration",
+            notes = "Save new Docker server configuration values")
+    @ApiResponses({
+            @ApiResponse(code = 201, message = "The Docker server configuration was saved"),
+            @ApiResponse(code = 400, message = "Must set the \"host\" property in request body"),
+            @ApiResponse(code = 500, message = "Unexpected error")})
+    @XapiRequestMapping(value = "/server", method = PUT, restrictTo = Admin)
+    public ResponseEntity<DockerServerWithPing> updateServer(final @RequestBody DockerServer dockerServer)
+            throws JsonProcessingException, UnauthorizedException, BadRequestException, NotFoundException {
+        if (StringUtils.isBlank(dockerServer.host())) {
+            throw new BadRequestException("Must set the \"host\" property in request body.");
+        }
+
+        final DockerServerWithPing server = dockerService.updateServer(dockerServer);
+        return new ResponseEntity<>(server, HttpStatus.CREATED);
+    }
+
+    @XapiRequestMapping(value = "/server/{id:" + ID_REGEX + "}", method = DELETE, restrictTo = Admin)
+    @ApiOperation(value = "Delete Docker Server by ID")
+    @ResponseBody
+    public ResponseEntity<Void> deleteServer(final @PathVariable long id)
+            throws DockerServerDeleteDefaultException, NotFoundException {
+        dockerService.deleteServer(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @XapiRequestMapping(value = "/server/ping", method = GET)
-    @ApiOperation(value = "Ping docker server.", notes = "Returns \"OK\" on success.")
+    @ApiOperation(value = "Ping default docker server.", notes = "Returns \"OK\" on success.")
     @ResponseBody
     public String pingServer()
             throws NoDockerServerException, DockerServerException, UnauthorizedException {
         return dockerService.ping();
+    }
+
+    @XapiRequestMapping(value = "/server/ping/{id:\" + ID_REGEX + \"}", method = GET)
+    @ApiOperation(value = "Ping docker server by id.", notes = "Returns \"OK\" on success.")
+    @ResponseBody
+    public String pingServer(final @PathVariable long id)
+            throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
+        return dockerService.ping(id);
     }
 
     @XapiRequestMapping(value = "/hubs", method = GET)

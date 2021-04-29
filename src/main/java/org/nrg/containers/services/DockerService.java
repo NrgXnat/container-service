@@ -1,5 +1,6 @@
 package org.nrg.containers.services;
 
+import org.nrg.containers.exceptions.DockerServerDeleteDefaultException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
@@ -42,9 +43,13 @@ public interface DockerService {
     DockerImage pullFromHub(String imageName, boolean saveCommands)
             throws DockerServerException, NoDockerServerException, NotFoundException;
 
-    DockerServerWithPing getServer() throws NotFoundException;
-    DockerServerWithPing setServer(DockerServer server);
+    DockerServerWithPing getDefaultServer() throws NotFoundException;
+    DockerServerWithPing updateServer(DockerServer server) throws NotFoundException;
+    DockerServerWithPing addServer(DockerServer server) throws NotFoundException;
+    void deleteServer(Long id) throws NotFoundException, DockerServerDeleteDefaultException;
+
     String ping() throws NoDockerServerException, DockerServerException;
+    String ping(Long id) throws NoDockerServerException, DockerServerException;
 
     List<DockerImage> getImages() throws NoDockerServerException, DockerServerException;
     List<DockerImageAndCommandSummary> getImageSummaries() throws NoDockerServerException, DockerServerException;

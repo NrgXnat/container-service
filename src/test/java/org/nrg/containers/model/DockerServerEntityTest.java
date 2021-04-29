@@ -95,6 +95,7 @@ public class DockerServerEntityTest {
                 .pullImagesOnXnatInit(false)
                 .autoCleanup(true)
                 .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
+                .defaultServer(true)
                 .build();
         dockerServerStandaloneEntity = DockerServerEntity.create(dockerServerStandalone);
 
@@ -108,6 +109,7 @@ public class DockerServerEntityTest {
                 .pullImagesOnXnatInit(false)
                 .autoCleanup(true)
                 .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
+                .defaultServer(true)
                 .build();
         dockerServerSwarmNoConstraintsEntity = DockerServerEntity.create(dockerServerSwarmNoConstraints);
 
@@ -121,6 +123,7 @@ public class DockerServerEntityTest {
                 .pullImagesOnXnatInit(false)
                 .autoCleanup(true)
                 .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
+                .defaultServer(true)
                 .build();
         dockerServerSwarmEmptyConstraintsEntity = DockerServerEntity.create(dockerServerSwarmEmptyConstraints);
 
@@ -152,6 +155,7 @@ public class DockerServerEntityTest {
                 .pullImagesOnXnatInit(false)
                 .autoCleanup(true)
                 .swarmConstraints(Arrays.asList(constraintNotSettable, constraintSettable))
+                .defaultServer(true)
                 .build();
         dockerServerSwarmConstraintsEntity = DockerServerEntity.create(dockerServerSwarmConstraints);
 
@@ -223,28 +227,44 @@ public class DockerServerEntityTest {
                 Arrays.asList(dockerServerStandalone,
                         dockerServerSwarmNoConstraints,
                         dockerServerSwarmEmptyConstraints)) {
-            DockerServerBase.DockerServer server = dockerServerService.setServer(dockerServer);
+            DockerServerBase.DockerServer server = dockerServerService.setDefaultServer(dockerServer);
             TestingUtils.commitTransaction();
             assertThat(server, isIgnoreId(dockerServer));
-            assertThat(dockerServerService.getServer(), is(server));
+            assertThat(dockerServerService.getDefaultServer(), is(server));
 
             DockerServerBase.DockerServer updatedServer = dockerServerSwarmConstraints.toBuilder().id(server.id()).build();
             dockerServerService.update(updatedServer);
             TestingUtils.commitTransaction();
-            server = dockerServerService.getServer();
+            server = dockerServerService.getDefaultServer();
             assertThat(server, isIgnoreId(updatedServer));
         }
 
-        DockerServerBase.DockerServer server = dockerServerService.setServer(dockerServerSwarmConstraints);
+        DockerServerBase.DockerServer server = dockerServerService.setDefaultServer(dockerServerSwarmConstraints);
         TestingUtils.commitTransaction();
         assertThat(server, isIgnoreId(dockerServerSwarmConstraints));
-        assertThat(dockerServerService.getServer(), is(server));
+        assertThat(dockerServerService.getDefaultServer(), is(server));
 
         DockerServerBase.DockerServer updatedServer = dockerServerStandalone.toBuilder().id(server.id()).build();
         dockerServerService.update(updatedServer);
         TestingUtils.commitTransaction();
-        server = dockerServerService.getServer();
+        server = dockerServerService.getDefaultServer();
         assertThat(server, isIgnoreId(updatedServer));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testCreateMultipleServerService() throws Exception {
+
+        DockerServerBase.DockerServer defaultServer = dockerServerService.setDefaultServer(dockerServerStandalone);
+        DockerServerBase.DockerServer nonDefaultServer = dockerServerService.addServer(
+                dockerServerStandalone.toBuilder().defaultServer(false).build());
+        assertThat(dockerServerService.getDefaultServer(), isIgnoreId(dockerServerStandalone));
+
+        DockerServerBase.DockerServer newDefaultServer = dockerServerService.addServer(
+                dockerServerStandalone.toBuilder().defaultServer(true).build());
+        assertThat(dockerServerService.getDefaultServer(), is(dockerServerService.getServer(newDefaultServer.id())));
+        assertThat(dockerServerService.getDefaultServer(), is(not(dockerServerService.getServer(defaultServer.id()))));
+        assertThat(dockerServerService.getDefaultServer(), is(not(dockerServerService.getServer(nonDefaultServer.id()))));
     }
 
     private Matcher<DockerServerBase.DockerServer> isIgnoreId(final DockerServerBase.DockerServer server) {
