@@ -50,14 +50,7 @@ import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
-import org.nrg.xdat.om.WrkWorkflowdata;
-import org.nrg.xdat.om.XnatAbstractprojectasset;
-import org.nrg.xdat.om.XnatImageassessordata;
-import org.nrg.xdat.om.XnatImagescandata;
-import org.nrg.xdat.om.XnatImagesessiondata;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.XnatResource;
-import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.om.*;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Groups;
 import org.nrg.xdat.security.helpers.Permissions;
@@ -108,6 +101,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RE
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT_ASSESSOR;
 
 @Slf4j
 @Service
@@ -1684,6 +1678,9 @@ public class ContainerServiceImpl implements ContainerService {
                     case SUBJECT:
                         xsiType = XnatSubjectdata.SCHEMA_ELEMENT_NAME;
                         break;
+                    case SUBJECT_ASSESSOR:
+                        xsiType = XnatSubjectassessordata.SCHEMA_ELEMENT_NAME;
+                        break;
                     case SESSION:
                         xsiType = XnatImagesessiondata.SCHEMA_ELEMENT_NAME;
                         break;
@@ -1877,7 +1874,7 @@ public class ContainerServiceImpl implements ContainerService {
             final String type = input.type();
             if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || 
                     type.equals(SESSION.getName()) || type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || 
-                    type.equals(RESOURCE.getName()))) {
+                    type.equals(RESOURCE.getName()) || type.equals(SUBJECT_ASSESSOR.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }

@@ -746,8 +746,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Processing input value as a {}.", input.type());
 
                 final String type = input.type();
-                if (type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || type.equals(SESSION.getName()) || type.equals(SCAN.getName())
-                        || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName())) {
+                if (type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) ||type.equals(SUBJECT_ASSESSOR.getName())
+                        || type.equals(SESSION.getName()) || type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || type.equals(RESOURCE.getName())) {
 
                     Set<String> typesNeeded = loadTypesMap.get(input.name());
 
@@ -922,8 +922,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's JSON representation is blank.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) ||parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName()) ||
-                        parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName()) || parentType.equals(FILE.getName()) || parentType.equals(RESOURCE.getName())) {
+                } else if (parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) || parentType.equals(SUBJECT.getName()) ||
+                        parentType.equals(SUBJECT_ASSESSOR.getName()) || parentType.equals(SESSION.getName()) || parentType.equals(SCAN.getName()) ||
+                        parentType.equals(ASSESSOR.getName()) || parentType.equals(FILE.getName()) || parentType.equals(RESOURCE.getName())) {
                     final String parentValue = pullStringFromParentJson("$." + propertyToGet, resolvedMatcher, parentJson, resolvedParser);
                     resolvedXnatObjects = null;
                     resolvedValues = parentValue != null ? Collections.singletonList(parentValue) : Collections.<String>emptyList();
@@ -994,8 +995,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (!(parentType.equals(PROJECT_ASSET.getName()) ||parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName())) ||
-                        parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName())) {
+                } else if (!(parentType.equals(PROJECT_ASSET.getName()) || parentType.equals(SUBJECT.getName()) || parentType.equals(SESSION.getName()) || parentType.equals(SUBJECT.getName()) ||
+                        parentType.equals(SCAN.getName()) || parentType.equals(ASSESSOR.getName()) || parentType.equals(SUBJECT_ASSESSOR.getName()))) {
                     logIncompatibleTypes(input.type(), parentType);
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
@@ -1007,6 +1008,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         project = ((Subject)parentXnatObject).getProject(userI, false, typesNeeded);
                     } else if (parentType.equals(SESSION.getName())) {
                         project = ((Session)parentXnatObject).getProject(userI, false, typesNeeded);
+                    } else if (parentType.equals(SUBJECT_ASSESSOR.getName())) {
+                        project = ((SubjectAssessor)parentXnatObject).getProject(userI, false, typesNeeded);
                     } else if (parentType.equals(SCAN.getName())) {
                         project = ((Scan)parentXnatObject).getProject(userI, false, typesNeeded);
                     } else {
@@ -1085,7 +1088,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
-                } else if (!(parentType.equals(PROJECT.getName()) || parentType.equals(SESSION.getName()))) {
+                } else if (!(parentType.equals(PROJECT.getName()) || parentType.equals(SESSION.getName()) || parentType.equals(SUBJECT_ASSESSOR.getName()))) {
                     logIncompatibleTypes(input.type(), parentType);
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();
@@ -1144,14 +1147,20 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 }
                             }));
                         }
-                    } else {
-                        // Parent is session
+                    } else if (parentType.equals(SUBJECT_ASSESSOR.getName())) {
+                        final Subject subject = ((SubjectAssessor)parentXnatObject).getSubject(userI, false, typesNeeded);
+                        resolvedXnatObjects = Collections.<XnatModelObject>singletonList(subject);
+                        resolvedValues = Collections.singletonList(subject.getUri());
+                    } else if (parentType.equals(SESSION.getName())) {
                         final Subject subject = ((Session)parentXnatObject).getSubject(userI, false, typesNeeded);
                         resolvedXnatObjects = Collections.<XnatModelObject>singletonList(subject);
                         resolvedValues = Collections.singletonList(subject.getUri());
-                    }
+                    } else {
+                        log.error("Cannot derive input \"{}\". Parent type: \"{}\" is not supported.", input.name(), parentType);
+                        resolvedXnatObjects = Collections.emptyList();
+                        resolvedValues = Collections.emptyList();                    }
                 }
-            } else if (type.equals(SESSION.getName())) {
+            } else if (type.equals(SESSION.getName()) || type.equals(SUBJECT_ASSESSOR.getName())) {
                 if (parentXnatObject == null) {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
@@ -1351,7 +1360,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     resolvedValues = Collections.emptyList();
                 } else if (!(parentType.equals(PROJECT.getName()) || parentType.equals(PROJECT_ASSET.getName()) || parentType.equals(SUBJECT.getName()) ||
                                 parentType.equals(SESSION.getName()) || parentType.equals(SCAN.getName()) ||
-                                parentType.equals(ASSESSOR.getName()))) {
+                                parentType.equals(ASSESSOR.getName()) || parentType.equals(SUBJECT_ASSESSOR.getName()))) {
                     logIncompatibleTypes(input.type(), parentType);
                     resolvedXnatObjects = Collections.emptyList();
                     resolvedValues = Collections.emptyList();

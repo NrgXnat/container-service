@@ -39,6 +39,7 @@ public class SubjectAssessor extends XnatModelObject {
     @JsonProperty("subject-id")
     private String subjectId;
     private String directory;
+    @JsonProperty("datatype-string") private String datatypeString;
 
     public SubjectAssessor() {}
 
@@ -98,6 +99,13 @@ public class SubjectAssessor extends XnatModelObject {
                     resources.add(new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles,
                             loadTypes, this.uri, rootArchivePath));                }
             }
+        }
+
+        datatypeString = null;
+        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatSubjectassessordataI != null){
+            try {
+                datatypeString = xnatSubjectassessordataI.toString();
+            } catch (Throwable e){ }
         }
     }
 
