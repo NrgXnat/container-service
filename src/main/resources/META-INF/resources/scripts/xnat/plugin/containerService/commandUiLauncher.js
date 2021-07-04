@@ -119,7 +119,7 @@ var XNAT = getObject(XNAT || {});
         return (condensed) ? '' : spawn('br.clear');
     };
 
-    var defaultConfigInput = function(input){
+    var defaultConfigInput = function(input, password = false){
         var name = input.name || input.label,
             value = input.value,
             label = input.label,
@@ -141,7 +141,8 @@ var XNAT = getObject(XNAT || {});
             description += ' (Required)';
         }
 
-        return XNAT.ui.panel.input.text({
+        const generatorFn = password ? XNAT.ui.panel.input.password : XNAT.ui.panel.input.text;
+        return generatorFn({
             name: name,
             value: value,
             description: description,
@@ -521,6 +522,9 @@ var XNAT = getObject(XNAT || {});
                 break;
             case 'file':
                 formPanelElements.push(fileConfigInput(input));
+                break;
+            case 'password':
+                formPanelElements.push(defaultConfigInput(input, true));
                 break;
             case 'ignore':
                 break;

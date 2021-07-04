@@ -501,6 +501,7 @@ public abstract class LaunchUi {
         final Boolean advancedConfig = inputConfiguration.advanced();
         final boolean advanced = advancedConfig != null && advancedConfig; // default: false
         boolean multiple = false;
+        boolean sensitive = input.sensitive() != null && input.sensitive();
 
         UiInputType uiInputType = null;
         String derivedValueInfo = null;
@@ -518,6 +519,8 @@ public abstract class LaunchUi {
                 uiInputType = UiInputType.MULTISELECT;
             } else if (input.type().equals(CommandInputEntity.Type.FILE.getName())) {
                 uiInputType = UiInputType.FILE;
+            } else if (sensitive) {
+                uiInputType = UiInputType.PASSWORD;
             } else {
                 // This input is a simple string or number. Make it editable.
                 uiInputType = UiInputType.TEXT;
@@ -675,6 +678,7 @@ public abstract class LaunchUi {
 
     public enum UiInputType {
         TEXT("text"),
+        PASSWORD("password"),
         BOOLEAN("boolean"),
         SELECT("select-one"),
         MULTISELECT("select-many"),
