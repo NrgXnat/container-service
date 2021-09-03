@@ -414,6 +414,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     };
 
+    function disabledSpan() {
+        return spawn('span',{ 'style': { 'color': '#808080' }},'disabled');
+    }
+
     projCommandConfigManager.table = function(config){
 
         // initialize the table - we'll add to it below
@@ -477,7 +481,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     // or, remove the input and controller entirely.  
                     $('#wrapper-'+wrapper.id+'-enable').prop('disabled','disabled')
                         .parents('.switchbox').addClass('disabled').hide()
-                        .parent('div').html(spawn('span',{ 'style': { 'color': '#808080' }},'disabled'));
+                        .parent('div').html(disabledSpan());
                 }
                 projCommandConfigManager.setMasterEnableSwitch();
                 refreshCommandWrapperList(wrapper.id);
@@ -1050,11 +1054,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             .th({ width: 91, html: '<b>Selected</b>' });
 
         function radioBtn(checked, o) {
+            if (o && !o.enabled) {
+                return spawn('div.center', [disabledSpan()]);
+            }
+
             const ckbox = spawn('input.orchestration-select', {
                 type: 'radio',
                 name: 'orchestration-select',
                 checked: checked,
-                disabled: o && !o.enabled,
                 value: 'true',
                 onchange: function () {
                     let radio = $(this);
