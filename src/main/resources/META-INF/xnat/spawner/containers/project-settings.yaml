@@ -61,7 +61,7 @@ projectCommandOrchestrationPanel:
         projectCommandOrchestrationNote:
             tag: div.message
             contents:
-                "Enable command orchestration for this project. Currently, only one orchestration per project is supported."
+                "Enable command orchestration for this project. Currently, only one orchestration per project is supported because orchestration occurs automatically anytime the initiating command is run."
         projectCommandOrchestrationTable:
             tag: div#command-orchestration
             contents: Loading...

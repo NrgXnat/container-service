@@ -112,28 +112,25 @@ public class OrchestrationEntityServiceImpl extends AbstractHibernateEntityServi
     public List<Long> setProjectOrchestration(String project, long orchestrationId)
             throws NotFoundException {
         OrchestrationEntity oe = get(orchestrationId);
+        if (!oe.isEnabled()) {
+            throw new InvalidParameterException("Orchestration " + oe.getName() + " (" +
+                    oe.getId()+ ") cannot be added to a project because it is not enabled.");
+        }
+
         OrchestrationProjectEntity ope = orchestrationProjectEntityService.find(project);
         boolean create = ope == null;
         if (create) {
             ope = new OrchestrationProjectEntity();
             ope.setProjectId(project);
-        } else {
-            ope.getOrchestrationEntity().removeProject(ope);
-        }
-        List<Long> wrapperIds;
-        if (!oe.isEnabled()) {
-            throw new InvalidParameterException("Orchestration " + oe.getName() + " (" +
-                    oe.getId()+ ") cannot be added to a project because it is not enabled.");
         }
         oe.addProject(ope);
-        wrapperIds = oe.getWrapperList().stream().map(OrchestratedWrapperEntity::wrapperId).collect(Collectors.toList());
 
         if (create) {
             orchestrationProjectEntityService.create(ope);
         } else {
             orchestrationProjectEntityService.update(ope);
         }
-        return wrapperIds;
+        return oe.getWrapperList().stream().map(OrchestratedWrapperEntity::wrapperId).collect(Collectors.toList());
     }
 
     @Override

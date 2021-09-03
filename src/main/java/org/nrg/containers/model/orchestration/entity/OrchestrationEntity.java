@@ -76,7 +76,6 @@ public class OrchestrationEntity extends AbstractHibernateEntity {
 
     public void removeProject(OrchestrationProjectEntity project) {
         projects.remove(project);
-        project.setOrchestrationEntity(null);
     }
 
     public Orchestration toPojo() {
