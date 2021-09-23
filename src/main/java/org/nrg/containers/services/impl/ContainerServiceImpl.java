@@ -27,12 +27,9 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.jms.utils.QueueUtils;
-import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.command.auto.*;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
-import org.nrg.containers.model.command.auto.ResolvedCommand;
-import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
-import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
@@ -115,6 +112,7 @@ public class ContainerServiceImpl implements ContainerService {
     public static final String setupStr = "Setup";
     public static final String wrapupStr = "Wrapup";
     public static final String containerLaunchJustification = "Container launch";
+    public static final String TO_BE_ASSIGNED = "To be assigned";
 
     private final ContainerControlApi containerControlApi;
     private final ContainerEntityService containerEntityService;
@@ -2001,4 +1999,99 @@ public class ContainerServiceImpl implements ContainerService {
 	public List<Container> retrieveServicesInWaitingState() {
         return toPojo(containerEntityService.retrieveServicesInWaitingState());
 	}
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI) {
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, null);
+    }
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId) {
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, bulkLaunchId, null);
+    }
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId,
+                                         @Nullable final Long orchestrationId) {
+
+        PersistentWorkflowI workflow = null;
+        String workflowid = "";
+
+        try {
+            // Create workflow first
+            String xnatIdOrUri;
+            if (rootElement != null && (xnatIdOrUri = allRequestParams.get(rootElement)) != null) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
+                String wrapperNameUse = StringUtils.isBlank(wrapperName) && wrapperId != 0 ?
+                        commandService.retrieveWrapper(wrapperId).name() : wrapperName;
+                workflow = createContainerWorkflow(xnatIdOrUri, rootElement,
+                        wrapperNameUse, StringUtils.defaultString(project, ""), userI,
+                        bulkLaunchId, orchestrationId, 0);
+                workflowid = workflow.getWorkflowId().toString();
+            }
+
+            // Queue command resolution and container launch
+            queueResolveCommandAndLaunchContainer(project, wrapperId, commandId,
+                    wrapperName, allRequestParams, userI, workflow);
+
+            String msg = StringUtils.isNotBlank(workflowid) ? workflowid : TO_BE_ASSIGNED;
+            return LaunchReport.Success.create(msg, allRequestParams, null, commandId, wrapperId);
+
+        } catch (Throwable t) {
+            if (workflow != null) {
+                String failedStatus = PersistentWorkflowUtils.FAILED + " (Staging)";
+                workflow.setStatus(failedStatus);
+                workflow.setDetails(t.getMessage());
+                try {
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } catch (Exception we) {
+                    log.error("Unable to set workflow status to {} for wfid={}", failedStatus, workflow.getWorkflowId(), we);
+                }
+            }
+            if (log.isInfoEnabled()) {
+                log.error("Unable to queue container launch for command wrapper name {}.", wrapperName);
+                log.error(mapLogString("Params: ", allRequestParams));
+                log.error("Exception: ", t);
+            }
+            return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "Unable to queue container launch",
+                    allRequestParams, commandId, wrapperId);
+        }
+    }
+
+    private String mapLogString(final String title, final Map<String, String> map) {
+        final StringBuilder messageBuilder = new StringBuilder(title);
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            messageBuilder.append(entry.getKey());
+            messageBuilder.append(": ");
+            messageBuilder.append(entry.getValue());
+            messageBuilder.append(", ");
+        }
+        return messageBuilder.substring(0, messageBuilder.length() - 2);
+    }
 }

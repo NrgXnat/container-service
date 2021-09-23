@@ -23,6 +23,7 @@ import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventService;
@@ -73,7 +74,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     private static final String ID_REGEX = "\\d+";
     private static final String NAME_REGEX = "\\d*[^\\d]+\\d*";
-    private static final String TO_BE_ASSIGNED = "To be assigned";
 
     private final CommandService commandService;
     private final ContainerService containerService;
@@ -322,8 +322,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for command id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(null, 0L, null,
-                wrapperId, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(null, 0L, null,
+                wrapperId, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/launch"}, method = POST, consumes = {JSON})
@@ -333,8 +333,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for command wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(null, 0L, null,
-                wrapperId, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(null, 0L, null,
+                wrapperId, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/projects/{project}/wrapper/{wrapperId}/root/{rootElement}/launch"},
@@ -347,8 +347,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(project, 0L, null,
-                wrapperId, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(project, 0L, null,
+                wrapperId, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/root/{rootElement}/launch"},
@@ -360,8 +360,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for wrapper id " + wrapperId);
 
-        return returnLaunchReportWithStatus(launchContainer(project, 0L, null,
-                wrapperId, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(project, 0L, null,
+                wrapperId, rootElement, allRequestParams, getSessionUser()));
     }
 
     /*
@@ -377,8 +377,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                   final @RequestParam Map<String, String> allRequestParams){
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName,
-                0L, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(null, commandId, wrapperName,
+                0L, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
@@ -390,8 +390,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(null, commandId, wrapperName,
-                0L, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(null, commandId, wrapperName,
+                0L, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
@@ -405,8 +405,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                   final @RequestParam Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(project, commandId, wrapperName,
-                0L, rootElement, allRequestParams));
+        return returnLaunchReportWithStatus(containerService.launchContainer(project, commandId, wrapperName,
+                0L, rootElement, allRequestParams, getSessionUser()));
     }
 
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/launch"},
@@ -419,111 +419,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                                final @RequestBody Map<String, String> allRequestParams) {
         log.info("Launch requested for command {}, wrapper {}", commandId, wrapperName);
 
-        return returnLaunchReportWithStatus(launchContainer(project, commandId, wrapperName,
-                0L, rootElement, allRequestParams));
-    }
-
-    @Nonnull
-    private LaunchReport launchContainer(@Nullable final String project,
-                                         final long commandId,
-                                         @Nullable final String wrapperName,
-                                         final long wrapperId,
-                                         @Nullable final String rootElement,
-                                         final Map<String, String> allRequestParams) {
-
-        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
-                getSessionUser());
-    }
-
-    @Nonnull
-    private LaunchReport launchContainer(@Nullable final String project,
-                                         final long commandId,
-                                         @Nullable final String wrapperName,
-                                         final long wrapperId,
-                                         @Nullable final String rootElement,
-                                         final Map<String, String> allRequestParams,
-                                         final UserI userI) {
-        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
-                userI, null);
-    }
-
-    @Nonnull
-    private LaunchReport launchContainer(@Nullable final String project,
-                                         final long commandId,
-                                         @Nullable final String wrapperName,
-                                         final long wrapperId,
-                                         @Nullable final String rootElement,
-                                         final Map<String, String> allRequestParams,
-                                         final UserI userI,
-                                         @Nullable final String bulkLaunchId) {
-        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
-                userI, bulkLaunchId, null);
-    }
-    @Nonnull
-    private LaunchReport launchContainer(@Nullable final String project,
-                                         final long commandId,
-                                         @Nullable final String wrapperName,
-                                         final long wrapperId,
-                                         @Nullable final String rootElement,
-                                         final Map<String, String> allRequestParams,
-                                         final UserI userI,
-                                         @Nullable final String bulkLaunchId,
-                                         @Nullable final Long orchestrationId) {
-
-        PersistentWorkflowI workflow = null;
-        String workflowid = "";
-
-        try {
-            // Create workflow first
-            String xnatIdOrUri;
-            if (rootElement != null && (xnatIdOrUri = allRequestParams.get(rootElement)) != null) {
-                // Note: for scans, this can fail with a duplicate key value violates unique constraint
-                // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
-                String wrapperNameUse = StringUtils.isBlank(wrapperName) && wrapperId != 0 ?
-                        commandService.retrieveWrapper(wrapperId).name() : wrapperName;
-                workflow = containerService.createContainerWorkflow(xnatIdOrUri, rootElement,
-                        wrapperNameUse, StringUtils.defaultString(project, ""), userI,
-                        bulkLaunchId, orchestrationId, 0);
-                workflowid = workflow.getWorkflowId().toString();
-            }
-
-            // Queue command resolution and container launch
-            containerService.queueResolveCommandAndLaunchContainer(project, wrapperId, commandId,
-                    wrapperName, allRequestParams, userI, workflow);
-
-            String msg = StringUtils.isNotBlank(workflowid) ? workflowid : TO_BE_ASSIGNED;
-            return LaunchReport.Success.create(msg, allRequestParams, null, commandId, wrapperId);
-
-        } catch (Throwable t) {
-            if (workflow != null) {
-                String failedStatus = PersistentWorkflowUtils.FAILED + " (Staging)";
-                workflow.setStatus(failedStatus);
-                workflow.setDetails(t.getMessage());
-                try {
-                    WorkflowUtils.save(workflow, workflow.buildEvent());
-                } catch (Exception we) {
-                    log.error("Unable to set workflow status to {} for wfid={}", failedStatus, workflow.getWorkflowId(), we);
-                }
-            }
-            if (log.isInfoEnabled()) {
-                log.error("Unable to queue container launch for command wrapper name {}.", wrapperName);
-                log.error(mapLogString("Params: ", allRequestParams));
-                log.error("Exception: ", t);
-            }
-            return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "Unable to queue container launch",
-                    allRequestParams, commandId, wrapperId);
-        }
-    }
-
-    private String mapLogString(final String title, final Map<String, String> map) {
-        final StringBuilder messageBuilder = new StringBuilder(title);
-        for (Map.Entry<String, String> entry : map.entrySet()) {
-            messageBuilder.append(entry.getKey());
-            messageBuilder.append(": ");
-            messageBuilder.append(entry.getValue());
-            messageBuilder.append(", ");
-        }
-        return messageBuilder.substring(0, messageBuilder.length() - 2);
+        return returnLaunchReportWithStatus(containerService.launchContainer(project, commandId, wrapperName,
+                0L, rootElement, allRequestParams, getSessionUser()));
     }
 
     private ResponseEntity<LaunchReport> returnLaunchReportWithStatus(final LaunchReport launchReport) {
@@ -630,10 +527,10 @@ public class LaunchRestApi extends AbstractXapiRestController {
             paramsSet.put(rootElement, target);
             try {
                 executorService.submit(() -> {
-                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI,
+                    containerService.launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI,
                             bulkLaunchId, orchestrationId);
                 });
-                reportBuilder.addSuccess(LaunchReport.Success.create(TO_BE_ASSIGNED,
+                reportBuilder.addSuccess(LaunchReport.Success.create(ContainerServiceImpl.TO_BE_ASSIGNED,
                         paramsSet, null, commandId, wrapperId));
             } catch (Exception e) {
                 // Most exceptions should be "logged" to the workflow but this is meant to catch
