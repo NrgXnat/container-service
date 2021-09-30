@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.1.0
+
+[Released 2020-10-01](https://bitbucket.org/xnatdev/container-service/src/3.1.0/).
+
+### Features
+
+* [CS-652][]: Added container orchestration. [See documentation](https://wiki.xnat.org/container-service/set-up-command-orchestration-130515311.html)
+* [CS-656][]: Added Subject Assessor model object support to command resolution logic.
+
+### Bugfixes
+
+* [CS-659][]: Use password input tag for CS inputs with sensitive=true
+* [CS-671][]: Fixed external timestamp display for Docker events
+
+### Updates
+
+* [CS-651][]: Updated [docker-client api library](https://github.com/dmandalidis/docker-client) to 5.0.1 
+
+* Reduced logging level from INFO/DEBUG to WARN
+
+* Refactored queue request handler to process ml:trainSession, rather than clara:trainSession.
+
+[CS-651]: https://issues.xnat.org/browse/CS-651
+[CS-652]: https://issues.xnat.org/browse/CS-652
+[CS-656]: https://issues.xnat.org/browse/CS-656
+[CS-659]: https://issues.xnat.org/browse/CS-659
+[CS-671]: https://issues.xnat.org/browse/CS-671
+
 ## 3.0.0
 
 [Released 2020-03-04](https://bitbucket.org/xnatdev/container-service/src/3.0.0/).

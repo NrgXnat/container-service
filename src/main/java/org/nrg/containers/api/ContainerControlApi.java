@@ -81,4 +81,5 @@ public interface ContainerControlApi {
     void throwRestartEventForService(Container service) throws ContainerException;
     void throwWaitingEventForService(Container service) throws ContainerException;
 
+    Integer getFinalizingThrottle();
 }

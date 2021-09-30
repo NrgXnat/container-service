@@ -488,7 +488,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                     log.error(message);
                     throw new UnauthorizedException(message);
                 } catch (Exception e) {
-                    final String message = prefix + "Could not upload files to resource.";
+                    final String message = prefix + "Could not upload files to resource: " + e.getMessage();
                     log.error(message);
                     throw new ContainerException(message, e);
                 }

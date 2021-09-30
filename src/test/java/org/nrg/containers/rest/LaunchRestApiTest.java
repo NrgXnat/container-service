@@ -204,7 +204,7 @@ public class LaunchRestApiTest {
 
         // Mock queuing
         when(mockContainerService.createContainerWorkflow(eq(FAKE_XNAT_ID), eq(FAKE_ROOT), eq(WRAPPER_NAME),
-                eq(""), eq(mockAdmin), any(String.class)))
+                eq(""), eq(mockAdmin), any(String.class), any(Long.class), anyInt()))
                 .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.

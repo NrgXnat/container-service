@@ -4,8 +4,8 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.commons.lang3.StringUtils;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 
 import javax.annotation.Nonnull;
 import javax.persistence.*;
@@ -23,6 +23,7 @@ public class CommandWrapperEntity implements Serializable {
     private List<CommandWrapperExternalInputEntity> externalInputs;
     private List<CommandWrapperDerivedInputEntity> derivedInputs;
     private List<CommandWrapperOutputEntity> outputHandlers;
+    private List<OrchestratedWrapperEntity> orchestrations;
 
     @Nonnull
     public static CommandWrapperEntity fromPojo(final @Nonnull Command.CommandWrapper commandWrapper) {
@@ -286,6 +287,43 @@ public class CommandWrapperEntity implements Serializable {
         outputHandler.setCommandWrapperEntity(null);
     }
 
+    @OneToMany(mappedBy = "commandWrapperEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy
+    public List<OrchestratedWrapperEntity> getOrchestrations() {
+        return orchestrations;
+    }
+
+    public void setOrchestrations(final List<OrchestratedWrapperEntity> orchestrations) {
+        this.orchestrations = orchestrations == null ?
+                Lists.newArrayList() :
+                orchestrations;
+
+        for (final OrchestratedWrapperEntity orchestratedWrapperEntity : this.orchestrations) {
+            orchestratedWrapperEntity.setCommandWrapperEntity(this);
+        }
+    }
+
+    public void addOrchestration(final OrchestratedWrapperEntity orchestration) {
+        if (orchestration == null) {
+            return;
+        }
+        orchestration.setCommandWrapperEntity(this);
+
+        if (this.orchestrations == null) {
+            this.orchestrations = Lists.newArrayList();
+        }
+        if (!this.orchestrations.contains(orchestration)) {
+            this.orchestrations.add(orchestration);
+        }
+    }
+    public void removeOrchestration(final OrchestratedWrapperEntity orchestration) {
+        if (orchestration == null || this.orchestrations == null || !this.orchestrations.contains(orchestration)) {
+            return;
+        }
+        this.orchestrations.remove(orchestration);
+        orchestration.setCommandWrapperEntity(null);
+    }
+    
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;

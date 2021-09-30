@@ -85,6 +85,9 @@ public class CommandWrapperExternalInputEntity {
             case "Subject":
                 this.setType(CommandWrapperInputType.SUBJECT);
                 break;
+            case "SubjectAssessor":
+                this.setType(CommandWrapperInputType.SUBJECT_ASSESSOR);
+                break;
             case "Session":
                 this.setType(CommandWrapperInputType.SESSION);
                 break;

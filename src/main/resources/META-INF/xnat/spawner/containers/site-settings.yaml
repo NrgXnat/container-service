@@ -11,16 +11,17 @@ dockerSetupPanel:
         containerHostTable:
             tag: "div#container-host-manager"
         csStylesheet:
-            #   tag: link|rel="stylesheet"|type="text/css"|href="/scripts/xnat/plugin/containerService/containerConfig.css"
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/plugin/containerService/containerConfig.css"
         tableStyle:
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
         csHistoryScript:
-            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-history.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         csSiteAdminScripts:
-            #           tag: script|src="/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
+        jqueryUi:
+            tag: script|src="~/scripts/lib/jquery-ui/jquery-ui.min.js"
+        jqueryUiCss:
+            tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/lib/jquery-ui/jquery-ui.css"
 
 imageHostsPanel:
     kind: panel
@@ -196,6 +197,19 @@ siteCommandAutomationPanel:
             tag: div#command-automation-admin-list
             contents: No commands defined
 
+siteCommandOrchestrationPanel:
+    kind: panel
+    name: siteCommandOrchestrationPanel
+    label: Command Orchestration
+    contents:
+        siteCommandOrchestrationNote:
+            tag: div.message
+            contents:
+                "Setup orchestration of multiple commands, which will run sequentially as long as predecessors complete without error."
+        siteCommandOrchestrationTable:
+            tag: div#command-orchestration
+            contents: No commands defined
+
 sitewideCommandHistoryPanel:
     kind: panel
     name: sitewideCommandHistoryPanel
@@ -311,6 +325,14 @@ siteSettings:
             active: false
             contents:
                 ${siteCommandAutomationPanel}
+        commandOrchestrationTab:
+            kind: tab
+            name: commandOrchestrationTab
+            label: Command Orchestraion
+            group: containerServiceTabGroup
+            active: false
+            contents:
+                ${siteCommandOrchestrationPanel}
         commandHistoryTab:
             kind: tab
             name: commandHistoryTab

@@ -5,10 +5,12 @@ import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
+import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
@@ -17,6 +19,7 @@ import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 public interface ContainerService {
     String STDOUT_LOG_NAME = "stdout.log";
@@ -58,12 +61,14 @@ public interface ContainerService {
                                                        final Container.ContainerHistory history, final UserI userI);
 
     PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
-                                                String wrapperName, String projectId, UserI user)
-            throws Exception;
+                                                String wrapperName, String projectId, UserI user);
     PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
                                                 String wrapperName, String projectId, UserI user,
-                                                @Nullable String bulkLaunchId)
-            throws Exception;
+                                                @Nullable String bulkLaunchId);
+    PersistentWorkflowI createContainerWorkflow(String xnatId, String xsiType,
+                                                String wrapperName, String projectId, UserI user,
+                                                @Nullable String bulkLaunchId, @Nullable Long orchestrationId,
+                                                int orchestrationOrder);
 
 
     void queueResolveCommandAndLaunchContainer(String project,
@@ -89,9 +94,10 @@ public interface ContainerService {
     void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException;
     void finalize(final Container container, final UserI userI) throws ContainerException;
     void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException;
-    
+
+    boolean canKill(final String containerId, final UserI userI);
     String kill(final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException;
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
     Map<String, InputStream> getLogStreams(long id) throws NotFoundException, NoDockerServerException, DockerServerException;
     Map<String, InputStream> getLogStreams(String containerId) throws NotFoundException, NoDockerServerException, DockerServerException;
@@ -122,7 +128,23 @@ public interface ContainerService {
      * @return true is successfully restarted, false otherwise
      */
     boolean restartService(Container service, UserI user);
-    String kill(final String project, final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException;
 
+    String kill(final String project, final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
+
+    /**
+     * Check if wrapper is start of orchestration, null means no orchestration
+     * @param project the project
+     * @param wrapperId the wrapper id
+     * @param commandId the command id
+     * @param wrapperName the wrapper name
+     * @return orchestration or null if none
+     * @throws ExecutionException for issues querying the orchestration entity
+     */
+    @Nullable
+    Orchestration getOrchestrationWhereWrapperIsFirst(final String project,
+                                                      long wrapperId,
+                                                      final long commandId,
+                                                      @Nullable final String wrapperName)
+            throws ExecutionException;
 }

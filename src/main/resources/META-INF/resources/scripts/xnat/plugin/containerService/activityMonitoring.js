@@ -59,7 +59,7 @@ var XNAT = getObject(XNAT || {});
                 const wfid = 'wf' + k;
                 const details = v['details'] ? ' (' + v['details'] + ')' : '';
                 const message = '<a onclick="XNAT.plugin.batchLaunch.viewWorkflowDetails(\''+k+'\',\'' + v['containerId'] + '\')">'
-                    + v['itemId'] + '</a>: ' + v['status'] + details;
+                    + v['itemId'] + '</a>: ' + v['pipelineName'] + ' ' + v['status'] + details;
                 if (v['status'].toLowerCase().includes('failed')) {
                     clazz = 'error';
                 } else if (v['status'].toLowerCase() === 'complete') {

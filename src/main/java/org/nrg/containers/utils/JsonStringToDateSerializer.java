@@ -22,6 +22,10 @@ public class JsonStringToDateSerializer extends JsonSerializer<String> {
     		if (value == null || value.equals(""))
     			return;
     		long longVal = Long.parseLong(value);
+
+    		if (longVal > 10000000000000000L) // This value is in nanoseconds - convert to milliseconds
+    			longVal = longVal/1000000;
+
     		Date longAsDate = new Date(longVal);
     		jgen.writeString(format.format(longAsDate));
     }

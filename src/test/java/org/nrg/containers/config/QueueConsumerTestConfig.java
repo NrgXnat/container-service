@@ -12,6 +12,9 @@ import org.nrg.containers.events.listeners.DockerContainerEventListener;
 import org.nrg.containers.events.listeners.DockerServiceEventListener;
 import org.nrg.containers.model.command.entity.*;
 import org.nrg.containers.model.container.entity.*;
+import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.*;
@@ -32,7 +35,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.orm.hibernate4.HibernateTransactionManager;
 import org.springframework.orm.hibernate4.LocalSessionFactoryBean;
-import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.ResourceTransactionManager;
 import reactor.Environment;
@@ -135,10 +137,11 @@ public class QueueConsumerTestConfig {
                                              final SiteConfigPreferences siteConfigPreferences,
                                              final ContainerFinalizeService containerFinalizeService,
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
-                                             final CatalogService catalogService) {
+                                             final CatalogService catalogService,
+                                             final OrchestrationService mockOrchestrationService) {
         return new ContainerServiceImpl(mockDockerControlApi, mockContainerEntityService,
                 commandResolutionService, mockCommandService, aliasTokenService, siteConfigPreferences,
-                containerFinalizeService, mockXnatAppInfo, catalogService);
+                containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService);
     }
 
     @Bean
@@ -194,6 +197,11 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
+    public OrchestrationService mockOrchestrationService() {
+        return Mockito.mock(OrchestrationService.class);
+    }
+
+    @Bean
     public ContextService contextService(final ApplicationContext applicationContext) {
         final ContextService contextService = new ContextService();
         contextService.setApplicationContext(applicationContext);
@@ -235,6 +243,9 @@ public class QueueConsumerTestConfig {
                 CommandWrapperExternalInputEntity.class,
                 CommandWrapperDerivedInputEntity.class,
                 CommandWrapperOutputEntity.class,
+                OrchestrationEntity.class,
+                OrchestratedWrapperEntity.class,
+                OrchestrationProjectEntity.class,
                 ContainerEntity.class,
                 ContainerEntityHistory.class,
                 ContainerEntityInput.class,

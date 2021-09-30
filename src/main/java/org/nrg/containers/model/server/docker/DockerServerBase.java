@@ -57,6 +57,10 @@ public abstract class DockerServerBase {
     @JsonProperty("swarm-constraints")
     public abstract ImmutableList<DockerServerSwarmConstraint> swarmConstraints();
 
+    @Nullable
+    @JsonProperty("max-concurrent-finalizing-jobs")
+    public abstract Integer maxConcurrentFinalizingJobs();
+
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
         public static final DockerServer DEFAULT_SOCKET = DockerServer.create("Local socket", "unix:///var/run/docker.sock");
@@ -72,14 +76,17 @@ public abstract class DockerServerBase {
                                           @JsonProperty("pull-images-on-xnat-init") final Boolean pullImagesOnXnatInit,
                                           @JsonProperty("container-user") final String containerUser,
                                           @JsonProperty("auto-cleanup") final boolean autoCleanup,
-                                          @Nullable @JsonProperty("swarm-constraints") final List<DockerServerSwarmConstraint> swarmConstraints) {
+                                          @Nullable @JsonProperty("swarm-constraints") final List<DockerServerSwarmConstraint> swarmConstraints,
+                                          @JsonProperty("max-concurrent-finalizing-jobs")
+                                                  final Integer maxConcurrentFinalizingJobs) {
             return create(id, name, host, certPath, swarmMode, null, pathTranslationXnatPrefix,
-                    pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints);
+                    pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
+                    maxConcurrentFinalizingJobs);
         }
 
         public static DockerServer create(final String name,
                                           final String host) {
-            return create(0L, name, host, null, false, null, null, null, null, true, null);
+            return create(0L, name, host, null, false, null, null, null, null, true, null, null);
         }
 
         public static DockerServer create(final Long id,
@@ -93,7 +100,8 @@ public abstract class DockerServerBase {
                                           final Boolean pullImagesOnXnatInit,
                                           final String containerUser,
                                           final Boolean autoCleanup,
-                                          final List<DockerServerSwarmConstraint> swarmConstraints) {
+                                          final List<DockerServerSwarmConstraint> swarmConstraints,
+                                          final Integer maxConcurrentFinalizingJobs) {
             return builder()
                     .id(id == null ? 0L : id)
                     .name(StringUtils.isBlank(name) ? host : name)
@@ -107,6 +115,7 @@ public abstract class DockerServerBase {
                     .containerUser(containerUser)
                     .autoCleanup(autoCleanup != null && autoCleanup)
                     .swarmConstraints(swarmConstraints)
+                    .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .build();
         }
 
@@ -132,7 +141,8 @@ public abstract class DockerServerBase {
                     pullImagesOnXnatInit == null ? false : pullImagesOnXnatInit,
                     dockerServerEntity.getContainerUser(),
                     dockerServerEntity.isAutoCleanup(),
-                    swarmConstraints);
+                    swarmConstraints,
+                    dockerServerEntity.getMaxConcurrentFinalizingJobs());
         }
 
         @SuppressWarnings("deprecation")
@@ -149,6 +159,7 @@ public abstract class DockerServerBase {
                     false,
                     dockerServerPrefsBean.getContainerUser(),
                     true,
+                    null,
                     null);
         }
 
@@ -167,7 +178,9 @@ public abstract class DockerServerBase {
                             this.pullImagesOnXnatInit(),
                             this.containerUser(),
                             this.autoCleanup(),
-                            this.swarmConstraints());
+                            this.swarmConstraints(),
+                            this.maxConcurrentFinalizingJobs()
+                    );
         }
 
         public static Builder builder() {
@@ -190,6 +203,7 @@ public abstract class DockerServerBase {
             public abstract Builder containerUser(String containerUser);
             public abstract Builder autoCleanup(boolean autoCleanup);
             public abstract Builder swarmConstraints(List<DockerServerSwarmConstraint> swarmConstraints);
+            public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
 
             public abstract DockerServer build();
         }
@@ -213,10 +227,12 @@ public abstract class DockerServerBase {
                                                   @JsonProperty("container-user") final String user,
                                                   @JsonProperty("auto-cleanup") final boolean autoCleanup,
                                                   @Nullable @JsonProperty("swarm-constraints") final List<DockerServerSwarmConstraint> swarmConstraints,
+                                                  @JsonProperty("max-concurrent-finalizing-jobs")
+                                                          final Integer maxConcurrentFinalizingJobs,
                                                   @JsonProperty("ping") final Boolean ping) {
             return create(id == null ? 0L : id, name, host, certPath, swarmMode, new Date(0),
                     pathTranslationXnatPrefix, pathTranslationDockerPrefix, pullImagesOnXnatInit,
-                    user, autoCleanup, swarmConstraints, ping);
+                    user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, ping);
         }
 
         public static DockerServerWithPing create(final Long id,
@@ -231,6 +247,7 @@ public abstract class DockerServerBase {
                                                   final String user,
                                                   final Boolean autoCleanup,
                                                   final List<DockerServerSwarmConstraint> swarmConstraints,
+                                                  final Integer maxConcurrentFinalizingJobs,
                                                   final Boolean ping) {
             return builder()
                     .id(id == null ? 0L : id)
@@ -245,6 +262,7 @@ public abstract class DockerServerBase {
                     .containerUser(user)
                     .autoCleanup(autoCleanup != null && autoCleanup)
                     .swarmConstraints(swarmConstraints)
+                    .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .ping(ping != null && ping)
                     .build();
         }
@@ -264,6 +282,7 @@ public abstract class DockerServerBase {
                     dockerServer.containerUser(),
                     dockerServer.autoCleanup(),
                     dockerServer.swarmConstraints(),
+                    dockerServer.maxConcurrentFinalizingJobs(),
                     ping
             );
         }
@@ -288,6 +307,7 @@ public abstract class DockerServerBase {
             public abstract Builder containerUser(String containerUser);
             public abstract Builder autoCleanup(boolean autoCleanup);
             public abstract Builder swarmConstraints(List<DockerServerSwarmConstraint> swarmConstraints);
+            public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
             public abstract Builder ping(Boolean ping);
 
             public abstract DockerServerWithPing build();
@@ -375,14 +395,15 @@ public abstract class DockerServerBase {
                 Objects.equals(this.pullImagesOnXnatInit(), that.pullImagesOnXnatInit()) &&
                 Objects.equals(this.containerUser(), that.containerUser()) &&
                 Objects.equals(this.autoCleanup(), that.autoCleanup()) &&
-                Objects.equals(this.swarmConstraints(), that.swarmConstraints());
+                Objects.equals(this.swarmConstraints(), that.swarmConstraints()) &&
+                Objects.equals(this.maxConcurrentFinalizingJobs(), that.maxConcurrentFinalizingJobs());
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(name(), host(), certPath(), swarmMode(),
                 pathTranslationXnatPrefix(), pathTranslationDockerPrefix(), pullImagesOnXnatInit(),
-                containerUser(), autoCleanup(), swarmConstraints());
+                containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs());
     }
 
 }

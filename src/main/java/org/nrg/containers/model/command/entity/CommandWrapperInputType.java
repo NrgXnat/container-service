@@ -24,7 +24,8 @@ public enum CommandWrapperInputType {
     SCAN("Scan"),
     ASSESSOR("Assessor"),
     RESOURCE("Resource"),
-    CONFIG("Config");
+    CONFIG("Config"),
+    FILE_INPUT("file");
 
     private final String name;
 
@@ -51,7 +52,7 @@ public enum CommandWrapperInputType {
     @Nullable
     public static CommandWrapperInputType fromName(String text) {
         for (CommandWrapperInputType e : CommandWrapperInputType.values()) {
-            if (e.name.equalsIgnoreCase(text)) {
+            if (e.name.equals(text)) {
                 return e;
             }
         }

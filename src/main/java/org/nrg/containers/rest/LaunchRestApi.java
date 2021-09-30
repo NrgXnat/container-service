@@ -18,6 +18,7 @@ import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
 import org.nrg.containers.model.configuration.CommandConfiguration;
+import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
@@ -54,6 +55,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -454,7 +456,19 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                          final Map<String, String> allRequestParams,
                                          final UserI userI,
                                          @Nullable final String bulkLaunchId) {
-
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, bulkLaunchId, null);
+    }
+    @Nonnull
+    private LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId,
+                                         @Nullable final Long orchestrationId) {
 
         PersistentWorkflowI workflow = null;
         String workflowid = "";
@@ -468,7 +482,8 @@ public class LaunchRestApi extends AbstractXapiRestController {
                 String wrapperNameUse = StringUtils.isBlank(wrapperName) && wrapperId != 0 ?
                         commandService.retrieveWrapper(wrapperId).name() : wrapperName;
                 workflow = containerService.createContainerWorkflow(xnatIdOrUri, rootElement,
-                        wrapperNameUse, StringUtils.defaultString(project, ""), userI, bulkLaunchId);
+                        wrapperNameUse, StringUtils.defaultString(project, ""), userI,
+                        bulkLaunchId, orchestrationId, 0);
                 workflowid = workflow.getWorkflowId().toString();
             }
 
@@ -581,20 +596,42 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                                      final Map<String, String> allRequestParams) throws IOException {
         final UserI userI = getSessionUser();
         final String bulkLaunchId = generateBulkLaunchId(userI);
-        final String pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
-        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
-                .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
         List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
-        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size()));
+
+        Orchestration orchestration = null;
+        try {
+            orchestration = containerService.getOrchestrationWhereWrapperIsFirst(project, wrapperId,
+                    commandId, wrapperName);
+        } catch (ExecutionException e) {
+            log.error("Unable to query for orchestration");
+        }
+
+
+        final Long orchestrationId;
+        final String pipelineName;
+        int steps;
+        if (orchestration != null) {
+            orchestrationId = orchestration.getId();
+            pipelineName = orchestration.getName() + " orchestration";
+            steps = orchestration.getWrapperIds().size();
+        } else {
+            orchestrationId = null;
+            pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
+            steps = 1;
+        }
+        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size(), steps));
         log.debug("Bulk launching on {} targets", targets.size());
 
+        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
+                .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
         int failures = 0;
         for (final String target : targets) {
             Map<String, String> paramsSet = Maps.newHashMap(allRequestParams);
             paramsSet.put(rootElement, target);
             try {
                 executorService.submit(() -> {
-                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI, bulkLaunchId);
+                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI,
+                            bulkLaunchId, orchestrationId);
                 });
                 reportBuilder.addSuccess(LaunchReport.Success.create(TO_BE_ASSIGNED,
                         paramsSet, null, commandId, wrapperId));

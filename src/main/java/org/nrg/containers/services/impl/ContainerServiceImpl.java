@@ -3,6 +3,9 @@ package org.nrg.containers.services.impl;
 
 import com.google.common.base.Function;
 import com.google.common.base.Strings;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
@@ -38,26 +41,19 @@ import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
+import org.nrg.containers.model.orchestration.auto.Orchestration;
+import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
-import org.nrg.containers.services.CommandResolutionService;
-import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerEntityService;
-import org.nrg.containers.services.ContainerFinalizeService;
-import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.*;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
-import org.nrg.xdat.om.WrkWorkflowdata;
-import org.nrg.xdat.om.XnatAbstractprojectasset;
-import org.nrg.xdat.om.XnatImageassessordata;
-import org.nrg.xdat.om.XnatImagescandata;
-import org.nrg.xdat.om.XnatImagesessiondata;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.XnatResource;
-import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.om.*;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.helpers.Groups;
+import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
@@ -89,13 +85,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -109,12 +101,14 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.RE
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SCAN;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SESSION;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
+import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT_ASSESSOR;
 
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.3";
     public static final String WAITING = "Waiting";
+    public static final String _WAITING = "_Waiting";
     public static final String FINALIZING = "Finalizing";
     public static final String STAGING = "Staging";
     public static final String CREATED = "Created";
@@ -131,6 +125,10 @@ public class ContainerServiceImpl implements ContainerService {
     private final ContainerFinalizeService containerFinalizeService;
     private final XnatAppInfo xnatAppInfo;
     private final CatalogService catalogService;
+    private final OrchestrationService orchestrationService;
+
+
+    private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
 
     @Autowired
     public ContainerServiceImpl(final ContainerControlApi containerControlApi,
@@ -141,7 +139,8 @@ public class ContainerServiceImpl implements ContainerService {
                                 final SiteConfigPreferences siteConfigPreferences,
                                 final ContainerFinalizeService containerFinalizeService,
                                 final XnatAppInfo xnatAppInfo,
-                                final CatalogService catalogService) {
+                                final CatalogService catalogService,
+                                final OrchestrationService orchestrationService) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -151,6 +150,19 @@ public class ContainerServiceImpl implements ContainerService {
         this.containerFinalizeService = containerFinalizeService;
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
+        this.orchestrationService = orchestrationService;
+
+        buildCache();
+    }
+
+    private void buildCache() {
+        CacheLoader<OrchestrationIdentifier, Optional<Orchestration>> loader = new CacheLoader<OrchestrationIdentifier, Optional<Orchestration>>() {
+            @Override
+            public Optional<Orchestration> load(@Nonnull OrchestrationIdentifier oi) {
+                return Optional.ofNullable(orchestrationService.findWhereWrapperIsFirst(oi));
+            }
+        };
+        orchestrationCache = CacheBuilder.newBuilder().expireAfterAccess(10, TimeUnit.SECONDS).build(loader);
     }
 
     @Override
@@ -334,6 +346,23 @@ public class ContainerServiceImpl implements ContainerService {
         List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
         if (workflows == null || workflows.size() == 0) {
             log.info("No containers are in {} state", status);
+            return null;
+        }
+        return workflows;
+    }
+
+    @Nullable
+    private List<WrkWorkflowdata> getContainerWorkflowsByStatuses(List<String> statuses, UserI user) {
+        final CriteriaCollection cc = new CriteriaCollection("AND");
+        cc.addClause("wrk:workFlowData.justification", containerLaunchJustification);
+        final CriteriaCollection cco = new CriteriaCollection("OR");
+        for (String status : statuses) {
+            cco.addClause("wrk:workFlowData.status", status);
+        }
+        cc.add(cco);
+        List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
+        if (workflows == null || workflows.size() == 0) {
+            log.info("No containers are in {} state", statuses);
             return null;
         }
         return workflows;
@@ -553,7 +582,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws NoDockerServerException, DockerServerException, ContainerException {
 
         log.info("Preparing to launch resolved command.");
-        final ResolvedCommand preparedToLaunch = prepareToLaunch(resolvedCommand, parent, userI);
+        final ResolvedCommand preparedToLaunch = prepareToLaunch(resolvedCommand, parent, userI, workflow);
 
         if (resolvedCommand.type().equals(DOCKER_SETUP.getName()) && workflow != null) {
             // Create a new workflow for setup (wrapup doesn't come through this method, gets its workflow
@@ -659,7 +688,10 @@ public class ContainerServiceImpl implements ContainerService {
     private Container launchContainerFromDbObject(final Container toLaunch, final UserI userI, final boolean restart)
             throws DockerServerException, NoDockerServerException, ContainerException {
 
-        final Container preparedToLaunch = restart ? toLaunch : prepareToLaunch(toLaunch, userI);
+        final String workflowId = toLaunch.workflowId();
+        PersistentWorkflowI workflow = workflowId != null ? WorkflowUtils.getUniqueWorkflow(userI, workflowId) : null;
+
+        final Container preparedToLaunch = restart ? toLaunch : prepareToLaunch(toLaunch, userI, workflow);
 
         log.info("Creating docker container for {} container {}.", toLaunch.subtype(), toLaunch.databaseId());
         final Container createdContainerOrService = containerControlApi.createContainerOrSwarmService(preparedToLaunch, userI);
@@ -668,9 +700,7 @@ public class ContainerServiceImpl implements ContainerService {
         containerEntityService.update(fromPojo(createdContainerOrService));
 
         // Update workflow if we have one
-        String workflowid = toLaunch.workflowId();
-        if (StringUtils.isNotBlank(workflowid)) {
-            PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI, workflowid);
+        if (workflow != null) {
             updateWorkflowWithContainer(workflow, createdContainerOrService);
         }
 
@@ -682,10 +712,11 @@ public class ContainerServiceImpl implements ContainerService {
     @Nonnull
     private ResolvedCommand prepareToLaunch(final ResolvedCommand resolvedCommand,
                                             final Container parent,
-                                            final UserI userI) {
+                                            final UserI userI,
+                                            final PersistentWorkflowI workflow) {
 
         ResolvedCommand.Builder builder = resolvedCommand.toBuilder()
-                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI));
+                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI, workflow));
 
         if (parent != null) {
             if (resolvedCommand.project() == null) {
@@ -699,21 +730,26 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Nonnull
     private Container prepareToLaunch(final Container toLaunch,
-                                      final UserI userI) {
+                                      final UserI userI,
+                                      final PersistentWorkflowI workflow) {
         return toLaunch.toBuilder()
-                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI))
+                .addEnvironmentVariables(getDefaultEnvironmentVariablesForLaunch(userI, workflow))
                 .build();
     }
 
-    private Map<String, String> getDefaultEnvironmentVariablesForLaunch(final UserI userI) {
+    private Map<String, String> getDefaultEnvironmentVariablesForLaunch(final UserI userI, final PersistentWorkflowI workflow) {
         final AliasToken token = aliasTokenService.issueTokenForUser(userI);
         final String processingUrl = (String)siteConfigPreferences.getProperty("processingUrl");
         final String xnatHostUrl = StringUtils.isBlank(processingUrl) ? siteConfigPreferences.getSiteUrl() : processingUrl;
+        final String workflowId = workflow != null ? workflow.getWorkflowId().toString() : "";
+        final String eventId = workflow != null ? workflow.buildEvent().getEventId().toString() : "";
 
         final Map<String, String> defaultEnvironmentVariables = new HashMap<>();
         defaultEnvironmentVariables.put("XNAT_USER", token.getAlias());
         defaultEnvironmentVariables.put("XNAT_PASS", token.getSecret());
         defaultEnvironmentVariables.put("XNAT_HOST", xnatHostUrl);
+        defaultEnvironmentVariables.put("XNAT_WORKFLOW_ID", workflowId);
+        defaultEnvironmentVariables.put("XNAT_EVENT_ID", eventId);
 
         return defaultEnvironmentVariables;
     }
@@ -931,16 +967,18 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
 		if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
-			log.debug("Adding to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
-                    count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
-                    containerOrService.status());
-			addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
-			        request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
-                    userI);
-			try {
-                XDAT.sendJmsRequest(request);
-            } catch (Exception e) {
-                recoverFromQueueingFailureFinalizing(e, containerOrService, userI);
+            Integer limit = containerControlApi.getFinalizingThrottle();
+            if (canFinalize(limit, userI, containerOrService, request)) {
+                log.debug("Added to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
+                        count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
+                        containerOrService.status());
+                try {
+                    XDAT.sendJmsRequest(request);
+                } catch (Exception e) {
+                    recoverFromQueueingFailureFinalizing(e, containerOrService, userI);
+                }
+            } else {
+                log.debug("Throttling finalizing queue container id {} must wait", request.getId());
             }
 		} else {
 			log.debug("Already in finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
@@ -948,6 +986,18 @@ public class ContainerServiceImpl implements ContainerService {
                     containerOrService.status());
 		}
 	}
+
+    private synchronized boolean canFinalize(Integer limit, UserI user, Container containerOrService,
+                                             ContainerFinalizingRequest request) {
+        List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
+        boolean canFinalize = limit == null || wfs == null || wfs.size() < limit;
+        if (canFinalize) {
+            addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
+                    request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
+                    user);
+        }
+        return canFinalize;
+    }
 
     private void recoverFromQueueingFailureFinalizing(Exception e,
                                                       final Container containerOrService,
@@ -1322,28 +1372,44 @@ public class ContainerServiceImpl implements ContainerService {
         }
     }
 
-    @Override
-    public String kill(final String containerId, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
-        // TODO check user permissions. How?
-        Container container;
+    public boolean canKill(String containerId, UserI userI) {
         try {
-            container = get(containerId);
-        } catch (NotFoundException e){
-            log.debug("containerId: " + containerId + ". Trying to find container by name: " + containerId);
-            container = getByName(containerId, true);
-            if(container == null){
-                throw e;
+            Container containerOrService = get(containerId);
+            verifyKillPermission(null, containerOrService, userI);
+            // if verifyKillPermission doesn't throw UnauthorizedException, user has permission to kill
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void verifyKillPermission(@Nullable String project, Container containerOrService, UserI userI)
+            throws UnauthorizedException {
+        if (!(userI.getLogin().equals(containerOrService.userId()) || Groups.hasAllDataAdmin(userI))) {
+            try {
+                project = StringUtils.firstNonBlank(containerOrService.project(), project);
+                if (!Permissions.isProjectOwner(userI, project)) {
+                    throw new UnauthorizedException("User cannot terminate this container or service");
+                }
+            } catch (Exception e) {
+                throw new UnauthorizedException("Unable to determine user permissions", e);
             }
         }
-
-        return kill(container, userI);
     }
 
     @Override
-    public String kill(String project, String containerId,
-                       UserI userI) throws NoDockerServerException, DockerServerException, NotFoundException {
-        return kill(containerId, userI);
+    public String kill(final String containerId, final UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
+        return kill(null, containerId, userI);
+    }
+
+    @Override
+    public String kill(@Nullable String project, String containerId, UserI userI)
+            throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
+        // User who launched the container, all data admins, and project owners can terminate
+        Container containerOrService = get(containerId);
+        verifyKillPermission(project, containerOrService, userI);
+        return kill(containerOrService, userI);
     }
 
     private String kill(final Container container, final UserI userI)
@@ -1570,6 +1636,15 @@ public class ContainerServiceImpl implements ContainerService {
     public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
                                                        String wrapperName, String projectId, UserI user,
                                                        String bulkLaunchId) {
+        return createContainerWorkflow(xnatIdOrUri, containerInputType, wrapperName, projectId, user, bulkLaunchId, null, 0);
+    }
+
+    @Nullable
+    @Override
+    public PersistentWorkflowI createContainerWorkflow(String xnatIdOrUri, String containerInputType,
+                                                       String wrapperName, String projectId, UserI user,
+                                                       @Nullable String bulkLaunchId, @Nullable Long orchestrationId,
+                                                       int orchestrationOrder) {
         if (xnatIdOrUri == null) {
             return null;
         }
@@ -1603,6 +1678,9 @@ public class ContainerServiceImpl implements ContainerService {
                     case SUBJECT:
                         xsiType = XnatSubjectdata.SCHEMA_ELEMENT_NAME;
                         break;
+                    case SUBJECT_ASSESSOR:
+                        xsiType = XnatSubjectassessordata.SCHEMA_ELEMENT_NAME;
+                        break;
                     case SESSION:
                         xsiType = XnatImagesessiondata.SCHEMA_ELEMENT_NAME;
                         break;
@@ -1635,6 +1713,10 @@ public class ContainerServiceImpl implements ContainerService {
             }
             if (bulkLaunchId != null) {
                 workflow.setJobid(bulkLaunchId);
+            }
+            if (orchestrationId != null) {
+                workflow.setNextStepId(orchestrationId.toString());
+                workflow.setCurrentStepId(Integer.toString(orchestrationOrder));
             }
             try {
                 WorkflowUtils.save(workflow, workflow.buildEvent());
@@ -1707,10 +1789,24 @@ public class ContainerServiceImpl implements ContainerService {
                 workflow.setPipelineName(resolvedCommand.wrapperName());
                 workflow.setJustification(ContainerServiceImpl.containerLaunchJustification);
                 workflow.setId(rootInputObject.rootObject.getIDValue());
-                workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
                 workflow.setDataType(rootInputObject.rootObject.getXSIType());
                 workflow.setPipelineName(resolvedCommand.wrapperName());
+                if (StringUtils.isBlank(workflow.getExternalid())) {
+                    // Only reset external ID if we don't have one, otherwise this can change from shared to primary project
+                    workflow.setExternalid(PersistentWorkflowUtils.getExternalId(rootInputObject.rootObject));
+                }
             }
+
+            String project = workflow.getExternalid();
+            if (StringUtils.isNotBlank(project) && workflow.getNextStepId() == null) {
+                // check if this is the start of an orchestrated sequence, WorkflowStatusEventOrchestrationListener will handle later steps
+                final Orchestration orchestration = getOrchestrationWhereWrapperIsFirst(project, resolvedCommand.wrapperId());
+                if (orchestration != null) {
+                    workflow.setNextStepId(Long.toString(orchestration.getId()));
+                    workflow.setCurrentStepId("0");
+                }
+            }
+
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
             WorkflowUtils.save(workflow, workflow.buildEvent());
             log.debug("Updated workflow {}.", workflow.getWorkflowId());
@@ -1718,6 +1814,23 @@ public class ContainerServiceImpl implements ContainerService {
             log.error("Could not create/update workflow.", e);
         }
         return workflow;
+    }
+
+    @Nullable
+    private Orchestration getOrchestrationWhereWrapperIsFirst(final String project, long wrapperId)
+            throws ExecutionException {
+        return getOrchestrationWhereWrapperIsFirst(project, wrapperId, 0L, null);
+    }
+
+    @Override
+    @Nullable
+    public Orchestration getOrchestrationWhereWrapperIsFirst(final String project,
+                                                             long wrapperId,
+                                                             final long commandId,
+                                                             @Nullable final String wrapperName)
+            throws ExecutionException {
+        OrchestrationIdentifier oi = new OrchestrationIdentifier(project, wrapperId, commandId, wrapperName);
+        return orchestrationCache.get(oi).orElse(null);
     }
 
     /**
@@ -1761,7 +1874,7 @@ public class ContainerServiceImpl implements ContainerService {
             final String type = input.type();
             if (!(type.equals(PROJECT.getName()) || type.equals(PROJECT_ASSET.getName()) || type.equals(SUBJECT.getName()) || 
                     type.equals(SESSION.getName()) || type.equals(SCAN.getName()) || type.equals(ASSESSOR.getName()) || 
-                    type.equals(RESOURCE.getName()))) {
+                    type.equals(RESOURCE.getName()) || type.equals(SUBJECT_ASSESSOR.getName()))) {
                 log.debug("Skipping. Input type \"{}\" is not an XNAT type.", type);
                 continue;
             }

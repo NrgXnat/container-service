@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.8.0"
+        vXnat = "1.8.3"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -16,7 +16,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.0.0"
+version "3.1.0"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -26,9 +26,9 @@ def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
 repositories {
-    mavenCentral()
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
+    mavenCentral()
 }
 
 dependencyManagement {
@@ -41,7 +41,7 @@ dependencyManagement {
         }
     }
 }
-def vDockerClient = "4.0.2"
+def vDockerClient = "5.0.1"
 def vJsonPath = "2.2.0"
 def vAutoValue = "1.3"
 def vPowerMock = "1.7.0"
@@ -49,6 +49,7 @@ def vGson = "2.8.1"
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vH2 = "1.4.197"
+def vJersey = "2.32"
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -125,10 +126,12 @@ dependencies {
     implementation "javax.inject:javax.inject"
     implementation "javax.servlet:javax.servlet-api"
 
-    implementAndInclude "org.glassfish.jersey.core:jersey-client:2.30.1"
-    implementAndInclude "org.glassfish.jersey.inject:jersey-hk2:2.30.1"
-    implementAndInclude "org.glassfish.jersey.connectors:jersey-apache-connector:2.30.1"
-    implementAndInclude "org.glassfish.jersey.media:jersey-media-json-jackson:2.30.1"
+    implementAndInclude "javax.ws.rs:javax.ws.rs-api:2.1.1"
+
+    implementAndInclude "org.glassfish.jersey.core:jersey-client:${vJersey}"
+    implementAndInclude "org.glassfish.jersey.inject:jersey-hk2:${vJersey}"
+    implementAndInclude "org.glassfish.jersey.connectors:jersey-apache-connector:${vJersey}"
+    implementAndInclude "org.glassfish.jersey.media:jersey-media-json-jackson:${vJersey}"
 
     implementation ("turbine:turbine") {
         transitive = false
@@ -140,6 +143,7 @@ dependencies {
         transitive = false
     }
 
+    implementation group: 'javax.interceptor', name: 'javax.interceptor-api', version: '1.2.2'
     testImplementation "junit:junit"
     testImplementation "org.hamcrest:hamcrest-library"
     testImplementation "org.springframework:spring-test"

@@ -27,6 +27,9 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.*;
@@ -38,6 +41,7 @@ import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.user.XnatUserProvider;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -147,10 +151,11 @@ public class IntegrationTestConfig {
                                              final SiteConfigPreferences siteConfigPreferences,
                                              final ContainerFinalizeService containerFinalizeService,
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
-                                             final CatalogService catalogService) {
+                                             final CatalogService catalogService,
+                                             final OrchestrationService mockOrchestrationService) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
                         commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
-                        containerFinalizeService, mockXnatAppInfo, catalogService);
+                        containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService);
     }
 
     @Bean
@@ -160,9 +165,15 @@ public class IntegrationTestConfig {
                                                              final SiteConfigPreferences siteConfigPreferences,
                                                              final ObjectMapper objectMapper,
                                                              final DockerService dockerService,
-                                                             final CatalogService mockCatalogService) {
+                                                             final CatalogService mockCatalogService,
+                                                             final UserDataCache mockUserDataCache) {
         return new CommandResolutionServiceImpl(commandService, configService, serverService,
-                siteConfigPreferences, objectMapper, dockerService, mockCatalogService);
+                siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache);
+    }
+
+    @Bean
+    public UserDataCache mockUserDataCache() {
+        return Mockito.mock(UserDataCache.class);
     }
 
     @Bean
@@ -202,6 +213,11 @@ public class IntegrationTestConfig {
     @Bean
     public CatalogService mockCatalogService() {
         return Mockito.mock(CatalogService.class);
+    }
+
+    @Bean
+    public OrchestrationService mockOrchestrationService() {
+        return Mockito.mock(OrchestrationService.class);
     }
 
     @Bean
@@ -251,6 +267,9 @@ public class IntegrationTestConfig {
                 CommandWrapperExternalInputEntity.class,
                 CommandWrapperDerivedInputEntity.class,
                 CommandWrapperOutputEntity.class,
+                OrchestrationEntity.class,
+                OrchestratedWrapperEntity.class,
+                OrchestrationProjectEntity.class,
                 ContainerEntity.class,
                 ContainerEntityHistory.class,
                 ContainerEntityInput.class,

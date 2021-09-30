@@ -35,8 +35,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         rootUrl = XNAT.url.rootUrl,
         restUrl = XNAT.url.restUrl,
         csrfUrl = XNAT.url.csrfUrl,
+        isAdmin,
         commandList,
-        wrapperList;
+        wrapperList,
+        projectCommandOptions = {},
+        eventOptions = [
+            {
+                eventId: 'SessionArchived',
+                context: 'xnat:imageSessionData',
+                label: 'On Session Archive'
+            },
+            {
+                eventId: 'Merged',
+                context: 'xnat:imageSessionData',
+                label: 'On Session Merged'
+            },
+            {
+                eventId: 'ScanArchived',
+                context: 'xnat:imageScanData',
+                label: 'On Scan Archive'
+            }
+        ];
 
     XNAT.plugin.containerService.projCommandConfigManager = projCommandConfigManager =
         getObject(XNAT.plugin.containerService.projCommandConfigManager || {});
@@ -112,6 +131,26 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         if (!commandId || !wrapperName || !flag) return false;
         var projectId = getProjectId();
         return csrfUrl('/xapi/projects/'+projectId+'/commands/'+commandId+'/wrappers/'+wrapperName+'/' + flag);
+    }
+
+    function refreshCommandWrapperList(wrapperId) {
+        const wrapper = wrapperList[wrapperId];
+        if (!projectCommandOptions[wrapperId]) {
+            projectCommandOptions[wrapperId] = {
+                label: wrapper.name,
+                value: wrapper.name,
+                'command-id': wrapper.commandId,
+                'wrapper-id': wrapper.id,
+                contexts: wrapper.contexts
+            };
+        }
+        projectCommandOptions[wrapperId].enabled = wrapper.enabled;
+    }
+
+    function anyCommandsEnabled() {
+        return Object.keys(projectCommandOptions).some(function(k) {
+            return projectCommandOptions[k].enabled;
+        });
     }
 
     projCommandConfigManager.getCommands = projCommandConfigManager.getAll = function(callback){
@@ -375,6 +414,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     };
 
+    function disabledSpan() {
+        return spawn('span',{ 'style': { 'color': '#808080' }},'disabled');
+    }
+
     projCommandConfigManager.table = function(config){
 
         // initialize the table - we'll add to it below
@@ -438,9 +481,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     // or, remove the input and controller entirely.  
                     $('#wrapper-'+wrapper.id+'-enable').prop('disabled','disabled')
                         .parents('.switchbox').addClass('disabled').hide()
-                        .parent('div').html(spawn('span',{ 'style': { 'color': '#808080' }},'disabled'));
+                        .parent('div').html(disabledSpan());
                 }
                 projCommandConfigManager.setMasterEnableSwitch();
+                refreshCommandWrapperList(wrapper.id);
             });
 
             var ckbox = spawn('input.config-enabled.wrapper-enable', {
@@ -461,6 +505,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             var status = (enabled ? ' enabled' : ' disabled');
                             checkbox.value = enabled;
                             wrapperList[wrapper.id].enabled = enabled;
+                            refreshCommandWrapperList(wrapper.id);
+                            projCommandOrchestrationManager.init();
                             XNAT.ui.banner.top(2000, '<b>' + wrapper.name+ '</b> ' + status, 'success');
                         }
                     });
@@ -518,8 +564,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             wrapperList[wrapper.id] = {
                                 id: wrapper.id,
                                 description: wrapper.description,
-                                contexts: wrapper.contexts
+                                contexts: wrapper.contexts,
+                                commandId: command.id,
+                                name: wrapper.name
                             };
+                            refreshCommandWrapperList(wrapper.id);
 
                             pccmTable.tr({title: wrapper.name, data: {id: wrapper.id, name: wrapper.name, image: command.image}})
                                 .td([viewLink(command, wrapper)]).addClass('name')
@@ -536,8 +585,19 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     .td({colSpan: '5', html: 'No XNAT-enabled Commands Found'});
             }
 
-            // once command list is known, initialize automation panel
-            commandAutomation.init();
+            // once command list is known, initialize automation and orchestration panels
+            // initialize automation table
+            XNAT.xhr.getJSON({
+                url: restUrl('/xapi/users/' + PAGE.username + '/roles'),
+                success: function (userRoles) {
+                    isAdmin = (userRoles.indexOf('Administrator') >= 0);
+                    commandAutomation.init();
+                    projCommandOrchestrationManager.init();
+                },
+                fail: function (e) {
+                    errorHandler(e);
+                }
+            });
             
             // then initialize the history table
             XNAT.plugin.containerService.historyTable.init(getProjectId());
@@ -585,6 +645,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
             })
         });
+    };
+
+    projCommandConfigManager.refresh = projCommandConfigManager.refreshTable = function(container){
+        var $manager = $$(container||'div#proj-command-config-list-container');
+
+        $manager.html('');
+        $manager.append(projCommandConfigManager.table({id: 'project-commands', className: '' }));
+        projCommandConfigManager.setMasterEnableSwitch();
     };
 
     projCommandConfigManager.init = function(container){
@@ -738,13 +806,17 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         function eventCommandSelector(options, description){
             // receive an array of objects as our list of options
             if (options.length > 0) {
-                description = (description) ? description : 'This input is limited by the XNAT contexts available to the selected event';
+                description = (description) ? description : 'This input is limited by the XNAT contexts available to ' +
+                    'the selected event and the commands enabled on the project';
 
                 // build formatted options list to stick into the generated select menu
                 var formattedOptions = [
                     spawn('option',{ selected: true })
                 ];
                 options.forEach(function(option){
+                    if (!option.enabled) {
+                        return;
+                    }
                     var contexts = option.contexts.join(' ');
 
                     formattedOptions.push(
@@ -773,109 +845,72 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
         }
 
-        if (commandList.length && Object.keys(wrapperList).length){
-            var projectCommandOptions = [];
-            var eventOptions = [
-                {
-                    eventId: 'SessionArchived',
-                    context: 'xnat:imageSessionData',
-                    label: 'On Session Archive'
+        if (anyCommandsEnabled()) {
+            XNAT.ui.dialog.open({
+                title: 'Create Command Automation',
+                width: 500,
+                content: '<div class="panel pad20"></div>',
+                beforeShow: function(obj){
+                    // populate form elements
+                    var panel = obj.$modal.find('.panel');
+                    panel.append( spawn('p','Please enter values for each field.') );
+                    panel.append( eventSelector(eventOptions) );
+                    panel.append( eventCommandSelector(Object.values(projectCommandOptions)) );
+                    panel.append( XNAT.ui.panel.input.hidden({
+                        name: 'project',
+                        value: projectId
+                    }));
+                    panel.append( XNAT.ui.panel.input.hidden({
+                        name: 'command-id',
+                        id: 'event-command-identifier'
+                    })); // this will remain without a value until a command wrapper has been selected
                 },
-                {
-                    eventId: 'Merged',
-                    context: 'xnat:imageSessionData',
-                    label: 'On Session Merged'
-                },
-                {
-                    eventId: 'ScanArchived',
-                    context: 'xnat:imageScanData',
-                    label: 'On Scan Archive'
-                }
-            ];
+                buttons: [
+                    {
+                        label: 'Create Automation',
+                        isDefault: true,
+                        close: false,
+                        action: function(obj){
+                            // collect input values, validate them, and post them to the command-event-mapping URI
+                            var panel = obj.$modal.find('.panel'),
+                                project = panel.find('input[name=project]').val(),
+                                command = panel.find('input[name=command-id]').val(),
+                                wrapper = panel.find('select[name=xnat-command-wrapper]').find('option:selected').val(),
+                                event = panel.find('select[name=event-type]').find('option:selected').val();
 
-            commandList.forEach(function(command){
-                command.xnat.forEach(function(wrapper){
-                    // crosscheck each wrapper definition with our internal list of which wrappers have been enabled in the project
-                    if (wrapperList[wrapper.id].enabled) {
-                        projectCommandOptions.push({
-                            label: wrapper.name,
-                            value: wrapper.name,
-                            'command-id': command.id,
-                            contexts: wrapper.contexts
-                        });
-                    }
-                });
-            });
-
-            if (Object.keys(projectCommandOptions).length > 0) {
-                XNAT.ui.dialog.open({
-                    title: 'Create Command Automation',
-                    width: 500,
-                    content: '<div class="panel pad20"></div>',
-                    beforeShow: function(obj){
-                        // populate form elements
-                        var panel = obj.$modal.find('.panel');
-                        panel.append( spawn('p','Please enter values for each field.') );
-                        panel.append( eventSelector(eventOptions) );
-                        panel.append( eventCommandSelector(projectCommandOptions) );
-                        panel.append( XNAT.ui.panel.input.hidden({
-                            name: 'project',
-                            value: projectId
-                        }));
-                        panel.append( XNAT.ui.panel.input.hidden({
-                            name: 'command-id',
-                            id: 'event-command-identifier'
-                        })); // this will remain without a value until a command wrapper has been selected
-                    },
-                    buttons: [
-                        {
-                            label: 'Create Automation',
-                            isDefault: true,
-                            close: false,
-                            action: function(obj){
-                                // collect input values, validate them, and post them to the command-event-mapping URI
-                                var panel = obj.$modal.find('.panel'),
-                                    project = panel.find('input[name=project]').val(),
-                                    command = panel.find('input[name=command-id]').val(),
-                                    wrapper = panel.find('select[name=xnat-command-wrapper]').find('option:selected').val(),
-                                    event = panel.find('select[name=event-type]').find('option:selected').val();
-
-                                if (project && command && wrapper && event){
-                                    var data = {
-                                        'project': project,
-                                        'command-id': command,
-                                        'xnat-command-wrapper': wrapper,
-                                        'event-type': event
-                                    };
-                                    XNAT.xhr.postJSON({
-                                        url: csrfUrl('/xapi/commandeventmapping'),
-                                        data: JSON.stringify(data),
-                                        success: function(){
-                                            XNAT.ui.banner.top(2000, '<b>Success!</b> Command automation has been added', 'success');
-                                            XNAT.ui.dialog.closeAll();
-                                            XNAT.plugin.containerService.commandAutomation.refresh();
-                                        },
-                                        fail: function(e){
-                                            errorHandler(e,'Could not create command automation');
-                                        }
-                                    });
-                                } else {
-                                    xmodal.alert('Please enter a value for each field');
-                                }
+                            if (project && command && wrapper && event){
+                                var data = {
+                                    'project': project,
+                                    'command-id': command,
+                                    'xnat-command-wrapper': wrapper,
+                                    'event-type': event
+                                };
+                                XNAT.xhr.postJSON({
+                                    url: csrfUrl('/xapi/commandeventmapping'),
+                                    data: JSON.stringify(data),
+                                    success: function(){
+                                        XNAT.ui.banner.top(2000, '<b>Success!</b> Command automation has been added', 'success');
+                                        XNAT.ui.dialog.closeAll();
+                                        XNAT.plugin.containerService.commandAutomation.refresh();
+                                    },
+                                    fail: function(e){
+                                        errorHandler(e,'Could not create command automation');
+                                    }
+                                });
+                            } else {
+                                xmodal.alert('Please enter a value for each field');
                             }
-                        },
-                        {
-                            label: 'Cancel',
-                            isDefault: false,
-                            close: true
                         }
-                    ]
-                });
-            } else {
-                // if no wrappers are identified, fail to launch
-                errorHandler('No commands are enabled in this project. Cannot create automation','Cannot create automation');
-            }
+                    },
+                    {
+                        label: 'Cancel',
+                        isDefault: false,
+                        close: true
+                    }
+                ]
+            });
         } else {
+            // if no wrappers are identified, fail to launch
             errorHandler('No commands are enabled in this project. Cannot create automation','Cannot create automation');
         }
     };
@@ -959,40 +994,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         // initialize the list of command automations
         var manager = $('#command-automation-list');
         var $footer = manager.parents('.panel').find('.panel-footer');
-        var isAdmin; // check current user's admin status by checking the JSP page variable PAGE.username
 
         manager.html('');
         $footer.html('');
 
         if (commandList.length && Object.keys(XNAT.plugin.containerService.wrapperList).length){
-            // initialize automation table
-            XNAT.xhr.getJSON({
-                url: restUrl('/xapi/users/' + PAGE.username + '/roles'),
-                success: function (userRoles) {
-                    isAdmin = (userRoles.indexOf('Administrator') >= 0);
+            manager.append(commandAutomation.table(isAdmin));
 
-                    manager.append(commandAutomation.table(isAdmin));
-
-                    if (isAdmin) {
-                        var newAutomation = spawn('button.new-command-automation.btn.btn-sm.submit', {
-                            html: 'Add New Command Automation',
-                            onclick: function(){
-                                commandAutomation.addDialog();
-                            }
-                        });
-
-                        // add the 'add new' button to the panel footer
-                        $footer.append(spawn('div.pull-right', [
-                            newAutomation
-                        ]));
-                        $footer.append(spawn('div.clear.clearFix'));
+            if (isAdmin) {
+                var newAutomation = spawn('button.new-command-automation.btn.btn-sm.submit', {
+                    html: 'Add New Command Automation',
+                    onclick: function(){
+                        commandAutomation.addDialog();
                     }
-                },
-                fail: function (e) {
-                    errorHandler(e);
-                }
-            });
+                });
 
+                // add the 'add new' button to the panel footer
+                $footer.append(spawn('div.pull-right', [
+                    newAutomation
+                ]));
+                $footer.append(spawn('div.clear.clearFix'));
+            }
         } else {
             // if no commands are defined, do not initialize table
             manager.append(
@@ -1004,4 +1026,103 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     projCommandConfigManager.init();
 
+    // Orchestration
+    console.log('commandOrchestration.js');
+
+    let projCommandOrchestrationManager;
+
+    XNAT.plugin.containerService.projCommandOrchestrationManager = projCommandOrchestrationManager =
+        getObject(XNAT.plugin.containerService.projCommandOrchestrationManager || {});
+
+    projCommandOrchestrationManager.table = function() {
+        const projectId = getProjectId();
+
+        // initialize the table - we'll add to it below
+        const coTable = XNAT.table({
+            className: 'xnat-table compact',
+            style: {
+                width: '100%',
+                marginTop: '15px',
+                marginBottom: '15px'
+            }
+        });
+
+        // add table header row
+        coTable.tr()
+            .th('<b>Name</b>')
+            .th('<b>Commands</b>')
+            .th({ width: 91, html: '<b>Selected</b>' });
+
+        function radioBtn(checked, o) {
+            if (o && !o.enabled) {
+                return spawn('div.center', [disabledSpan()]);
+            }
+
+            const ckbox = spawn('input.orchestration-select', {
+                type: 'radio',
+                name: 'orchestration-select',
+                checked: checked,
+                value: 'true',
+                onchange: function () {
+                    let radio = $(this);
+                    if (o) {
+                        XNAT.xhr.put({
+                            url: rootUrl('/xapi/orchestration/project/' + projectId + '?orchestrationId=' + o.id),
+                            success: function () {
+                                XNAT.ui.banner.top(1000, 'Orchestration <b>' + o.name + '</b> added', 'success');
+                                projCommandConfigManager.refreshTable();
+                            },
+                            fail: function (e) {
+                                errorHandler(e);
+                                radio.prop('checked', false);
+                            }
+                        });
+                    } else {
+                        XNAT.xhr.delete({
+                            url: rootUrl('/xapi/orchestration/project/' + projectId),
+                            success: function () {
+                                XNAT.ui.banner.top(1000, 'Orchestration removed', 'success');
+                            },
+                            fail: function (e) {
+                                errorHandler(e);
+                                radio.prop('checked', false);
+                            }
+                        });
+                    }
+                }
+            });
+
+            return spawn('div.center', [ckbox]);
+        }
+
+        XNAT.xhr.getJSON({
+            url: rootUrl('/xapi/orchestration/project/' + projectId),
+            success: function(data) {
+                // add option for none
+                coTable.tr({ 'style': { 'background-color': '#f3f3f3' }})
+                    .td({className: 'name', html: 'No orchestration', colSpan: 2})
+                    .td([ spawn('div',[radioBtn(!data.selectedOrchestrationId, null)]) ])
+
+                data.availableOrchestrations.forEach(function(o) {
+                    coTable.tr()
+                        .td(o.name)
+                        .td($.map(o.wrapperIds, function(wid) {
+                            return projectCommandOptions[wid].label;
+                        }).join(', '))
+                        .td([ spawn('div',[radioBtn(data.selectedOrchestrationId === o.id, o)]) ])
+                })
+            },
+            error: function(xhr) {
+                errorHandler(xhr);
+            }
+        });
+
+        return coTable.table;
+    };
+
+    projCommandOrchestrationManager.init = function() {
+        const $manager = $('div#command-orchestration');
+        $manager.empty();
+        $manager.append(projCommandOrchestrationManager.table());
+    };
 }));

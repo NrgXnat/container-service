@@ -7,11 +7,14 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.nrg.containers.daos.CommandEntityRepository;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
+import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.services.CommandEntityService;
+import org.nrg.containers.services.OrchestrationEntityService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntityService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,13 @@ import java.util.Map;
 @Transactional
 public class HibernateCommandEntityService extends AbstractHibernateEntityService<CommandEntity, CommandEntityRepository>
         implements CommandEntityService {
+
+    private final OrchestrationEntityService orchestrationEntityService;
+
+    @Autowired
+    public HibernateCommandEntityService(final OrchestrationEntityService orchestrationEntityService) {
+        this.orchestrationEntityService = orchestrationEntityService;
+    }
 
     @Override
     @Nonnull
@@ -120,6 +130,15 @@ public class HibernateCommandEntityService extends AbstractHibernateEntityServic
     public void deleteWrapper(final long wrapperId) {
         final CommandWrapperEntity commandWrapperEntity = retrieveWrapper(wrapperId);
         if (commandWrapperEntity != null) {
+            commandWrapperEntity.getOrchestrations().forEach(owe -> {
+                OrchestrationEntity oe = owe.getOrchestrationEntity();
+                oe.removeWrapper(owe);
+                if (oe.getWrapperList().isEmpty()) {
+                    orchestrationEntityService.delete(oe);
+                } else {
+                    orchestrationEntityService.setEnabled(oe, false);
+                }
+            });
             getDao().delete(commandWrapperEntity);
         }
     }

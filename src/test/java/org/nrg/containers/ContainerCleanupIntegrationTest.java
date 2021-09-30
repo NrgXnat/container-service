@@ -353,7 +353,7 @@ public class ContainerCleanupIntegrationTest {
         }
         dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, autoCleanup, null));
+                false, null, autoCleanup, null, null));
 
         CLIENT = controlApi.getClient();
         TestingUtils.pullBusyBox(CLIENT);
