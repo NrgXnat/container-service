@@ -106,7 +106,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.0";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.3";
     public static final String WAITING = "Waiting";
     public static final String _WAITING = "_Waiting";
     public static final String FINALIZING = "Finalizing";
