@@ -18,6 +18,7 @@ import org.nrg.xft.security.UserI;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -179,4 +180,12 @@ public interface ContainerService {
                                  UserI userI,
                                  @Nullable String bulkLaunchId,
                                  @Nullable Long orchestrationId);
+
+    LaunchReport.BulkLaunchReport bulkLaunch(@Nullable String project,
+                                             long commandId,
+                                             @Nullable String wrapperName,
+                                             long wrapperId,
+                                             @Nullable String rootElement,
+                                             Map<String, String> allRequestParams,
+                                             UserI userI) throws IOException;
 }

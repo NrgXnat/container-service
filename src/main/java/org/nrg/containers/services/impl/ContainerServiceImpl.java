@@ -1,6 +1,8 @@
 package org.nrg.containers.services.impl;
 
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
@@ -45,6 +47,7 @@ import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.*;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.om.*;
@@ -65,6 +68,7 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -73,17 +77,17 @@ import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
+import java.io.*;
 import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -124,6 +128,9 @@ public class ContainerServiceImpl implements ContainerService {
     private final XnatAppInfo xnatAppInfo;
     private final CatalogService catalogService;
     private final OrchestrationService orchestrationService;
+    private final ObjectMapper mapper;
+    private final ExecutorService executorService;
+    private final NrgEventService eventService;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -138,7 +145,11 @@ public class ContainerServiceImpl implements ContainerService {
                                 final ContainerFinalizeService containerFinalizeService,
                                 final XnatAppInfo xnatAppInfo,
                                 final CatalogService catalogService,
-                                final OrchestrationService orchestrationService) {
+                                final OrchestrationService orchestrationService,
+                                final NrgEventService eventService,
+                                final ObjectMapper mapper,
+                                @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
+                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -149,6 +160,9 @@ public class ContainerServiceImpl implements ContainerService {
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
         this.orchestrationService = orchestrationService;
+        this.eventService = eventService;
+        this.mapper = mapper;
+        this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
 
         buildCache();
     }
@@ -2082,6 +2096,75 @@ public class ContainerServiceImpl implements ContainerService {
             return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "Unable to queue container launch",
                     allRequestParams, commandId, wrapperId);
         }
+    }
+
+    @Override
+    public LaunchReport.BulkLaunchReport bulkLaunch(final String project,
+                                                     final long commandId,
+                                                     final String wrapperName,
+                                                     final long wrapperId,
+                                                     final String rootElement,
+                                                     final Map<String, String> allRequestParams,
+                                                     final UserI userI) throws IOException {
+        final String bulkLaunchId = generateBulkLaunchId(userI);
+        List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
+
+        Orchestration orchestration = null;
+        try {
+            orchestration = getOrchestrationWhereWrapperIsFirst(project, wrapperId,
+                    commandId, wrapperName);
+        } catch (ExecutionException e) {
+            log.error("Unable to query for orchestration");
+        }
+
+        final Long orchestrationId;
+        final String pipelineName;
+        int steps;
+        if (orchestration != null) {
+            orchestrationId = orchestration.getId();
+            pipelineName = orchestration.getName() + " orchestration";
+            steps = orchestration.getWrapperIds().size();
+        } else {
+            orchestrationId = null;
+            pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
+            steps = 1;
+        }
+        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size(), steps));
+        log.debug("Bulk launching on {} targets", targets.size());
+
+        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
+                .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
+        int failures = 0;
+        for (final String target : targets) {
+            Map<String, String> paramsSet = Maps.newHashMap(allRequestParams);
+            paramsSet.put(rootElement, target);
+            try {
+                executorService.submit(() -> {
+                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI,
+                            bulkLaunchId, orchestrationId);
+                });
+                reportBuilder.addSuccess(LaunchReport.Success.create(ContainerServiceImpl.TO_BE_ASSIGNED,
+                        paramsSet, null, commandId, wrapperId));
+            } catch (Exception e) {
+                // Most exceptions should be "logged" to the workflow but this is meant to catch
+                // issues submitting to the executorService
+                reportBuilder.addFailure(LaunchReport.Failure.create(e.getMessage() != null ?
+                                e.getMessage() : "Unable to queue container launch",
+                        paramsSet, commandId, wrapperId));
+                failures++;
+            }
+        }
+
+        if (failures > 0) {
+            // this should be super uncommon
+            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
+        }
+
+        return reportBuilder.build();
+    }
+
+    private String generateBulkLaunchId(final UserI userI) {
+        return "bulk-" + userI.getLogin() + System.currentTimeMillis() + new Random().nextInt(1000);
     }
 
     private String mapLogString(final String title, final Map<String, String> map) {

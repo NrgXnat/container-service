@@ -51,6 +51,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.orm.hibernate4.HibernateTransactionManager;
 import org.springframework.orm.hibernate4.LocalSessionFactoryBean;
+import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.ResourceTransactionManager;
 import reactor.Environment;
@@ -152,10 +153,14 @@ public class IntegrationTestConfig {
                                              final ContainerFinalizeService containerFinalizeService,
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                              final CatalogService catalogService,
-                                             final OrchestrationService mockOrchestrationService) {
+                                             final OrchestrationService mockOrchestrationService,
+                                             final NrgEventService mockNrgEventService,
+                                             final ObjectMapper mapper,
+                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
-                        commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
-                        containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService);
+                commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
+                containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean

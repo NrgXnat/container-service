@@ -1,11 +1,13 @@
 package org.nrg.containers.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Mockito;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.rest.ContainerRestApi;
 import org.nrg.containers.services.*;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.services.ContextService;
+import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.UserGroupServiceI;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -45,10 +47,14 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final SiteConfigPreferences siteConfigPreferences,
                                              final ContainerFinalizeService containerFinalizeService,
                                              final CatalogService catalogService,
-                                             final OrchestrationService mockOrchestrationService) {
+                                             final OrchestrationService mockOrchestrationService,
+                                             final NrgEventService mockNrgEventService,
+                                             final ObjectMapper mapper,
+                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
                 commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
-                null, catalogService, mockOrchestrationService);
+                null, catalogService, mockOrchestrationService,
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean
