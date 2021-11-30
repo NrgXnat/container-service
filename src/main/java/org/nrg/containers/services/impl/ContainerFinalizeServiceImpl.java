@@ -100,14 +100,15 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                                                String xnatLabel,
                                                String project,
                                                @Nullable List<String> filePaths) {
-        String admin = siteConfigPreferences.getAdminEmail();
+        if (!containerControlApi.isStatusEmailEnabled()) {
+            return;
+        }
 
-       //TODO: Add configuration parameter to disable status emails
+        String admin = siteConfigPreferences.getAdminEmail();
         if (admin == null || admin.equals("administrator@xnat.org")) {
             log.warn("Container Service status email not sent. Default admin email not set.");
             return;
         }
-
 
         String status = completionStatus ? "Completed" : "Failed";
         String subject = pipelineName + " update: " + status + " processing of " +
@@ -121,10 +122,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 }
             }
         }
-        boolean hasAttachments = false;
-        if (attachments.size() > 0) {
-            hasAttachments = true;
-        }
+        boolean hasAttachments = attachments.size() > 0;
         String emailHTMLBody = composeHTMLBody(pipelineName, status, xnatId, xnatLabel, project, hasAttachments);
         String emailText = composeEmailText(pipelineName, status, xnatId, xnatLabel, project, hasAttachments);
 

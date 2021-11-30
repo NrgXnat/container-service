@@ -82,4 +82,5 @@ public interface ContainerControlApi {
     void throwWaitingEventForService(Container service) throws ContainerException;
 
     Integer getFinalizingThrottle();
+    boolean isStatusEmailEnabled();
 }

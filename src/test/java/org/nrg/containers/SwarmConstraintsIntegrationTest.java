@@ -298,7 +298,7 @@ public class SwarmConstraintsIntegrationTest {
     public void testThatServicesRunWithoutConstraints() throws Exception {
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null);
+                false, null, true, null, null, true);
         dockerServerService.setServer(server);
         setClient();
 
@@ -316,7 +316,7 @@ public class SwarmConstraintsIntegrationTest {
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
                 false, null, true,
-                Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList(), null);
+                Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList(), null, true);
         dockerServerService.setServer(server);
         setClient();
 
@@ -477,7 +477,7 @@ public class SwarmConstraintsIntegrationTest {
         // We need a client so we have to create a server, we'll update it shortly
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
-                false, null, true, null, null);
+                false, null, true, null, null, true);
         DockerServerBase.DockerServer curServer = dockerServerService.setServer(server);
         setClient();
 
@@ -569,7 +569,7 @@ public class SwarmConstraintsIntegrationTest {
 
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 false, null, null, null,
-                false, null, true, constraints, null);
+                false, null, true, constraints, null, true);
         dockerServerService.setServer(server);
         setClient();
 

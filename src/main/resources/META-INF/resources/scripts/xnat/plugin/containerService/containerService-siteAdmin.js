@@ -241,6 +241,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             name: 'max-concurrent-finalizing-jobs',
                             label: 'Max concurrent finalizing jobs',
                             description: 'Leave blank for no throttling'
+                        }),
+                        spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
+                        XNAT.ui.panel.input.switchbox({
+                            name: 'status-email-enabled',
+                            label: 'Email on container completion/failure?',
+                            onText: 'YES',
+                            offText: 'NO',
+                            value: 'true'
                         })
                     ])
                 );

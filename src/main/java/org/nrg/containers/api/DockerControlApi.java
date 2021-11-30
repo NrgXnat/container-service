@@ -1494,6 +1494,17 @@ public class DockerControlApi implements ContainerControlApi {
         }
     }
 
+    @Override
+    public boolean isStatusEmailEnabled() {
+        try {
+            DockerServer server = getServer();
+            return server.statusEmailEnabled();
+        } catch (NoDockerServerException e) {
+            log.error("Unable to find server to determine status email enabled setting", e);
+            return true;
+        }
+    }
+
     /**
      * Convert spotify-docker Image object to xnat-container Image object
      *

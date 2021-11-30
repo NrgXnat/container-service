@@ -20,6 +20,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private List<DockerServerEntitySwarmConstraint> swarmConstraints = new ArrayList<>();
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
+    private boolean statusEmailEnabled = true;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -37,6 +38,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.containerUser = dockerServer.containerUser();
         this.autoCleanup = dockerServer.autoCleanup();
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
+        this.statusEmailEnabled = dockerServer.statusEmailEnabled();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -173,7 +175,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     }
 
     public void setAutoCleanup(Boolean autoCleanup) {
-        this.autoCleanup = autoCleanup == null ? true : autoCleanup;
+        this.autoCleanup = autoCleanup == null || autoCleanup;
     }
 
     public Integer getMaxConcurrentFinalizingJobs() {
@@ -182,6 +184,15 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setMaxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs) {
         this.maxConcurrentFinalizingJobs = maxConcurrentFinalizingJobs;
+    }
+
+    @Column(columnDefinition = "boolean default true")
+    public boolean isStatusEmailEnabled() {
+        return statusEmailEnabled;
+    }
+
+    public void setStatusEmailEnabled(Boolean statusEmail) {
+        this.statusEmailEnabled = statusEmail == null || statusEmail;
     }
 
     @Override
@@ -224,13 +235,15 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.containerUser, that.containerUser) &&
                 Objects.equals(this.autoCleanup, that.autoCleanup) &&
                 Objects.equals(this.maxConcurrentFinalizingJobs, that.maxConcurrentFinalizingJobs) &&
+                Objects.equals(this.statusEmailEnabled, that.statusEmailEnabled) &&
                 constrEqual;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(name, host, certPath, lastEventCheckTime, swarmMode, pathTranslationXnatPrefix,
-                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs);
+                pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
+                maxConcurrentFinalizingJobs, statusEmailEnabled);
     }
 
 }
