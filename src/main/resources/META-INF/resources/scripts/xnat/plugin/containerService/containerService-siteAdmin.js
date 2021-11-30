@@ -1040,17 +1040,16 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         var hubId = $form.find('select[name=hubId]').find('option:selected').val();
                         var pullUrl = (hubId) ? '/xapi/docker/hubs/'+hubId+'/pull' : '/xapi/docker/pull';
 
-                        if ($image.val().indexOf(':') > 0) {
-                            // if the tag is included in the image title, move it to the tag field
-                            var imageTitleParts = $image.val().split(':');
-                            $image.val(imageTitleParts[0]);
-
-                            if ($tag.val() === '') {
-                                $tag.val(':' + imageTitleParts[1]);
+                        var image = $image.val()
+                        if ($tag.val() === '') {
+                            var idx = image.lastIndexOf(':');
+                            if (idx > 0) {
+                                // if the tag is included in the image title, move it to the tag field
+                                $image.val(image.substring(0, idx));
+                                $tag.val(image.substring(idx));
+                            } else {
+                                if ($tag.val() === '') $tag.val(':latest');
                             }
-                        }
-                        else {
-                            if ($tag.val() === '') $tag.val(':latest');
                         }
 
                         // validate form inputs, then pull them into the URI querystring and create an XHR request.
