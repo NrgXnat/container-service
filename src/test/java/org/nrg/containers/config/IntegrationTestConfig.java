@@ -72,8 +72,9 @@ public class IntegrationTestConfig {
     @Bean
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
+                                             final DockerHubService dockerHubService,
                                              final NrgEventService eventService) {
-        return new DockerControlApi(dockerServerService, commandLabelService, eventService);
+        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
     }
 
     @Bean

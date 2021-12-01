@@ -75,6 +75,7 @@ imageHostsPanel:
                             id: hub-password
                             name: password
                             label: Access Token
+                            description: Access token or password. The former is strongly suggested, see the <a href="https://docs.docker.com/docker-hub/access-tokens" target="_blank">docker access token documentation</a> for instructions.
         imageHostTable:
             tag: "div#image-host-manager"
 

@@ -55,6 +55,7 @@ public class DockerHubEntity extends AbstractHibernateEntity {
         this.name = name;
     }
 
+    @Column(unique = true)
     public String getUrl() {
         return url;
     }

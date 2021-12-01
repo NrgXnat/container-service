@@ -14,4 +14,12 @@ public class DockerHubDao extends AbstractHibernateDAO<DockerHubEntity> {
             throw new NotUniqueException("More than one result with name " + name + ".");
         }
     }
+
+    public DockerHubEntity findByUrl(final String url) throws NotUniqueException {
+        try {
+            return findByUniqueProperty("url", url);
+        } catch (RuntimeException e) {
+            throw new NotUniqueException("More than one result with url " + url + ".");
+        }
+    }
 }

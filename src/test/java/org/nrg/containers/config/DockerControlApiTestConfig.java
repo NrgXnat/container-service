@@ -6,6 +6,7 @@ import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandLabelServiceImpl;
 import org.nrg.framework.services.NrgEventService;
@@ -26,8 +27,9 @@ public class DockerControlApiTestConfig {
     @Bean
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
+                                             final DockerHubService dockerHubService,
                                              final NrgEventService eventService) {
-        return new DockerControlApi(dockerServerService, commandLabelService, eventService);
+        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
     }
 
     @Bean
@@ -59,6 +61,11 @@ public class DockerControlApiTestConfig {
     @Bean
     public ContainerEntityRepository mockContainerExecutionRepository() {
         return Mockito.mock(ContainerEntityRepository.class);
+    }
+
+    @Bean
+    public DockerHubService mockDockerHubService() {
+        return Mockito.mock(DockerHubService.class);
     }
 
     @Bean

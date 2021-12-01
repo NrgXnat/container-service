@@ -64,6 +64,7 @@ import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
+import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -95,14 +96,17 @@ public class DockerControlApi implements ContainerControlApi {
 
     private final DockerServerService dockerServerService;
     private final CommandLabelService commandLabelService;
+    private final DockerHubService dockerHubService;
     private final NrgEventService eventService;
 
     @Autowired
     public DockerControlApi(final DockerServerService dockerServerService,
                             final CommandLabelService commandLabelService,
+                            final DockerHubService dockerHubService,
                             final NrgEventService eventService) {
         this.dockerServerService = dockerServerService;
         this.commandLabelService = commandLabelService;
+        this.dockerHubService = dockerHubService;
         this.eventService = eventService;
     }
 
@@ -894,7 +898,6 @@ public class DockerControlApi implements ContainerControlApi {
                                 final DockerServer server) throws DockerServerException {
         final boolean swarmMode = server.swarmMode();
         final String containerOrServiceId = swarmMode ? containerOrService.serviceId() : containerOrService.containerId();
-        // imageNameForSwarmAuth only needed bc authForSwarm not implemented in Spotify client for config.json auth
         final String imageNameForSwarmAuth = swarmMode ? containerOrService.dockerImage() : null;
         try (final DockerClient client = getClient(server, imageNameForSwarmAuth)) {
             if (swarmMode) {
@@ -1216,14 +1219,31 @@ public class DockerControlApi implements ContainerControlApi {
             }
         }
 
+        // We only need to add auth when we pull (already added in pullImage methods) and when we start a swarm service;
+        // imageName is passed in the latter scenario only, so we can use it as an indicator that auth ought to be added.
+        // I am tempted to always add it, but want to minimize the intrusiveness of this change.
         if (StringUtils.isNotBlank(imageName)) {
-            //TODO This is a workaround because Spotify client doesn't implement
-            // ConfigFileRegistryAuthSupplier.authForSwarm(). Once that's added, we can get rid of this.
             try {
-                final RegistryAuth auth = new ConfigFileRegistryAuthSupplier().authFor(imageName);
-                clientBuilder.registryAuthSupplier(new FixedRegistryAuthSupplier(auth, RegistryConfigs.empty()));
-            } catch (Exception e) {
-                log.error("Could not find auth for {}", imageName, e);
+                // config file first
+                RegistryAuth auth = new ConfigFileRegistryAuthSupplier().authFor(imageName);
+
+                // If no entry in config, see if we have hub credentials
+                if (auth == null) {
+                    DockerHub hub = dockerHubService.getHubForImage(imageName);
+                    if (StringUtils.isNotBlank(hub.username()) || StringUtils.isNotBlank(hub.token())) {
+                        auth = RegistryAuth.builder()
+                                .username(hub.username())
+                                .password(hub.password())
+                                .identityToken(hub.token())
+                                .serverAddress(hub.url())
+                                .build();
+                    }
+                }
+                if (auth != null) {
+                    clientBuilder.registryAuthSupplier(new FixedRegistryAuthSupplier(auth, RegistryConfigs.empty()));
+                }
+            } catch(Exception e){
+                log.error("Issue with auth for image {}", imageName, e);
             }
         }
 
