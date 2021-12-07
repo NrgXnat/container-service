@@ -329,7 +329,7 @@ siteSettings:
         commandOrchestrationTab:
             kind: tab
             name: commandOrchestrationTab
-            label: Command Orchestraion
+            label: Command Orchestration
             group: containerServiceTabGroup
             active: false
             contents:
