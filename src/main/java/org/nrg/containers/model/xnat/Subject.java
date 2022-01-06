@@ -9,11 +9,9 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
-import org.nrg.xdat.model.XnatAbstractresourceI;
-import org.nrg.xdat.model.XnatExperimentdataI;
-import org.nrg.xdat.model.XnatImagesessiondataI;
-import org.nrg.xdat.model.XnatSubjectdataI;
+import org.nrg.xdat.model.*;
 import org.nrg.xdat.om.XnatResourcecatalog;
+import org.nrg.xdat.om.XnatSubjectassessordata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.security.UserI;
@@ -33,8 +31,12 @@ public class Subject extends XnatModelObject {
     @JsonIgnore private XnatSubjectdataI xnatSubjectdataI;
     private List<Session> sessions;
     private List<Resource> resources;
+    @JsonProperty("subject-assessors")  private List<SubjectAssessor> subjectAssessors;
     @JsonProperty("project-id") private String projectId;
     @JsonProperty("datatype-string") private String datatypeString;
+    @JsonProperty("group") private String group;
+    @JsonProperty("source") private String source;
+    @JsonProperty("initials") private String initials;
 
     public Subject() {}
 
@@ -73,12 +75,25 @@ public class Subject extends XnatModelObject {
         this.label = xnatSubjectdataI.getLabel();
         this.xsiType = xnatSubjectdataI.getXSIType();
         this.projectId = xnatSubjectdataI.getProject();
+        this.group = xnatSubjectdataI.getGroup();
+        this.source = xnatSubjectdataI.getSrc();
+        this.initials = xnatSubjectdataI.getInitials();
 
         this.sessions = Lists.newArrayList();
         if (loadTypes.contains(CommandWrapperInputType.SESSION.getName())) {
             for (final XnatExperimentdataI xnatExperimentdataI : xnatSubjectdataI.getExperiments_experiment()) {
                 if (xnatExperimentdataI instanceof XnatImagesessiondataI) {
                     sessions.add(new Session((XnatImagesessiondataI) xnatExperimentdataI, loadFiles,
+                            loadTypes, this.uri, rootArchivePath));
+                }
+            }
+        }
+
+        this.subjectAssessors = Lists.newArrayList();
+        if (loadTypes.contains(CommandWrapperInputType.SUBJECT_ASSESSOR.getName())) {
+            for (final XnatExperimentdataI xnatExperimentdataI : xnatSubjectdataI.getExperiments_experiment()) {
+                if (xnatExperimentdataI instanceof XnatSubjectassessordata) {
+                    subjectAssessors.add(new SubjectAssessor((XnatSubjectassessordataI) xnatExperimentdataI, loadFiles,
                             loadTypes, this.uri, rootArchivePath));
                 }
             }
@@ -170,6 +185,14 @@ public class Subject extends XnatModelObject {
         this.resources = resources;
     }
 
+    public List<SubjectAssessor> getSubjectAssessors() {
+        return subjectAssessors;
+    }
+
+    public void setSubjectAssessors(List<SubjectAssessor> subjectAssessors) {
+        this.subjectAssessors = subjectAssessors;
+    }
+
     public String getProjectId() {
         return projectId;
     }
@@ -177,6 +200,18 @@ public class Subject extends XnatModelObject {
     public void setProjectId(final String projectId) {
         this.projectId = projectId;
     }
+
+    public String getGroup() { return group; }
+
+    public void setGroup(String group) { this.group = group; }
+
+    public String getSource() { return source; }
+
+    public void setSource(String source) { this.source = source; }
+
+    public String getInitials() { return initials; }
+
+    public void setInitials(String initials) { this.initials = initials; }
 
     public String getDatatypeString() {
         return datatypeString;
