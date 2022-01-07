@@ -3,6 +3,7 @@ package org.nrg.containers.events;
 import com.google.common.collect.Lists;
 import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
+import org.mandas.docker.client.exceptions.TaskNotFoundException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
@@ -169,8 +170,12 @@ public class DockerStatusUpdater implements Runnable {
                     // Service not found despite container being active: throw a restart event
                     controlApi.throwRestartEventForService(service);
                     report.add(UpdateReportEntry.success(service.serviceId()));
-                } catch (DockerServerException e) {
+                } catch (TaskNotFoundException e) {
                     log.error(String.format("Cannot get tasks for service %s.", service.serviceId()), e);
+                    controlApi.throwLostTaskEventForService(service);
+                    report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
+                } catch (DockerServerException e) {
+                    log.error(String.format("Cannot find server for service %s.", service.serviceId()), e);
                     report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
                 }
             } catch (Exception e) {

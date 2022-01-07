@@ -2,6 +2,7 @@ package org.nrg.containers.api;
 
 import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.exceptions.TaskNotFoundException;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
@@ -74,10 +75,11 @@ public interface ContainerControlApi {
 
     void removeContainerOrService(final Container container) throws NoDockerServerException, DockerServerException;
 
-    ServiceTask getTaskForService(Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException;
-    ServiceTask getTaskForService(DockerServer dockerServer, Container service) throws DockerServerException, ServiceNotFoundException;
-    void throwTaskEventForService(Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException;
-    void throwTaskEventForService(DockerServer dockerServer, Container service) throws DockerServerException, ServiceNotFoundException;
+    ServiceTask getTaskForService(Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException, TaskNotFoundException;
+    ServiceTask getTaskForService(DockerServer dockerServer, Container service) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException;
+    void throwLostTaskEventForService(Container service);
+    void throwTaskEventForService(Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException, TaskNotFoundException;
+    void throwTaskEventForService(DockerServer dockerServer, Container service) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException;
     void throwRestartEventForService(Container service) throws ContainerException;
     void throwWaitingEventForService(Container service) throws ContainerException;
 

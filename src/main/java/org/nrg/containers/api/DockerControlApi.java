@@ -16,11 +16,7 @@ import org.mandas.docker.client.LogStream;
 import org.mandas.docker.client.auth.ConfigFileRegistryAuthSupplier;
 import org.mandas.docker.client.auth.FixedRegistryAuthSupplier;
 import org.mandas.docker.client.builder.jersey.JerseyDockerClientBuilder;
-import org.mandas.docker.client.exceptions.ContainerNotFoundException;
-import org.mandas.docker.client.exceptions.DockerCertificateException;
-import org.mandas.docker.client.exceptions.DockerException;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.exceptions.*;
 import org.mandas.docker.client.messages.ContainerConfig;
 import org.mandas.docker.client.messages.ContainerCreation;
 import org.mandas.docker.client.messages.ContainerInfo;
@@ -88,6 +84,7 @@ import java.util.UUID;
 import static org.mandas.docker.client.DockerClient.EventsParam.since;
 import static org.mandas.docker.client.DockerClient.EventsParam.type;
 import static org.mandas.docker.client.DockerClient.EventsParam.until;
+import static org.mandas.docker.client.messages.swarm.TaskStatus.TASK_STATE_FAILED;
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
 
 @Slf4j
@@ -1388,14 +1385,14 @@ public class DockerControlApi implements ContainerControlApi {
 
     @Override
     @Nullable
-    public ServiceTask getTaskForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException {
+    public ServiceTask getTaskForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException, TaskNotFoundException {
         return getTaskForService(getServer(), service);
     }
 
     @Override
     @Nullable
     public ServiceTask getTaskForService(final DockerServer dockerServer, final Container service)
-            throws DockerServerException, ServiceNotFoundException {
+            throws DockerServerException, ServiceNotFoundException, TaskNotFoundException {
         try (final DockerClient client = getClient(dockerServer)) {
             Task task = null;
             final String serviceId = service.serviceId();
@@ -1454,6 +1451,9 @@ public class DockerControlApi implements ContainerControlApi {
         } catch (ServiceNotFoundException e) {
             log.error(e.getMessage());
             throw e;
+        } catch (TaskNotFoundException e) {
+            log.error(e.getMessage());
+            throw e;
         } catch (DockerException | InterruptedException e) {
             log.trace("INTERRUPTED: {}", e.getMessage());
             log.error(e.getMessage(), e);
@@ -1466,19 +1466,42 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     @Override
-    public void throwTaskEventForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException {
+    public void throwLostTaskEventForService(@Nonnull final Container service) {
+        final ServiceTask task = ServiceTask.builder()
+                .serviceId(service.serviceId())
+                .taskId(null)
+                .nodeId(null)
+                .status(TASK_STATE_FAILED)
+                .swarmNodeError(true)
+                .statusTime(null)
+                .message(ServiceTask.swarmNodeErrMsg)
+                .err(null)
+                .exitCode(null)
+                .containerId(service.containerId())
+                .build();
+            final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
+            log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
+            eventService.triggerEvent(serviceTaskEvent);
+    }
+
+    @Override
+    public void throwTaskEventForService(final Container service) throws NoDockerServerException, DockerServerException, ServiceNotFoundException, TaskNotFoundException {
         throwTaskEventForService(getServer(), service);
     }
 
     @Override
-    public void throwTaskEventForService(final DockerServer dockerServer, final Container service) throws DockerServerException, ServiceNotFoundException {
-        final ServiceTask task = getTaskForService(dockerServer, service);
-        if (task != null) {
-            final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
-            log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
-            eventService.triggerEvent(serviceTaskEvent);
-        } else {
-        	log.debug("Appears that the task has not been assigned for {} : {}", service.serviceId(), service.status());
+    public void throwTaskEventForService(final DockerServer dockerServer, final Container service) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException {
+        try {
+            final ServiceTask task = getTaskForService(dockerServer, service);
+            if (task != null) {
+                final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
+                log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
+                eventService.triggerEvent(serviceTaskEvent);
+            } else {
+                log.debug("Appears that the task has not been assigned for {} : {}", service.serviceId(), service.status());
+            }
+        } catch (TaskNotFoundException e) {
+            throw e;
         }
     }
 
