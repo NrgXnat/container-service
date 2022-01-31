@@ -7,7 +7,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
-import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.exception.ElementNotFoundException;
@@ -39,13 +38,11 @@ public class CommandActionProvider extends MultiActionProvider {
     private final ContainerConfigService containerConfigService;
     private final ObjectMapper mapper;
     private final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
-    private final CommandEntityService commandEntityService;
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
-                                 final CommandEntityService commandEntityService,
                                  final ObjectMapper mapper,
                                  final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
         this.containerService = containerService;
@@ -53,7 +50,6 @@ public class CommandActionProvider extends MultiActionProvider {
         this.containerConfigService = containerConfigService;
         this.mapper = mapper;
         this.subscriptionDeliveryEntityService = subscriptionDeliveryEntityService;
-        this.commandEntityService = commandEntityService;
     }
 
     @Override
@@ -70,7 +66,6 @@ public class CommandActionProvider extends MultiActionProvider {
     public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
         final long wrapperId;
         final Command.CommandWrapper wrapper;
-        final CommandEntity command;
         final String externalInputName;
 
         try {
@@ -92,15 +87,6 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         try{
-            command = commandEntityService.getCommandByWrapperId(wrapperId);
-        }catch(Exception e){
-            log.error("Command not found with wrapper id: {}", wrapperId);
-            log.error("Aborting subscription: {}", subscription.name());
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Command not found with wrapper id" + wrapperId);
-            return;
-        }
-
-        try{
             final Command.CommandWrapperExternalInput externalInput = getExternalInput(wrapper);
             externalInputName = externalInput.name();
         } catch (Exception e) {
@@ -115,7 +101,7 @@ public class CommandActionProvider extends MultiActionProvider {
                     (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
             final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
             inputValues.put(externalInputName, UriParserUtils.getArchiveUri(event.getObject(user)));
-            containerService.launchContainer(projectId, command.getId(), wrapper.name(),wrapperId, externalInputName, inputValues, user);
+            containerService.launchContainer(projectId, 0L, wrapper.name(), wrapperId, externalInputName, inputValues, user);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
         } catch (Exception e) {
             log.error(e.getMessage(), e);
