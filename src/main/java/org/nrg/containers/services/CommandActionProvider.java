@@ -1,6 +1,5 @@
 package org.nrg.containers.services;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -8,24 +7,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
+import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration;
-import org.nrg.containers.model.xnat.Assessor;
-import org.nrg.containers.model.xnat.Project;
-import org.nrg.containers.model.xnat.Resource;
-import org.nrg.containers.model.xnat.Scan;
-import org.nrg.containers.model.xnat.Session;
-import org.nrg.containers.model.xnat.Subject;
-import org.nrg.containers.model.xnat.SubjectAssessor;
-import org.nrg.containers.model.xnat.XnatModelObject;
-import org.nrg.xdat.model.XnatImageassessordataI;
-import org.nrg.xdat.model.XnatImagescandataI;
-import org.nrg.xdat.model.XnatImagesessiondataI;
-import org.nrg.xdat.model.XnatSubjectassessordataI;
-import org.nrg.xdat.model.XnatSubjectdataI;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.XnatResourcecatalog;
-import org.nrg.xft.event.persist.PersistentWorkflowI;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
@@ -34,28 +18,19 @@ import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.nrg.xnat.eventservice.model.Subscription;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
-import org.nrg.xnat.utils.WorkflowUtils;
+import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
 import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
 
 @Service
 public class CommandActionProvider extends MultiActionProvider {
-    private final String DISPLAY_NAME = "Container Service";
-    private final String DESCRIPTION = "This Action Provider facilitates linking Event Service events to Container Service commands.";
 
     private static final Logger log = LoggerFactory.getLogger(CommandActionProvider.class);
 
@@ -63,12 +38,14 @@ public class CommandActionProvider extends MultiActionProvider {
     private final CommandService commandService;
     private final ContainerConfigService containerConfigService;
     private final ObjectMapper mapper;
-    private SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
+    private final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
+    private final CommandEntityService commandEntityService;
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
+                                 final CommandEntityService commandEntityService,
                                  final ObjectMapper mapper,
                                  final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
         this.containerService = containerService;
@@ -76,108 +53,87 @@ public class CommandActionProvider extends MultiActionProvider {
         this.containerConfigService = containerConfigService;
         this.mapper = mapper;
         this.subscriptionDeliveryEntityService = subscriptionDeliveryEntityService;
-
+        this.commandEntityService = commandEntityService;
     }
 
     @Override
     public String getDisplayName() {
-        return DISPLAY_NAME;
+        return "Container Service";
     }
 
     @Override
     public String getDescription() {
-        return DESCRIPTION;
+        return "This Action Provider facilitates linking Event Service events to Container Service commands.";
     }
 
     @Override
     public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
-        final Object eventObject = event.getObject(user);
         final long wrapperId;
+        final Command.CommandWrapper wrapper;
+        final CommandEntity command;
+        final String externalInputName;
+
         try {
             wrapperId = Long.parseLong(actionKeyToActionId(subscription.actionKey()));
         }catch(Exception e){
-            log.error("Could not extract WrapperId from actionKey:" + subscription.actionKey());
-            log.error("Aborting subscription: " + subscription.name());
+            log.error("Could not extract WrapperId from actionKey: {}", subscription.actionKey());
+            log.error("Aborting subscription: {}", subscription.name());
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Could not extract WrapperId from actionKey:" + subscription.actionKey());
             return;
         }
-        final Map<String,String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
 
-        // Setup XNAT Object for Container
-        XnatModelObject modelObject = null;
-        String objectLabel = "";
-        if(eventObject instanceof XnatProjectdata){
-            modelObject = new Project(((XnatProjectdata) eventObject), true, Collections.emptySet());
-            objectLabel = "project";
-        } else if(eventObject instanceof XnatSubjectdataI){
-            modelObject = new Subject((XnatSubjectdataI) eventObject, true, Collections.emptySet());
-            objectLabel = "subject";
-        } else if(eventObject instanceof XnatImagesessiondataI
-                && XnatImagesessiondataI.class.isAssignableFrom(eventObject.getClass())){
-            modelObject = new Session((XnatImagesessiondataI) eventObject, true, Collections.emptySet());
-            objectLabel = "session";
-        } else if(eventObject instanceof XnatSubjectassessordataI){
-            modelObject = new SubjectAssessor((XnatSubjectassessordataI) eventObject, true, Collections.emptySet());
-            objectLabel = "subject-assessor";
-        } else if(eventObject instanceof XnatImagescandataI){
-            Session session = new Session(((XnatImagescandataI)eventObject).getImageSessionId(), user, true, Collections.emptySet());
-            String sessionUri = session.getUri();
-            modelObject = new Scan((XnatImagescandataI) eventObject, true, Collections.emptySet(), sessionUri, null);
-            objectLabel = "scan";
-        } else if(eventObject instanceof XnatImageassessordataI){
-            modelObject = new Assessor((XnatImageassessordataI) eventObject, true, Collections.emptySet());
-            objectLabel = "assessor";
-        } else if(eventObject instanceof XnatResourcecatalog){
-            modelObject = new Resource((XnatResourcecatalog) eventObject, true, Collections.emptySet());
-            objectLabel = "resource";
-        } else {
-            log.error(String.format("Container Service does not support Event Object."));
+        try{
+            wrapper = commandService.getWrapper(wrapperId);
+        } catch (NotFoundException e) {
+            log.error("Wrapper not found with id: {} ", wrapperId);
+            log.error("Aborting subscription: {}", subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Wrapper not found with id: " + wrapperId);
             return;
         }
-        String objectString = modelObject != null ? modelObject.getUri() : "";
-        try {
-            objectString = mapper.writeValueAsString(modelObject);
-        } catch (JsonProcessingException e) {
-            log.error(String.format("Could not serialize ModelObject %s to json.", objectLabel), e);
+
+        try{
+            command = commandEntityService.getCommandByWrapperId(wrapperId);
+        }catch(Exception e){
+            log.error("Command not found with wrapper id: {}", wrapperId);
+            log.error("Aborting subscription: {}", subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Command not found with wrapper id" + wrapperId);
+            return;
         }
+
+        try{
+            final Command.CommandWrapperExternalInput externalInput = getExternalInput(wrapper);
+            externalInputName = externalInput.name();
+        } catch (Exception e) {
+            log.error("Failed to determine external input type for command wrapper with id: {}", wrapperId);
+            log.error("Aborting subscription: {}", subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Failed to determine external input type for command wrapper with id:" + wrapperId);
+            return;
+        }
+
         try {
-            Command.CommandWrapper wrapper = commandService.getWrapper(wrapperId);
-            ImmutableList<Command.CommandWrapperExternalInput> externalInputs = wrapper.externalInputs();
-            for( Command.CommandWrapperExternalInput externalInput : externalInputs){
-                if(externalInput.type().equalsIgnoreCase(objectLabel)){
-                    objectLabel = externalInput.name();
-                    break;
-                }
-            }
-            String wrapperName = wrapper == null ? null : wrapper.name();
-            inputValues.put(objectLabel, objectString);
-            String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
+            final String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
                     (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
-            PersistentWorkflowI workflow = containerService.createContainerWorkflow(modelObject.getUri(), modelObject.getXsiType(),
-                    wrapperName, projectId, user);
-            if (workflow != null){
-                workflow.setStatus(PersistentWorkflowUtils.IN_PROGRESS);
-                workflow.setDetails("Command launched via Event Service");
-                WorkflowUtils.save(workflow, workflow.buildEvent());
-            }
-
-            if(Strings.isNullOrEmpty(projectId)) {
-                containerService.queueResolveCommandAndLaunchContainer(null, wrapperId, 0L, null, inputValues, user,
-                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow);
-            } else {
-                containerService.queueResolveCommandAndLaunchContainer(projectId, wrapperId, 0L, null, inputValues, user,
-                        (workflow == null || workflow.getWorkflowId() == null) ? null : workflow);
-            }
-
+            final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
+            inputValues.put(externalInputName, UriParserUtils.getArchiveUri(event.getObject(user)));
+            containerService.launchContainer(projectId, command.getId(), wrapper.name(),wrapperId, externalInputName, inputValues, user);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
-
-        }catch (Throwable e){
-            log.error("Error launching command wrapper {}\n{}", wrapperId, e.getMessage(), e);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Error launching command wrapper" + e.getMessage());
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            log.error("Aborting subscription: {}", subscription.name());
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), e.getMessage());
         }
-
     }
 
+    private Command.CommandWrapperExternalInput getExternalInput(Command.CommandWrapper wrapper) throws Exception{
+        final ImmutableList<Command.CommandWrapperExternalInput> externalInputs = wrapper.externalInputs();
+        final List<String> types = Arrays.asList("project","subject","session","assessor","resource","scan","subject-assessor");
+        for( Command.CommandWrapperExternalInput externalInput : externalInputs){
+            if(types.contains(externalInput.type().toLowerCase())){
+                return externalInput;
+            }
+        }
+        throw new Exception("Failed to determine external input type for command wrapper with id: " + wrapper.id());
+    }
 
     @Override
     public List<Action> getAllActions() {
