@@ -1227,7 +1227,8 @@ public class DockerControlApi implements ContainerControlApi {
                 // If no entry in config, see if we have hub credentials
                 if (auth == null) {
                     DockerHub hub = dockerHubService.getHubForImage(imageName);
-                    if (StringUtils.isNotBlank(hub.username()) || StringUtils.isNotBlank(hub.token())) {
+                    if (hub!= null &&
+                            (StringUtils.isNotBlank(hub.username()) || StringUtils.isNotBlank(hub.token()))) {
                         auth = RegistryAuth.builder()
                                 .username(hub.username())
                                 .password(hub.password())
