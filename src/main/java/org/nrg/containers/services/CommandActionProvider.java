@@ -9,10 +9,17 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.xdat.model.XnatImagesessiondataI;
+import org.nrg.xdat.model.XnatSubjectassessordataI;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.om.base.BaseXnatProjectdata;
+import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
+import org.nrg.xnat.eventservice.events.ScheduledEvent;
 import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.nrg.xnat.eventservice.model.Subscription;
@@ -23,10 +30,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
-import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_FAILED;
-import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.ACTION_STEP;
+import static org.nrg.xnat.eventservice.entities.TimedEventStatusEntity.Status.*;
 
 @Service
 public class CommandActionProvider extends MultiActionProvider {
@@ -43,6 +51,7 @@ public class CommandActionProvider extends MultiActionProvider {
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
+                                 final CommandEntityService commandEntityService,
                                  final ObjectMapper mapper,
                                  final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
         this.containerService = containerService;
@@ -66,6 +75,7 @@ public class CommandActionProvider extends MultiActionProvider {
     public void processEvent(EventServiceEvent event, Subscription subscription, UserI user, Long deliveryId) {
         final long wrapperId;
         final Command.CommandWrapper wrapper;
+        final String externalInputType;
         final String externalInputName;
 
         try {
@@ -89,6 +99,7 @@ public class CommandActionProvider extends MultiActionProvider {
         try{
             final Command.CommandWrapperExternalInput externalInput = getExternalInput(wrapper);
             externalInputName = externalInput.name();
+            externalInputType = externalInput.type();
         } catch (Exception e) {
             log.error("Failed to determine external input type for command wrapper with id: {}", wrapperId);
             log.error("Aborting subscription: {}", subscription.name());
@@ -96,18 +107,102 @@ public class CommandActionProvider extends MultiActionProvider {
             return;
         }
 
-        try {
-            final String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
-                    (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
-            final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.<String,String>newHashMap();
-            inputValues.put(externalInputName, UriParserUtils.getArchiveUri(event.getObject(user)));
-            containerService.launchContainer(projectId, 0L, wrapper.name(), wrapperId, externalInputName, inputValues, user);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-            log.error("Aborting subscription: {}", subscription.name());
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), e.getMessage());
+        if( !(event instanceof ScheduledEvent) ) {
+            try {
+                final String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
+                        (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
+                final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
+                inputValues.put(externalInputName, UriParserUtils.getArchiveUri(event.getObject(user)));
+                containerService.launchContainer(Strings.isNullOrEmpty(projectId) ? null : projectId, 0L, null, wrapperId, externalInputName, inputValues, user);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+                log.error("Aborting subscription: {}", subscription.name());
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), e.getMessage());
+            }
+            return;
         }
+
+        final List<String> projectIds =
+                (subscription.eventFilter().projectIds() != null && !subscription.eventFilter().projectIds().isEmpty())
+                            ? subscription.eventFilter().projectIds() :
+                                    BaseXnatProjectdata.getAllXnatProjectdatas(user, false)
+                                            .stream().map(AutoXnatProjectdata::getId).collect(Collectors.toList());
+
+        if(projectIds == null || projectIds.isEmpty()) {
+            // Subscribed to all projects but there are no projects in XNAT.
+            log.debug("No projects subscribed to event. Nothing to do.");
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "No projects subscribed to event. Nothing to do.");
+            return;
+        }
+
+        for(String projectId : projectIds) {
+            final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
+            final XnatProjectdata projectData = BaseXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
+            if(projectData == null){
+                final String msg = String.format("Project %s not found. Skipping. ", projectId);
+                log.debug(msg);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), msg);
+                continue;
+            }
+
+            final List<String> uris = getUrisForInputType(externalInputType, projectData);
+            if(null == uris || uris.isEmpty()){
+                final String msg = String.format("No inputs of type %s found in project %s. Skipping.", externalInputType, projectId);
+                log.debug(msg);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
+                continue;
+            }
+
+            try{
+                final String inputStr = mapper.writeValueAsString(uris);
+                inputValues.put(externalInputName, inputStr);
+                containerService.bulkLaunch(projectId, 0L, null, wrapperId, externalInputName, inputValues, user);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Container(s) queued for project: " + projectId);
+            }catch(IOException e){
+                log.error("Failed to execute Bulk Launch for wrapper: {} on project: {}", wrapper.name(), projectId, e);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers for project: " + projectId);
+            }
+        }
+    }
+
+    /**
+     * Retrieve a list of archive uris
+     * @param inputType - the external input type of the container
+     * @param projectData - the project
+     * @return
+     * @throws Exception
+     */
+    private List<String> getUrisForInputType(String inputType, XnatProjectdata projectData) {
+        final List<String> uris = new ArrayList<>();
+        if(inputType.equalsIgnoreCase("project")){
+            uris.add(UriParserUtils.getArchiveUri(projectData));
+        }else if(inputType.equalsIgnoreCase("subject")){
+            uris.addAll(projectData.getParticipants_participant().stream()
+                    .map(UriParserUtils::getArchiveUri).collect(Collectors.toList()));
+        }else if(inputType.equalsIgnoreCase("session")){
+            projectData.getParticipants_participant()
+                        .forEach(subject -> uris.addAll(subject.getExperiments_experiment().stream()
+                            .filter(e -> e instanceof XnatImagesessiondataI)
+                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+        } else if(inputType.equalsIgnoreCase("subject-assessor")){
+            projectData.getParticipants_participant()
+                        .forEach(subject -> uris.addAll(subject.getExperiments_experiment().stream()
+                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+        }else if(inputType.equalsIgnoreCase(("scan"))){
+            projectData.getExperiments().stream().filter(i -> i instanceof XnatImagesessiondataI)
+                        .forEach(experiment ->
+                            uris.addAll(((XnatImagesessiondataI)experiment).getScans_scan().stream()
+                                .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+        }else if(inputType.equalsIgnoreCase("assessor")){
+            projectData.getExperiments().stream().filter(i -> i instanceof XnatImagesessiondataI)
+                        .forEach(experiment ->
+                            uris.addAll(((XnatImagesessiondataI)experiment).getAssessors_assessor().stream()
+                                .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+        }else{
+            log.error("Input type: {} is not supported by Scheduled Events.", inputType);
+        }
+        return uris;
     }
 
     private Command.CommandWrapperExternalInput getExternalInput(Command.CommandWrapper wrapper) throws Exception{
