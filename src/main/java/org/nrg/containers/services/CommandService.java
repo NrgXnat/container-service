@@ -15,6 +15,7 @@ import org.nrg.xft.security.UserI;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface CommandService {
     Command create(Command command) throws CommandValidationException;
@@ -83,4 +84,6 @@ public interface CommandService {
                                              UserI userI) throws ElementNotFoundException;
 
     void throwExceptionIfCommandExists(Command command) throws NrgRuntimeException;
+
+    boolean xsiTypesMatch(final String xsiType, final Set<String> wrapperXsiTypes) throws ElementNotFoundException;
 }

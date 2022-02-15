@@ -146,7 +146,7 @@ public class CommandActionProvider extends MultiActionProvider {
                 continue;
             }
 
-            final List<String> uris = getUrisForInputType(externalInputType, projectData);
+            final List<String> uris = getUrisForInputType(externalInputType, projectData, wrapper.contexts());
             if(null == uris || uris.isEmpty()){
                 final String msg = String.format("No inputs of type %s found in project %s. Skipping.", externalInputType, projectId);
                 log.debug(msg);
@@ -173,36 +173,52 @@ public class CommandActionProvider extends MultiActionProvider {
      * @return
      * @throws Exception
      */
-    private List<String> getUrisForInputType(String inputType, XnatProjectdata projectData) {
+    private List<String> getUrisForInputType(String inputType, XnatProjectdata projectData, Set<String> contexts) {
         final List<String> uris = new ArrayList<>();
-        if(inputType.equalsIgnoreCase("project")){
+        if(inputType.equalsIgnoreCase("project") && xsiTypesMatch(projectData.getXSIType(), contexts)){
             uris.add(UriParserUtils.getArchiveUri(projectData));
         }else if(inputType.equalsIgnoreCase("subject")){
             uris.addAll(projectData.getParticipants_participant().stream()
+                    .filter(s -> xsiTypesMatch(s.getXSIType(), contexts))
                     .map(UriParserUtils::getArchiveUri).collect(Collectors.toList()));
         }else if(inputType.equalsIgnoreCase("session")){
             projectData.getParticipants_participant()
-                        .forEach(subject -> uris.addAll(subject.getExperiments_experiment().stream()
-                            .filter(e -> e instanceof XnatImagesessiondataI)
-                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+                        .forEach(s -> uris.addAll(s.getExperiments_experiment().stream()
+                                            .filter(e -> e instanceof XnatImagesessiondataI)
+                                            .filter(e -> xsiTypesMatch(e.getXSIType(), contexts))
+                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
         } else if(inputType.equalsIgnoreCase("subject-assessor")){
             projectData.getParticipants_participant()
-                        .forEach(subject -> uris.addAll(subject.getExperiments_experiment().stream()
-                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+                        .forEach(s -> uris.addAll(s.getExperiments_experiment().stream()
+                                            .filter(e -> xsiTypesMatch(e.getXSIType(), contexts))
+                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
         }else if(inputType.equalsIgnoreCase(("scan"))){
-            projectData.getExperiments().stream().filter(i -> i instanceof XnatImagesessiondataI)
-                        .forEach(experiment ->
-                            uris.addAll(((XnatImagesessiondataI)experiment).getScans_scan().stream()
-                                .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+            projectData.getExperiments().stream()
+                        .filter(e -> e instanceof XnatImagesessiondataI)
+                        .map(e -> (XnatImagesessiondataI) e)
+                        .forEach(e -> uris.addAll(e.getScans_scan().stream()
+                                            .filter(s -> xsiTypesMatch(s.getXSIType(), contexts))
+                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
         }else if(inputType.equalsIgnoreCase("assessor")){
-            projectData.getExperiments().stream().filter(i -> i instanceof XnatImagesessiondataI)
-                        .forEach(experiment ->
-                            uris.addAll(((XnatImagesessiondataI)experiment).getAssessors_assessor().stream()
-                                .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
+            projectData.getExperiments().stream()
+                        .filter(e -> e instanceof XnatImagesessiondataI)
+                        .map(e -> (XnatImagesessiondataI) e)
+                        .forEach(e -> uris.addAll(e.getAssessors_assessor().stream()
+                                            .filter(a -> xsiTypesMatch(a.getXSIType(), contexts))
+                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
         }else{
             log.error("Input type: {} is not supported by Scheduled Events.", inputType);
         }
         return uris;
+    }
+
+    private boolean xsiTypesMatch(String xsiType, Set<String> types){
+        try {
+            return commandService.xsiTypesMatch(xsiType, types);
+        } catch (ElementNotFoundException ex) {
+            log.error(ex.getMessage(), ex);
+            return false;
+        }
     }
 
     private Command.CommandWrapperExternalInput getExternalInput(Command.CommandWrapper wrapper) throws Exception{

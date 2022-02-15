@@ -557,7 +557,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
      *                        "parent" type to match as well.
      * @return Can this wrapper run on this xsiType?
      */
-    private boolean xsiTypesMatch(final @Nonnull String xsiType,
+    public boolean xsiTypesMatch(final @Nonnull String xsiType,
                                   final @Nonnull Set<String> wrapperXsiTypes) throws ElementNotFoundException {
         if (wrapperXsiTypes.contains(xsiType)) {
             return true;
