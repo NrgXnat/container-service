@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.nrg.framework.constants.Scope;
 
+import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -77,7 +78,7 @@ public class Orchestration {
 
     @JsonIgnoreType
     public static class OrchestrationIdentifier {
-        public String projectId;
+        @Nonnull public String projectId;
         public long firstWrapperId;
         public long commandId;
         public String wrapperName;

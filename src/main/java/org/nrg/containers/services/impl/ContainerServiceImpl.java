@@ -1829,18 +1829,22 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Nullable
-    private Orchestration getOrchestrationWhereWrapperIsFirst(final String project, long wrapperId)
+    private Orchestration getOrchestrationWhereWrapperIsFirst(@Nullable final String project, long wrapperId)
             throws ExecutionException {
         return getOrchestrationWhereWrapperIsFirst(project, wrapperId, 0L, null);
     }
 
     @Override
     @Nullable
-    public Orchestration getOrchestrationWhereWrapperIsFirst(final String project,
+    public Orchestration getOrchestrationWhereWrapperIsFirst(@Nullable final String project,
                                                              long wrapperId,
                                                              final long commandId,
                                                              @Nullable final String wrapperName)
             throws ExecutionException {
+        if (project == null) {
+            // No orchestration without project context
+            return null;
+        }
         OrchestrationIdentifier oi = new OrchestrationIdentifier(project, wrapperId, commandId, wrapperName);
         return orchestrationCache.get(oi).orElse(null);
     }
@@ -2100,12 +2104,12 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public LaunchReport.BulkLaunchReport bulkLaunch(final String project,
-                                                     final long commandId,
-                                                     final String wrapperName,
-                                                     final long wrapperId,
-                                                     final String rootElement,
-                                                     final Map<String, String> allRequestParams,
-                                                     final UserI userI) throws IOException {
+                                                    final long commandId,
+                                                    final String wrapperName,
+                                                    final long wrapperId,
+                                                    final String rootElement,
+                                                    final Map<String, String> allRequestParams,
+                                                    final UserI userI) throws IOException {
         final String bulkLaunchId = generateBulkLaunchId(userI);
         List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
 
