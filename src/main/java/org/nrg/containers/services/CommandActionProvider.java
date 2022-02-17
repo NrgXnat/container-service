@@ -5,16 +5,18 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.model.XnatImagesessiondataI;
-import org.nrg.xdat.model.XnatSubjectassessordataI;
+import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.om.base.BaseXnatProjectdata;
 import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
+import org.nrg.xdat.om.base.auto.AutoXnatSubjectdata;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
@@ -25,6 +27,7 @@ import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.nrg.xnat.eventservice.model.Subscription;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +54,6 @@ public class CommandActionProvider extends MultiActionProvider {
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
-                                 final CommandEntityService commandEntityService,
                                  final ObjectMapper mapper,
                                  final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
         this.containerService = containerService;
@@ -127,7 +129,7 @@ public class CommandActionProvider extends MultiActionProvider {
                 (subscription.eventFilter().projectIds() != null && !subscription.eventFilter().projectIds().isEmpty())
                             ? subscription.eventFilter().projectIds() :
                                     BaseXnatProjectdata.getAllXnatProjectdatas(user, false)
-                                            .stream().map(AutoXnatProjectdata::getId).collect(Collectors.toList());
+                                                        .stream().map(AutoXnatProjectdata::getId).collect(Collectors.toList());
 
         if(projectIds == null || projectIds.isEmpty()) {
             // Subscribed to all projects but there are no projects in XNAT.
@@ -136,80 +138,113 @@ public class CommandActionProvider extends MultiActionProvider {
             return;
         }
 
-        for(String projectId : projectIds) {
-            final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
-            final XnatProjectdata projectData = BaseXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
-            if(projectData == null){
-                final String msg = String.format("Project %s not found. Skipping. ", projectId);
-                log.debug(msg);
-                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), msg);
-                continue;
-            }
+        final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
+        final Set<String> uris = projectIds.stream().map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId))
+                                                    .flatMap(Set::stream).collect(Collectors.toSet());
 
-            final List<String> uris = getUrisForInputType(externalInputType, projectData, wrapper.contexts());
-            if(null == uris || uris.isEmpty()){
-                final String msg = String.format("No inputs of type %s found in project %s. Skipping.", externalInputType, projectId);
-                log.debug(msg);
-                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
-                continue;
-            }
-
-            try{
-                final String inputStr = mapper.writeValueAsString(uris);
-                inputValues.put(externalInputName, inputStr);
-                containerService.bulkLaunch(projectId, 0L, null, wrapperId, externalInputName, inputValues, user);
-                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Container(s) queued for project: " + projectId);
-            }catch(IOException e){
-                log.error("Failed to execute Bulk Launch for wrapper: {} on project: {}", wrapper.name(), projectId, e);
-                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers for project: " + projectId);
-            }
+        try{
+            final String inputStr = mapper.writeValueAsString(uris);
+            inputValues.put(externalInputName, inputStr);
+            containerService.bulkLaunch(projectIds.size() == 1 ? projectIds.get(0) : null, 0L, null, wrapperId, externalInputName, inputValues, user);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Container(s) queued for " + (projectIds.size() == 1 ? ("project: " + projectIds.get(0)) : "multiple projects."));
+        }catch(IOException e){
+            log.error("Failed to execute Bulk Launch for wrapper: {}", wrapper.name(), e);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers for Scheduled Event");
         }
     }
 
     /**
      * Retrieve a list of archive uris
      * @param inputType - the external input type of the container
-     * @param projectData - the project
-     * @return
-     * @throws Exception
+     * @param projectId - the projectId
+     * @param contexts  - the wrapper contexts
+     * @param user - the user
+     * @param deliveryId - the subscription delivery id
+     * @return A set containing the input uris in the project for the given input type
      */
-    private List<String> getUrisForInputType(String inputType, XnatProjectdata projectData, Set<String> contexts) {
-        final List<String> uris = new ArrayList<>();
-        if(inputType.equalsIgnoreCase("project") && xsiTypesMatch(projectData.getXSIType(), contexts)){
-            uris.add(UriParserUtils.getArchiveUri(projectData));
-        }else if(inputType.equalsIgnoreCase("subject")){
-            uris.addAll(projectData.getParticipants_participant().stream()
-                    .filter(s -> xsiTypesMatch(s.getXSIType(), contexts))
-                    .map(UriParserUtils::getArchiveUri).collect(Collectors.toList()));
-        }else if(inputType.equalsIgnoreCase("session")){
-            projectData.getParticipants_participant()
-                        .forEach(s -> uris.addAll(s.getExperiments_experiment().stream()
-                                            .filter(e -> e instanceof XnatImagesessiondataI)
-                                            .filter(e -> xsiTypesMatch(e.getXSIType(), contexts))
-                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
-        } else if(inputType.equalsIgnoreCase("subject-assessor")){
-            projectData.getParticipants_participant()
-                        .forEach(s -> uris.addAll(s.getExperiments_experiment().stream()
-                                            .filter(e -> xsiTypesMatch(e.getXSIType(), contexts))
-                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
-        }else if(inputType.equalsIgnoreCase(("scan"))){
-            projectData.getExperiments().stream()
-                        .filter(e -> e instanceof XnatImagesessiondataI)
-                        .map(e -> (XnatImagesessiondataI) e)
-                        .forEach(e -> uris.addAll(e.getScans_scan().stream()
-                                            .filter(s -> xsiTypesMatch(s.getXSIType(), contexts))
-                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
-        }else if(inputType.equalsIgnoreCase("assessor")){
-            projectData.getExperiments().stream()
-                        .filter(e -> e instanceof XnatImagesessiondataI)
-                        .map(e -> (XnatImagesessiondataI) e)
-                        .forEach(e -> uris.addAll(e.getAssessors_assessor().stream()
-                                            .filter(a -> xsiTypesMatch(a.getXSIType(), contexts))
-                                            .map(UriParserUtils::getArchiveUri).collect(Collectors.toList())));
-        }else{
-            log.error("Input type: {} is not supported by Scheduled Events.", inputType);
+    private Set<String> getInputUrisForContainer(String inputType, String projectId, Set<String> contexts, UserI user, Long deliveryId) {
+        final XnatProjectdata projectData = BaseXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
+        if(projectData == null){
+            final String msg = String.format("Project %s not found. Skipping. ", projectId);
+            log.debug(msg);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), msg);
+            return Collections.emptySet();
         }
-        return uris;
+
+        final Set<String> inputUris = Sets.newHashSet();
+        if(inputType.equalsIgnoreCase("project") && xsiTypesMatch(projectData.getXSIType(), contexts)){
+            inputUris.add(UriParserUtils.getArchiveUri(projectData));
+        }else if(inputType.equalsIgnoreCase("subject")){
+            inputUris.addAll(projectData.getParticipants_participant()
+                                        .stream()
+                                        .filter(subj -> xsiTypesMatch(subj.getXSIType(), contexts))
+                                        .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
+                                        .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
+        }else if(inputType.equalsIgnoreCase("session")){
+            inputUris.addAll(projectData.getExperiments()
+                                        .stream()
+                                        .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
+                                        .filter(exp -> exp instanceof XnatImagesessiondataI)
+                                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
+                                        .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
+        } else if(inputType.equalsIgnoreCase("subject-assessor")){
+            inputUris.addAll(projectData.getParticipants_participant()
+                                        .stream()
+                                        .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
+                                        .map(AutoXnatSubjectdata::getExperiments_experiment)
+                                        .flatMap(List::stream)
+                                        .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
+                                        .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
+        }else if(inputType.equalsIgnoreCase(("scan"))){
+            inputUris.addAll(projectData.getExperiments().stream()
+                                        .filter(exp -> exp instanceof XnatImagesessiondataI)
+                                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
+                                        .map(XnatImagesessiondataI.class::cast)
+                                        .map(XnatImagesessiondataI::getScans_scan)
+                                        .flatMap(List::stream)
+                                        .filter(scan -> xsiTypesMatch(scan.getXSIType(), contexts))
+                                        .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
+        }else if(inputType.equalsIgnoreCase("assessor")){
+            inputUris.addAll(projectData.getExperiments()
+                                        .stream()
+                                        .filter(exp -> exp instanceof XnatImagesessiondataI)
+                                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
+                                        .map(XnatImagesessiondataI.class::cast)
+                                        .map(XnatImagesessiondataI::getAssessors_assessor)
+                                        .flatMap(List::stream)
+                                        .filter(imgAsses -> xsiTypesMatch(imgAsses.getXSIType(), contexts))
+                                        .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
+        }
+
+        if(inputUris.isEmpty()){
+            final String msg = String.format("No inputs of type: %s found in project: %s.", inputType, projectId);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
+            log.debug(msg);
+            return Collections.emptySet();
+        }
+        return inputUris;
+    }
+
+    private boolean canUserEditPrimaryProject(UserI user, ArchivableItem item, Long deliveryId){
+        XnatProjectdata primaryProject = null;
+        if(item instanceof XnatExperimentdata){
+            primaryProject = ((XnatExperimentdata) item).getPrimaryProject(false);
+        }else if (item instanceof XnatSubjectdata){
+            primaryProject = ((XnatSubjectdata) item).getPrimaryProject(false);
+        }
+
+        try{
+            if(primaryProject != null && primaryProject.canEdit(user)){
+                return true;
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+
+        final String msg = String.format("User: %s doesn't have permission to run containers on the primary project. Skipping item: %s.", user.getUsername(), item.getId());
+        subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
+        log.debug(msg);
+        return false;
     }
 
     private boolean xsiTypesMatch(String xsiType, Set<String> types){
@@ -280,14 +315,14 @@ public class CommandActionProvider extends MultiActionProvider {
                 if(!command.enabled()) continue;
                 Map<String, ActionAttributeConfiguration> attributes = new HashMap<>();
                 try {
-                    ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs = null;
+                    ImmutableMap<String, CommandConfiguration.CommandInputConfiguration> inputs;
                     if(!Strings.isNullOrEmpty(projectId)) {
                         inputs = commandService.getProjectConfiguration(projectId, command.wrapperId()).inputs();
                     } else {
                         inputs = commandService.getSiteConfiguration(command.wrapperId()).inputs();
                     }
                     for(Map.Entry<String, CommandConfiguration.CommandInputConfiguration> entry : inputs.entrySet()){
-                        if ( entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable() != false && entry.getValue().type() != null ) {
+                        if ( entry.getValue() != null && entry.getValue().userSettable() != null && entry.getValue().userSettable() && entry.getValue().type() != null ) {
                             attributes.put(entry.getKey(), CommandInputConfig2ActionAttributeConfig(entry.getValue()));
                         }
                     }
