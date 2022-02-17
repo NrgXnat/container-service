@@ -142,6 +142,13 @@ public class CommandActionProvider extends MultiActionProvider {
         final Set<String> uris = projectIds.stream().map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId))
                                                     .flatMap(Set::stream).collect(Collectors.toSet());
 
+        if(uris.isEmpty()){
+            final String msg = String.format("No inputs of type: %s found. Nothing to do.", externalInputType);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), msg);
+            log.debug(msg);
+            return;
+        }
+
         try{
             final String inputStr = mapper.writeValueAsString(uris);
             inputValues.put(externalInputName, inputStr);
@@ -214,13 +221,6 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .flatMap(List::stream)
                                         .filter(imgAsses -> xsiTypesMatch(imgAsses.getXSIType(), contexts))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
-        }
-
-        if(inputUris.isEmpty()){
-            final String msg = String.format("No inputs of type: %s found in project: %s.", inputType, projectId);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
-            log.debug(msg);
-            return Collections.emptySet();
         }
         return inputUris;
     }
