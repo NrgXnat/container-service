@@ -14,16 +14,15 @@ import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatExperimentdataI;
 import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
-import org.nrg.xdat.om.XnatAbstractprojectasset;
-import org.nrg.xdat.om.XnatExperimentdata;
-import org.nrg.xdat.om.XnatResourcecatalog;
-import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.om.*;
 import org.nrg.xdat.om.base.BaseXnatExperimentdata;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.exceptions.InvalidArchiveStructure;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.helpers.uri.archive.AssessedURII;
+import org.nrg.xnat.helpers.uri.archive.ExperimentURII;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -59,7 +58,7 @@ public class ProjectAsset extends XnatModelObject {
         if (parentUri == null) {
             this.uri = UriParserUtils.getArchiveUri(xnatProjectAssetI);
         } else {
-            this.uri = parentUri + "/subjects/" + xnatProjectAssetI.getId();
+            this.uri = parentUri + "/" + xnatProjectAssetI.getId();
         }
         populateProperties(rootArchivePath, loadFiles, loadTypes);
     }
@@ -111,6 +110,15 @@ public class ProjectAsset extends XnatModelObject {
             @Nullable
             @Override
             public ProjectAsset apply(@Nullable URIManager.ArchiveItemURI uri) {
+                XnatAbstractresource abstractProjectAsset;
+                if (uri != null && ExperimentURII.class.isAssignableFrom(uri.getClass())) {
+                    final XnatExperimentdata experimentdata = ((ExperimentURII) uri).getExperiment();
+                    if (experimentdata != null &&
+                            XnatAbstractprojectassetI.class.isAssignableFrom(experimentdata.getClass())) {
+                        return new ProjectAsset((XnatAbstractprojectassetI) experimentdata,
+                                loadFiles, loadTypes, null, null);
+                    }
+                }
                 return null;
             }
         };
