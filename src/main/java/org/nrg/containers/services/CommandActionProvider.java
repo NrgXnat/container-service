@@ -14,7 +14,6 @@ import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.om.XnatExperimentdata;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
-import org.nrg.xdat.om.base.BaseXnatProjectdata;
 import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.xdat.om.base.auto.AutoXnatSubjectdata;
 import org.nrg.xft.exception.ElementNotFoundException;
@@ -128,7 +127,7 @@ public class CommandActionProvider extends MultiActionProvider {
         final List<String> projectIds =
                 (subscription.eventFilter().projectIds() != null && !subscription.eventFilter().projectIds().isEmpty())
                             ? subscription.eventFilter().projectIds() :
-                                    BaseXnatProjectdata.getAllXnatProjectdatas(user, false)
+                                    AutoXnatProjectdata.getAllXnatProjectdatas(user, false)
                                                         .stream().map(AutoXnatProjectdata::getId).collect(Collectors.toList());
 
         if(projectIds == null || projectIds.isEmpty()) {
@@ -171,7 +170,7 @@ public class CommandActionProvider extends MultiActionProvider {
      * @return A set containing the input uris in the project for the given input type
      */
     private Set<String> getInputUrisForContainer(String inputType, String projectId, Set<String> contexts, UserI user, Long deliveryId) {
-        final XnatProjectdata projectData = BaseXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
+        final XnatProjectdata projectData = AutoXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
         if(projectData == null){
             final String msg = String.format("Project %s not found. Skipping. ", projectId);
             log.debug(msg);
