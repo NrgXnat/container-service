@@ -139,10 +139,11 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
-        final Set<String> uris = projectIds.stream().map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId))
-                                                    .flatMap(Set::stream).collect(Collectors.toSet());
+        final Set<String> inputUris = projectIds.stream()
+                                                .map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId))
+                                                .flatMap(Set::stream).collect(Collectors.toSet());
 
-        if(uris.isEmpty()){
+        if(inputUris.isEmpty()){
             final String msg = String.format("No inputs of type: %s found. Nothing to do.", externalInputType);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), msg);
             log.debug(msg);
@@ -150,13 +151,13 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         try{
-            final String inputStr = mapper.writeValueAsString(uris);
+            final String inputStr = mapper.writeValueAsString(inputUris);
             inputValues.put(externalInputName, inputStr);
             containerService.bulkLaunch(projectIds.size() == 1 ? projectIds.get(0) : null, 0L, null, wrapperId, externalInputName, inputValues, user);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Container(s) queued for " + (projectIds.size() == 1 ? ("project: " + projectIds.get(0)) : "multiple projects."));
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Containers queued for " + inputUris.size() + " " + externalInputType.toLowerCase() + "(s).");
         }catch(IOException e){
             log.error("Failed to execute Bulk Launch for wrapper: {}", wrapper.name(), e);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers for Scheduled Event");
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers.");
         }
     }
 
