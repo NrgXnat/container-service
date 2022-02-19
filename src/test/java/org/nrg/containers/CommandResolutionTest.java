@@ -152,7 +152,7 @@ public class CommandResolutionTest {
 
         dockerService.setServer(DockerServerBase.DockerServer.create(0L, "test", "unix:///var/run/docker.sock",
                 null, false, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix,
-                false, null, true, null, null));
+                false, null, true, null, null, true));
     }
 
     @Test

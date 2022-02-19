@@ -684,6 +684,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 case PROJECT_ASSET:
                 case SUBJECT:
                     return parentType == PROJECT;
+                case SUBJECT_ASSESSOR:
                 case SESSION:
                     return Arrays.asList(PROJECT, SUBJECT).contains(parentType);
                 case ASSESSOR:
@@ -1160,7 +1161,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         resolvedXnatObjects = Collections.emptyList();
                         resolvedValues = Collections.emptyList();                    }
                 }
-            } else if (type.equals(SESSION.getName()) || type.equals(SUBJECT_ASSESSOR.getName())) {
+            } else if (type.equals(SESSION.getName())) {
                 if (parentXnatObject == null) {
                     log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
                     resolvedXnatObjects = Collections.emptyList();
@@ -1233,6 +1234,72 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         final Session session = ((Scan)parentXnatObject).getSession(userI, false, typesNeeded);
                         resolvedXnatObjects = Collections.<XnatModelObject>singletonList(session);
                         resolvedValues = Collections.singletonList(session.getUri());
+                    }
+                }
+            } else if (type.equals(SUBJECT_ASSESSOR.getName())) {
+                if (parentXnatObject == null) {
+                    log.error("Cannot derive input \"{}\". Parent input's XNAT object is null.", input.name());
+                    resolvedXnatObjects = Collections.emptyList();
+                    resolvedValues = Collections.emptyList();
+                } else {
+                    if (parentType.equals(SUBJECT.getName())) {
+                        List<SubjectAssessor> childList = matchChildFromParent(
+                                parentJson,
+                                valueCouldContainId,
+                                "subject-assessors",
+                                "uri",
+                                resolvedMatcher,
+                                new TypeRef<List<SubjectAssessor>>() {},
+                                multiple);
+                        if (childList == null || childList.isEmpty()) {
+                            // It is also possible that the value they gave us contains an id
+                            childList = matchChildFromParent(
+                                    parentJson,
+                                    valueCouldContainId,
+                                    "subject-assessors",
+                                    "id",
+                                    resolvedMatcher,
+                                    new TypeRef<List<SubjectAssessor>>() {},
+                                    multiple);
+                        }
+                        if (childList == null || childList.isEmpty()) {
+                            // It is also possible that the value they gave us contains a label
+                            childList = matchChildFromParent(
+                                    parentJson,
+                                    valueCouldContainId,
+                                    "subject-assessors",
+                                    "label",
+                                    resolvedMatcher,
+                                    new TypeRef<List<SubjectAssessor>>() {},
+                                    multiple);
+                        }
+                        if (childList == null || childList.isEmpty()) {
+                            // It is also possible that the value they gave us contains a directory
+                            childList = matchChildFromParent(
+                                    parentJson,
+                                    valueCouldContainId,
+                                    "subject-assessors",
+                                    "directory",
+                                    resolvedMatcher,
+                                    new TypeRef<List<SubjectAssessor>>() {},
+                                    multiple);
+                        }
+                        if (childList == null) {
+                            resolvedXnatObjects = Collections.emptyList();
+                            resolvedValues = Collections.emptyList();
+                        } else {
+                            resolvedXnatObjects = Lists.<XnatModelObject>newArrayList(childList);
+                            resolvedValues = Lists.newArrayList(Lists.transform(childList, new Function<SubjectAssessor, String>() {
+                                @Override
+                                public String apply(final SubjectAssessor subjectAssessor) {
+                                    return subjectAssessor.getUri();
+                                }
+                            }));
+                        }
+                    } else {
+                        logIncompatibleTypes(input.type(), parentType);
+                        resolvedXnatObjects = Collections.emptyList();
+                        resolvedValues = Collections.emptyList();
                     }
                 }
             } else if (type.equals(SCAN.getName())) {
@@ -2212,6 +2279,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
                     URIManager.DataURIA uri = null;
                     try {
+                        //TODO: Change to /archive/project/.... expt format
                         uri = UriParserUtils.parseURI(parentValue.startsWith("/archive") ? parentValue : "/archive" + parentValue);
                     } catch (MalformedURLException ignored) {
                         // ignored

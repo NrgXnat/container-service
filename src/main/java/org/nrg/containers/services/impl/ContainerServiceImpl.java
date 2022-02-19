@@ -1,6 +1,8 @@
 package org.nrg.containers.services.impl;
 
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
@@ -27,12 +29,9 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.jms.utils.QueueUtils;
-import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.command.auto.*;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
-import org.nrg.containers.model.command.auto.ResolvedCommand;
-import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
-import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
@@ -48,6 +47,7 @@ import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.*;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.framework.services.NrgEventService;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.om.*;
@@ -68,6 +68,7 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -76,17 +77,17 @@ import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
+import java.io.*;
 import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -115,6 +116,7 @@ public class ContainerServiceImpl implements ContainerService {
     public static final String setupStr = "Setup";
     public static final String wrapupStr = "Wrapup";
     public static final String containerLaunchJustification = "Container launch";
+    public static final String TO_BE_ASSIGNED = "To be assigned";
 
     private final ContainerControlApi containerControlApi;
     private final ContainerEntityService containerEntityService;
@@ -126,6 +128,9 @@ public class ContainerServiceImpl implements ContainerService {
     private final XnatAppInfo xnatAppInfo;
     private final CatalogService catalogService;
     private final OrchestrationService orchestrationService;
+    private final ObjectMapper mapper;
+    private final ExecutorService executorService;
+    private final NrgEventService eventService;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -140,7 +145,11 @@ public class ContainerServiceImpl implements ContainerService {
                                 final ContainerFinalizeService containerFinalizeService,
                                 final XnatAppInfo xnatAppInfo,
                                 final CatalogService catalogService,
-                                final OrchestrationService orchestrationService) {
+                                final OrchestrationService orchestrationService,
+                                final NrgEventService eventService,
+                                final ObjectMapper mapper,
+                                @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
+                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -151,6 +160,9 @@ public class ContainerServiceImpl implements ContainerService {
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
         this.orchestrationService = orchestrationService;
+        this.eventService = eventService;
+        this.mapper = mapper;
+        this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
 
         buildCache();
     }
@@ -2001,4 +2013,168 @@ public class ContainerServiceImpl implements ContainerService {
 	public List<Container> retrieveServicesInWaitingState() {
         return toPojo(containerEntityService.retrieveServicesInWaitingState());
 	}
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI) {
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, null);
+    }
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId) {
+        return launchContainer(project, commandId, wrapperName, wrapperId, rootElement, allRequestParams,
+                userI, bulkLaunchId, null);
+    }
+
+    @Override
+    @Nonnull
+    public LaunchReport launchContainer(@Nullable final String project,
+                                         final long commandId,
+                                         @Nullable final String wrapperName,
+                                         final long wrapperId,
+                                         @Nullable final String rootElement,
+                                         final Map<String, String> allRequestParams,
+                                         final UserI userI,
+                                         @Nullable final String bulkLaunchId,
+                                         @Nullable final Long orchestrationId) {
+
+        PersistentWorkflowI workflow = null;
+        String workflowid = "";
+
+        try {
+            // Create workflow first
+            String xnatIdOrUri;
+            if (rootElement != null && (xnatIdOrUri = allRequestParams.get(rootElement)) != null) {
+                // Note: for scans, this can fail with a duplicate key value violates unique constraint
+                // (id, pipeline_name, launch_time) since they'll share a root element. But, we try again later, so no biggie
+                String wrapperNameUse = StringUtils.isBlank(wrapperName) && wrapperId != 0 ?
+                        commandService.retrieveWrapper(wrapperId).name() : wrapperName;
+                workflow = createContainerWorkflow(xnatIdOrUri, rootElement,
+                        wrapperNameUse, StringUtils.defaultString(project, ""), userI,
+                        bulkLaunchId, orchestrationId, 0);
+                workflowid = workflow.getWorkflowId().toString();
+            }
+
+            // Queue command resolution and container launch
+            queueResolveCommandAndLaunchContainer(project, wrapperId, commandId,
+                    wrapperName, allRequestParams, userI, workflow);
+
+            String msg = StringUtils.isNotBlank(workflowid) ? workflowid : TO_BE_ASSIGNED;
+            return LaunchReport.Success.create(msg, allRequestParams, null, commandId, wrapperId);
+
+        } catch (Throwable t) {
+            if (workflow != null) {
+                String failedStatus = PersistentWorkflowUtils.FAILED + " (Staging)";
+                workflow.setStatus(failedStatus);
+                workflow.setDetails(t.getMessage());
+                try {
+                    WorkflowUtils.save(workflow, workflow.buildEvent());
+                } catch (Exception we) {
+                    log.error("Unable to set workflow status to {} for wfid={}", failedStatus, workflow.getWorkflowId(), we);
+                }
+            }
+            if (log.isInfoEnabled()) {
+                log.error("Unable to queue container launch for command wrapper name {}.", wrapperName);
+                log.error(mapLogString("Params: ", allRequestParams));
+                log.error("Exception: ", t);
+            }
+            return LaunchReport.Failure.create(t.getMessage() != null ? t.getMessage() : "Unable to queue container launch",
+                    allRequestParams, commandId, wrapperId);
+        }
+    }
+
+    @Override
+    public LaunchReport.BulkLaunchReport bulkLaunch(final String project,
+                                                     final long commandId,
+                                                     final String wrapperName,
+                                                     final long wrapperId,
+                                                     final String rootElement,
+                                                     final Map<String, String> allRequestParams,
+                                                     final UserI userI) throws IOException {
+        final String bulkLaunchId = generateBulkLaunchId(userI);
+        List<String> targets = mapper.readValue(allRequestParams.get(rootElement), new TypeReference<List<String>>() {});
+
+        Orchestration orchestration = null;
+        try {
+            orchestration = getOrchestrationWhereWrapperIsFirst(project, wrapperId,
+                    commandId, wrapperName);
+        } catch (ExecutionException e) {
+            log.error("Unable to query for orchestration");
+        }
+
+        final Long orchestrationId;
+        final String pipelineName;
+        int steps;
+        if (orchestration != null) {
+            orchestrationId = orchestration.getId();
+            pipelineName = orchestration.getName() + " orchestration";
+            steps = orchestration.getWrapperIds().size();
+        } else {
+            orchestrationId = null;
+            pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
+            steps = 1;
+        }
+        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size(), steps));
+        log.debug("Bulk launching on {} targets", targets.size());
+
+        final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
+                .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
+        int failures = 0;
+        for (final String target : targets) {
+            Map<String, String> paramsSet = Maps.newHashMap(allRequestParams);
+            paramsSet.put(rootElement, target);
+            try {
+                executorService.submit(() -> {
+                    launchContainer(project, commandId, wrapperName, wrapperId, rootElement, paramsSet, userI,
+                            bulkLaunchId, orchestrationId);
+                });
+                reportBuilder.addSuccess(LaunchReport.Success.create(ContainerServiceImpl.TO_BE_ASSIGNED,
+                        paramsSet, null, commandId, wrapperId));
+            } catch (Exception e) {
+                // Most exceptions should be "logged" to the workflow but this is meant to catch
+                // issues submitting to the executorService
+                reportBuilder.addFailure(LaunchReport.Failure.create(e.getMessage() != null ?
+                                e.getMessage() : "Unable to queue container launch",
+                        paramsSet, commandId, wrapperId));
+                failures++;
+            }
+        }
+
+        if (failures > 0) {
+            // this should be super uncommon
+            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
+        }
+
+        return reportBuilder.build();
+    }
+
+    private String generateBulkLaunchId(final UserI userI) {
+        return "bulk-" + userI.getLogin() + System.currentTimeMillis() + new Random().nextInt(1000);
+    }
+
+    private String mapLogString(final String title, final Map<String, String> map) {
+        final StringBuilder messageBuilder = new StringBuilder(title);
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            messageBuilder.append(entry.getKey());
+            messageBuilder.append(": ");
+            messageBuilder.append(entry.getValue());
+            messageBuilder.append(", ");
+        }
+        return messageBuilder.substring(0, messageBuilder.length() - 2);
+    }
 }

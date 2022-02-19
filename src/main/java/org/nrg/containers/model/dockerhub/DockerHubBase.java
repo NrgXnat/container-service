@@ -16,7 +16,7 @@ public abstract class DockerHubBase {
     @Nullable @JsonProperty("username") public abstract String username();
     @Nullable @JsonProperty(value = "password", access = JsonProperty.Access.WRITE_ONLY) public abstract String password();
     @Nullable @JsonProperty("email") public abstract String email();
-    @Nullable @JsonProperty("token") public abstract String token();
+    @Nullable @JsonProperty(value = "token", access = JsonProperty.Access.WRITE_ONLY) public abstract String token();
 
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)

@@ -34,13 +34,10 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                        final ContainerService containerService,
                                        final CommandResolutionService commandResolutionService,
                                        final DockerServerService mockDockerServerService,
-                                       final NrgEventService mockNrgEventService,
                                        final UserManagementServiceI mockUserManagementServiceI,
-                                       final RoleHolder roleHolder,
-                                       final ObjectMapper mapper,
-                                       final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+                                       final RoleHolder roleHolder) {
         return new LaunchRestApi(commandService, containerService, commandResolutionService,
-                mockDockerServerService, mockNrgEventService, mockUserManagementServiceI, roleHolder, mapper, threadPoolExecutorFactoryBean);
+                mockDockerServerService, mockUserManagementServiceI, roleHolder);
     }
 
     @Bean

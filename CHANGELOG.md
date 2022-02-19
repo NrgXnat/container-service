@@ -1,5 +1,41 @@
 # Changelog
 
+
+## 3.1.1
+
+[Released 2022-02-18](https://bitbucket.org/xnatdev/container-service/src/3.1.1/).
+
+### Features
+
+* [CS-563][]: Added support for deriving Subject Assessor inputs, independent of Image Session types.
+* [CS-617][]: Add configuration parameter to disable status emails.
+* [CS-686][]: Fixed support for Batch Launch of commands with Project Asset context.
+
+### Bugfixes
+
+* [CS-677][]: Fixed issue that occurred when pulling Docker images with ':' in the name.
+* [CS-679][]: Fixed issue that occurred when using the Batch Launch Plugin (BLP) to launch Image Assessor level containers. Image Assessors were resolved as Experiment types and excluded particular assessor properties.  
+* [CS-598][] & [CS-609][]: Fixed related issues that caused CS to check for 'lost' service tasks forever, which in turn filled CS logs with repeated exceptions.
+
+### Updates
+
+* [CS-680][]: Added 'group', 'source', and 'initials' string properties to Subject model object type.
+* [CS-678][]: With this change, you can provide credentials along with your "Hub" and they'll be used for pull and for starting a swarm service (which will allow the workers to pull the image as well).
+
+  NOTE: The CS-678 update added a uniqueness constraint on hub URL, so you cannot have two separate sets of credentials for the same url (e.g., dockerhub). The workaround would be to have a dockerhub account for the XNAT and give it readonly access to any private repos you want your XNAT users to be able to use.
+
+
+[CS-563]: https://issues.xnat.org/browse/CS-563
+[CS-598]: https://issues.xnat.org/browse/CS-598
+[CS-609]: https://issues.xnat.org/browse/CS-609
+[CS-617]: https://issues.xnat.org/browse/CS-617
+[CS-677]: https://issues.xnat.org/browse/CS-677
+[CS-678]: https://issues.xnat.org/browse/CS-678
+[CS-679]: https://issues.xnat.org/browse/CS-679
+[CS-680]: https://issues.xnat.org/browse/CS-680
+[CS-683]: https://issues.xnat.org/browse/CS-683
+
+
 ## 3.1.0
 
 [Released 2020-10-01](https://bitbucket.org/xnatdev/container-service/src/3.1.0/).
@@ -27,6 +63,7 @@
 [CS-656]: https://issues.xnat.org/browse/CS-656
 [CS-659]: https://issues.xnat.org/browse/CS-659
 [CS-671]: https://issues.xnat.org/browse/CS-671
+
 
 ## 3.0.0
 

@@ -68,11 +68,11 @@ public class SubjectAssessor extends XnatModelObject {
     public SubjectAssessor(final XnatSubjectassessordataI xnatSubjectassessordataI, final boolean loadFiles,
                            @Nonnull final Set<String> loadTypes, final String parentUri, final String rootArchivePath) {
         this.xnatSubjectassessordataI = xnatSubjectassessordataI;
-        if (parentUri == null) {
+        //if (parentUri == null) {
             this.uri = UriParserUtils.getArchiveUri(xnatSubjectassessordataI);
-        } else {
-            this.uri = parentUri + "/experiments/" + xnatSubjectassessordataI.getId();
-        }
+        //} else {
+        //    this.uri = parentUri + "/experiments/" + xnatSubjectassessordataI.getId();
+        //}
         populateProperties(rootArchivePath, loadFiles, loadTypes);
     }
 

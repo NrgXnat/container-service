@@ -147,25 +147,24 @@ public class Assessor extends XnatModelObject {
             @Nullable
             @Override
             public Assessor apply(@Nullable URIManager.ArchiveItemURI uri) {
-                if (uri != null &&
-                        AssessorURII.class.isAssignableFrom(uri.getClass())) {
-                    XnatImageassessordata assessor = ((AssessorURII) uri).getAssessor();
-                    if (assessor != null) {
-                        assessor = XnatImageassessordata.getXnatImageassessordatasById(assessor.getId(), userI, true);
-                        return new Assessor(assessor, loadFiles, loadTypes);
-                        // TODO Loading an Assessor with the following method neglects to load any custom fields into the parent xnat object.  For now, I'm loading indirectly by ID as above.
-                        //return new Assessor((AssessorURII) uri, loadFiles, loadTypes);
-                    }
-                } else if (uri != null &&
-                        ExptURI.class.isAssignableFrom(uri.getClass())) {
-                    final XnatExperimentdata expt = ((ExptURI) uri).getExperiment();
-                    if (expt != null &&
+                XnatImageassessordata assessor = null;
+                if (uri != null) {
+                    if (AssessorURII.class.isAssignableFrom(uri.getClass())) {
+                        assessor = ((AssessorURII) uri).getAssessor();
+                        if (assessor != null) {
+                            // Loading an Assessor by URI neglects to load any custom fields into the parent xnat object. Loading by ID.
+                            assessor = XnatImageassessordata.getXnatImageassessordatasById(assessor.getId(), userI, true);
+                        }
+                    } else if (ExptURI.class.isAssignableFrom(uri.getClass())) {
+                        final XnatExperimentdata expt = ((ExptURI) uri).getExperiment();
+                        if (expt != null &&
                             XnatImageassessordata.class.isAssignableFrom(expt.getClass())) {
-                        return new Assessor((XnatImageassessordata) expt, loadFiles, loadTypes);
+                            // Loading an Assessor by URI neglects to load any custom fields into the parent xnat object. Loading by ID.
+                            assessor = XnatImageassessordata.getXnatImageassessordatasById(expt.getId(), userI, true);
+                        }
                     }
                 }
-
-                return null;
+                return assessor == null ? null : new Assessor(assessor, loadFiles, loadTypes);
             }
         };
     }

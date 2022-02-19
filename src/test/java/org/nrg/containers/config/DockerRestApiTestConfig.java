@@ -67,8 +67,9 @@ public class DockerRestApiTestConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public ContainerControlApi mockContainerControlApi(final DockerServerService dockerServerService,
                                                        final CommandLabelService commandLabelService,
+                                                       final DockerHubService dockerHubService,
                                                        final NrgEventService eventService) {
-        final ContainerControlApi controlApi = new DockerControlApi(dockerServerService, commandLabelService, eventService);
+        final ContainerControlApi controlApi = new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
         return Mockito.spy(controlApi);
     }
 

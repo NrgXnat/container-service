@@ -6,6 +6,7 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
@@ -15,7 +16,9 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -147,4 +150,42 @@ public interface ContainerService {
                                                       final long commandId,
                                                       @Nullable final String wrapperName)
             throws ExecutionException;
+
+    @Nonnull
+    LaunchReport launchContainer(@Nullable String project,
+                                 long commandId,
+                                 @Nullable String wrapperName,
+                                 long wrapperId,
+                                 @Nullable String rootElement,
+                                 Map<String, String> allRequestParams,
+                                 UserI userI);
+
+    @Nonnull
+    LaunchReport launchContainer(@Nullable String project,
+                                 long commandId,
+                                 @Nullable String wrapperName,
+                                 long wrapperId,
+                                 @Nullable String rootElement,
+                                 Map<String, String> allRequestParams,
+                                 UserI userI,
+                                 @Nullable String bulkLaunchId);
+
+    @Nonnull
+    LaunchReport launchContainer(@Nullable String project,
+                                 long commandId,
+                                 @Nullable String wrapperName,
+                                 long wrapperId,
+                                 @Nullable String rootElement,
+                                 Map<String, String> allRequestParams,
+                                 UserI userI,
+                                 @Nullable String bulkLaunchId,
+                                 @Nullable Long orchestrationId);
+
+    LaunchReport.BulkLaunchReport bulkLaunch(@Nullable String project,
+                                             long commandId,
+                                             @Nullable String wrapperName,
+                                             long wrapperId,
+                                             @Nullable String rootElement,
+                                             Map<String, String> allRequestParams,
+                                             UserI userI) throws IOException;
 }
