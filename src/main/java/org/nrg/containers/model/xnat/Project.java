@@ -90,7 +90,7 @@ public class Project extends XnatModelObject {
         this.label = xnatProjectdata.getName();
         this.xsiType = xnatProjectdata.getXSIType();
         try {
-            this.directory = xnatProjectdata.getRootArchivePath() + xnatProjectdata.getCurrentArc();
+            this.directory = xnatProjectdata.getRootArchivePath();
         } catch (NullPointerException e){log.error("Project could not get root archive path " + e.getMessage());}
         try {
             this.accessibility = xnatProjectdata.getPublicAccessibility();
