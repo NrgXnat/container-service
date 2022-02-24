@@ -255,7 +255,7 @@ public class CommandLaunchIntegrationTest {
                 swarmMode, null, null, null,
                 false, null, true, null, null, true));
 
-        CLIENT = controlApi.getClient();CLIENT = controlApi.getClient();
+        CLIENT = controlApi.getClient();
         TestingUtils.pullBusyBox(CLIENT);
     }
 

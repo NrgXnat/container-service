@@ -26,6 +26,14 @@ public abstract class DockerHubBase {
         public static final DockerHub DEFAULT = DockerHub.create(0L, DEFAULT_NAME, DEFAULT_URL, false,
                 null, null, null, null);
 
+        public static DockerHub create(final Long id,
+                                       final String name,
+                                       final String url,
+                                       final Boolean isDefault) {
+            return create(id == null ? 0L : id, name, url, isDefault,
+                    null, null, null, null);
+        }
+
         @JsonCreator
         public static DockerHub create(@JsonProperty("id") final Long id,
                                        @JsonProperty("name") final String name,
@@ -35,7 +43,7 @@ public abstract class DockerHubBase {
                                        @Nullable @JsonProperty("password") final String password,
                                        @Nullable @JsonProperty("email") final String email,
                                        @Nullable @JsonProperty("token") final String token) {
-            return new AutoValue_DockerHubBase_DockerHub(id == null ? 0L : id, name, url, isDefault == null ? false : isDefault,
+            return new AutoValue_DockerHubBase_DockerHub(id == null ? 0L : id, name, url, isDefault != null && isDefault,
                     username, password, email, token);
         }
     }

@@ -15,8 +15,6 @@ import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
-import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
-import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.model.command.auto.Command;
@@ -52,6 +50,7 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.core.MessagePostProcessor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
@@ -97,9 +96,7 @@ public class JmsExceptionTest {
     @Autowired private AliasTokenService mockAliasTokenService;
 
     @Autowired private Destination containerStagingRequest;
-    @Autowired private ContainerStagingRequestListener containerStagingRequestListener;
     @Autowired private Destination containerFinalizingRequest;
-    @Autowired private ContainerFinalizingRequestListener containerFinalizingRequestListener;
 
     private UserI mockUser;
     private FakeWorkflow fakeWorkflow;
@@ -220,7 +217,7 @@ public class JmsExceptionTest {
         // setup jmsTemplate to throw exception
         String exceptionMsg = "exception";
         Mockito.doThrow(new JMSRuntimeException(exceptionMsg)).when(mockJmsTemplate)
-                .convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class));
+                .convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow
         );
@@ -245,7 +242,7 @@ public class JmsExceptionTest {
         // setup jmsTemplate to throw exception
         String exceptionMsg = "exception";
         Mockito.doThrow(new JMSRuntimeException(exceptionMsg)).when(mockJmsTemplate)
-                .convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class));
+                .convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L,
                 null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);

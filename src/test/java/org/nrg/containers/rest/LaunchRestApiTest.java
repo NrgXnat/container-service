@@ -47,9 +47,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.hasSize;
@@ -67,6 +65,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -218,6 +217,15 @@ public class LaunchRestApiTest {
     public void testLaunchWithQueryParams() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
+        final LaunchReport report = LaunchReport.Success.create(
+                QUEUED_WF_MSG, Collections.singletonMap(INPUT_NAME, INPUT_VALUE), 0L, 0L, WRAPPER_ID
+        );
+
+        when(mockContainerService.launchContainer(
+                anyString(), any(Long.class), anyString(), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class))
+        ).thenReturn(report);
+
         final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
                 post(path).param(INPUT_NAME, INPUT_VALUE).param(FAKE_ROOT, FAKE_XNAT_ID)
@@ -225,48 +233,69 @@ public class LaunchRestApiTest {
                         .with(csrf())
                         .with(testSecurityContext());
 
-        final String response = mockMvc.perform(request)
+        mockMvc.perform(request)
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        final String id = (new JSONObject(response)).get("workflow-id").toString();
-
-        //Have a root element, so can make a workflow
-        assertThat(id, is(QUEUED_WF_MSG));
+                .andExpect(jsonPath("$.workflow-id", is(QUEUED_WF_MSG)));
     }
 
     @Test
     public void testLaunchWithParamsInBody() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
-        final String path = String.format(pathTemplate, WRAPPER_ID, null);
+        final Map<String, String> launchParams = new HashMap<>();
+        launchParams.put(INPUT_NAME, INPUT_VALUE);
+        final LaunchReport report = LaunchReport.Success.create(
+                QUEUED_MSG, launchParams, 0L, 0L, WRAPPER_ID
+        );
+
+        when(mockContainerService.launchContainer(
+                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class))
+        ).thenReturn(report);
+
+        final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
                 post(path).content(INPUT_JSON).contentType(JSON)
                         .with(authentication(authentication))
                         .with(csrf())
                         .with(testSecurityContext());
 
-        final String response = mockMvc.perform(request)
+        mockMvc.perform(request)
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        final String id = (new JSONObject(response)).get("workflow-id").toString();
-
-        // No root element, no workflow
-        assertThat(id, is(QUEUED_MSG));
+                .andExpect(jsonPath("$.workflow-id", is(QUEUED_MSG)));
     }
 
     @Test
     public void testBulkLaunch() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/bulklaunch";
         final String badId = "BAD";
+        final List<String> targets = Arrays.asList(FAKE_XNAT_ID, badId);
 
         final Map<String, String> input = Maps.newHashMap();
         input.put(INPUT_NAME, INPUT_VALUE);
-        input.put(FAKE_ROOT, mapper.writeValueAsString(Arrays.asList(FAKE_XNAT_ID, badId)));
+        input.put(FAKE_ROOT, mapper.writeValueAsString(targets));
         final String bulkInputJson = mapper.writeValueAsString(input);
+
+        // Construct expected launch report
+        final Map<String, String> commonParams = new HashMap<>();
+        commonParams.put(INPUT_NAME, INPUT_VALUE);
+        final List<LaunchReport.Success> successes = new ArrayList<>();
+        for (final String target : targets) {
+            final Map<String, String> params = new HashMap<>(commonParams);
+            params.put(FAKE_ROOT, target);
+
+            successes.add(LaunchReport.Success.create(QUEUED_MSG, params, 0L, 0L, WRAPPER_ID));
+        }
+        final LaunchReport.BulkLaunchReport report = LaunchReport.BulkLaunchReport.builder()
+                .pipelineName(WRAPPER_NAME)
+                .bulkLaunchId("not really important")
+                .successes(successes)
+                .build();
+
+        when(mockContainerService.bulkLaunch(
+                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class)
+        )).thenReturn(report);
 
         //final String exceptionMessage = "Unable to queue container launch";
         // Can go back to using the below when we allow different inputs for different targets
@@ -289,21 +318,7 @@ public class LaunchRestApiTest {
                 .getContentAsString();
 
         final LaunchReport.BulkLaunchReport bulkLaunchReport = mapper.readValue(response, LaunchReport.BulkLaunchReport.class);
-        assertThat(bulkLaunchReport.pipelineName(), is(WRAPPER_NAME));
-        assertThat(bulkLaunchReport.bulkLaunchId(), CoreMatchers.not(isEmptyOrNullString()));
-        assertThat(bulkLaunchReport.successes(), hasSize(2));
-        // We are needing to return from bulk UI ASAP so that we don't get a proxy replay of the request. This means we don't get status info (success/failures) in the launch report.
-        //assertThat(bulkLaunchReport.successes(), hasSize(1));
-        //assertThat(bulkLaunchReport.failures(), hasSize(1));
-        //final LaunchReport.Failure failure = bulkLaunchReport.failures().get(0);
-        //assertThat(failure.launchParams(), hasEntry(FAKE_ROOT, badId));
-        //assertThat(failure.message(), is(exceptionMessage));
-
-        final LaunchReport.Success success = bulkLaunchReport.successes().get(0);
-        assertThat(success.launchParams(), hasEntry(FAKE_ROOT, FAKE_XNAT_ID));
-        assertThat(success.launchParams(), hasEntry(INPUT_NAME, INPUT_VALUE));
-        assertThat(success, instanceOf(LaunchReport.Success.class));
-        assertThat(success.workflowId(), is(QUEUED_MSG));
+        assertThat(bulkLaunchReport, is(report));
     }
 
     @Test
