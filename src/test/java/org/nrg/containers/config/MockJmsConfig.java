@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.core.BrowserCallback;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.core.MessagePostProcessor;
 
 import javax.jms.Destination;
 import javax.jms.JMSException;
@@ -66,7 +67,7 @@ public class MockJmsConfig {
                         return true;
                     }
                 }
-        ).when(mockJmsTemplate).convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class));
+        ).when(mockJmsTemplate).convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
 
         doAnswer(
                 new Answer() {
@@ -81,7 +82,7 @@ public class MockJmsConfig {
                         return true;
                     }
                 }
-        ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class));
+        ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
 
         // Mock counts
         doReturn(0).when(mockJmsTemplate).browse(eq("containerStagingRequest"), (BrowserCallback<Integer>) any(BrowserCallback.class));
