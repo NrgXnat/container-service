@@ -14,8 +14,9 @@ Not yet released
 
 ### Updates
 
-* [CS-687][]: Bumped version of [mandas/docker-client]() to 5.2.2.
+* [CS-681][]: Bumped version of [mandas/docker-client]() to 5.2.2.
 
+[CS-681]: https://issues.xnat.org/browse/CS-681
 [CS-687]: https://issues.xnat.org/browse/CS-687
 
 ## 3.1.1
