@@ -1,9 +1,7 @@
 package org.nrg.containers.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.nrg.config.services.ConfigService;
 import org.nrg.containers.config.DockerHubEntityTestConfig;
 import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubEntity;
@@ -15,9 +13,7 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -25,9 +21,7 @@ import static org.junit.Assert.assertThat;
 @ContextConfiguration(classes = DockerHubEntityTestConfig.class)
 public class DockerHubEntityTest {
 
-    @Autowired private ObjectMapper mapper;
     @Autowired private DockerHubService dockerHubService;
-    @Autowired private ConfigService mockConfigService;
 
     @Test
     public void testSpringConfiguration() {
@@ -35,16 +29,11 @@ public class DockerHubEntityTest {
     }
 
     @Test
+    @DirtiesContext
     public void testCreateDockerHub() throws Exception {
-        // Because we obscure the username and password in the json representation in docker hubs,
-        // we have to write the json directly, not create an object an serialized json from it.
-        final String hubToCreateJson = "{" +
-                "\"id\": 0" +
-                ", \"name\": \"a hub name\"" +
-                ", \"url\": \"http://localhost\"" +
-                ", \"default\": false" +
-                "}";
-        final DockerHubBase.DockerHub hubToCreate = mapper.readValue(hubToCreateJson, DockerHubBase.DockerHub.class);
+        final DockerHubBase.DockerHub hubToCreate = DockerHubBase.DockerHub.create(
+                0L, "a hub name", "http://localhost", Boolean.FALSE
+        );
         final DockerHubBase.DockerHub created = dockerHubService.create(hubToCreate);
         assertThat(created.id(), is(not(0L)));
         assertThat(created.name(), is(hubToCreate.name()));
@@ -64,13 +53,9 @@ public class DockerHubEntityTest {
     @Test
     @DirtiesContext
     public void testUpdateDockerHubEntity() throws Exception {
-        final String hubToCreateJson = "{" +
-                "\"id\": 0" +
-                ", \"name\": \"a hub entity name\"" +
-                ", \"url\": \"http://localhost\"" +
-                ", \"default\": false" +
-                "}";
-        final DockerHubBase.DockerHub hubToCreate = mapper.readValue(hubToCreateJson, DockerHubBase.DockerHub.class);
+        final DockerHubBase.DockerHub hubToCreate = DockerHubBase.DockerHub.create(
+                0L, "a hub entity name", "http://localhost", Boolean.FALSE
+        );
         final DockerHubEntity hubEntityToCreate = DockerHubEntity.fromPojo(hubToCreate);
         final DockerHubEntity created = dockerHubService.create(hubEntityToCreate);
 
@@ -78,13 +63,12 @@ public class DockerHubEntityTest {
         TestTransaction.end();
         TestTransaction.start();
 
-        final String hubToUpdateJson = "{" +
-                "\"id\": " + created.getId() +
-                ", \"name\": \"some other hub entity name\"" +
-                ", \"url\": \"http://localhost\"" +
-                ", \"default\": false" +
-                "}";
-        final DockerHubBase.DockerHub hubToUpdate = mapper.readValue(hubToUpdateJson, DockerHubBase.DockerHub.class);
+        final DockerHubBase.DockerHub hubToUpdate = DockerHubBase.DockerHub.create(
+                created.getId(),
+                "some other hub entity name",
+                created.getUrl(),
+                hubToCreate.isDefault()
+        );
         final DockerHubEntity hubEntityToUpdate = DockerHubEntity.fromPojo(hubToUpdate);
 
         dockerHubService.update(hubEntityToUpdate);
@@ -96,27 +80,21 @@ public class DockerHubEntityTest {
     @Test
     @DirtiesContext
     public void testUpdateDockerHubPojo() throws Exception {
-        final String hubToCreateJson = "{" +
-                "\"id\": 0" +
-                ", \"name\": \"a hub pojo name\"" +
-                ", \"url\": \"http://localhost\"" +
-                ", \"default\": false" +
-                "}";
-        final DockerHubBase.DockerHub hubToCreate = mapper.readValue(hubToCreateJson, DockerHubBase.DockerHub.class);
+        final DockerHubBase.DockerHub hubToCreate = DockerHubBase.DockerHub.create(
+                0L, "a hub pojo name", "http://localhost", Boolean.FALSE
+        );
         final DockerHubBase.DockerHub created = dockerHubService.create(hubToCreate);
 
         TestTransaction.flagForCommit();
         TestTransaction.end();
         TestTransaction.start();
 
-        final String hubToUpdateJson = "{" +
-                "\"id\": " + created.id() +
-                ", \"name\": \"some other hub pojo name\"" +
-                ", \"url\": \"http://localhost\"" +
-                ", \"default\": false" +
-                "}";
-        final DockerHubBase.DockerHub hubToUpdate = mapper.readValue(hubToUpdateJson, DockerHubBase.DockerHub.class);
-
+        final DockerHubBase.DockerHub hubToUpdate = DockerHubBase.DockerHub.create(
+                created.id(),
+                "some other hub entity name",
+                created.url(),
+                created.isDefault()
+        );
         dockerHubService.update(hubToUpdate);
 
         final DockerHubBase.DockerHub updated = dockerHubService.retrieveHub(created.id());

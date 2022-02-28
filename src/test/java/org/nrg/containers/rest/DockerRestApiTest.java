@@ -46,11 +46,13 @@ import java.nio.charset.Charset;
 import java.util.List;
 import java.util.Map;
 
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.isIn;
@@ -337,10 +339,15 @@ public class DockerRestApiTest {
         assertThat(privateHubResponse.name(), is(privateHubWithPing.name()));
         assertThat(privateHubResponse.url(), is(privateHubWithPing.url()));
         assertThat(privateHubResponse.username(), is(privateHubWithPing.username()));
-        assertThat("Password should not be readable.", privateHubResponse.password(), is(not(equalTo(privateHubWithPing.password()))));
-        assertThat(privateHubResponse.token(), is(privateHubWithPing.token()));
         assertThat(privateHubResponse.email(), is(privateHubWithPing.email()));
         assertThat(privateHubResponse.ping(), is(privateHubWithPing.ping()));
+
+        assertThat("Password should not be readable.", privateHubResponse.password(),
+                allOf(not(equalTo(privateHubWithPing.password())), nullValue(String.class))
+        );
+        assertThat("Token should not be readable", privateHubResponse.token(),
+                allOf(not(equalTo(privateHubWithPing.token())), nullValue(String.class))
+        );
     }
 
     @Test
@@ -391,10 +398,16 @@ public class DockerRestApiTest {
         assertThat(privateHubResponse.name(), is(privateHubWithPing.name()));
         assertThat(privateHubResponse.url(), is(privateHubWithPing.url()));
         assertThat(privateHubResponse.username(), is(privateHubWithPing.username()));
-        assertThat("Password should not be readable.", privateHubResponse.password(), is(not(equalTo(privateHubWithPing.password()))));
-        assertThat(privateHubResponse.token(), is(privateHubWithPing.token()));
         assertThat(privateHubResponse.email(), is(privateHubWithPing.email()));
-        assertThat(privateHubResponse.ping(), is(privateHubWithPing.ping()));    }
+        assertThat(privateHubResponse.ping(), is(privateHubWithPing.ping()));
+
+        assertThat("Password should not be readable.", privateHubResponse.password(),
+                allOf(not(equalTo(privateHubWithPing.password())), nullValue(String.class))
+        );
+        assertThat("Token should not be readable", privateHubResponse.token(),
+                allOf(not(equalTo(privateHubWithPing.token())), nullValue(String.class))
+        );
+    }
 
     @Test
     public void testCreateHub() throws Exception {

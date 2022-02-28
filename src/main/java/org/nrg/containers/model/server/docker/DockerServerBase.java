@@ -192,7 +192,8 @@ public abstract class DockerServerBase {
         }
 
         public static Builder builder() {
-            return new AutoValue_DockerServerBase_DockerServer.Builder();
+            return new AutoValue_DockerServerBase_DockerServer.Builder()
+                    .statusEmailEnabled(false);  // Set default value since property was added after release
         }
 
         public abstract Builder toBuilder();
