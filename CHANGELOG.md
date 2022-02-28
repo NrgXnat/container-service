@@ -3,7 +3,7 @@
 
 ## 3.1.1
 
-[Not yet released]
+[Released 2022-02-18](https://bitbucket.org/xnatdev/container-service/src/3.1.1/).
 
 ### Features
 
