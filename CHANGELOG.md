@@ -10,11 +10,13 @@ Not yet released
 
 ### Bugfixes
 
-* 
+* [CS-687][]: Repaired unit and integration tests that had not kept up with code changes.
 
 ### Updates
 
-* 
+* [CS-687][]: Bumped version of [mandas/docker-client]() to 5.2.2.
+
+[CS-687]: https://issues.xnat.org/browse/CS-687
 
 ## 3.1.1
 
