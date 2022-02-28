@@ -1,5 +1,20 @@
 # Changelog
 
+## Next version TBD
+
+Not yet released
+
+### Features
+
+* 
+
+### Bugfixes
+
+* 
+
+### Updates
+
+* 
 
 ## 3.1.1
 
