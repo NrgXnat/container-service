@@ -1226,8 +1226,8 @@ public class DockerControlApi implements ContainerControlApi {
 
                 // If no entry in config, see if we have hub credentials
                 if (auth == null) {
-                    DockerHub hub = dockerHubService.getHubForImage(imageName);
-                    if (StringUtils.isNotBlank(hub.username()) || StringUtils.isNotBlank(hub.token())) {
+                    final DockerHub hub = dockerHubService.getHubForImage(imageName);
+                    if (hub != null && (StringUtils.isNotBlank(hub.username()) || StringUtils.isNotBlank(hub.token()))) {
                         auth = RegistryAuth.builder()
                                 .username(hub.username())
                                 .password(hub.password())
@@ -1326,7 +1326,7 @@ public class DockerControlApi implements ContainerControlApi {
         try(final DockerClient client = getClient()) {
             log.info("Killing container {}", id);
             client.killContainer(id);
-        } catch (ContainerNotFoundException e) {
+        } catch (ContainerNotFoundException | ServiceNotFoundException e) {
             log.error(e.getMessage(), e);
             throw new NotFoundException(e);
         } catch (DockerException | InterruptedException e) {
@@ -1343,7 +1343,7 @@ public class DockerControlApi implements ContainerControlApi {
         try(final DockerClient client = getClient()) {
             log.info("Killing service {}", id);
             client.removeService(id);
-        } catch (ContainerNotFoundException e) {
+        } catch (ContainerNotFoundException | ServiceNotFoundException e) {
             log.error(e.getMessage(), e);
             throw new NotFoundException(e);
         } catch (DockerException | InterruptedException e) {

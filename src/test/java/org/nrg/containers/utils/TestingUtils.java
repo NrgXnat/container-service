@@ -3,10 +3,10 @@ package org.nrg.containers.utils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
 import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.ContainerNotFoundException;
 import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.exceptions.DockerRequestException;
 import org.mandas.docker.client.exceptions.ImageNotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mandas.docker.client.exceptions.NotFoundException;
 import org.mandas.docker.client.messages.ContainerInfo;
 import org.mandas.docker.client.messages.swarm.Service;
 import org.mandas.docker.client.messages.swarm.Task;
@@ -24,7 +24,6 @@ import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
-import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
@@ -48,7 +47,9 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.isEmptyOrNullString;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -151,9 +152,17 @@ public class TestingUtils {
                         String status = containerInfo.state().status();
                         return !"CREATED".equals(status);
                     }
-                } catch (ContainerNotFoundException ignored) {
+                } catch (NotFoundException ignored) {
                     // Ignore exception. If container is not found, it is not running.
                     return false;
+                } catch (DockerRequestException e) {
+                    if (e.status() == 404) {
+                        // Service tasks were not found. Try again later.
+                        // This exception status checking is usually performed in docker client,
+                        //  but it isn't for listTasks
+                        return false;
+                    }
+                    throw e;
                 }
             }
         };
@@ -178,9 +187,17 @@ public class TestingUtils {
                         final ContainerInfo containerInfo = CLIENT.inspectContainer(container.containerId());
                         return containerInfo.state().running();
                     }
-                } catch (ContainerNotFoundException | ServiceNotFoundException ignored) {
+                } catch (NotFoundException ignored) {
                     // Ignore exception. If container is not found, it is not running.
                     return false;
+                } catch (DockerRequestException e) {
+                    if (e.status() == 404) {
+                        // Service tasks were not found. Try again later.
+                        // This exception status checking is usually performed in docker client,
+                        //  but it isn't for listTasks
+                        return false;
+                    }
+                    throw e;
                 }
             }
         };
@@ -211,9 +228,17 @@ public class TestingUtils {
                         }
                     }
                     return false;
-                } catch (ContainerNotFoundException ignored) {
+                } catch (NotFoundException ignored) {
                     // Ignore exception. If container is not found, it is not running.
                     return false;
+                } catch (DockerRequestException e) {
+                    if (e.status() == 404) {
+                        // Service tasks were not found. Try again later.
+                        // This exception status checking is usually performed in docker client,
+                        //  but it isn't for listTasks
+                        return false;
+                    }
+                    throw e;
                 }
             }
         };
@@ -261,7 +286,7 @@ public class TestingUtils {
     }
 
     public static Container getContainerFromWorkflow(final ContainerService containerService,
-                                                     final PersistentWorkflowI workflow) throws NotFoundException {
+                                                     final PersistentWorkflowI workflow) throws Exception {
         await().until(new Callable<String>(){
             public String call() {
                 return workflow.getComments();
