@@ -6,6 +6,7 @@ import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.exceptions.ContainerNotFoundException;
 import org.mandas.docker.client.exceptions.DockerException;
 import org.mandas.docker.client.exceptions.ImageNotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.mandas.docker.client.messages.ContainerInfo;
 import org.mandas.docker.client.messages.swarm.Service;
 import org.mandas.docker.client.messages.swarm.Task;
@@ -177,7 +178,7 @@ public class TestingUtils {
                         final ContainerInfo containerInfo = CLIENT.inspectContainer(container.containerId());
                         return containerInfo.state().running();
                     }
-                } catch (ContainerNotFoundException ignored) {
+                } catch (ContainerNotFoundException | ServiceNotFoundException ignored) {
                     // Ignore exception. If container is not found, it is not running.
                     return false;
                 }
