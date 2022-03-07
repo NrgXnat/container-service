@@ -15,9 +15,22 @@ Not yet released
 ### Updates
 
 * [CS-681][]: Bumped version of [mandas/docker-client]() to 5.2.2.
+* [CS-689][]: Standardized and cleaned up internal `ContainerControlApi` methods to be agnostic towards whether the backend entity
+    is a container or a service.
+    * `get{Container, Service}Std{out, err}Log` -> `getLog`
+    * `createContainerOrSwarmService` -> `create`
+    * `startContainer(Container containerOrService)` -> `start`
+    * `kill{Container, Service}` -> `kill`
+    * `removeContainerOrService` -> `autoCleanup` This method removes the backend container or service
+    only if the server is set to `autoCleanup=true`, otherwise it does nothing. This is consistent with the old method.
+    * `removeContainerOrService` -> `remove` This is a new method that removes the backend container or service regardless of settings.
+    * Deprecated all `ContainerControlApi.throw*Event*` methods. These were only used in `DockerStatusUpdater`, so the implementations
+      were copied there.
+    * Renamed `DockerStatusUpdater` -> `ContainerStatusUpdater` (no deprecation, just moved)
 
 [CS-681]: https://issues.xnat.org/browse/CS-681
 [CS-687]: https://issues.xnat.org/browse/CS-687
+[CS-689]: https://issues.xnat.org/browse/CS-689
 
 ## 3.1.1
 

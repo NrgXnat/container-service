@@ -1,288 +1,815 @@
 package org.nrg.containers.api;
 
-import com.google.common.collect.Lists;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.DockerException;
-import org.mandas.docker.client.messages.ContainerConfig;
-import org.mandas.docker.client.messages.ContainerCreation;
-import org.mandas.docker.client.messages.HostConfig;
-import org.mandas.docker.client.messages.Info;
-import org.mandas.docker.client.messages.Version;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.hamcrest.CustomTypeSafeMatcher;
-import org.hamcrest.Matcher;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.nrg.containers.config.DockerControlApiTestConfig;
-import org.nrg.containers.events.model.DockerContainerEvent;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.model.dockerhub.DockerHubBase;
-import org.nrg.containers.model.image.docker.DockerImage;
+import org.junit.runners.Parameterized;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.LogStream;
+import org.mandas.docker.client.messages.ContainerConfig;
+import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.ServiceCreateResponse;
+import org.mandas.docker.client.messages.swarm.ContainerSpec;
+import org.mandas.docker.client.messages.swarm.ReplicatedService;
+import org.mandas.docker.client.messages.swarm.Service;
+import org.mandas.docker.client.messages.swarm.ServiceMode;
+import org.mandas.docker.client.messages.swarm.ServiceSpec;
+import org.mandas.docker.client.messages.swarm.TaskSpec;
+import org.mandas.docker.client.messages.swarm.Version;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.nrg.containers.model.command.auto.ResolvedCommand;
+import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.services.CommandLabelService;
+import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.nrg.framework.services.NrgEventService;
+import org.nrg.xft.security.UserI;
+import org.powermock.api.mockito.PowerMockito;
+import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
+import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 
-import java.util.Date;
-import java.util.List;
-import java.util.regex.Pattern;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
-import static java.lang.System.getenv;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
-import static org.hamcrest.Matchers.isIn;
-import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Mockito.when;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyVararg;
+import static org.mockito.Matchers.argThat;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.*;
+import static org.powermock.api.support.membermodification.MemberMatcher.method;
 
 @Slf4j
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(classes = DockerControlApiTestConfig.class)
+@RunWith(PowerMockRunner.class)
+@PowerMockRunnerDelegate(Parameterized.class)
+@PrepareForTest(DockerControlApi.class)
 public class DockerControlApiTest {
-    private static String CONTAINER_HOST;
-    private static String CERT_PATH;
+    final String BACKEND_ID = UUID.randomUUID().toString();
+    final String LOG_CONTENTS = UUID.randomUUID().toString();
+    final String USER_LOGIN = UUID.randomUUID().toString();
 
-    private static DockerClient CLIENT;
+    @Parameterized.Parameters(name="swarmMode={0}")
+    public static Collection<Boolean> swarmModeValues() {
+        return Arrays.asList(Boolean.TRUE, Boolean.FALSE);
+    }
 
-    private static final String BUSYBOX_LATEST = "busybox:latest";
-    private static final String ALPINE_LATEST = "alpine:latest";
-    // private static final String KELSEYM_PYDICOM = "kelseym/pydicom:latest";
-    private static final String BUSYBOX_ID = "sha256:47bcc53f74dc94b1920f0b34f6036096526296767650f223433fe65c35f149eb";
-    private static final String BUSYBOX_NAME = "busybox:1.24.2-uclibc";
-    private static final DockerHubBase.DockerHub DOCKER_HUB = DockerHubBase.DockerHub.DEFAULT;
+    @Parameterized.Parameter
+    public boolean swarmMode;
 
-    @Autowired private DockerControlApi controlApi;
-    @Autowired private DockerServerService mockDockerServerService;
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
 
-    @Rule public ExpectedException exception = ExpectedException.none();
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
+
+    @Mock private CommandLabelService commandLabelService;
+    @Mock private DockerHubService dockerHubService;
+    @Mock private NrgEventService eventService;
+    @Mock private DockerServerService dockerServerService;
+
+    @Mock private DockerClient mockDockerClient;
+    @Mock private LogStream logStream;
+
+    @Mock private DockerServer dockerServer;
+    @Mock private Container container;
+    @Mock private UserI user;
+
+    private DockerControlApi dockerControlApi;
 
     @Before
     public void setup() throws Exception {
+        // We want to test the real DockerControlApi methods, but we want a fake DockerClient.
+        // Since the DockerClient is constructed in a private method in DockerControlApi, we need
+        // to use PowerMock to mock it out.
+        // The fact that we have to do this is a code smell!
+        // Should probably inject this client instance into DockerControlApi as a bean.
+        dockerControlApi = PowerMockito.spy(new DockerControlApi(
+                dockerServerService, commandLabelService, dockerHubService, eventService
+        ));
+        PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
+                DockerControlApi.class, "getClient", DockerServer.class))
+                .withArguments(dockerServer);
+        PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
+                DockerControlApi.class, "getClient", DockerServer.class, String.class))
+                .withArguments(eq(dockerServer), argThat(isEmptyOrNullString()));
 
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
+        // Mock simple return values
+        when(dockerServer.swarmMode()).thenReturn(swarmMode);
+        when(dockerServerService.getServer()).thenReturn(dockerServer);
+        when(container.isSwarmService()).thenReturn(swarmMode);
 
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            CERT_PATH = certPathEnv;
+        if (swarmMode) {
+            when(container.containerId()).thenThrow(new RuntimeException("Should not be called"));
+            when(container.serviceId()).thenReturn(BACKEND_ID);
         } else {
-            CERT_PATH = "";
+            when(container.containerId()).thenReturn(BACKEND_ID);
+            when(container.serviceId()).thenThrow(new RuntimeException("Should not be called"));
         }
 
-        if (StringUtils.isBlank(hostEnv)) {
-            CONTAINER_HOST = defaultHost;
+        when(logStream.readFully()).thenReturn(LOG_CONTENTS);
+
+        when(user.getLogin()).thenReturn(USER_LOGIN);
+    }
+
+    @Test
+    public void testGetLog_stdout() throws Exception {
+        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDOUT;
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
+
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
         } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                CONTAINER_HOST = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                CONTAINER_HOST = hostEnv;
-            }
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
         }
 
-        final DockerServer mockDockerServer = DockerServer.create(0L, "Test server", CONTAINER_HOST, CERT_PATH,
-                false, null, null, null,
-                false, null, true, null, null, true);
-        when(mockDockerServerService.getServer()).thenReturn(mockDockerServer);
+        // Run the test
+        final String log_withContainer = dockerControlApi.getLog(container, logType);
+        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType);
 
-        CLIENT = controlApi.getClient();
-    }
-
-    private boolean canConnectToDocker() {
-        try {
-            return CLIENT.ping().equals("OK");
-        } catch (InterruptedException | DockerException e) {
-            log.warn("Could not connect to docker.", e);
-        }
-        return false;
+        // Check results
+        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
+        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
     }
 
     @Test
-    public void testPingServer() throws Exception {
-        assertThat(canConnectToDocker(), is(true));
-    }
+    public void testGetLog_stderr() throws Exception {
+        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
-    @Test
-    public void testGetAllImages() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
-        CLIENT.pull(BUSYBOX_LATEST);
-        CLIENT.pull(ALPINE_LATEST);
-        final List<DockerImage> images = controlApi.getAllImages();
-
-        final List<String> imageNames = imagesToTags(images);
-        assertThat(BUSYBOX_LATEST, isIn(imageNames));
-        assertThat(ALPINE_LATEST, isIn(imageNames));
-    }
-
-    private List<String> imagesToTags(final List<DockerImage> images) {
-        final List<String> tags = Lists.newArrayList();
-        for (final DockerImage image : images) {
-            if (image.tags() != null) {
-                tags.addAll(image.tags());
-            }
-        }
-        return tags;
-    }
-
-//    @Test
-//    public void testLaunchImage() throws Exception {
-//        final List<String> cmd = Lists.newArrayList("ls", "/data/pyscript.py");
-//        final List<String> vol =
-//            Lists.newArrayList("/Users/Kelsey/Projects/XNAT/1.7/pydicomDocker/data:/data");
-//
-//        client.pull(KELSEYM_PYDICOM);
-//        String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
-//        assertThat(containerId, not(isEmptyOrNullString()));
-//    }
-
-//    @Test
-//    public void testLaunchPythonScript() throws Exception {
-//       // python pyscript.py -h <hostname> -u <user> -p <password> -s <session_id>
-//        final List<String> cmd = Lists.newArrayList(
-//            "python", "/data/pyscript.py",
-//            "-h", "https://central.xnat.org",
-//            "-u", "admin",
-//            "-p", "admin",
-//            "-s", "CENTRAL_E07096"
-//        );
-//        final List<String> vol =
-//            Lists.newArrayList("/Users/Kelsey/Projects/XNAT/1.7/pydicomDocker/data:/data");
-//
-//        client.pull(KELSEYM_PYDICOM);
-//        String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
-//    }
-
-    @Test
-    public void testPingHub() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
-        assertThat(controlApi.pingHub(DOCKER_HUB), is("OK"));
-    }
-
-    @Test
-    public void testPullImage() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
-        controlApi.pullImage(BUSYBOX_LATEST, DOCKER_HUB);
-    }
-
-    @Test
-    public void testPullPrivateImage() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
-        final String privateImageName = "xnattest/private";
-        exception.expect(imageNotFoundException(privateImageName));
-        controlApi.pullImage(privateImageName, DOCKER_HUB);
-
-        final DockerImage test = controlApi.pullImage(privateImageName, DOCKER_HUB, "xnattest", "windmill susanna portico",
-                "farfegnugen", "holla@me.com");
-        assertNotNull(test);
-    }
-
-    @Test
-    public void testDeleteImage() throws DockerException, InterruptedException, NoDockerServerException, DockerServerException {
-        assumeThat(canConnectToDocker(), is(true));
-
-        CLIENT.pull(BUSYBOX_NAME);
-        int beforeImageCount = CLIENT.listImages().size();
-        controlApi.deleteImageById(BUSYBOX_ID, true);
-        List<org.mandas.docker.client.messages.Image> images = CLIENT.listImages();
-        int afterImageCount = images.size();
-        assertThat(afterImageCount+1, is(beforeImageCount));
-        for(org.mandas.docker.client.messages.Image image:images){
-            assertThat(image.id(), is(not(BUSYBOX_ID)));
-        }
-    }
-
-    @Test(timeout = 10000)
-    public void testEventPolling() throws Exception {
-        assumeThat(getenv("CIRCLECI"), isEmptyOrNullString());  // This test is flaky on circle, so skip it
-        assumeThat(canConnectToDocker(), is(true));
-        log.debug("Starting event polling test.");
-
-        if (log.isDebugEnabled()) {
-            final Version version = CLIENT.version();
-            log.debug("Docker version: {}", version);
-        }
-        
-        final Info dockerInfo = CLIENT.info();
-        if (dockerInfo.kernelVersion().contains("moby")) {
-            // If we are running docker in the moby VM, then it isn't running natively
-            //   on the host machine. Sometimes the clocks on the host and VM can get out
-            //   out sync, and this test will fail. This especially happens on laptops that
-            //   have docker running and go to sleep.
-            // We can run this container command:
-            //     docker run --rm --privileged alpine hwclock -s
-            // to sync up the clocks. It requires 'privileged' mode, which may cause problems
-            // running in a CI environment.
-            log.debug("Synchronizing host and vm clocks.");
-            final ContainerConfig containerConfig = ContainerConfig.builder()
-                    .image("alpine")
-                    .cmd(new String[]{"hwclock", "-s"})
-                    .hostConfig(HostConfig.builder()
-                            .privileged(true)
-                            .autoRemove(true)
-                            .build())
-                    .build();
-            final ContainerCreation containerCreation = CLIENT.createContainer(containerConfig);
-            CLIENT.startContainer(containerCreation.id());
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+        } else {
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
         }
 
-        final Date start = new Date();
-        log.debug("Start time is {}", start.getTime() / 1000);
-        Thread.sleep(1000); // Wait to ensure we get some events
+        // Run the test
+        final String log_withContainer = dockerControlApi.getLog(container, logType);
+        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType);
 
-        controlApi.pullImage(BUSYBOX_LATEST);
+        // Check results
+        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
+        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+    }
 
-        // Create container, to ensure we have some events to read
-        final ContainerConfig config = ContainerConfig.builder()
-                .image(BUSYBOX_LATEST)
-                .cmd("sh", "-c", "echo Hello world")
+    @Test
+    public void testGetLog_stdout_params() throws Exception {
+        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDOUT;
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
+
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
+                    .thenReturn(logStream);
+        } else {
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
+                    .thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+        }
+
+        // Run the test
+        final String log_withContainer = dockerControlApi.getLog(container, logType, withTimestamp, since);
+        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType, withTimestamp, since);
+
+        // Check results
+        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
+        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    public void testGetLog_stderr_params() throws Exception {
+        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
+
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
+                    .thenReturn(logStream);
+        } else {
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
+                    .thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+        }
+
+        // Run the test
+        final String log_withContainer = dockerControlApi.getLog(container, logType, withTimestamp, since);
+        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType, withTimestamp, since);
+
+        // Check results
+        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
+        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetStdoutLog() throws Exception {
+        // Test values
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
+
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+        } else {
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+        }
+
+        // Run the test
+        final String log = dockerControlApi.getStdoutLog(container);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetStderrLog() throws Exception {
+        // Test values
+        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
+
+        // Set up test-specific mocks
+        if (swarmMode) {
+            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+        } else {
+            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                    .thenThrow(new RuntimeException("Should not be called"));
+        }
+
+        // Run the test
+        final String log = dockerControlApi.getStderrLog(container);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetContainerStdoutLog() throws Exception {
+        // This method is only called in local docker mode
+        assumeThat(swarmMode, is(false));
+
+        // Test values.
+        // Ideally these values would be parameterized, but I don't know how to make
+        //  different sets of parameters for different tests in junit.
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final DockerClient.LogsParam logType = DockerClient.LogsParam.stdout();
+
+        // Set up test-specific mocks
+        when(mockDockerClient.logs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
+        when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                .thenThrow(new RuntimeException("Should not be called"));
+
+        // Run the test
+        final String log = dockerControlApi.getContainerStdoutLog(BACKEND_ID, timestampParam, sinceParam);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetContainerStderrLog() throws Exception {
+        // This method is only called in local docker mode
+        assumeThat(swarmMode, is(false));
+
+        // Test values.
+        // Ideally these values would be parameterized, but I don't know how to make
+        //  different sets of parameters for different tests in junit.
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final DockerClient.LogsParam logType = DockerClient.LogsParam.stderr();
+
+        // Set up test-specific mocks
+        when(mockDockerClient.logs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
+        when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                .thenThrow(new RuntimeException("Should not be called"));
+
+        // Run the test
+        final String log = dockerControlApi.getContainerStderrLog(BACKEND_ID, timestampParam, sinceParam);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetServiceStdoutLog() throws Exception {
+        // This method is only called in local docker mode
+        assumeThat(swarmMode, is(false));
+
+        // Test values.
+        // Ideally these values would be parameterized, but I don't know how to make
+        //  different sets of parameters for different tests in junit.
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final DockerClient.LogsParam logType = DockerClient.LogsParam.stdout();
+
+        // Set up test-specific mocks
+        when(mockDockerClient.serviceLogs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
+        when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                .thenThrow(new RuntimeException("Should not be called"));
+
+        // Run the test
+        final String log = dockerControlApi.getServiceStdoutLog(BACKEND_ID, timestampParam, sinceParam);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testGetServiceStderrLog() throws Exception {
+        // This method is only called in local docker mode
+        assumeThat(swarmMode, is(false));
+
+        // Test values.
+        // Ideally these values would be parameterized, but I don't know how to make
+        //  different sets of parameters for different tests in junit.
+        final boolean withTimestamp = false;
+        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
+        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final DockerClient.LogsParam logType = DockerClient.LogsParam.stderr();
+
+        // Set up test-specific mocks
+        when(mockDockerClient.serviceLogs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
+        when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
+                .thenThrow(new RuntimeException("Should not be called"));
+
+        // Run the test
+        final String log = dockerControlApi.getServiceStderrLog(BACKEND_ID, timestampParam, sinceParam);
+
+        // Check results
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    public void testCreate_container() throws Exception {
+        // Make test objects
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final Container toLaunch = Container.builder()
+                .databaseId(random.nextInt())
+                .commandId(random.nextInt())
+                .wrapperId(random.nextInt())
+                .userId(USER_LOGIN)
+                .dockerImage("image")
+                .commandLine("echo foo")
+                .swarm(swarmMode)
+                .addEnvironmentVariable("key", "value")
+                .mounts(Collections.emptyList())
+                .containerLabels(Collections.emptyMap())
+                .build();
+        final Container expectedCreated;
+
+        if (swarmMode) {
+            expectedCreated = toLaunch.toBuilder().serviceId(BACKEND_ID).build();
+
+            // Have to mock out the response from docker-client.
+            // I would just make a real ServiceCreateResponse object,
+            // but it doesn't have a build() method to return a Builder, and the
+            // implementation is package-private.
+            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
+            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
+            when(mockDockerClient.createService(any(ServiceSpec.class)))
+                    .thenReturn(serviceCreateResponse);
+        } else {
+            expectedCreated = toLaunch.toBuilder().containerId(BACKEND_ID).build();
+
+            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
+                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+        }
+
+        // Run the test
+        final Container created = dockerControlApi.create(toLaunch, user);
+
+        // Check results
+        assertThat(created, equalTo(expectedCreated));
+    }
+
+    @Test
+    public void testCreate_resolvedCommand() throws Exception {
+        // Make test objects
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final ResolvedCommand resolvedCommandToLaunch = ResolvedCommand.builder()
+                .commandId(random.nextLong())
+                .commandName("a command name")
+                .wrapperId(random.nextLong())
+                .wrapperName("a wrapper name")
+                .image("test image name")
+                .commandLine("echo foo bar baz")
+                .mounts(Collections.emptyList())
+                .environmentVariables(Collections.emptyMap())
+                .containerLabels(Collections.emptyMap())
                 .build();
 
-        final ContainerCreation creation = CLIENT.createContainer(config);
-        CLIENT.startContainer(creation.id());
+        final Container expectedCreated;
+        if (swarmMode) {
+            expectedCreated = Container.serviceFromResolvedCommand(
+                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
+            );
 
-        Thread.sleep(1000); // Wait to ensure we get some events
-        final Date end = new Date();
-        log.debug("End time is {}", end.getTime() / 1000);
+            // Have to mock out the response from docker-client.
+            // I would just make a real ServiceCreateResponse object,
+            // but it doesn't have a build() method to return a Builder, and the
+            // implementation is package-private.
+            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
+            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
+            when(mockDockerClient.createService(any(ServiceSpec.class)))
+                    .thenReturn(serviceCreateResponse);
+        } else {
+            expectedCreated = Container.containerFromResolvedCommand(
+                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
+            );
 
-        log.debug("Checking for events in the time window.");
-        final List<DockerContainerEvent> events = controlApi.getContainerEvents(start, end);
+            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
+                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+        }
 
-        // The fact that we have a list of events and not a timeout failure is already a victory
-        assertThat(events, not(empty()));
+        // Run the test
+        final Container created = dockerControlApi.create(resolvedCommandToLaunch, user);
 
-        // TODO assert more things about the events
+        // Check results
+        assertThat(created, equalTo(expectedCreated));
     }
 
-    private Matcher<Exception> imageNotFoundException(final String name) {
-        final String exceptionMessage = "Image not found: " + name;
-        final String description = "Image not found exception with image name " + name;
-        return new CustomTypeSafeMatcher<Exception>(description) {
-            @Override
-            protected boolean matchesSafely(final Exception ex) {
-                return ex.getMessage().contains(exceptionMessage);
-            }
-        };
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testCreateContainerOrSwarmService_container() throws Exception {
+        // Make test objects
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final Container toLaunch = Container.builder()
+                .databaseId(random.nextInt())
+                .commandId(random.nextInt())
+                .wrapperId(random.nextInt())
+                .userId(USER_LOGIN)
+                .dockerImage("image")
+                .commandLine("echo foo")
+                .swarm(swarmMode)
+                .addEnvironmentVariable("key", "value")
+                .mounts(Collections.emptyList())
+                .containerLabels(Collections.emptyMap())
+                .build();
+        final Container expectedCreated;
+
+        if (swarmMode) {
+            expectedCreated = toLaunch.toBuilder().serviceId(BACKEND_ID).build();
+
+            // Have to mock out the response from docker-client.
+            // I would just make a real ServiceCreateResponse object,
+            // but it doesn't have a build() method to return a Builder, and the
+            // implementation is package-private.
+            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
+            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
+            when(mockDockerClient.createService(any(ServiceSpec.class)))
+                    .thenReturn(serviceCreateResponse);
+        } else {
+            expectedCreated = toLaunch.toBuilder().containerId(BACKEND_ID).build();
+
+            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
+                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+        }
+
+        // Run the test
+        final Container created = dockerControlApi.createContainerOrSwarmService(toLaunch, user);
+
+        // Check results
+        assertThat(created, equalTo(expectedCreated));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testCreateContainerOrSwarmService_resolvedCommand() throws Exception {
+        // Make test objects
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final ResolvedCommand resolvedCommandToLaunch = ResolvedCommand.builder()
+                .commandId(random.nextLong())
+                .commandName("a command name")
+                .wrapperId(random.nextLong())
+                .wrapperName("a wrapper name")
+                .image("test image name")
+                .commandLine("echo foo bar baz")
+                .mounts(Collections.emptyList())
+                .environmentVariables(Collections.emptyMap())
+                .containerLabels(Collections.emptyMap())
+                .build();
+
+        final Container expectedCreated;
+        if (swarmMode) {
+            expectedCreated = Container.serviceFromResolvedCommand(
+                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
+            );
+
+            // Have to mock out the response from docker-client.
+            // I would just make a real ServiceCreateResponse object,
+            // but it doesn't have a build() method to return a Builder, and the
+            // implementation is package-private.
+            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
+            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
+            when(mockDockerClient.createService(any(ServiceSpec.class)))
+                    .thenReturn(serviceCreateResponse);
+        } else {
+            expectedCreated = Container.containerFromResolvedCommand(
+                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
+            );
+
+            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
+                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+        }
+
+        // Run the test
+        final Container created = dockerControlApi.createContainerOrSwarmService(resolvedCommandToLaunch, user);
+
+        // Check results
+        assertThat(created, equalTo(expectedCreated));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testStartContainer_swarm() throws Exception {
+        assumeThat(swarmMode, is(true));
+
+        // When we "create"d the swarm service we set its replicas to 0.
+        // We "start" a swarm service by setting its replicas to 1.
+        // The code under test will get the spec from the client, change it, and send
+        //  it back to the client to update.
+        // We need to make a mock spec that the mock client can return.
+        // We can also change the replicas and verify that the code under test made
+        //  that same change.
+
+        // First some garbage test data
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final Long serviceVersion = random.nextLong();
+        final String specName = "whatever";
+        final ContainerSpec containerSpec = ContainerSpec.builder()
+                .image("im")
+                .env(Collections.emptyList())
+                .dir("/a/dir")
+                .user(user.getLogin())
+                .command("echo", "foo")
+                .build();
+        final TaskSpec taskSpec = TaskSpec.builder().containerSpec(containerSpec).build();
+        final ServiceSpec.Builder commonSpec = ServiceSpec.builder()
+                .taskTemplate(taskSpec)
+                .name(specName);
+
+        // This is the mock spec that will pass through a chain of mocks into our code under test
+        final ServiceSpec createdSpec = commonSpec
+                .mode(ServiceMode.builder()
+                        .replicated(ReplicatedService.builder().replicas(0L).build())
+                        .build())
+                .build();
+        final Version version = Mockito.mock(Version.class);
+        when(version.index()).thenReturn(serviceVersion);
+        final Service created = Mockito.mock(Service.class);
+        when(created.spec()).thenReturn(createdSpec);
+        when(created.version()).thenReturn(version);
+        when(mockDockerClient.inspectService(BACKEND_ID)).thenReturn(created);
+
+        // This is the spec that we expect the code under test will create and pass to the client to update
+        final ServiceSpec expectedUpdateSpec = commonSpec
+                .mode(ServiceMode.builder()
+                        .replicated(ReplicatedService.builder().replicas(1L).build())
+                        .build())
+                .build();
+
+        // Run the test
+        dockerControlApi.startContainer(container);
+
+        // Verify that the client method was called as expected
+        verify(mockDockerClient).updateService(BACKEND_ID, serviceVersion, expectedUpdateSpec);
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testStartContainer_localDocker() throws Exception {
+        assumeThat(swarmMode, is(false));
+
+        // Run the test
+        dockerControlApi.startContainer(container);
+
+        // Verify that the client method was called as expected
+        verify(mockDockerClient).startContainer(BACKEND_ID);
+    }
+
+    @Test
+    public void testStart_swarm() throws Exception {
+        assumeThat(swarmMode, is(true));
+
+        // When we "create"d the swarm service we set its replicas to 0.
+        // We "start" a swarm service by setting its replicas to 1.
+        // The code under test will get the spec from the client, change it, and send
+        //  it back to the client to update.
+        // We need to make a mock spec that the mock client can return.
+        // We can also change the replicas and verify that the code under test made
+        //  that same change.
+
+        // First some garbage test data
+        final ThreadLocalRandom random = ThreadLocalRandom.current();
+        final Long serviceVersion = random.nextLong();
+        final String specName = "whatever";
+        final ContainerSpec containerSpec = ContainerSpec.builder()
+                .image("im")
+                .env(Collections.emptyList())
+                .dir("/a/dir")
+                .user(user.getLogin())
+                .command("echo", "foo")
+                .build();
+        final TaskSpec taskSpec = TaskSpec.builder().containerSpec(containerSpec).build();
+        final ServiceSpec.Builder commonSpec = ServiceSpec.builder()
+                .taskTemplate(taskSpec)
+                .name(specName);
+
+        // This is the mock spec that will pass through a chain of mocks into our code under test
+        final ServiceSpec createdSpec = commonSpec
+                .mode(ServiceMode.builder()
+                        .replicated(ReplicatedService.builder().replicas(0L).build())
+                        .build())
+                .build();
+        final Version version = Mockito.mock(Version.class);
+        when(version.index()).thenReturn(serviceVersion);
+        final Service created = Mockito.mock(Service.class);
+        when(created.spec()).thenReturn(createdSpec);
+        when(created.version()).thenReturn(version);
+        when(mockDockerClient.inspectService(BACKEND_ID)).thenReturn(created);
+
+        // This is the spec that we expect the code under test will create and pass to the client to update
+        final ServiceSpec expectedUpdateSpec = commonSpec
+                .mode(ServiceMode.builder()
+                        .replicated(ReplicatedService.builder().replicas(1L).build())
+                        .build())
+                .build();
+
+        // Run the test
+        dockerControlApi.start(container);
+
+        // Verify that the client method was called as expected
+        verify(mockDockerClient).updateService(BACKEND_ID, serviceVersion, expectedUpdateSpec);
+    }
+
+    @Test
+    public void testStart_localDocker() throws Exception {
+        assumeThat(swarmMode, is(false));
+
+        // Run the test
+        dockerControlApi.start(container);
+
+        // Verify that the client method was called as expected
+        verify(mockDockerClient).startContainer(BACKEND_ID);
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testKillContainer() throws Exception {
+        assumeThat(swarmMode, is(false));
+
+        // Run the test
+        dockerControlApi.killContainer(BACKEND_ID);
+
+        // Verify the client method was called as expected
+        verify(mockDockerClient).killContainer(BACKEND_ID);
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testKillService() throws Exception {
+        assumeThat(swarmMode, is(false));
+
+        // Run the test
+        dockerControlApi.killService(BACKEND_ID);
+
+        // Verify the client method was called as expected
+        verify(mockDockerClient).removeService(BACKEND_ID);
+
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testRemoveContainerOrService() throws Exception {
+        // set server to autocleanup
+        when(dockerServer.autoCleanup()).thenReturn(true);
+
+        // Run the test
+        dockerControlApi.removeContainerOrService(container);
+
+        // Verify the client method was called as expected
+        if (swarmMode) {
+            verify(mockDockerClient).removeService(BACKEND_ID);
+        } else {
+            verify(mockDockerClient).removeContainer(BACKEND_ID);
+        }
+    }
+
+    @Test
+    public void testKill() throws Exception {
+        // Run the test
+        dockerControlApi.kill(container);
+
+        // Verify the client method was called as expected
+        if (swarmMode) {
+            verify(mockDockerClient).removeService(BACKEND_ID);
+        } else {
+            verify(mockDockerClient).killContainer(BACKEND_ID);
+        }
+    }
+
+    @Test
+    public void testAutoCleanup_autoCleanupFalse() throws Exception {
+        // mock server settings to not autocleanup
+        when(dockerServer.autoCleanup()).thenReturn(false);
+
+        // Run the test
+        dockerControlApi.autoCleanup(container);
+
+        // Verify the client method was called as expected
+        // In this case we expect nothing will happen
+        verify(mockDockerClient, times(0)).removeService(BACKEND_ID);
+        verify(mockDockerClient, times(0)).removeContainer(BACKEND_ID);
+    }
+
+    @Test
+    public void testAutoCleanup_autoCleanupTrue() throws Exception {
+        // mock server settings to not autocleanup
+        when(dockerServer.autoCleanup()).thenReturn(true);
+
+        // Run the test
+        dockerControlApi.autoCleanup(container);
+
+        // Verify the client method was called as expected
+        if (swarmMode) {
+            verify(mockDockerClient).removeService(BACKEND_ID);
+        } else {
+            verify(mockDockerClient).removeContainer(BACKEND_ID);
+        }
+    }
+
+    @Test
+    public void testRemove() throws Exception {
+        // Run the test
+        dockerControlApi.remove(container);
+
+        // Verify the client method was called as expected
+        if (swarmMode) {
+            verify(mockDockerClient).removeService(BACKEND_ID);
+        } else {
+            verify(mockDockerClient).removeContainer(BACKEND_ID);
+        }
     }
 }
-
-

@@ -249,7 +249,7 @@ public class QueueConsumerTest {
     public void testContainerLaunchException() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         final String exceptionMessage = "uh oh - issue launching container!";
-        when(mockDockerControlApi.createContainerOrSwarmService(any(ResolvedCommand.class), eq(mockUser)))
+        when(mockDockerControlApi.create(any(ResolvedCommand.class), eq(mockUser)))
                 .thenThrow(new ContainerException(exceptionMessage));
 
         final String expectedWorkflowStatus = PersistentWorkflowUtils.FAILED + " (Container launch)";

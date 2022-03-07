@@ -207,8 +207,8 @@ public class LaunchRestApiTest {
                 .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.
-        when(mockDockerControlApi.createContainerOrSwarmService(any(ResolvedCommand.class), eq(mockAdmin))).thenReturn(CONTAINER);
-        doNothing().when(mockDockerControlApi).startContainer(any(Container.class));
+        when(mockDockerControlApi.create(any(ResolvedCommand.class), eq(mockAdmin))).thenReturn(CONTAINER);
+        doNothing().when(mockDockerControlApi).start(any(Container.class));
         // when(mockContainerEntityService.save(any(ResolvedCommand.class), eq(FAKE_CONTAINER_ID), any(String.class), eq(mockAdmin)))
         //         .thenReturn(CONTAINER_ENTITY);
     }

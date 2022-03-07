@@ -12,7 +12,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
@@ -20,9 +19,11 @@ import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.ContainerFinalizationException;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
@@ -581,7 +582,17 @@ public class ContainerServiceImpl implements ContainerService {
         if (resolvedCommand.type().equals(DOCKER.getName()) ||
                 resolvedCommand.type().equals(DOCKER_SETUP.getName()) ||
                 resolvedCommand.type().equals(DOCKER_WRAPUP.getName())) {
-            return launchResolvedDockerCommand(resolvedCommand, userI, workflow, parent);
+            // In the future we will re-work the launch* api methods to throw new-style exceptions
+            // For now we catch the new-style exceptions here and rethrow them as old-style
+            try {
+                return launchResolvedDockerCommand(resolvedCommand, userI, workflow, parent);
+            } catch (NoContainerServerException e) {
+                throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
+                        new NoDockerServerException(e.getMessage(), e.getCause());
+            } catch (ContainerBackendException e) {
+                throw (e instanceof DockerServerException) ? (DockerServerException) e :
+                        new DockerServerException(e.getMessage(), e.getCause());
+            }
         } else {
             throw new UnsupportedOperationException("Cannot launch a command of type " + resolvedCommand.type());
         }
@@ -591,7 +602,7 @@ public class ContainerServiceImpl implements ContainerService {
                                                   final UserI userI,
                                                   @Nullable PersistentWorkflowI workflow,
                                                   @Nullable final Container parent)
-            throws NoDockerServerException, DockerServerException, ContainerException {
+            throws NoContainerServerException, ContainerBackendException, ContainerException {
 
         log.info("Preparing to launch resolved command.");
         final ResolvedCommand preparedToLaunch = prepareToLaunch(resolvedCommand, parent, userI, workflow);
@@ -608,18 +619,17 @@ public class ContainerServiceImpl implements ContainerService {
 
 		try {
             log.info("Creating container from resolved command.");
-        	final Container createdContainerOrService =
-                    containerControlApi.createContainerOrSwarmService(preparedToLaunch, userI);
+        	final Container created = containerControlApi.create(preparedToLaunch, userI);
 
             if (workflow != null) {
                 // Update workflow with container information
                 log.info("Recording container launch.");
-                updateWorkflowWithContainer(workflow, createdContainerOrService);
+                updateWorkflowWithContainer(workflow, created);
             }
 
             // Save container in db.
-			final Container savedContainerOrService = toPojo(containerEntityService.save(fromPojo(
-	                createdContainerOrService.toBuilder()
+			final Container saved = toPojo(containerEntityService.save(fromPojo(
+	                created.toBuilder()
 	                        .workflowId(workflow != null ? workflow.getWorkflowId().toString() : null)
 	                        .parent(parent)
 	                        .build()
@@ -630,35 +640,35 @@ public class ContainerServiceImpl implements ContainerService {
 	            log.info("Creating wrapup container objects in database (not creating docker containers).");
 	            for (final ResolvedCommand resolvedWrapupCommand : resolvedCommand.wrapupCommands()) {
 	                final Container wrapupContainer = createWrapupContainerInDbFromResolvedCommand(resolvedWrapupCommand,
-                            savedContainerOrService, userI, workflow);
+                            saved, userI, workflow);
 	                log.debug("Created wrapup container {} for parent container {}.", wrapupContainer.databaseId(),
-                            savedContainerOrService.databaseId());
+                            saved.databaseId());
 	            }
 	        }
 	
 	        if (resolvedCommand.setupCommands().size() > 0) {
 	            log.info("Launching setup containers.");
 	            for (final ResolvedCommand resolvedSetupCommand : resolvedCommand.setupCommands()) {
-	                launchResolvedCommand(resolvedSetupCommand, userI, workflow, savedContainerOrService);
+	                launchResolvedCommand(resolvedSetupCommand, userI, workflow, saved);
 	            }
 	        } else {
-	            startContainer(userI, savedContainerOrService);
+	            start(userI, saved);
 	        }
 	
-	        return savedContainerOrService;
+	        return saved;
         } catch (Exception e) {
         	handleFailure(workflow, e);
         	throw e;
         }
     }
 
-    private void startContainer(final UserI userI, final Container savedContainerOrService) throws NoDockerServerException, ContainerException {
+    private void start(final UserI userI, final Container toStart) throws NoContainerServerException, ContainerException {
         log.info("Starting container.");
         try {
-            containerControlApi.startContainer(savedContainerOrService);
-        } catch (DockerServerException e) {
-            addContainerHistoryItem(savedContainerOrService, ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED, "Did not start." + e.getMessage()), userI);
-            handleFailure(userI,savedContainerOrService);
+            containerControlApi.start(toStart);
+        } catch (ContainerBackendException e) {
+            addContainerHistoryItem(toStart, ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED, "Did not start." + e.getMessage()), userI);
+            handleFailure(userI, toStart);
             throw new ContainerException("Failed to start");
         }
     }
@@ -692,33 +702,33 @@ public class ContainerServiceImpl implements ContainerService {
     }
     @Nonnull
     private Container launchContainerFromDbObject(final Container toLaunch, final UserI userI)
-            throws DockerServerException, NoDockerServerException, ContainerException {
+            throws ContainerBackendException, NoContainerServerException, ContainerException {
         return launchContainerFromDbObject(toLaunch, userI, false);
     }
 
     @Nonnull
     private Container launchContainerFromDbObject(final Container toLaunch, final UserI userI, final boolean restart)
-            throws DockerServerException, NoDockerServerException, ContainerException {
+            throws ContainerBackendException, NoContainerServerException, ContainerException {
 
         final String workflowId = toLaunch.workflowId();
         PersistentWorkflowI workflow = workflowId != null ? WorkflowUtils.getUniqueWorkflow(userI, workflowId) : null;
 
         final Container preparedToLaunch = restart ? toLaunch : prepareToLaunch(toLaunch, userI, workflow);
 
-        log.info("Creating docker container for {} container {}.", toLaunch.subtype(), toLaunch.databaseId());
-        final Container createdContainerOrService = containerControlApi.createContainerOrSwarmService(preparedToLaunch, userI);
+        log.info("Creating backend container for {} container {}.", toLaunch.subtype(), toLaunch.databaseId());
+        final Container created = containerControlApi.create(preparedToLaunch, userI);
 
         log.info("Updating {} container {}.", toLaunch.subtype(), toLaunch.databaseId());
-        containerEntityService.update(fromPojo(createdContainerOrService));
+        containerEntityService.update(fromPojo(created));
 
         // Update workflow if we have one
         if (workflow != null) {
-            updateWorkflowWithContainer(workflow, createdContainerOrService);
+            updateWorkflowWithContainer(workflow, created);
         }
 
-        startContainer(userI, createdContainerOrService);
+        start(userI, created);
 
-        return createdContainerOrService;
+        return created;
     }
 
     @Nonnull
@@ -884,7 +894,7 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     private void doRestart(Container service, UserI userI)
-            throws DockerServerException, NoDockerServerException, ContainerException {
+            throws ContainerBackendException, NoContainerServerException, ContainerException {
 
         if (!service.isSwarmService()) {
             throw new ContainerException("Cannot restart non-swarm container");
@@ -926,8 +936,8 @@ public class ContainerServiceImpl implements ContainerService {
 
         // Remove the errant service
         try {
-            containerControlApi.killService(service.serviceId());
-        } catch (DockerServerException | NotFoundException | NoDockerServerException e) {
+            containerControlApi.kill(service);
+        } catch (ContainerBackendException | NotFoundException | NoContainerServerException e) {
             // It may already be gone
         }
 
@@ -1109,7 +1119,7 @@ public class ContainerServiceImpl implements ContainerService {
         // container still thinks it is active, but workflow is terminal
         try {
             killWithoutHistory(containerOrService);
-        } catch (NoDockerServerException | DockerServerException | NotFoundException e) {
+        } catch (NoContainerServerException | ContainerBackendException | NotFoundException e) {
             log.error("Attempted to kill container {} due to workflow in status {}",
                     containerOrService.containerOrServiceId(), status, e);
         }
@@ -1169,7 +1179,7 @@ public class ContainerServiceImpl implements ContainerService {
                         try {
                             launchContainerFromDbObject(wrapupContainer, userI);
                             launchedWrapupContainers = true;
-                        } catch (DockerServerException | NoDockerServerException | ContainerException e) {
+                        } catch (ContainerBackendException | NoContainerServerException | ContainerException e) {
                             log.error("Launching wrapup container {} failed", wrapupContainer, e);
                             //finalize to kill any other wrapup containers, set parent status to failed, and email user
                             ContainerHistory failureHist = ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED,
@@ -1235,8 +1245,8 @@ public class ContainerServiceImpl implements ContainerService {
                         // We should start the parent container.
                         log.info("All setup containers for parent Container {} are finished and not failed. Starting container id {}.", parentDatabaseId, parentContainerId);
                         try {
-                            startContainer(userI, parent);
-                        } catch (NoDockerServerException | ContainerException e) {
+                            start(userI, parent);
+                        } catch (NoContainerServerException | ContainerException e) {
                             log.error("Failed to start parent Container {} with container id {}.", parentDatabaseId, parentContainerId);
                         }
                     }
@@ -1284,8 +1294,8 @@ public class ContainerServiceImpl implements ContainerService {
         for (Container container : toCleanup) {
             if (StringUtils.isNotBlank(container.containerOrServiceId())) {
                 try {
-                    containerControlApi.removeContainerOrService(container);
-                } catch (NoDockerServerException | DockerServerException e) {
+                    containerControlApi.autoCleanup(container);
+                } catch (NoContainerServerException | ContainerBackendException | NotFoundException e) {
                     log.warn("Unable to remove service or container {}", container, e);
                 }
             }
@@ -1327,7 +1337,7 @@ public class ContainerServiceImpl implements ContainerService {
                     log.debug("{} container {} with container id {} has no exit code. Attempting to kill it.", setupOrWrapup, databaseId, containerId);
                     try {
                         kill(specialContainer, userI);
-                    } catch (NoDockerServerException | DockerServerException | NotFoundException e) {
+                    } catch (NoContainerServerException | ContainerBackendException | NotFoundException e) {
                         log.error(String.format("Failed to kill %s container %d.", setupOrWrapup, databaseId), e);
                     }
                 } else {
@@ -1421,27 +1431,28 @@ public class ContainerServiceImpl implements ContainerService {
         // User who launched the container, all data admins, and project owners can terminate
         Container containerOrService = get(containerId);
         verifyKillPermission(project, containerOrService, userI);
-        return kill(containerOrService, userI);
+        try {
+            kill(containerOrService, userI);
+            return containerOrService.containerOrServiceId();
+        } catch (NoContainerServerException e) {
+            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
+                    new NoDockerServerException(e.getMessage(), e.getCause());
+        } catch (ContainerBackendException e) {
+            throw (e instanceof DockerServerException) ? (DockerServerException) e :
+                    new DockerServerException(e.getMessage(), e.getCause());
+        }
     }
 
-    private String kill(final Container container, final UserI userI)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
+    private void kill(final Container container, final UserI userI)
+            throws NoContainerServerException, ContainerBackendException, NotFoundException {
         addContainerHistoryItem(container, ContainerHistory.fromUserAction(ContainerEntity.KILL_STATUS,
                 userI.getLogin()), userI);
-        return killWithoutHistory(container);
+        killWithoutHistory(container);
     }
 
-    private String killWithoutHistory(final Container container)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
-        String containerDockerId;
-        if(container.isSwarmService()){
-            containerDockerId = container.serviceId();
-            containerControlApi.killService(containerDockerId);
-        }else{
-            containerDockerId = container.containerId();
-            containerControlApi.killContainer(containerDockerId);
-        }
-        return containerDockerId;
+    private void killWithoutHistory(final Container container)
+            throws NoContainerServerException, ContainerBackendException, NotFoundException {
+        containerControlApi.kill(container);
     }
 
     @Override
@@ -1504,29 +1515,12 @@ public class ContainerServiceImpl implements ContainerService {
         final String logPath = container.getLogPath(logFileName);
         if (!containerDone) {
             try {
-                DockerClient.LogsParam sincePrm = since != null ? DockerClient.LogsParam.since(since) : null;
-                DockerClient.LogsParam timestampPrm =  DockerClient.LogsParam.timestamps(withTimestamps);
                 // If log path is blank, that means we have not yet saved the logs from docker. Go fetch them now.
-                if (ContainerService.STDOUT_LOG_NAME.contains(logFileName)) {
-                    if (container.isSwarmService()) {
-                        return new ByteArrayInputStream(containerControlApi.getServiceStdoutLog(container.serviceId(),
-                                timestampPrm, sincePrm).getBytes());
-                    } else {
-                        return new ByteArrayInputStream(containerControlApi.getContainerStdoutLog(container.containerId(),
-                                timestampPrm, sincePrm).getBytes());
-                    }
-                } else if (ContainerService.STDERR_LOG_NAME.contains(logFileName)) {
-                    if (container.isSwarmService()) {
-                        return new ByteArrayInputStream(containerControlApi.getServiceStderrLog(container.serviceId(),
-                                timestampPrm, sincePrm).getBytes());
-                    } else {
-                        return new ByteArrayInputStream(containerControlApi.getContainerStderrLog(container.containerId(),
-                                timestampPrm, sincePrm).getBytes());
-                    }
-                } else {
-                    return null;
-                }
-            } catch (NoDockerServerException | DockerServerException e) {
+                final ContainerControlApi.LogType logType = ContainerService.STDOUT_LOG_NAME.contains(logFileName) ?
+                        ContainerControlApi.LogType.STDOUT :
+                        ContainerControlApi.LogType.STDERR;
+                return containerControlApi.getLogStream(container, logType, withTimestamps, since);
+            } catch (NoContainerServerException | ContainerBackendException e) {
                 log.debug("No {} log for {}", logFileName, container.databaseId());
             }
         } else if (!StringUtils.isBlank(logPath)) {

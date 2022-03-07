@@ -164,7 +164,7 @@ dependencies {
 }
 
 task unitTest( type: Test ) {
-    exclude "**/DockerControlApiTest.class", "**/*IntegrationTest.class"
+    exclude "**/*IntegrationTest.class"
 }
 
 // Pulls in the Jenkins BUILD_NUMBER environment variable if available.

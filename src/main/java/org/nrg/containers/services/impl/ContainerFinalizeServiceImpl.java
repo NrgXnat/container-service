@@ -26,9 +26,9 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.model.command.entity.CommandType;
@@ -312,8 +312,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             log.info(prefix + "Getting logs.");
             final List<String> logPaths = Lists.newArrayList();
 
-            final String stdoutLogStr = getStdoutLogStr();
-            final String stderrLogStr = getStderrLogStr();
+            final String stdoutLogStr = getLogStr(ContainerControlApi.LogType.STDOUT);
+            final String stderrLogStr = getLogStr(ContainerControlApi.LogType.STDERR);
 
             if (StringUtils.isNotBlank(stdoutLogStr) || StringUtils.isNotBlank(stderrLogStr)) {
 
@@ -353,20 +353,11 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             return logPaths;
         }
 
-        private String getStderrLogStr() {
+        private String getLogStr(final ContainerControlApi.LogType logType) {
             try {
-                return containerControlApi.getStderrLog(toFinalize);
-            } catch (DockerServerException | NoDockerServerException e) {
+                return containerControlApi.getLog(toFinalize, logType);
+            } catch (ContainerBackendException | NoContainerServerException e) {
                 log.error(prefix + "Could not get stderr log.", e);
-            }
-            return null;
-        }
-
-        private String getStdoutLogStr() {
-            try {
-                return containerControlApi.getStdoutLog(toFinalize);
-            } catch (DockerServerException | NoDockerServerException e) {
-                log.error(prefix + "Could not get stdout log.", e);
             }
             return null;
         }
