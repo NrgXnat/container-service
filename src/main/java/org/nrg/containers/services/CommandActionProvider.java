@@ -194,7 +194,7 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .filter(exp -> exp instanceof XnatImagesessiondataI)
                                         .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
-        } else if(inputType.equalsIgnoreCase("subject-assessor")){
+        } else if(inputType.equalsIgnoreCase("subjectassessor")){
             inputUris.addAll(projectData.getParticipants_participant()
                                         .stream()
                                         .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
@@ -258,7 +258,7 @@ public class CommandActionProvider extends MultiActionProvider {
 
     private Command.CommandWrapperExternalInput getExternalInput(Command.CommandWrapper wrapper) throws Exception{
         final ImmutableList<Command.CommandWrapperExternalInput> externalInputs = wrapper.externalInputs();
-        final List<String> types = Arrays.asList("project","subject","session","assessor","resource","scan","subject-assessor");
+        final List<String> types = Arrays.asList("project","subject","session","assessor","resource","scan","subjectassessor");
         for( Command.CommandWrapperExternalInput externalInput : externalInputs){
             if(types.contains(externalInput.type().toLowerCase())){
                 return externalInput;
