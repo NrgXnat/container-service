@@ -2,10 +2,7 @@ package org.nrg.containers.model.container.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.container.auto.Container;
 
 import javax.persistence.CascadeType;
@@ -18,9 +15,10 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
 import java.io.Serializable;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Entity
 public class ContainerEntityMount implements Serializable {
@@ -50,13 +48,8 @@ public class ContainerEntityMount implements Serializable {
         this.setContainerHostPath(containerMountPojo.containerHostPath());
         this.setContainerPath(containerMountPojo.containerPath());
         this.setInputFiles(
-                Lists.newArrayList(Lists.transform(containerMountPojo.inputFiles(),
-                        new Function<Container.ContainerMountFiles, ContainerMountFilesEntity>() {
-                    @Override
-                    public ContainerMountFilesEntity apply(final Container.ContainerMountFiles input) {
-                        return ContainerMountFilesEntity.fromPojo(input);
-                    }
-                })));
+                containerMountPojo.inputFiles().stream().map(ContainerMountFilesEntity::fromPojo).collect(Collectors.toList())
+        );
         return this;
     }
 
@@ -148,7 +141,7 @@ public class ContainerEntityMount implements Serializable {
     @Deprecated
     public void setInputFiles(final List<ContainerMountFilesEntity> inputFiles) {
         this.inputFiles = inputFiles == null ?
-                Lists.<ContainerMountFilesEntity>newArrayList() :
+                new ArrayList<>() :
                 inputFiles;
         for (final ContainerMountFilesEntity files : this.inputFiles) {
             files.setContainerEntityMount(this);

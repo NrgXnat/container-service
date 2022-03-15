@@ -1,14 +1,5 @@
 package org.nrg.containers;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -19,19 +10,23 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.QueueConsumerTestConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
+import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
-import org.nrg.containers.services.*;
+import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -58,16 +53,23 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.*;
+import static org.mockito.AdditionalMatchers.or;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.argThat;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.*;
-import static org.junit.Assert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
@@ -203,7 +205,7 @@ public class QueueConsumerTest {
 
         when(mockCommandResolutionService.resolve(
                 mockConfiguredCommand,
-                Collections.<String, String>emptyMap(),
+                Collections.emptyMap(),
                 mockUser
         )).thenReturn(RESOLVED_COMMAND);
 
@@ -226,7 +228,7 @@ public class QueueConsumerTest {
     @Test
     @DirtiesContext
     public void testCommandResolutionException() throws Exception {
-        final Map<String, String> input = Maps.newHashMap();
+        final Map<String, String> input = new HashMap<>();
         final String badInputValue = "a bad value";
         input.put(INPUT_NAME, badInputValue);
 
@@ -254,7 +256,7 @@ public class QueueConsumerTest {
 
         final String expectedWorkflowStatus = PersistentWorkflowUtils.FAILED + " (Container launch)";
         containerService.consumeResolveCommandAndLaunchContainer(null, WRAPPER_ID, 0L,
-                null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow.getWorkflowId().toString());
+                null, Collections.emptyMap(), mockUser, fakeWorkflow.getWorkflowId().toString());
         assertThat(fakeWorkflow.getStatus(), is(expectedWorkflowStatus));
         assertThat(fakeWorkflow.getDetails(), is(exceptionMessage));
     }

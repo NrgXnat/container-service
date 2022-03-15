@@ -6,10 +6,14 @@ import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.utils.WorkflowUtils;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 @Slf4j
 public class ContainerUtils {
+    public static final int KIB_TO_BYTES = 1024;
+    public static final int MIB_TO_BYTES = KIB_TO_BYTES * KIB_TO_BYTES;
+    public static final double NANO = 1e9;
 
     public static void updateWorkflowStatus(final String workflowId, final String status, final UserI userI,
                                             @Nullable String details) {
@@ -47,5 +51,8 @@ public class ContainerUtils {
             log.error("Could not update workflow status.", e);
         }
     }
- 
+
+    public static <T> T instanceOrDefault(@Nullable final T instance, @Nonnull final T other) {
+        return instance != null ? instance : other;
+    }
 }

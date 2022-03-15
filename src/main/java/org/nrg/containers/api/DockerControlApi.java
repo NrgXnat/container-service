@@ -1,7 +1,6 @@
 package org.nrg.containers.api;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Function;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -58,7 +57,6 @@ import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
-import org.nrg.containers.model.command.auto.ResolvedCommandMount;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
@@ -88,12 +86,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.mandas.docker.client.DockerClient.EventsParam.since;
 import static org.mandas.docker.client.DockerClient.EventsParam.type;
 import static org.mandas.docker.client.DockerClient.EventsParam.until;
 import static org.mandas.docker.client.messages.swarm.TaskStatus.TASK_STATE_FAILED;
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
+import static org.nrg.containers.utils.ContainerUtils.instanceOrDefault;
 
 @Slf4j
 @Service
@@ -234,17 +234,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Nonnull
     private List<DockerImage> getImages(final Map<String, String> params)
             throws NoDockerServerException, DockerServerException {
-        return Lists.newArrayList(
-                Lists.transform(_getImages(params),
-                        new Function<Image, DockerImage>() {
-                            @Override
-                            @Nullable
-                            public DockerImage apply(final @Nullable Image image) {
-                                return spotifyToNrg(image);
-                            }
-                        }
-                )
-        );
+        return _getImages(params).stream().map(this::spotifyToNrg).collect(Collectors.toList());
     }
 
     private List<org.mandas.docker.client.messages.Image> _getImages(final Map<String, String> params)
@@ -258,8 +248,7 @@ public class DockerControlApi implements ContainerControlApi {
                 );
             }
         }
-        final ListImagesParam[] dockerParams =
-                dockerParamsList.toArray(new ListImagesParam[dockerParamsList.size()]);
+        final ListImagesParam[] dockerParams = dockerParamsList.toArray(new ListImagesParam[0]);
 
         try (final DockerClient dockerClient = getClient()) {
             return dockerClient.listImages(dockerParams);
@@ -288,7 +277,7 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private DockerImage getImageById(final String imageId, final DockerClient client)
-            throws NoDockerServerException, DockerServerException, NotFoundException {
+            throws DockerServerException, NotFoundException {
         final DockerImage image = spotifyToNrg(_getImageById(imageId, client));
         if (image != null) {
             return image;
@@ -297,733 +286,13 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private org.mandas.docker.client.messages.ImageInfo _getImageById(final String imageId, final DockerClient client)
-        throws DockerServerException, NoDockerServerException, NotFoundException {
+            throws DockerServerException, NotFoundException {
         try {
             return client.inspectImage(imageId);
         } catch (ImageNotFoundException e) {
             throw new NotFoundException(e);
         } catch (DockerException | InterruptedException e) {
             throw new DockerServerException(e);
-        }
-    }
-
-
-    /**
-     * Create (but do not start) a container backend object
-     *
-     * @param resolvedCommand A Command with all inputs fully resolved
-     * @param user The XNAT user launching the container
-     * @return A Container representing the backend object
-     */
-    @Override
-    public Container create(ResolvedCommand resolvedCommand, UserI user) throws NoContainerServerException, ContainerBackendException, ContainerException {
-
-        // CS-403 We need to make sure everything exists before we mount it, else
-        // bad stuff can happen.
-        for (final ResolvedCommandMount mount : resolvedCommand.mounts()) {
-            final File mountFile = Paths.get(mount.xnatHostPath()).toFile();
-            if (!mountFile.exists()) {
-                if (!mountFile.getParentFile().exists()){
-                    mountFile.getParentFile().mkdirs();
-                }
-                if (!mountFile.isFile()) {
-                    mountFile.mkdirs();
-                }
-            }
-        }
-
-        final List<String> environmentVariables = Lists.newArrayList();
-        for (final Map.Entry<String, String> env : resolvedCommand.environmentVariables().entrySet()) {
-            environmentVariables.add(StringUtils.join(new String[] {env.getKey(), env.getValue()}, "="));
-        }
-        final String workingDirectory = StringUtils.isNotBlank(resolvedCommand.workingDirectory()) ?
-                resolvedCommand.workingDirectory() :
-                null;
-
-        // let resource constraints default to 0, so they're ignored by Docker
-        final Long reserveMemory = resolvedCommand.reserveMemory() == null ?
-                0L :
-                resolvedCommand.reserveMemory();
-        final Long limitMemory = resolvedCommand.limitMemory() == null ?
-                0L :
-                resolvedCommand.limitMemory();
-        final Double limitCpu = resolvedCommand.limitCpu() == null ?
-                0D :
-                resolvedCommand.limitCpu();
-
-
-        final String runtime = resolvedCommand.runtime() == null ?
-                "" :
-                resolvedCommand.runtime();
-        final String ipcMode = resolvedCommand.ipcMode() == null ?
-                "" :
-                resolvedCommand.ipcMode();
-
-        final List<ResolvedCommandMount> resolvedCommandMounts = resolvedCommand.mounts();
-        final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            final List<Mount> mounts = new ArrayList<>(resolvedCommandMounts.size());
-            for (final ResolvedCommandMount resolvedCommandMount : resolvedCommandMounts) {
-                mounts.add(Mount.builder()
-                        .source(resolvedCommandMount.containerHostPath())
-                        .target(resolvedCommandMount.containerPath())
-                        .readOnly(!resolvedCommandMount.writable())
-                        .build());
-            }
-
-            return Container.serviceFromResolvedCommand(resolvedCommand,
-                    createDockerSwarmService(server,
-                            resolvedCommand.image(),
-                            resolvedCommand.containerName(),
-                            resolvedCommand.commandLine(),
-                            resolvedCommand.overrideEntrypoint(),
-                            mounts,
-                            environmentVariables,
-                            resolvedCommand.ports(),
-                            workingDirectory,
-                            reserveMemory,
-                            limitMemory,
-                            limitCpu,
-                            resolvedCommand.swarmConstraints(),
-                            resolvedCommand.shmSize(),
-                            resolvedCommand.network(),
-                            resolvedCommand.containerLabels(),
-                            resolvedCommand.genericResources(),
-                            resolvedCommand.ulimits()),
-                    user.getLogin()
-            );
-        } else {
-            final List<String> bindMounts = new ArrayList<>(resolvedCommandMounts.size());
-            for (final ResolvedCommandMount mount : resolvedCommandMounts) {
-                bindMounts.add(mount.toBindMountString());
-            }
-
-            return Container.containerFromResolvedCommand(resolvedCommand,
-                    createDockerContainer(server,
-                            resolvedCommand.image(),
-                            resolvedCommand.containerName(),
-                            resolvedCommand.commandLine(),
-                            resolvedCommand.overrideEntrypoint(),
-                            bindMounts,
-                            environmentVariables,
-                            resolvedCommand.ports(),
-                            workingDirectory,
-                            reserveMemory,
-                            limitMemory,
-                            limitCpu,
-                            runtime,
-                            ipcMode,
-                            resolvedCommand.autoRemove(),
-                            resolvedCommand.shmSize(),
-                            resolvedCommand.network(),
-                            resolvedCommand.containerLabels(),
-                            resolvedCommand.gpus(),
-                            resolvedCommand.genericResources(),
-                            resolvedCommand.ulimits()),
-                    user.getLogin()
-            );
-        }
-    }
-
-    /**
-     * Create (but do not start) a container backend object
-     *
-     * @param toCreate A Container object populated with all the information needed to launch
-     * @param user The XNAT user launching the container
-     * @return A Container representing the backend object
-     */
-    @Override
-    public Container create(Container toCreate, UserI user) throws NoContainerServerException, ContainerBackendException, ContainerException {
-
-        final List<Container.ContainerMount> containerMounts = toCreate.mounts() == null ? Collections.emptyList() : toCreate.mounts();
-        for (final Container.ContainerMount mount : containerMounts) {
-            final File mountFile = Paths.get(mount.xnatHostPath()).toFile();
-            if (!mountFile.exists()) {
-                if (mountFile.isDirectory()) {
-                    mountFile.mkdirs();
-                } else {
-                    mountFile.getParentFile().mkdirs();
-                }
-            }
-        }
-
-        final List<String> environmentVariables = Lists.newArrayList();
-        for (final Map.Entry<String, String> env : toCreate.environmentVariables().entrySet()) {
-            environmentVariables.add(StringUtils.join(new String[] {env.getKey(), env.getValue()}, "="));
-        }
-        final String workingDirectory = StringUtils.isNotBlank(toCreate.workingDirectory()) ?
-                toCreate.workingDirectory() :
-                null;
-
-        // let resource constraints default to 0, so they're ignored by Docker
-        final Long reserveMemory = toCreate.reserveMemory() == null ?
-                0L :
-                toCreate.reserveMemory();
-        final Long limitMemory = toCreate.limitMemory() == null ?
-                0L :
-                toCreate.limitMemory();
-        final Double limitCpu = toCreate.limitCpu() == null ?
-                0D :
-                toCreate.limitCpu();
-
-        final String runtime = toCreate.runtime() == null ?
-                "" :
-                toCreate.runtime();
-        final String ipcMode = toCreate.ipcMode() == null ?
-                "" :
-                toCreate.ipcMode();
-
-        final DockerServer server = getServer();
-
-        final Boolean overrideEntrypointMayBeNull = toCreate.overrideEntrypoint();
-        final boolean overrideEntrypoint = overrideEntrypointMayBeNull != null && overrideEntrypointMayBeNull;
-        if (server.swarmMode()) {
-            final List<Mount> mounts = new ArrayList<>(containerMounts.size());
-            for (final Container.ContainerMount containerMount : containerMounts) {
-                mounts.add(Mount.builder()
-                        .source(containerMount.containerHostPath())
-                        .target(containerMount.containerPath())
-                        .readOnly(!containerMount.writable())
-                        .build());
-            }
-
-            final String serviceId = createDockerSwarmService(server,
-                    toCreate.dockerImage(),
-                    toCreate.containerName(),
-                    toCreate.commandLine(),
-                    overrideEntrypoint,
-                    mounts,
-                    environmentVariables,
-                    toCreate.ports(),
-                    workingDirectory,
-                    reserveMemory,
-                    limitMemory,
-                    limitCpu,
-                    toCreate.swarmConstraints(),
-                    toCreate.shmSize(),
-                    toCreate.network(),
-                    toCreate.containerLabels(),
-                    toCreate.genericResources(),
-                    toCreate.ulimits());
-            return toCreate.toBuilder()
-                    .serviceId(serviceId)
-                    .swarm(true)
-                    .userId(user.getLogin())
-                    .build();
-        } else {
-            final List<String> bindMounts = new ArrayList<>(containerMounts.size());
-            for (final Container.ContainerMount mount : containerMounts) {
-                bindMounts.add(mount.toBindMountString());
-            }
-            final String containerId = createDockerContainer(server,
-                    toCreate.dockerImage(),
-                    toCreate.containerName(),
-                    toCreate.commandLine(),
-                    overrideEntrypoint,
-                    bindMounts,
-                    environmentVariables,
-                    toCreate.ports(),
-                    workingDirectory,
-                    reserveMemory,
-                    limitMemory,
-                    limitCpu,
-                    runtime,
-                    ipcMode,
-                    toCreate.autoRemove(),
-                    toCreate.shmSize(),
-                    toCreate.network(),
-                    toCreate.containerLabels(),
-                    toCreate.gpus(),
-                    toCreate.genericResources(),
-                    toCreate.ulimits());
-
-            return toCreate.toBuilder()
-                    .containerId(containerId)
-                    .userId(user.getLogin())
-                    .build();
-        }
-    }
-
-    /**
-     * Launch image on Docker server, either by scheduling a swarm service or directly creating a container
-     *
-     * @param resolvedCommand A ResolvedDockerCommand. All templates are resolved, all mount paths exist.
-     * @param userI The XNAT user launching the container
-     * @return Created Container or Service
-     * @deprecated Use {@link ContainerControlApi#create(ResolvedCommand, UserI)} instead
-     **/
-    @Override
-    @Deprecated
-    public Container createContainerOrSwarmService(final ResolvedCommand resolvedCommand, final UserI userI)
-            throws NoDockerServerException, DockerServerException, ContainerException {
-        try {
-            return create(resolvedCommand, userI);
-        } catch (NoContainerServerException e) {
-            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
-                    new NoDockerServerException(e.getMessage(), e.getCause());
-        } catch (ContainerBackendException e) {
-            throw (e instanceof DockerServerException) ? (DockerServerException) e :
-                    new DockerServerException(e.getMessage(), e.getCause());
-        }
-    }
-
-
-    /**
-     * Launch image on Docker server, either by scheduling a swarm service or directly creating a container
-     *
-     * @param container A Container object, populated with all the information needed to launch.
-     * @param userI The XNAT user launching the container
-     * @return Created Container or Service
-     * @deprecated Use {@link ContainerControlApi#create(Container, UserI)} instead.
-     **/
-    @Override
-    @Deprecated
-    public Container createContainerOrSwarmService(final Container container, final UserI userI) throws NoDockerServerException, ContainerException, DockerServerException {
-        try {
-            return create(container, userI);
-        } catch (NoContainerServerException e) {
-            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
-                    new NoDockerServerException(e.getMessage(), e.getCause());
-        } catch (ContainerBackendException e) {
-            throw (e instanceof DockerServerException) ? (DockerServerException) e :
-                    new DockerServerException(e.getMessage(), e.getCause());
-        }
-    }
-
-    private String createDockerContainer(final DockerServer server,
-                                         final String imageName,
-                                         final String containerName,
-                                         final String runCommand,
-                                         final boolean overrideEntrypoint,
-                                         final List<String> bindMounts,
-                                         final List<String> environmentVariables,
-                                         final Map<String, String> ports,
-                                         final String workingDirectory,
-                                         final Long reserveMemory,
-                                         final Long limitMemory,
-                                         final Double limitCpu,
-                                         final String runtime,
-                                         final String ipcMode,
-                                         final Boolean autoRemove,
-                                         final Long shmSize,
-                                         final String network,
-                                         final Map<String, String> containerLabels,
-                                         final String gpus,
-                                         final Map<String, String> genericResources,
-                                         @Nullable final Map<String, String> ulimits)
-            throws DockerServerException, ContainerException {
-
-        final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
-        final List<String> portStringList = Lists.newArrayList();
-        if (!(ports == null || ports.isEmpty())) {
-            for (final Map.Entry<String, String> portEntry : ports.entrySet()) {
-                final String containerPort = portEntry.getKey();
-                final String hostPort = portEntry.getValue();
-
-                if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
-                    final PortBinding portBinding = PortBinding.of(null, hostPort);
-                    portBindings.put(containerPort + "/tcp", Lists.newArrayList(portBinding));
-
-                    portStringList.add("host" + hostPort + "->" + "container" + containerPort);
-                } else {
-                    // One or both of hostPost and containerPort is blank.
-                    final String message;
-                    if (StringUtils.isBlank(containerPort)) {
-                        message = "Container port is blank.";
-                    } else if (StringUtils.isNotBlank(hostPort)) {
-                        message = "Host port is blank";
-                    } else {
-                        message = "Container and host ports are blank";
-                    }
-                    log.error(message);
-                    throw new ContainerException(message);
-                }
-            }
-        }
-
-        final String user = server.containerUser();
-
-        HostConfig hostConfig =
-                HostConfig.builder()
-                        .autoRemove(autoRemove)
-                        .runtime(runtime)
-                        .ipcMode(ipcMode)
-                        .binds(bindMounts)
-                        .portBindings(portBindings)
-                        .memoryReservation(1024 * 1024 * reserveMemory) // megabytes to bytes
-                        .memory(1024 * 1024 * limitMemory) // megabytes to bytes
-                        .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
-                        .build();
-        if(shmSize != null && shmSize >= 0){
-            hostConfig = hostConfig.toBuilder().shmSize(shmSize).build();
-        }
-        if(!Strings.isNullOrEmpty(network)){
-            hostConfig = hostConfig.toBuilder().networkMode(network).build();
-        }
-
-        if(ulimits != null && !ulimits.isEmpty()){
-            List<HostConfig.Ulimit> hostUlimits = new ArrayList<>();
-            for(Map.Entry<String, String> ulimit : ulimits.entrySet()) {
-                String softLimit = ulimit.getValue().contains(":") ?
-                        ulimit.getValue().split(":")[0] :
-                        ulimit.getValue();
-                String hardLimit = ulimit.getValue().contains(":") ?
-                        (ulimit.getValue().split(":").length > 1 ?
-                                ulimit.getValue().split(":")[1] :
-                                ulimit.getValue()) :
-                        ulimit.getValue();
-
-                hostUlimits.add(HostConfig.Ulimit.builder().name(ulimit.getKey())
-                                                 .soft(Long.parseLong(softLimit))
-                                                 .hard(Long.parseLong(hardLimit))
-                                                 .build());
-            }
-            hostConfig = hostConfig.toBuilder().ulimits(hostUlimits).build();
-        }
-
-        final ContainerConfig containerConfig =
-                ContainerConfig.builder()
-                        .hostConfig(hostConfig)
-                        .image(imageName)
-                        .attachStdout(true)
-                        .attachStderr(true)
-                        .cmd(overrideEntrypoint ?
-                                Lists.newArrayList("/bin/sh", "-c", runCommand) :
-                                ShellSplitter.shellSplit(runCommand))
-                        .entrypoint(overrideEntrypoint ? Collections.singletonList("") : null)
-                        .env(environmentVariables)
-                        .workingDir(workingDirectory)
-                        .user(user)
-                        .labels(containerLabels)
-                        .build();
-
-        if (log.isDebugEnabled()) {
-            final String message = String.format(
-                    "Creating container:" +
-                            "\n\tserver %s %s" +
-                            "\n\timage %s" +
-                            "\n\tcommand \"%s\"" +
-                            "\n\tworking directory \"%s\"" +
-                            "\n\tcontainerUser \"%s\"" +
-                            "\n\tvolumes [%s]" +
-                            "\n\tenvironment variables [%s]" +
-                            "\n\texposed ports: {%s}",
-                    server.name(), server.host(),
-                    imageName,
-                    runCommand,
-                    workingDirectory,
-                    user,
-                    StringUtils.join(bindMounts, ", "),
-                    StringUtils.join(environmentVariables, ", "),
-                    StringUtils.join(portStringList, ", ")
-            );
-            log.debug(message);
-        }
-
-        try (final DockerClient client = getClient(server)) {
-            ContainerCreation container = null;
-            if(Strings.isNullOrEmpty(containerName)){
-                container = client.createContainer(containerConfig);
-            } else {
-                container = client.createContainer(containerConfig, containerName);
-            }
-
-            final List<String> warnings = container.warnings();
-            if (warnings != null) {
-                for (String warning : warnings) {
-                    log.warn(warning);
-                }
-            }
-
-            return container.id();
-        } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
-            throw new DockerServerException("Could not create container from image " + imageName, e);
-        }
-    }
-
-    private String createDockerSwarmService(final DockerServer server,
-                                            final String imageName,
-                                            final String containerName,
-                                            final String runCommand,
-                                            final boolean overrideEntrypoint,
-                                            final List<Mount> mounts,
-                                            final List<String> environmentVariables,
-                                            final Map<String, String> ports,
-                                            final String workingDirectory,
-                                            final Long reserveMemory,
-                                            final Long limitMemory,
-                                            final Double limitCpu,
-                                            @Nullable List<String> swarmConstraints,
-                                            final Long shmSize,
-                                            final String network,
-                                            final Map<String, String> containerLabels,
-                                            final Map<String, String> genericResources,
-                                            @Nullable final Map<String, String> ulimits)
-            throws DockerServerException, ContainerException {
-
-        final List<PortConfig> portConfigs = Lists.newArrayList();
-        final List<String> portStringList = Lists.newArrayList();
-        if (!(ports == null || ports.isEmpty())) {
-            for (final Map.Entry<String, String> portEntry : ports.entrySet()) {
-                final String containerPort = portEntry.getKey();
-                final String hostPort = portEntry.getValue();
-
-                if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
-                    try {
-                        portConfigs.add(PortConfig.builder()
-                                .protocol(PortConfig.PROTOCOL_TCP)
-                                .publishedPort(Integer.parseInt(hostPort))
-                                .targetPort(Integer.parseInt(containerPort))
-                                .build());
-
-                        portStringList.add("host" + hostPort + "->" + "container" + containerPort);
-                    } catch (NumberFormatException e) {
-                        final String message = "Error creating port binding.";
-                        log.error(message, e);
-                        throw new ContainerException(message, e);
-                    }
-                } else {
-                    // One or both of hostPost and containerPort is blank.
-                    final String message;
-                    if (StringUtils.isBlank(containerPort)) {
-                        message = "Container port is blank.";
-                    } else if (StringUtils.isNotBlank(hostPort)) {
-                        message = "Host port is blank";
-                    } else {
-                        message = "Container and host ports are blank";
-                    }
-                    log.error(message);
-                    throw new ContainerException(message);
-                }
-            }
-        }
-
-        //TODO make this configurable from UI
-        //add docker socket for 'docker in docker containers'
-        mounts.add(Mount.builder().source("/var/run/docker.sock").target("/var/run/docker.sock").readOnly(false).build());
-
-        // Temporary work-around to support configurable shm-size in swarm service
-        // https://github.com/moby/moby/issues/26714
-        if (shmSize != null ){
-            Mount tmpfs = Mount.builder()
-                               .type("tmpfs")
-                               .target("/dev/shm")
-                               .tmpfsOptions(TmpfsOptions.builder()
-                                                         .sizeBytes(shmSize)
-                                                         .build())
-                               .build();
-            if (log.isDebugEnabled()) {
-                log.debug("Creating tmpfs mount to support shm-size in Swarm Service: " + tmpfs.toString());
-            }
-            mounts.add(tmpfs);
-        }
-
-        if (ulimits == null || ulimits.isEmpty()){
-            log.debug("Ulimits command configuration ignored in service mode.  Ulimits should be set at the dockerd node level in Swarm mode. ulimits={}", ulimits);
-        }
-
-        // We get the bind mounts strings here not to use for creating the service,
-        // but simply for the debug log
-        // The Mount objects are what we need for the service
-        final List<String> bindMounts = new ArrayList<>(mounts.size());
-        for (final Mount mount : mounts) {
-            final Boolean ro = mount.readOnly();
-            bindMounts.add(mount.source() + ":" + mount.target() + (ro != null && ro ? ":ro" : ""));
-        }
-
-        final String user = server.containerUser();
-
-        final ContainerSpec.Builder containerSpecBuilder = ContainerSpec.builder()
-                .image(imageName)
-                .env(environmentVariables)
-                .dir(workingDirectory)
-                .mounts(mounts)
-                .user(user)
-                .labels(containerLabels);
-        if (overrideEntrypoint) {
-            containerSpecBuilder.command("/bin/sh", "-c", runCommand);
-        } else {
-            containerSpecBuilder.args(ShellSplitter.shellSplit(runCommand));
-        }
-
-        // Build out GPU/generic resources specifications from command definition to swarm/single server spec.
-        List<ResourceSpec> resourceSpecs = null;
-        if (genericResources != null && genericResources.size() > 0){
-            resourceSpecs = new ArrayList<ResourceSpec>();
-            for (String kind : genericResources.keySet()){
-                resourceSpecs.add(
-                        StringUtils.isNumeric(genericResources.get(kind)) ?
-                        ResourceSpec.DiscreteResourceSpec.builder().kind(kind).value(Integer.valueOf(genericResources.get(kind))).build() :
-                        ResourceSpec.NamedResourceSpec.builder().kind(kind).value(genericResources.get(kind)).build()
-                );
-            }
-        }
-
-        // Build named resources and add them to memory reservation requirements
-        ResourceRequirements resourceRequirements = ResourceRequirements.builder()
-                                                                        .reservations(Reservations.builder()
-                                                                                                  .memoryBytes(1024 * 1024 * reserveMemory) // megabytes to bytes
-                                                                                                  .resources(resourceSpecs)
-                                                                                                  .build())
-                                                                        .limits(Resources.builder()
-                                                                                         .memoryBytes(1024 * 1024 * limitMemory) // megabytes to bytes
-                                                                                         .nanoCpus((new Double(1e9 * limitCpu)).longValue()) // number of cpus (double) to nano-cpus (long, = cpu / 10^9)
-                                                                                         .build())
-                                                                        .build();
-
-        TaskSpec.Builder taskSpecBuilder = TaskSpec.builder();
-        taskSpecBuilder
-            .containerSpec(containerSpecBuilder.build())
-            .placement(Placement.create(swarmConstraints))
-            .restartPolicy(RestartPolicy.builder()
-                    .condition(RestartPolicy.RESTART_POLICY_NONE)
-                    .build())
-            .resources(resourceRequirements);
-        if(!Strings.isNullOrEmpty(network)){
-            taskSpecBuilder.networks(NetworkAttachmentConfig.builder()
-                                                               .target(network).build());
-        }
-        final TaskSpec taskSpec = taskSpecBuilder.build();
-
-        ServiceSpec.Builder serviceSpecBuilder = ServiceSpec.builder();
-        serviceSpecBuilder
-            .taskTemplate(taskSpec)
-            .mode(ServiceMode.builder()
-                .replicated(ReplicatedService.builder()
-                                             .replicas(0L) // We initially want zero replicas. We will modify this later when it is time to start.
-                                             .build())
-                .build())
-            .endpointSpec(EndpointSpec.builder()
-                 .ports(portConfigs)
-                 .build())
-            .name(Strings.isNullOrEmpty(containerName) ? UUID.randomUUID().toString() : containerName)
-            .labels(containerLabels);
-
-        ServiceSpec serviceSpec = serviceSpecBuilder.build();
-
-
-        if (log.isDebugEnabled()) {
-            final String message = String.format(
-                    "Creating container:" +
-                            "\n\tserver %s %s" +
-                            "\n\timage %s" +
-                            "\n\tcommand \"%s\"" +
-                            "\n\tworking directory \"%s\"" +
-                            "\n\tcontainerUser \"%s\"" +
-                            "\n\tvolumes [%s]" +
-                            "\n\tenvironment variables [%s]" +
-                            "\n\texposed ports: {%s}",
-                    server.name(), server.host(),
-                    imageName,
-                    runCommand,
-                    workingDirectory,
-                    user,
-                    StringUtils.join(bindMounts, ", "),
-                    StringUtils.join(environmentVariables, ", "),
-                    StringUtils.join(portStringList, ", ")
-            );
-            log.debug(message);
-        }
-
-        try (final DockerClient client = getClient(server)) {
-            final ServiceCreateResponse serviceCreateResponse = client.createService(serviceSpec);
-
-            final List<String> warnings = serviceCreateResponse.warnings();
-            if (warnings != null) {
-                for (String warning : warnings) {
-                    log.warn(warning);
-                }
-            }
-
-            return serviceCreateResponse.id();
-        } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
-            throw new DockerServerException("Could not create service: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Start a backend object that had previously been created.
-     *
-     * If this is a container on a local docker server, there is a dedicated API to start.
-     * If this is a service on docker swarm, we update the replicas from 0 to 1.
-     *
-     * @param toStart A Container that refers to a previously-created backend object
-     */
-    @Override
-    public void start(final Container toStart) throws NoContainerServerException, ContainerBackendException {
-        final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            startDockerSwarmService(toStart, server);
-        } else {
-            startDockerContainer(toStart, server);
-        }
-    }
-
-    /**
-     * Start a backend object that had previously been created.
-     *
-     * If this is a container on a local docker server, there is a dedicated API to start.
-     * If this is a service on docker swarm, we update the replicas from 0 to 1.
-     *
-     * @param containerOrService A Container that refers to a previously-created backend object
-     * @deprecated Use {@link ContainerControlApi#start(Container)} instead.
-     */
-    @Override
-    @Deprecated
-    public void startContainer(final Container containerOrService) throws DockerServerException, NoDockerServerException {
-        try {
-            start(containerOrService);
-        } catch (NoContainerServerException e) {
-            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
-                    new NoDockerServerException(e.getMessage(), e.getCause());
-        } catch (ContainerBackendException e) {
-            throw (e instanceof DockerServerException) ? (DockerServerException) e :
-                    new DockerServerException(e.getMessage(), e.getCause());
-        }
-    }
-
-    private void startDockerSwarmService(final Container toStart, final DockerServer server) throws DockerServerException {
-        final String serviceId = toStart.serviceId();
-        try (final DockerClient client = getClient(server, toStart.dockerImage())) {
-            log.debug("Inspecting service {}", serviceId);
-            final org.mandas.docker.client.messages.swarm.Service service = client.inspectService(serviceId);
-            if (service == null || service.spec() == null) {
-                throw new DockerServerException("Could not start service " + serviceId + ". Could not inspect service spec.");
-            }
-            final ServiceSpec originalSpec = service.spec();
-            final ServiceSpec updatedSpec = ServiceSpec.builder()
-                    .name(originalSpec.name())
-                    .labels(originalSpec.labels())
-                    .updateConfig(originalSpec.updateConfig())
-                    .taskTemplate(originalSpec.taskTemplate())
-                    .endpointSpec(originalSpec.endpointSpec())
-                    .mode(ServiceMode.builder()
-                            .replicated(ReplicatedService.builder()
-                                    .replicas(1L)
-                                    .build())
-                            .build())
-                    .build();
-            final Long version = service.version() != null && service.version().index() != null ?
-                    service.version().index() : null;
-
-            log.info("Setting service replication to 1.");
-            client.updateService(serviceId, version, updatedSpec);
-        } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
-            throw new DockerServerException("Could not start service " + serviceId + ": " + e.getMessage(), e);
-        }
-    }
-
-    private void startDockerContainer(final Container toStart, final DockerServer server) throws DockerServerException {
-        final String containerId = toStart.containerId();
-        try (final DockerClient client = getClient(server)) {
-            log.info("Starting container: id {}", containerId);
-            client.startContainer(containerId);
-        } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
-            throw new DockerServerException("Could not start container " + containerId + ": " + e.getMessage(), e);
         }
     }
 
@@ -1082,6 +351,519 @@ public class DockerControlApi implements ContainerControlApi {
         }
     }
 
+    /**
+     * Create (but do not start) a container backend object
+     *
+     * @param resolvedCommand A Command with all inputs fully resolved
+     * @param user The XNAT user launching the container
+     * @return A Container representing the backend object
+     */
+    @Override
+    public Container create(ResolvedCommand resolvedCommand, UserI user) throws NoContainerServerException, ContainerBackendException, ContainerException {
+        final Container toCreate = Container
+                .builderFromResolvedCommand(resolvedCommand)
+                .userId(user.getLogin())
+                .build();
+        return create(toCreate, user);
+    }
+
+    /**
+     * Create (but do not start) a container backend object
+     *
+     * @param toCreate A Container object populated with all the information needed to launch
+     * @param user The XNAT user launching the container
+     * @return A Container representing the backend object
+     */
+    @Override
+    public Container create(Container toCreate, UserI user) throws NoContainerServerException, ContainerBackendException, ContainerException {
+        createDirectoriesForMounts(toCreate);
+
+        final DockerServer server = getServer();
+
+        final Container.Builder createdBuilder = toCreate
+                .toBuilder()
+                .userId(user.getLogin());
+
+        if (server.swarmMode()) {
+            final String serviceId = createDockerSwarmService(toCreate, server, NumReplicas.ZERO);
+            createdBuilder
+                    .serviceId(serviceId)
+                    .swarm(true);
+        } else {
+            final String containerId = createDockerContainer(toCreate, server);
+            createdBuilder
+                    .containerId(containerId)
+                    .swarm(false);
+        }
+
+        return createdBuilder
+                .userId(user.getLogin())
+                .build();
+
+    }
+
+    /**
+     * Create (but do not start) a container backend object
+     *
+     * @param resolvedCommand A ResolvedDockerCommand. All templates are resolved, all mount paths exist.
+     * @param userI The XNAT user launching the container
+     * @return Created Container or Service
+     * @deprecated Use {@link ContainerControlApi#create(ResolvedCommand, UserI)} instead
+     **/
+    @Override
+    @Deprecated
+    public Container createContainerOrSwarmService(final ResolvedCommand resolvedCommand, final UserI userI)
+            throws NoDockerServerException, DockerServerException, ContainerException {
+        try {
+            return create(resolvedCommand, userI);
+        } catch (NoContainerServerException e) {
+            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
+                    new NoDockerServerException(e.getMessage(), e.getCause());
+        } catch (ContainerBackendException e) {
+            throw (e instanceof DockerServerException) ? (DockerServerException) e :
+                    new DockerServerException(e.getMessage(), e.getCause());
+        }
+    }
+
+    /**
+     * Create (but do not start) a container backend object
+     *
+     * @param container A Container object, populated with all the information needed to launch.
+     * @param userI The XNAT user launching the container
+     * @return Created Container or Service
+     * @deprecated Use {@link ContainerControlApi#create(Container, UserI)} instead.
+     **/
+    @Override
+    @Deprecated
+    public Container createContainerOrSwarmService(final Container container, final UserI userI) throws NoDockerServerException, ContainerException, DockerServerException {
+        try {
+            return create(container, userI);
+        } catch (NoContainerServerException e) {
+            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
+                    new NoDockerServerException(e.getMessage(), e.getCause());
+        } catch (ContainerBackendException e) {
+            throw (e instanceof DockerServerException) ? (DockerServerException) e :
+                    new DockerServerException(e.getMessage(), e.getCause());
+        }
+    }
+
+    private void createDirectoriesForMounts(final Container toCreate) {
+        final List<Container.ContainerMount> containerMounts = toCreate.mounts() == null ? Collections.emptyList() : toCreate.mounts();
+        for (final Container.ContainerMount mount : containerMounts) {
+            final File mountFile = Paths.get(mount.xnatHostPath()).toFile();
+            if (!mountFile.exists()) {
+                if (mountFile.isDirectory()) {
+                    mountFile.mkdirs();
+                } else {
+                    mountFile.getParentFile().mkdirs();
+                }
+            }
+        }
+    }
+
+    /**
+     * Create a container on docker according to the given Container object
+     *
+     * @param toCreate A Container defining all the attributes of the container to create
+     * @param server DockerServer preferences
+     * @return Docker container ID
+     */
+    private String createDockerContainer(final Container toCreate, final DockerServer server)
+            throws DockerServerException, ContainerException {
+
+        final Map<String, List<PortBinding>> portBindings = Maps.newHashMap();
+        for (final Map.Entry<String, String> portEntry : toCreate.ports().entrySet()) {
+            final String containerPort = portEntry.getKey();
+            final String hostPort = portEntry.getValue();
+
+            if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
+                final PortBinding portBinding = PortBinding.of(null, hostPort);
+                portBindings.put(containerPort + "/tcp", Lists.newArrayList(portBinding));
+
+            } else {
+                // One or both of hostPost and containerPort is blank.
+                final String message;
+                if (StringUtils.isBlank(containerPort)) {
+                    message = "Container port is blank.";
+                } else if (StringUtils.isNotBlank(hostPort)) {
+                    message = "Host port is blank";
+                } else {
+                    message = "Container and host ports are blank";
+                }
+                log.error(message);
+                throw new ContainerException(message);
+            }
+        }
+
+        final HostConfig.Builder hostConfigBuilder =
+                HostConfig.builder()
+                        .autoRemove(toCreate.autoRemove())
+                        .runtime(instanceOrDefault(toCreate.runtime(), ""))
+                        .ipcMode(instanceOrDefault(toCreate.ipcMode(), ""))
+                        .binds(toCreate.bindMountStrings())
+                        .portBindings(portBindings)
+                        .memoryReservation(toCreate.reserveMemoryBytes())
+                        .memory(toCreate.limitMemoryBytes())
+                        .nanoCpus(toCreate.nanoCpus());
+
+        if (toCreate.shmSize() != null && toCreate.shmSize() >= 0) {
+            hostConfigBuilder.shmSize(toCreate.shmSize());
+        }
+        if (!Strings.isNullOrEmpty(toCreate.network())) {
+            hostConfigBuilder.networkMode(toCreate.network());
+        }
+
+        final Map<String, String> ulimits = toCreate.ulimits();
+        if (ulimits != null && !ulimits.isEmpty()){
+            List<HostConfig.Ulimit> hostUlimits = new ArrayList<>(ulimits.size());
+            for(Map.Entry<String, String> ulimit : ulimits.entrySet()) {
+                final String[] split = ulimit.getValue().split(":");
+                final Long softLimit = Long.parseLong(split[0]);
+                final Long hardLimit = Long.parseLong(split.length > 1 ? split[1] : split[0]);
+
+                hostUlimits.add(HostConfig.Ulimit.builder()
+                        .name(ulimit.getKey())
+                        .soft(softLimit)
+                        .hard(hardLimit)
+                        .build()
+                );
+            }
+            hostConfigBuilder.ulimits(hostUlimits);
+        }
+        final HostConfig hostConfig = hostConfigBuilder.build();
+
+        final boolean overrideEntrypoint = toCreate.overrideEntrypointNonnull();
+        final ContainerConfig containerConfig =
+                ContainerConfig.builder()
+                        .hostConfig(hostConfig)
+                        .image(toCreate.dockerImage())
+                        .attachStdout(true)
+                        .attachStderr(true)
+                        .cmd(overrideEntrypoint ?
+                                Lists.newArrayList("/bin/sh", "-c", toCreate.commandLine()) :
+                                ShellSplitter.shellSplit(toCreate.commandLine()))
+                        .entrypoint(overrideEntrypoint ? Collections.singletonList("") : null)
+                        .env(toCreate.environmentVariableStrings())
+                        .workingDir(toCreate.workingDirectory())
+                        .user(server.containerUser())
+                        .labels(toCreate.containerLabels())
+                        .build();
+
+        if (log.isDebugEnabled()) {
+            final String message = String.format(
+                    "Creating container:" +
+                            "\n\tserver %s %s" +
+                            "\n\timage %s" +
+                            "\n\tcommand \"%s\"" +
+                            "\n\tworking directory \"%s\"" +
+                            "\n\tcontainerUser \"%s\"" +
+                            "\n\tvolumes [%s]" +
+                            "\n\tenvironment variables [%s]" +
+                            "\n\texposed ports: {%s}",
+                    server.name(), server.host(),
+                    toCreate.dockerImage(),
+                    toCreate.commandLine(),
+                    toCreate.workingDirectory(),
+                    server.containerUser(),
+                    StringUtils.join(toCreate.bindMountStrings(), ", "),
+                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
+                    StringUtils.join(toCreate.portStrings(), ", ")
+            );
+            log.debug(message);
+        }
+
+        try (final DockerClient client = getClient(server, toCreate.dockerImage())) {
+            final ContainerCreation container;
+            if(Strings.isNullOrEmpty(toCreate.containerName())){
+                container = client.createContainer(containerConfig);
+            } else {
+                container = client.createContainer(containerConfig, toCreate.containerName());
+            }
+
+            final List<String> warnings = container.warnings();
+            if (warnings != null) {
+                for (String warning : warnings) {
+                    log.warn(warning);
+                }
+            }
+
+            return container.id();
+        } catch (DockerException | InterruptedException e) {
+            log.error(e.getMessage());
+            throw new DockerServerException("Could not create container from image " + toCreate.dockerImage(), e);
+        }
+    }
+
+    /**
+     * Create a service on docker swarm according to the given Container object
+     *
+     * @param toCreate A Container defining all the attributes of the service to create
+     * @param server DockerServer preferences
+     * @param numReplicas The desired number of replicas of this service.
+     *                 Use 0 to "create" a service with no replicas,
+     *                 then later "start" it by updating replicas to 1.
+     *                 Use 1 to "create" and "start" at the same time.
+     * @return Docker swarm service ID
+     */
+    private String createDockerSwarmService(final Container toCreate, final DockerServer server, final NumReplicas numReplicas)
+            throws DockerServerException, ContainerException {
+        log.debug("Creating a swarm service with {} replicas.", numReplicas.value);
+
+        final Map<String, String> ports = toCreate.ports() == null ? Collections.emptyMap() : toCreate.ports();
+        final List<PortConfig> portConfigs = new ArrayList<>(ports.size());
+        for (final Map.Entry<String, String> port : ports.entrySet()) {
+            final String containerPort = port.getKey();
+            final String hostPort = port.getValue();
+
+            if (StringUtils.isNotBlank(containerPort) && StringUtils.isNotBlank(hostPort)) {
+                try {
+                    portConfigs.add(PortConfig.builder()
+                            .protocol(PortConfig.PROTOCOL_TCP)
+                            .publishedPort(Integer.parseInt(hostPort))
+                            .targetPort(Integer.parseInt(containerPort))
+                            .build());
+                } catch (NumberFormatException e) {
+                    final String message = "Error creating port binding.";
+                    log.error(message, e);
+                    throw new ContainerException(message, e);
+                }
+            } else {
+                // One or both of hostPost and containerPort is blank.
+                final String message;
+                if (StringUtils.isBlank(containerPort)) {
+                    message = "Container port is blank.";
+                } else if (StringUtils.isNotBlank(hostPort)) {
+                    message = "Host port is blank";
+                } else {
+                    message = "Container and host ports are blank";
+                }
+                log.error(message);
+                throw new ContainerException(message);
+            }
+        }
+
+        final List<Mount> mounts = toCreate.mounts().stream().map(containerMount ->
+            Mount.builder()
+                    .source(containerMount.containerHostPath())
+                    .target(containerMount.containerPath())
+                    .readOnly(!containerMount.writable())
+                    .build()
+        ).collect(Collectors.toList());
+
+        //TODO make this configurable from UI
+        //add docker socket for 'docker in docker containers'
+        mounts.add(Mount.builder().source("/var/run/docker.sock").target("/var/run/docker.sock").readOnly(false).build());
+
+        // Temporary work-around to support configurable shm-size in swarm service
+        // https://github.com/moby/moby/issues/26714
+        if (toCreate.shmSize() != null ){
+            final Mount tmpfs = Mount
+                    .builder()
+                    .type("tmpfs")
+                    .target("/dev/shm")
+                    .tmpfsOptions(TmpfsOptions.builder().sizeBytes(toCreate.shmSize()).build())
+                    .build();
+
+            log.debug("Creating tmpfs mount to support shm-size in Swarm Service: {}", tmpfs);
+
+            mounts.add(tmpfs);
+        }
+
+        final Map<String, String> ulimits = toCreate.ulimits();
+        if (!(ulimits == null || ulimits.isEmpty())) {
+            log.debug("Ulimits command configuration ignored in service mode. Ulimits should be set at the dockerd node level in Swarm mode. ulimits={}", ulimits);
+        }
+
+        final String workingDirectory = StringUtils.isNotBlank(toCreate.workingDirectory()) ?
+                toCreate.workingDirectory() :
+                null;
+
+        final ContainerSpec.Builder containerSpecBuilder = ContainerSpec.builder()
+                .image(toCreate.dockerImage())
+                .env(toCreate.environmentVariableStrings())
+                .dir(workingDirectory)
+                .mounts(mounts)
+                .user(server.containerUser())
+                .labels(toCreate.containerLabels());
+        if (toCreate.overrideEntrypointNonnull()) {
+            containerSpecBuilder.command("/bin/sh", "-c", toCreate.commandLine());
+        } else {
+            containerSpecBuilder.args(ShellSplitter.shellSplit(toCreate.commandLine()));
+        }
+        final ContainerSpec containerSpec = containerSpecBuilder.build();
+
+        // Build out GPU/generic resources specifications from command definition to swarm/single server spec.
+        final List<ResourceSpec> resourceSpecs = instanceOrDefault(toCreate.genericResources(), Collections.<String, String>emptyMap())
+                .entrySet()
+                .stream()
+                .map(entry -> StringUtils.isNumeric(entry.getValue()) ?
+                        ResourceSpec.DiscreteResourceSpec.builder().kind(entry.getKey()).value(Integer.parseInt(entry.getValue())).build() :
+                        ResourceSpec.NamedResourceSpec.builder().kind(entry.getKey()).value(entry.getValue()).build())
+                .collect(Collectors.toList());
+
+        // Build named resources and add them to memory reservation requirements
+        // let resource constraints default to 0, so they're ignored by Docker
+        final ResourceRequirements resourceRequirements =
+                ResourceRequirements.builder()
+                        .reservations(Reservations.builder()
+                                .memoryBytes(toCreate.reserveMemoryBytes()) // megabytes to bytes
+                                .resources(resourceSpecs)
+                                .build())
+                        .limits(Resources.builder()
+                                .memoryBytes(toCreate.limitMemoryBytes()) // megabytes to bytes
+                                .nanoCpus(toCreate.nanoCpus())
+                                .build())
+                        .build();
+
+        final TaskSpec.Builder taskSpecBuilder = TaskSpec
+                .builder()
+                .containerSpec(containerSpec)
+                .placement(Placement.create(toCreate.swarmConstraints()))
+                .restartPolicy(RestartPolicy.builder()
+                        .condition(RestartPolicy.RESTART_POLICY_NONE)
+                        .build())
+                .resources(resourceRequirements);
+        if (!Strings.isNullOrEmpty(toCreate.network())) {
+            taskSpecBuilder.networks(NetworkAttachmentConfig.builder().target(toCreate.network()).build());
+        }
+        final TaskSpec taskSpec = taskSpecBuilder.build();
+
+        final ServiceSpec serviceSpec = ServiceSpec.builder()
+                .taskTemplate(taskSpec)
+                .mode(ServiceMode.builder()
+                        .replicated(ReplicatedService.builder()
+                                .replicas(numReplicas.value)
+                                .build())
+                        .build())
+                .endpointSpec(EndpointSpec.builder().ports(portConfigs).build())
+                .name(Strings.isNullOrEmpty(toCreate.containerName()) ? UUID.randomUUID().toString() : toCreate.containerName())
+                .labels(toCreate.containerLabels())
+                .build();
+
+        if (log.isDebugEnabled()) {
+            final String message = String.format(
+                    "Creating container:" +
+                            "\n\tserver %s %s" +
+                            "\n\timage %s" +
+                            "\n\tcommand \"%s\"" +
+                            "\n\tworking directory \"%s\"" +
+                            "\n\tcontainerUser \"%s\"" +
+                            "\n\tvolumes [%s]" +
+                            "\n\tenvironment variables [%s]" +
+                            "\n\texposed ports: {%s}",
+                    server.name(), server.host(),
+                    toCreate.dockerImage(),
+                    toCreate.commandLine(),
+                    toCreate.workingDirectory(),
+                    server.containerUser(),
+                    StringUtils.join(toCreate.bindMountStrings(), ", "),
+                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
+                    StringUtils.join(toCreate.portStrings(), ", ")
+            );
+            log.debug(message);
+        }
+
+        try (final DockerClient client = getClient(server, toCreate.dockerImage())) {
+            final ServiceCreateResponse serviceCreateResponse = client.createService(serviceSpec);
+
+            final List<String> warnings = serviceCreateResponse.warnings();
+            if (warnings != null) {
+                for (String warning : warnings) {
+                    log.warn(warning);
+                }
+            }
+
+            return serviceCreateResponse.id();
+        } catch (DockerException | InterruptedException e) {
+            log.error(e.getMessage());
+            throw new DockerServerException("Could not create service: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Start a backend object that had previously been created.
+     *
+     * If this is a container on a local docker server, there is a dedicated API to start.
+     * If this is a service on docker swarm, we update the replicas from 0 to 1.
+     *
+     * @param toStart A Container that refers to a previously-created backend object
+     */
+    @Override
+    public void start(final Container toStart) throws NoContainerServerException, ContainerBackendException {
+        final DockerServer server = getServer();
+        if (server.swarmMode()) {
+            setSwarmServiceReplicasToOne(toStart.serviceId(), toStart.dockerImage(), server);
+        } else {
+            startDockerContainer(toStart.containerId(), server);
+        }
+    }
+
+    /**
+     * Start a backend object that had previously been created.
+     *
+     * If this is a container on a local docker server, there is a dedicated API to start.
+     * If this is a service on docker swarm, we update the replicas from 0 to 1.
+     *
+     * @param containerOrService A Container that refers to a previously-created backend object
+     * @deprecated Use {@link ContainerControlApi#start(Container)} instead.
+     */
+    @Override
+    @Deprecated
+    public void startContainer(final Container containerOrService) throws DockerServerException, NoDockerServerException {
+        try {
+            start(containerOrService);
+        } catch (NoContainerServerException e) {
+            throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e :
+                    new NoDockerServerException(e.getMessage(), e.getCause());
+        } catch (ContainerBackendException e) {
+            throw (e instanceof DockerServerException) ? (DockerServerException) e :
+                    new DockerServerException(e.getMessage(), e.getCause());
+        }
+    }
+
+    private void setSwarmServiceReplicasToOne(final String serviceId, final String image, final DockerServer server)
+            throws DockerServerException {
+        try (final DockerClient client = getClient(server, image)) {
+
+            log.debug("Inspecting service {}", serviceId);
+            final org.mandas.docker.client.messages.swarm.Service service = client.inspectService(serviceId);
+            if (service == null || service.spec() == null) {
+                throw new DockerServerException("Could not start service " + serviceId + ". Could not inspect service spec.");
+            }
+            final ServiceSpec originalSpec = service.spec();
+            final ServiceSpec updatedSpec = ServiceSpec.builder()
+                    .name(originalSpec.name())
+                    .labels(originalSpec.labels())
+                    .updateConfig(originalSpec.updateConfig())
+                    .taskTemplate(originalSpec.taskTemplate())
+                    .endpointSpec(originalSpec.endpointSpec())
+                    .mode(ServiceMode.builder()
+                            .replicated(ReplicatedService.builder()
+                                    .replicas(1L)
+                                    .build())
+                            .build())
+                    .build();
+            final Long version = service.version() != null && service.version().index() != null ?
+                    service.version().index() : null;
+
+            log.info("Setting service replication to 1 for service {}", serviceId);
+            client.updateService(serviceId, version, updatedSpec);
+        } catch (DockerException | InterruptedException e) {
+            log.error(e.getMessage());
+            throw new DockerServerException("Could not start service " + serviceId + ": " + e.getMessage(), e);
+        }
+    }
+
+    private void startDockerContainer(final String containerId, final DockerServer server) throws DockerServerException {
+        try (final DockerClient client = getClient(server)) {
+            log.info("Starting container {}", containerId);
+            client.startContainer(containerId);
+        } catch (DockerException | InterruptedException e) {
+            log.error(e.getMessage());
+            throw new DockerServerException("Could not start container " + containerId + ": " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public List<Command> parseLabels(final String imageName)
             throws DockerServerException, NoDockerServerException, NotFoundException {
@@ -1118,7 +900,7 @@ public class DockerControlApi implements ContainerControlApi {
             }
         }
         final DockerClient.ListContainersParam[] dockerParams =
-                dockerParamsList.toArray(new DockerClient.ListContainersParam[dockerParamsList.size()]);
+                dockerParamsList.toArray(new DockerClient.ListContainersParam[0]);
 
         try (final DockerClient dockerClient = getClient()) {
             containerList = dockerClient.listContainers(dockerParams);
@@ -1126,15 +908,7 @@ public class DockerControlApi implements ContainerControlApi {
             log.error(e.getMessage());
             throw new DockerServerException(e);
         }
-        return Lists.newArrayList(
-                Lists.transform(containerList, new Function<org.mandas.docker.client.messages.Container, ContainerMessage>() {
-                    @Override
-                    @Nullable
-                    public ContainerMessage apply(final @Nullable org.mandas.docker.client.messages.Container container) {
-                        return spotifyToNrg(container);
-                    }
-                })
-        );
+        return containerList.stream().map(this::spotifyToNrg).collect(Collectors.toList());
     }
 
     /**
@@ -1950,4 +1724,13 @@ public class DockerControlApi implements ContainerControlApi {
         );
     }
 
+    public enum NumReplicas {
+        ZERO(0L),
+        ONE(1L);
+
+        public final long value;
+        NumReplicas(long value) {
+            this.value = value;
+        }
+    }
 }

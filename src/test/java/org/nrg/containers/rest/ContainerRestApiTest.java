@@ -2,8 +2,6 @@ package org.nrg.containers.rest;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
@@ -38,9 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -171,15 +169,8 @@ public class ContainerRestApiTest {
             final List<Container> containers = mapper.readValue(response, new TypeReference<List<Container>>() {});
             assertThat(containers, hasSize(4)); // It is enough to know we got them all
 
-            final List<String> states = Lists.transform(containers, new Function<Container, String>() {
-                        @Override
-                        public String apply(final Container input) {
-                            return input.status();
-                        }
-                    }
-            );
-            final Set<String> uniqueStates = new HashSet<>(states);
-            assertThat(uniqueStates, Matchers.<String>hasSize(2));
+            final Set<String> uniqueStates = containers.stream().map(Container::status).collect(Collectors.toSet());
+            assertThat(uniqueStates, Matchers.hasSize(2));
             assertThat(uniqueStates, containsInAnyOrder("Running", "Running-in-project"));
         }
 
@@ -200,26 +191,12 @@ public class ContainerRestApiTest {
             final List<Container> containers = mapper.readValue(response, new TypeReference<List<Container>>() {});
             assertThat(containers, hasSize(4));
 
-            final List<String> projects = Lists.transform(containers, new Function<Container, String>() {
-                        @Override
-                        public String apply(final Container input) {
-                            return input.project();
-                        }
-                    }
-            );
-            final Set<String> uniqueProjects = new HashSet<>(projects);
-            assertThat(uniqueProjects, Matchers.<String>hasSize(1));
+            final Set<String> uniqueProjects = containers.stream().map(Container::project).collect(Collectors.toSet());
+            assertThat(uniqueProjects, Matchers.hasSize(1));
             assertThat(uniqueProjects, contains("project"));
 
-            final List<String> states = Lists.transform(containers, new Function<Container, String>() {
-                        @Override
-                        public String apply(final Container input) {
-                            return input.status();
-                        }
-                    }
-            );
-            final Set<String> uniqueStates = new HashSet<>(states);
-            assertThat(uniqueStates, Matchers.<String>hasSize(2));
+            final Set<String> uniqueStates = containers.stream().map(Container::status).collect(Collectors.toSet());
+            assertThat(uniqueStates, Matchers.hasSize(2));
             assertThat(uniqueStates, containsInAnyOrder("Failed", "Running-in-project"));
         }
 
@@ -241,26 +218,12 @@ public class ContainerRestApiTest {
             final List<Container> containers = mapper.readValue(response, new TypeReference<List<Container>>() {});
             assertThat(containers, hasSize(2));
 
-            final List<String> projects = Lists.transform(containers, new Function<Container, String>() {
-                        @Override
-                        public String apply(final Container input) {
-                            return input.project();
-                        }
-                    }
-            );
-            final Set<String> uniqueProjects = new HashSet<>(projects);
-            assertThat(uniqueProjects, Matchers.<String>hasSize(1));
+            final Set<String> uniqueProjects = containers.stream().map(Container::project).collect(Collectors.toSet());
+            assertThat(uniqueProjects, Matchers.hasSize(1));
             assertThat(uniqueProjects, contains("project"));
 
-            final List<String> states = Lists.transform(containers, new Function<Container, String>() {
-                        @Override
-                        public String apply(final Container input) {
-                            return input.status();
-                        }
-                    }
-            );
-            final Set<String> uniqueStates = new HashSet<>(states);
-            assertThat(uniqueStates, Matchers.<String>hasSize(1));
+            final Set<String> uniqueStates = containers.stream().map(Container::status).collect(Collectors.toSet());
+            assertThat(uniqueStates, Matchers.hasSize(1));
             assertThat(uniqueStates, contains("Running-in-project"));
         }
     }

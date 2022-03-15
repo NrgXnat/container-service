@@ -27,10 +27,27 @@ Not yet released
     * Deprecated all `ContainerControlApi.throw*Event*` methods. These were only used in `DockerStatusUpdater`, so the implementations
       were copied there.
     * Renamed `DockerStatusUpdater` -> `ContainerStatusUpdater` (no deprecation, just moved)
+* [CS-692][]: Refactor container and service creation
+    * Consolidate `create` implementations for `ResolvedCommand` and `Container`. Now `create(ResolvedCommand, UserI)` turns the `ResolvedCommand` into a `Container` and calls `create(Container, UserI)`.
+    * private `createFoo` methods now take `Container` inputs and pull what they need from them rather than taking a ton of individual properties
+    * General cleanup of `createFoo` methods
+    * Made more explicit private method names to explain what was going on.
+    * Moved a lot of logic to standardize container property values from `create` methods into `Container` methods
+* [CS-692][]: Various other cleanup and mild refactors
+    * Use `remove` instead of `kill` when restarting service
+    * Move some of container history entity logic from repository into service
+    * Add `Container.statusIsTerminal` method
+    * Rename `checkIfSpecialContainersFailed`->`runActionIfNoSpecialContainersFailed`
+    * Remove setting explict status on service restart. that will be done when the history entry is added.
+    * Remove weird `ServiceTask` -> `ContainerHistory` creation
+    * Remove google `Lists` and `Maps` constructors where I saw them
+    * Replace google `Function` code with streams and lambdas where appropriate
+    * Lots of logging changes
 
 [CS-681]: https://issues.xnat.org/browse/CS-681
 [CS-687]: https://issues.xnat.org/browse/CS-687
 [CS-689]: https://issues.xnat.org/browse/CS-689
+[CS-692]: https://issues.xnat.org/browse/CS-692
 
 ## 3.1.1
 

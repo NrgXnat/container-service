@@ -8,11 +8,6 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
-import org.mandas.docker.client.messages.swarm.Node;
-import org.mandas.docker.client.messages.swarm.NodeInfo;
-import org.mandas.docker.client.messages.swarm.NodeSpec;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -22,6 +17,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.messages.swarm.Node;
+import org.mandas.docker.client.messages.swarm.NodeInfo;
+import org.mandas.docker.client.messages.swarm.NodeSpec;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -68,13 +67,22 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.any;
@@ -84,7 +92,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
 import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
@@ -288,9 +298,9 @@ public class SwarmConstraintsIntegrationTest {
 
     private void setClient() throws Exception {
         CLIENT = controlApi.getClient();
-        TestingUtils.pullBusyBox(CLIENT);
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        TestingUtils.pullBusyBox(CLIENT);
     }
 
     @Test
@@ -303,7 +313,7 @@ public class SwarmConstraintsIntegrationTest {
         setClient();
 
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
@@ -316,12 +326,12 @@ public class SwarmConstraintsIntegrationTest {
         DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
                 swarmMode, null, null, null,
                 false, null, true,
-                Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList(), null, true);
+                Collections.emptyList(), null, true);
         dockerServerService.setServer(server);
         setClient();
 
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
@@ -356,9 +366,14 @@ public class SwarmConstraintsIntegrationTest {
         TestingUtils.commitTransaction();
         Container service2 = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service2.serviceId());
-        Thread.sleep(11000L); // > 10s since that seems to be enough for a service to get running
+        await().until(() -> {
+            try {
+                return Objects.equals(containerService.get(service2.serviceId()).status(), ContainerServiceImpl.CREATED);
+            } catch (Exception e) {
+                return false;
+            }
+        });
         assertThat(TestingUtils.serviceIsRunning(CLIENT, service2, true).call(), is(false));
-        assertThat(containerService.get(service2.serviceId()).status(), is(ContainerServiceImpl.CREATED));
     }
 
     @Test

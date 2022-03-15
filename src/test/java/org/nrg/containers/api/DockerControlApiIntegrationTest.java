@@ -1,13 +1,6 @@
 package org.nrg.containers.api;
 
 import com.google.common.collect.Lists;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.DockerException;
-import org.mandas.docker.client.messages.ContainerConfig;
-import org.mandas.docker.client.messages.ContainerCreation;
-import org.mandas.docker.client.messages.HostConfig;
-import org.mandas.docker.client.messages.Info;
-import org.mandas.docker.client.messages.Version;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
@@ -17,6 +10,13 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.DockerException;
+import org.mandas.docker.client.messages.ContainerConfig;
+import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.HostConfig;
+import org.mandas.docker.client.messages.Info;
+import org.mandas.docker.client.messages.Version;
 import org.nrg.containers.config.DockerControlApiTestConfig;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.DockerServerException;
@@ -25,6 +25,7 @@ import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.TestingUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
@@ -33,10 +34,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import static java.lang.System.getenv;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.isIn;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertNotNull;
@@ -102,25 +101,17 @@ public class DockerControlApiIntegrationTest {
         when(mockDockerServerService.getServer()).thenReturn(mockDockerServer);
 
         CLIENT = controlApi.getClient();
-    }
+        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
-    private boolean canConnectToDocker() {
-        try {
-            return CLIENT.ping().equals("OK");
-        } catch (InterruptedException | DockerException e) {
-            log.warn("Could not connect to docker.", e);
-        }
-        return false;
     }
 
     @Test
     public void testPingServer() throws Exception {
-        assertThat(canConnectToDocker(), is(true));
+        assertThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
     }
 
     @Test
     public void testGetAllImages() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
 
         CLIENT.pull(BUSYBOX_LATEST);
         CLIENT.pull(ALPINE_LATEST);
@@ -141,52 +132,18 @@ public class DockerControlApiIntegrationTest {
         return tags;
     }
 
-//    @Test
-//    public void testLaunchImage() throws Exception {
-//        final List<String> cmd = Lists.newArrayList("ls", "/data/pyscript.py");
-//        final List<String> vol =
-//            Lists.newArrayList("/Users/Kelsey/Projects/XNAT/1.7/pydicomDocker/data:/data");
-//
-//        client.pull(KELSEYM_PYDICOM);
-//        String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
-//        assertThat(containerId, not(isEmptyOrNullString()));
-//    }
-
-//    @Test
-//    public void testLaunchPythonScript() throws Exception {
-//       // python pyscript.py -h <hostname> -u <user> -p <password> -s <session_id>
-//        final List<String> cmd = Lists.newArrayList(
-//            "python", "/data/pyscript.py",
-//            "-h", "https://central.xnat.org",
-//            "-u", "admin",
-//            "-p", "admin",
-//            "-s", "CENTRAL_E07096"
-//        );
-//        final List<String> vol =
-//            Lists.newArrayList("/Users/Kelsey/Projects/XNAT/1.7/pydicomDocker/data:/data");
-//
-//        client.pull(KELSEYM_PYDICOM);
-//        String containerId = controlApi.launchImage(KELSEYM_PYDICOM, cmd, vol);
-//    }
-
     @Test
     public void testPingHub() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
         assertThat(controlApi.pingHub(DOCKER_HUB), is("OK"));
     }
 
     @Test
     public void testPullImage() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
         controlApi.pullImage(BUSYBOX_LATEST, DOCKER_HUB);
     }
 
     @Test
     public void testPullPrivateImage() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
         final String privateImageName = "xnattest/private";
         exception.expect(imageNotFoundException(privateImageName));
         controlApi.pullImage(privateImageName, DOCKER_HUB);
@@ -198,8 +155,6 @@ public class DockerControlApiIntegrationTest {
 
     @Test
     public void testDeleteImage() throws DockerException, InterruptedException, NoDockerServerException, DockerServerException {
-        assumeThat(canConnectToDocker(), is(true));
-
         CLIENT.pull(BUSYBOX_NAME);
         int beforeImageCount = CLIENT.listImages().size();
         controlApi.deleteImageById(BUSYBOX_ID, true);
@@ -213,8 +168,6 @@ public class DockerControlApiIntegrationTest {
 
     @Test(timeout = 10000)
     public void testEventPolling() throws Exception {
-        assumeThat(getenv("CIRCLECI"), isEmptyOrNullString());  // This test is flaky on circle, so skip it
-        assumeThat(canConnectToDocker(), is(true));
         log.debug("Starting event polling test.");
 
         if (log.isDebugEnabled()) {
@@ -235,7 +188,7 @@ public class DockerControlApiIntegrationTest {
             log.debug("Synchronizing host and vm clocks.");
             final ContainerConfig containerConfig = ContainerConfig.builder()
                     .image("alpine")
-                    .cmd(new String[]{"hwclock", "-s"})
+                    .cmd("hwclock", "-s")
                     .hostConfig(HostConfig.builder()
                             .privileged(true)
                             .autoRemove(true)

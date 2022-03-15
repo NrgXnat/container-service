@@ -21,6 +21,7 @@ import org.mandas.docker.client.messages.swarm.ServiceMode;
 import org.mandas.docker.client.messages.swarm.ServiceSpec;
 import org.mandas.docker.client.messages.swarm.TaskSpec;
 import org.mandas.docker.client.messages.swarm.Version;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
@@ -35,23 +36,28 @@ import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
+import org.powermock.reflect.Whitebox;
 
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assume.assumeThat;
+import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyVararg;
-import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.support.membermodification.MemberMatcher.method;
 
 @Slf4j
@@ -111,7 +117,7 @@ public class DockerControlApiTest {
                 .withArguments(dockerServer);
         PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
                 DockerControlApi.class, "getClient", DockerServer.class, String.class))
-                .withArguments(eq(dockerServer), argThat(isEmptyOrNullString()));
+                .withArguments(eq(dockerServer), or(any(String.class), isNull(String.class)));
 
         // Mock simple return values
         when(dockerServer.swarmMode()).thenReturn(swarmMode);
@@ -405,7 +411,7 @@ public class DockerControlApiTest {
     public void testCreate_container() throws Exception {
         // Make test objects
         final ThreadLocalRandom random = ThreadLocalRandom.current();
-        final Container toLaunch = Container.builder()
+        final Container.Builder toLaunchAndExpectedContainerBuilder = Container.builder()
                 .databaseId(random.nextInt())
                 .commandId(random.nextInt())
                 .wrapperId(random.nextInt())
@@ -415,12 +421,11 @@ public class DockerControlApiTest {
                 .swarm(swarmMode)
                 .addEnvironmentVariable("key", "value")
                 .mounts(Collections.emptyList())
-                .containerLabels(Collections.emptyMap())
-                .build();
-        final Container expectedCreated;
+                .containerLabels(Collections.emptyMap());
+        final Container toLaunch = toLaunchAndExpectedContainerBuilder.build();
 
         if (swarmMode) {
-            expectedCreated = toLaunch.toBuilder().serviceId(BACKEND_ID).build();
+            toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
 
             // Have to mock out the response from docker-client.
             // I would just make a real ServiceCreateResponse object,
@@ -431,17 +436,18 @@ public class DockerControlApiTest {
             when(mockDockerClient.createService(any(ServiceSpec.class)))
                     .thenReturn(serviceCreateResponse);
         } else {
-            expectedCreated = toLaunch.toBuilder().containerId(BACKEND_ID).build();
+            toLaunchAndExpectedContainerBuilder.containerId(BACKEND_ID);
 
             when(mockDockerClient.createContainer(any(ContainerConfig.class)))
                     .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
         }
+        final Container expected = toLaunchAndExpectedContainerBuilder.build();
 
         // Run the test
         final Container created = dockerControlApi.create(toLaunch, user);
 
         // Check results
-        assertThat(created, equalTo(expectedCreated));
+        assertThat(created, equalTo(expected));
     }
 
     @Test
@@ -460,12 +466,11 @@ public class DockerControlApiTest {
                 .containerLabels(Collections.emptyMap())
                 .build();
 
-        final Container expectedCreated;
-        if (swarmMode) {
-            expectedCreated = Container.serviceFromResolvedCommand(
-                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
-            );
+        final Container.Builder expectedCreatedBuilder = Container.builderFromResolvedCommand(resolvedCommandToLaunch)
+                .userId(USER_LOGIN)
+                .swarm(swarmMode);
 
+        if (swarmMode) {
             // Have to mock out the response from docker-client.
             // I would just make a real ServiceCreateResponse object,
             // but it doesn't have a build() method to return a Builder, and the
@@ -474,184 +479,115 @@ public class DockerControlApiTest {
             when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
             when(mockDockerClient.createService(any(ServiceSpec.class)))
                     .thenReturn(serviceCreateResponse);
-        } else {
-            expectedCreated = Container.containerFromResolvedCommand(
-                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
-            );
 
+            expectedCreatedBuilder.serviceId(BACKEND_ID);
+        } else {
             when(mockDockerClient.createContainer(any(ContainerConfig.class)))
                     .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+
+            expectedCreatedBuilder.containerId(BACKEND_ID);
         }
+        final Container expected = expectedCreatedBuilder.build();
 
         // Run the test
         final Container created = dockerControlApi.create(resolvedCommandToLaunch, user);
 
         // Check results
-        assertThat(created, equalTo(expectedCreated));
+        assertThat(created, equalTo(expected));
     }
 
     @Test
     @SuppressWarnings("deprecation")
     public void testCreateContainerOrSwarmService_container() throws Exception {
-        // Make test objects
+        // Test objects
+        final Container toCreate = Mockito.mock(Container.class);
+        Mockito.doReturn(container).when(dockerControlApi).create(any(Container.class), any(UserI.class));
+
+        // Run the test
+        dockerControlApi.createContainerOrSwarmService(toCreate, user);
+
+        // Check the results
+        verify(dockerControlApi).create(toCreate, user);
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void testCreateContainerOrSwarmService_resolvedCommand() throws Exception {
+        // Test objects
+        final ResolvedCommand resolvedCommand = Mockito.mock(ResolvedCommand.class);
+        Mockito.doReturn(container).when(dockerControlApi).create(any(ResolvedCommand.class), any(UserI.class));
+
+        // Run the test
+        dockerControlApi.createContainerOrSwarmService(resolvedCommand, user);
+
+        // Check the results
+        verify(dockerControlApi).create(resolvedCommand, user);
+    }
+
+    @Test
+    public void testCreateDockerSwarmService_zeroReplicas() throws Exception {
+        assumeThat(swarmMode, is(true));
+        invokeCreateDockerSwarmServicePrivateMethod(DockerControlApi.NumReplicas.ZERO);
+    }
+
+    @Test
+    public void testCreateDockerSwarmService_oneReplica() throws Exception {
+        assumeThat(swarmMode, is(true));
+        invokeCreateDockerSwarmServicePrivateMethod(DockerControlApi.NumReplicas.ONE);
+    }
+
+    public void invokeCreateDockerSwarmServicePrivateMethod(final DockerControlApi.NumReplicas numReplicas) throws Exception {
+        // Test data
         final ThreadLocalRandom random = ThreadLocalRandom.current();
-        final Container toLaunch = Container.builder()
+        final Container toCreate = Container.builder()
                 .databaseId(random.nextInt())
                 .commandId(random.nextInt())
                 .wrapperId(random.nextInt())
                 .userId(USER_LOGIN)
                 .dockerImage("image")
                 .commandLine("echo foo")
-                .swarm(swarmMode)
                 .addEnvironmentVariable("key", "value")
                 .mounts(Collections.emptyList())
                 .containerLabels(Collections.emptyMap())
                 .build();
-        final Container expectedCreated;
 
+        // Mocks
+        // Real implementation of ServiceCreateResponse is package-private
+        final ServiceCreateResponse serviceCreateResponse = new ServiceCreateResponse() {
+            @Override
+            public String id() {
+                return BACKEND_ID;
+            }
+
+            @Override
+            public List<String> warnings() {
+                return Collections.emptyList();
+            }
+        };
+        when(mockDockerClient.createService(any(ServiceSpec.class)))
+                .thenReturn(serviceCreateResponse);
+
+        // Run the method
+        Whitebox.invokeMethod(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, numReplicas);
+
+        // Assert on results
+        final ArgumentCaptor<ServiceSpec> serviceSpecCaptor = ArgumentCaptor.forClass(ServiceSpec.class);
+        verify(mockDockerClient).createService(serviceSpecCaptor.capture());
+
+        final ServiceSpec serviceSpec = serviceSpecCaptor.getValue();
+        assertThat(serviceSpec.mode().replicated().replicas(), equalTo(numReplicas.value));
+    }
+
+    @Test
+    public void testStart() throws Exception {
         if (swarmMode) {
-            expectedCreated = toLaunch.toBuilder().serviceId(BACKEND_ID).build();
-
-            // Have to mock out the response from docker-client.
-            // I would just make a real ServiceCreateResponse object,
-            // but it doesn't have a build() method to return a Builder, and the
-            // implementation is package-private.
-            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
-            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
-            when(mockDockerClient.createService(any(ServiceSpec.class)))
-                    .thenReturn(serviceCreateResponse);
+            testStart_swarmMode();
         } else {
-            expectedCreated = toLaunch.toBuilder().containerId(BACKEND_ID).build();
-
-            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
-                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
+            testStart_localDocker();
         }
-
-        // Run the test
-        final Container created = dockerControlApi.createContainerOrSwarmService(toLaunch, user);
-
-        // Check results
-        assertThat(created, equalTo(expectedCreated));
     }
 
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testCreateContainerOrSwarmService_resolvedCommand() throws Exception {
-        // Make test objects
-        final ThreadLocalRandom random = ThreadLocalRandom.current();
-        final ResolvedCommand resolvedCommandToLaunch = ResolvedCommand.builder()
-                .commandId(random.nextLong())
-                .commandName("a command name")
-                .wrapperId(random.nextLong())
-                .wrapperName("a wrapper name")
-                .image("test image name")
-                .commandLine("echo foo bar baz")
-                .mounts(Collections.emptyList())
-                .environmentVariables(Collections.emptyMap())
-                .containerLabels(Collections.emptyMap())
-                .build();
-
-        final Container expectedCreated;
-        if (swarmMode) {
-            expectedCreated = Container.serviceFromResolvedCommand(
-                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
-            );
-
-            // Have to mock out the response from docker-client.
-            // I would just make a real ServiceCreateResponse object,
-            // but it doesn't have a build() method to return a Builder, and the
-            // implementation is package-private.
-            final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
-            when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
-            when(mockDockerClient.createService(any(ServiceSpec.class)))
-                    .thenReturn(serviceCreateResponse);
-        } else {
-            expectedCreated = Container.containerFromResolvedCommand(
-                    resolvedCommandToLaunch, BACKEND_ID, USER_LOGIN
-            );
-
-            when(mockDockerClient.createContainer(any(ContainerConfig.class)))
-                    .thenReturn(ContainerCreation.builder().id(BACKEND_ID).build());
-        }
-
-        // Run the test
-        final Container created = dockerControlApi.createContainerOrSwarmService(resolvedCommandToLaunch, user);
-
-        // Check results
-        assertThat(created, equalTo(expectedCreated));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testStartContainer_swarm() throws Exception {
-        assumeThat(swarmMode, is(true));
-
-        // When we "create"d the swarm service we set its replicas to 0.
-        // We "start" a swarm service by setting its replicas to 1.
-        // The code under test will get the spec from the client, change it, and send
-        //  it back to the client to update.
-        // We need to make a mock spec that the mock client can return.
-        // We can also change the replicas and verify that the code under test made
-        //  that same change.
-
-        // First some garbage test data
-        final ThreadLocalRandom random = ThreadLocalRandom.current();
-        final Long serviceVersion = random.nextLong();
-        final String specName = "whatever";
-        final ContainerSpec containerSpec = ContainerSpec.builder()
-                .image("im")
-                .env(Collections.emptyList())
-                .dir("/a/dir")
-                .user(user.getLogin())
-                .command("echo", "foo")
-                .build();
-        final TaskSpec taskSpec = TaskSpec.builder().containerSpec(containerSpec).build();
-        final ServiceSpec.Builder commonSpec = ServiceSpec.builder()
-                .taskTemplate(taskSpec)
-                .name(specName);
-
-        // This is the mock spec that will pass through a chain of mocks into our code under test
-        final ServiceSpec createdSpec = commonSpec
-                .mode(ServiceMode.builder()
-                        .replicated(ReplicatedService.builder().replicas(0L).build())
-                        .build())
-                .build();
-        final Version version = Mockito.mock(Version.class);
-        when(version.index()).thenReturn(serviceVersion);
-        final Service created = Mockito.mock(Service.class);
-        when(created.spec()).thenReturn(createdSpec);
-        when(created.version()).thenReturn(version);
-        when(mockDockerClient.inspectService(BACKEND_ID)).thenReturn(created);
-
-        // This is the spec that we expect the code under test will create and pass to the client to update
-        final ServiceSpec expectedUpdateSpec = commonSpec
-                .mode(ServiceMode.builder()
-                        .replicated(ReplicatedService.builder().replicas(1L).build())
-                        .build())
-                .build();
-
-        // Run the test
-        dockerControlApi.startContainer(container);
-
-        // Verify that the client method was called as expected
-        verify(mockDockerClient).updateService(BACKEND_ID, serviceVersion, expectedUpdateSpec);
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testStartContainer_localDocker() throws Exception {
-        assumeThat(swarmMode, is(false));
-
-        // Run the test
-        dockerControlApi.startContainer(container);
-
-        // Verify that the client method was called as expected
-        verify(mockDockerClient).startContainer(BACKEND_ID);
-    }
-
-    @Test
-    public void testStart_swarm() throws Exception {
-        assumeThat(swarmMode, is(true));
+    private void testStart_swarmMode() throws Exception {
 
         // When we "create"d the swarm service we set its replicas to 0.
         // We "start" a swarm service by setting its replicas to 1.
@@ -704,9 +640,7 @@ public class DockerControlApiTest {
         verify(mockDockerClient).updateService(BACKEND_ID, serviceVersion, expectedUpdateSpec);
     }
 
-    @Test
-    public void testStart_localDocker() throws Exception {
-        assumeThat(swarmMode, is(false));
+    private void testStart_localDocker() throws Exception {
 
         // Run the test
         dockerControlApi.start(container);
@@ -743,18 +677,14 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testRemoveContainerOrService() throws Exception {
-        // set server to autocleanup
-        when(dockerServer.autoCleanup()).thenReturn(true);
+        // Mock expected behavior
+        doNothing().when(dockerControlApi).autoCleanup(any(Container.class));
 
         // Run the test
         dockerControlApi.removeContainerOrService(container);
 
-        // Verify the client method was called as expected
-        if (swarmMode) {
-            verify(mockDockerClient).removeService(BACKEND_ID);
-        } else {
-            verify(mockDockerClient).removeContainer(BACKEND_ID);
-        }
+        // Verify the expected behavior
+        verify(dockerControlApi).autoCleanup(container);
     }
 
     @Test

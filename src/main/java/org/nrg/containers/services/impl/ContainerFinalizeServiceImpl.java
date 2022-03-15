@@ -5,25 +5,9 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
-
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.annotation.Nullable;
-
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.ContainerBackendException;
@@ -59,8 +43,22 @@ import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 
 
 @Slf4j

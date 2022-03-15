@@ -116,8 +116,6 @@ public class ContainerCleanupIntegrationTest {
     private final String FAKE_HOST = "mock://url";
     private FakeWorkflow fakeWorkflow = new FakeWorkflow();
 
-    private boolean testIsOnCircleCi;
-
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
 
@@ -170,9 +168,6 @@ public class ContainerCleanupIntegrationTest {
             }
         });
 
-        final String circleCiEnv = System.getenv("CIRCLECI");
-        testIsOnCircleCi = StringUtils.isNotBlank(circleCiEnv) && Boolean.parseBoolean(circleCiEnv);
-
         // Mock out the prefs bean
         // Mock the userI
         mockUser = mock(UserI.class);
@@ -222,6 +217,8 @@ public class ContainerCleanupIntegrationTest {
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
+
+        setupServer();
     }
 
     @After
@@ -288,16 +285,16 @@ public class ContainerCleanupIntegrationTest {
                 false, null, autoCleanup, null, null, true));
 
         CLIENT = controlApi.getClient();
-        TestingUtils.pullBusyBox(CLIENT);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+
+        TestingUtils.pullBusyBox(CLIENT);
     }
 
     @Test
     @DirtiesContext
     public void testSuccess() throws Exception {
-        setupServer();
         final Command willSucceed = commandService.create(Command.builder()
                 .name("will-succeed")
                 .image(BUSYBOX)
@@ -313,11 +310,11 @@ public class ContainerCleanupIntegrationTest {
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, willSucceedWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
         log.debug("Waiting until task has started...");
@@ -339,7 +336,6 @@ public class ContainerCleanupIntegrationTest {
     @Test
     @DirtiesContext
     public void testFailed() throws Exception {
-        setupServer();
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
                 .image(BUSYBOX)
@@ -355,11 +351,11 @@ public class ContainerCleanupIntegrationTest {
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, willFailWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
         log.debug("Waiting until task has started...");
@@ -381,7 +377,6 @@ public class ContainerCleanupIntegrationTest {
     @Test
     @DirtiesContext
     public void testSetupWrapup_success() throws Exception {
-        setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(null);
 
         Map<String, String> runtimeValues = new HashMap<>();
@@ -394,11 +389,11 @@ public class ContainerCleanupIntegrationTest {
         TestingUtils.commitTransaction();
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
         TestingUtils.commitTransaction();
 
         log.debug("Waiting until container is finalized...");
-        await().atMost(20L, TimeUnit.SECONDS)
+        await().atMost(15L, TimeUnit.SECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
         TestingUtils.commitTransaction();
 
@@ -422,7 +417,6 @@ public class ContainerCleanupIntegrationTest {
     @Test
     @DirtiesContext
     public void testSetupWrapup_failureOnSetup() throws Exception {
-        setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_SETUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
@@ -434,11 +428,11 @@ public class ContainerCleanupIntegrationTest {
         TestingUtils.commitTransaction();
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
         TestingUtils.commitTransaction();
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
+        await().atMost(5L, TimeUnit.SECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
         TestingUtils.commitTransaction();
 
@@ -462,7 +456,6 @@ public class ContainerCleanupIntegrationTest {
     @Test
     @DirtiesContext
     public void testSetupWrapup_failure() throws Exception {
-        setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
@@ -475,10 +468,10 @@ public class ContainerCleanupIntegrationTest {
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         TestingUtils.commitTransaction();
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
+        await().atMost(10L, TimeUnit.SECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
         TestingUtils.commitTransaction();
 
@@ -505,7 +498,6 @@ public class ContainerCleanupIntegrationTest {
     @Test
     @DirtiesContext
     public void testSetupWrapup_failureOnWrapup() throws Exception {
-        setupServer();
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_WRAPUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
@@ -518,10 +510,10 @@ public class ContainerCleanupIntegrationTest {
         log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         TestingUtils.commitTransaction();
-        log.debug("Got container from workflow comments");
+        log.debug("Got container from workflow comments: {}", container);
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
+        await().atMost(15L, TimeUnit.SECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
         TestingUtils.commitTransaction();
 

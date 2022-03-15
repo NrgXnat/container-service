@@ -7,8 +7,6 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.messages.swarm.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -19,6 +17,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.messages.swarm.ManagerStatus;
+import org.mandas.docker.client.messages.swarm.NodeInfo;
+import org.mandas.docker.client.messages.swarm.NodeSpec;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -27,7 +29,7 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
@@ -63,19 +65,25 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
@@ -223,10 +231,10 @@ public class SwarmRestartIntegrationTest {
                 false, null, true, null, null, true));
 
         CLIENT = controlApi.getClient();
-        TestingUtils.pullBusyBox(CLIENT);
 
         assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        TestingUtils.pullBusyBox(CLIENT);
 
         final Command sleeper = commandService.create(Command.builder()
                 .name("long-running")
@@ -328,13 +336,17 @@ public class SwarmRestartIntegrationTest {
         // Restart
         log.debug("Removing service to throw a restart event");
         CLIENT.removeService(serviceId);
-        Thread.sleep(500L); // Sleep long enough for status updater to run
+
+        // Ensure the restart request has gone through
+        await().until(TestingUtils.serviceHasTaskId(containerService, service.databaseId()), is(false));
+        // Ensure the restart request has been consumed and the new task id has been picked up
+        await().until(TestingUtils.serviceHasTaskId(containerService, service.databaseId()));
 
         // ensure that container restarted & status updates, etc
         final Container restartedContainer = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedContainer.serviceId());
         assertThat(restartedContainer.countRestarts(), is(1));
-        await().atMost(90L, TimeUnit.SECONDS).until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running again = success!
+        await().until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running again = success!
     }
 
     @Test

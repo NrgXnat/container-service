@@ -1,7 +1,6 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -11,29 +10,41 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.LoggingBuildHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hamcrest.Matchers;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.LoggingBuildHandler;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
+import org.nrg.containers.config.SpringJUnit4ClassRunnerFactory;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerMount;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
-import org.nrg.containers.services.*;
-import org.nrg.containers.config.SpringJUnit4ClassRunnerFactory;
+import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Scan;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.DockerService;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.entities.AliasToken;
@@ -54,7 +65,10 @@ import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.helpers.uri.archive.impl.*;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptAssessorURI;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
+import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
+import org.nrg.xnat.helpers.uri.archive.impl.ResourcesExptURI;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
@@ -66,32 +80,52 @@ import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
+import static org.hamcrest.Matchers.arrayWithSize;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItemInArray;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.isEmptyOrNullString;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
@@ -103,9 +137,6 @@ import static org.powermock.api.mockito.PowerMockito.*;
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
 @Transactional
 public class CommandLaunchIntegrationTest {
-    // Couldn't get the below to work
-    //@ClassRule public static final SpringClassRule SPRING_CLASS_RULE = new SpringClassRule();
-    //@Rule public final SpringMethodRule springMethodRule = new SpringMethodRule();
 
     @Parameterized.Parameters(name = "swarmMode={0}")
     public static Collection<Boolean> swarmModes() {
@@ -123,8 +154,6 @@ public class CommandLaunchIntegrationTest {
     private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
     private FakeWorkflow fakeWorkflow = new FakeWorkflow();
-
-    private boolean testIsOnCircleCi;
 
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
@@ -144,6 +173,17 @@ public class CommandLaunchIntegrationTest {
     @Autowired private CatalogService mockCatalogService;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
+
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
+
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
 
     @Before
     public void setup() throws Exception {
@@ -167,9 +207,6 @@ public class CommandLaunchIntegrationTest {
                 return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
             }
         });
-
-        final String circleCiEnv = System.getenv("CIRCLECI");
-        testIsOnCircleCi = StringUtils.isNotBlank(circleCiEnv) && Boolean.parseBoolean(circleCiEnv);
 
         // Mock out the prefs bean
         // Mock the userI
@@ -256,6 +293,10 @@ public class CommandLaunchIntegrationTest {
                 false, null, true, null, null, true));
 
         CLIENT = controlApi.getClient();
+
+        // Skip tests if cannot connect
+        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+
         TestingUtils.pullBusyBox(CLIENT);
     }
 
@@ -291,7 +332,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testFakeReconAll() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String commandJsonFile = Paths.get(dir, "/fakeReconAllCommand.json").toString();
@@ -352,15 +392,11 @@ public class CommandLaunchIntegrationTest {
         assertThat(execution.getCommandInputs(), is(expectedCommandInputValues));
 
         // Outputs
-        // assertTrue(resolvedCommand.getOutputs().isEmpty());
 
-        final List<String> outputNames = Lists.transform(execution.outputs(), new Function<Container.ContainerOutput, String>() {
-            @Nullable
-            @Override
-            public String apply(@Nullable final Container.ContainerOutput output) {
-                return output == null ? "" : output.name();
-            }
-        });
+        final List<String> outputNames = execution.outputs()
+                .stream()
+                .map(output -> output == null ? "" : output.name())
+                .collect(Collectors.toList());
         assertThat(outputNames, contains("data:data-output", "text-file:text-file-output"));
 
         // Environment variables
@@ -405,12 +441,9 @@ public class CommandLaunchIntegrationTest {
 
             final File fakeResourceDirFile = new File(fakeResourceDir);
             assertThat(fakeResourceDirFile, is(not(nullValue())));
-            assertThat(fakeResourceDirFile.listFiles(), is(not(nullValue())));
-            final List<String> fakeResourceDirFileNames = Lists.newArrayList();
-            for (final File file : fakeResourceDirFile.listFiles()) {
-                fakeResourceDirFileNames.add(file.getName());
-
-            }
+            final File[] files = fakeResourceDirFile.listFiles();
+            assertThat(files, is(not(nullValue())));
+            final List<String> fakeResourceDirFileNames = Arrays.stream(files).map(File::getName).collect(Collectors.toList());
             assertThat(Lists.newArrayList(outputFileContents[1].split(" ")), is(fakeResourceDirFileNames));
         } catch (IOException e) {
             log.warn("Failed to read output files. This is not a problem if you are using docker-machine and cannot mount host directories.", e);
@@ -420,7 +453,6 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testProjectMount() throws Exception {
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String commandJsonFile = dir + "/project-mount-command.json";
@@ -465,12 +497,7 @@ public class CommandLaunchIntegrationTest {
         assertThat(execution.getCommandInputs(), is(expectedCommandInputValues));
 
         // Outputs by name. We will check the files later.
-        final List<String> outputNames = Lists.transform(execution.outputs(), new Function<Container.ContainerOutput, String>() {
-            @Override
-            public String apply(final Container.ContainerOutput output) {
-                return output.name();
-            }
-        });
+        final List<String> outputNames = execution.outputs().stream().map(Container.ContainerOutput::name).collect(Collectors.toList());
         assertThat(outputNames, contains("outputs:file-and-dir-lists"));
 
         // Environment variables
@@ -540,10 +567,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testLaunchCommandWithSetupCommand() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        // This test fails on Circle CI because we cannot mount local directories into containers
-        assumeThat(testIsOnCircleCi, is(false));
 
         final Path setupCommandDirPath = Paths.get(ClassLoader.getSystemResource("setupCommand").toURI());
         final String setupCommandDir = setupCommandDirPath.toString().replace("%20", " ");
@@ -662,10 +685,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testLaunchCommandWithWrapupCommand() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        // This test fails on Circle CI because we cannot mount local directories into containers
-        assumeThat(testIsOnCircleCi, is(false));
 
         final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
         final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
@@ -798,7 +817,7 @@ public class CommandLaunchIntegrationTest {
         final File wrapupContainerOutputMountDir = new File(wrapupContainerOutputMount.xnatHostPath());
         final File[] contentsOfWrapupContainerOutputMountDir = wrapupContainerOutputMountDir.listFiles();
 
-        assertThat(contentsOfWrapupContainerOutputMountDir, Matchers.<File>arrayWithSize(1));
+        assertThat(contentsOfWrapupContainerOutputMountDir, Matchers.arrayWithSize(1));
         assertThat(contentsOfWrapupContainerOutputMountDir, hasItemInArray(TestingUtils.pathEndsWith("found-files.txt")));
         final File foundFilesDotTxt = contentsOfWrapupContainerOutputMountDir[0];
         final String[] foundFilesDotTxtContentByLine = TestingUtils.readFile(foundFilesDotTxt);
@@ -809,7 +828,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testFailedContainer() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
@@ -826,7 +844,7 @@ public class CommandLaunchIntegrationTest {
 
 
         containerService.queueResolveCommandAndLaunchContainer(null, willFailWrapper.id(), 0L,
-                null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
@@ -852,7 +870,6 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testEntrypointIsPreserved() throws Exception {
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testEntrypointIsPreserved");
@@ -870,7 +887,7 @@ public class CommandLaunchIntegrationTest {
 
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L,
-                null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
@@ -906,7 +923,7 @@ public class CommandLaunchIntegrationTest {
 
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
@@ -926,7 +943,6 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testContainerWorkingDirectory() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String workingDirectory = "/usr/local/bin";
         final Command command = commandService.create(Command.builder()
@@ -945,7 +961,7 @@ public class CommandLaunchIntegrationTest {
 
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
@@ -961,7 +977,6 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testDeleteCommandWhenDeleteImageAfterLaunchingContainer() throws Exception {
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String imageName = "xnat/testy-test";
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
@@ -978,7 +993,7 @@ public class CommandLaunchIntegrationTest {
 
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
 
@@ -1015,7 +1030,6 @@ public class CommandLaunchIntegrationTest {
         // NOTE: this doesn't test the actual upload of the xml, which is xnat-web functionality
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testScanUpload").toString();
@@ -1031,11 +1045,10 @@ public class CommandLaunchIntegrationTest {
         session.setDirectory(fakeDataDir);
         final String sessionJson = mapper.writeValueAsString(session);
 
-        final File[] dicomFiles = new File(fakeDataDir, "DICOM").listFiles();
-        if (dicomFiles == null) {
+        final File[] fakeUpload = new File(fakeDataDir, "DICOM").listFiles();
+        if (fakeUpload == null) {
             throw new Exception("Test dir not set up properly");
         }
-        final List<File> fakeUpload = Arrays.asList(dicomFiles);
         final File scanXml = new File(fakeDataDir, "scan.xml");
 
         final ArchivableItem mockSessionItem = mock(ArchivableItem.class);
@@ -1097,7 +1110,7 @@ public class CommandLaunchIntegrationTest {
         };
 
         when(mockCatalogService.insertXmlObject(eq(mockUser), argThat(matchesXml), eq(true),
-                eq(Collections.<String, Object>emptyMap()), any(Integer.class))).thenReturn(mockScanItem);
+                eq(Collections.emptyMap()), any(Integer.class))).thenReturn(mockScanItem);
         final String dicomLabel = "DICOM";
         final XnatResourcecatalog mockCatalog = mock(XnatResourcecatalog.class);
         when(mockCatalog.getLabel()).thenReturn(dicomLabel);
@@ -1128,7 +1141,6 @@ public class CommandLaunchIntegrationTest {
         // NOTE: this doesn't test the actual upload of the xml, which is xnat-web functionality
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testAssessorUpload").toString();
@@ -1151,11 +1163,10 @@ public class CommandLaunchIntegrationTest {
         session.setDirectory(fakeDataDir);
         final String sessionJson = mapper.writeValueAsString(session);
 
-        final File[] assessorFiles = new File(fakeDataDir, "DATA").listFiles();
-        if (assessorFiles == null) {
+        final File[] fakeUpload = new File(fakeDataDir, "DATA").listFiles();
+        if (fakeUpload == null) {
             throw new Exception("Test dir not set up properly");
         }
-        final List<File> fakeUpload = Arrays.asList(assessorFiles);
         final File assessorXml = new File(fakeDataDir, "assessor.xml");
 
         final ArchivableItem mockSessionItem = mock(ArchivableItem.class);
@@ -1217,7 +1228,7 @@ public class CommandLaunchIntegrationTest {
         };
 
         when(mockCatalogService.insertXmlObject(eq(mockUser), argThat(matchesXml), eq(true),
-                eq(Collections.<String, Object>emptyMap()), any(Integer.class))).thenReturn(mockAssessorItem);
+                eq(Collections.emptyMap()), any(Integer.class))).thenReturn(mockAssessorItem);
         final String label = "DATA";
         final XnatResourcecatalog mockCatalog = mock(XnatResourcecatalog.class);
         when(mockCatalog.getLabel()).thenReturn(label);
