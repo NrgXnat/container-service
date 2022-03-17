@@ -29,8 +29,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
-import static org.mandas.docker.client.messages.swarm.TaskStatus.TASK_STATE_FAILED;
-
 @Slf4j
 @Component
 public class ContainerStatusUpdater implements Runnable {
@@ -197,35 +195,46 @@ public class ContainerStatusUpdater implements Runnable {
         //TODO : Optimize this code so that waiting ones are handled first
         for (Container service : containerService.retrieveNonfinalizedServices()) {
             try {
-                log.debug("Getting task info for service {}.", service.toString());
+                if (log.isTraceEnabled()) {
+                    log.trace("Checking for updates for service {}", service);
+                } else {
+                    log.debug("Checking for updates for service {} \"{}\".", service.databaseId(), service.serviceId());
+                }
                 try {
                     // Refresh service status etc. bc it could change while we're processing this list
                     service = containerService.get(service.databaseId());
                     if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
-                        log.debug("Service {} had workflow <> status mismatch", service.serviceId());
+                        log.debug("Service {} \"{}\" had workflow <> status mismatch", service.databaseId(), service.serviceId());
                     } else if (containerService.isFinalizing(service) ||
                             containerService.containerStatusIsTerminal(service)) {
-                        log.debug("Service {} no longer unfinalized", service.serviceId());
+                        log.debug("Service {} \"{}\" no longer unfinalized", service.databaseId(), service.serviceId());
                     } else if (containerService.isWaiting(service)) {
                         throwWaitingEventForService(service);
                     } else {
-                        throwTaskEventForService(service, dockerServer);
+                        final ServiceTask task = containerControlApi.getTaskForService(dockerServer, service);
+                        if (task != null) {
+                            throwTaskEventForService(service, task);
+                        } else {
+                            log.debug("Appears that the task has not been assigned for service {} \"{}\".",
+                                    service.databaseId(), service.serviceId());
+                        }
                     }
                     report.add(UpdateReportEntry.success(service.serviceId()));
                 } catch (ServiceNotFoundException e) {
                     // Service not found despite container being active: throw a restart event
+                    log.debug("Cannot find service {} \"{}\".", service.databaseId(), service.serviceId());
                     throwRestartEventForService(service);
                     report.add(UpdateReportEntry.success(service.serviceId()));
                 } catch (TaskNotFoundException e) {
-                    log.error(String.format("Cannot get tasks for service %s.", service.serviceId()), e);
+                    log.error("Cannot get tasks for service {} \"{}\".", service.databaseId(), service.serviceId());
                     throwLostTaskEventForService(service);
                     report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
                 } catch (DockerServerException e) {
-                    log.error(String.format("Cannot find server for service %s.", service.serviceId()), e);
+                    log.error("Cannot find server for service {} \"{}\".", service.databaseId(), service.serviceId(), e);
                     report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
                 }
             } catch (Exception e) {
-                log.error(String.format("Unexpected exception trying to update service %s.", service.serviceId()), e);
+                log.error("Unexpected exception trying to update service {} \"{}\".", service.databaseId(), service.serviceId(), e);
                 report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
             }
         }
@@ -312,23 +321,23 @@ public class ContainerStatusUpdater implements Runnable {
     private void throwLostTaskEventForService(@Nonnull final Container service) {
         final ServiceTask task = ServiceTask.builder()
                 .serviceId(service.serviceId())
-                .taskId(null)
-                .nodeId(null)
-                .status(TASK_STATE_FAILED)
+                .status("Lost task")
                 .swarmNodeError(true)
-                .statusTime(null)
+                .statusTime(new Date())
                 .message(ServiceTask.swarmNodeErrMsg)
                 .err(null)
                 .exitCode(null)
-                .containerId(service.containerId())
+                .containerId(null)
+                .taskId(null)
+                .nodeId(null)
                 .build();
-        final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
-        log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
+        final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service, ServiceTaskEvent.EventType.Restart);
+        log.trace("Throwing restart event for service {} \"{}\".", service.databaseId(), service.serviceId());
         eventService.triggerEvent(serviceTaskEvent);
     }
 
     private void throwRestartEventForService(final Container service) throws ContainerException {
-        log.trace("Throwing restart event for service {}.", service.serviceId());
+        log.trace("Throwing restart event for service {} \"{}\".", service.databaseId(), service.serviceId());
         ServiceTask lastTask = service.makeTaskFromLastHistoryItem();
         ServiceTask restartTask = lastTask.toBuilder()
                 .swarmNodeError(true)
@@ -339,19 +348,14 @@ public class ContainerStatusUpdater implements Runnable {
         eventService.triggerEvent(restartTaskEvent);
     }
 
-    private void throwTaskEventForService(final Container service, final DockerServer server) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException {
-        final ServiceTask task = containerControlApi.getTaskForService(server, service);
-        if (task != null) {
-            final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
-            log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
-            eventService.triggerEvent(serviceTaskEvent);
-        } else {
-            log.debug("Appears that the task has not been assigned for {} : {}", service.serviceId(), service.status());
-        }
+    private void throwTaskEventForService(final Container service, final ServiceTask task) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException {
+        final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
+        log.trace("Throwing service task event for service {} \"{}\" task \"{}\".", service.databaseId(), service.serviceId(), task.taskId());
+        eventService.triggerEvent(serviceTaskEvent);
     }
 
     private void throwWaitingEventForService(final Container service) throws ContainerException {
-        log.trace("Throwing waiting event for service {}.", service.serviceId());
+        log.trace("Throwing waiting event for service {} \"{}\".", service.databaseId(), service.serviceId());
         final ServiceTaskEvent waitingTaskEvent = ServiceTaskEvent.create(service.makeTaskFromLastHistoryItem(), service,
                 ServiceTaskEvent.EventType.Waiting);
         eventService.triggerEvent(waitingTaskEvent);

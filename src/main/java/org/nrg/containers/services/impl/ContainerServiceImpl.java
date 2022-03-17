@@ -845,31 +845,47 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void processEvent(final ServiceTaskEvent event) {
         final ServiceTask task = event.task();
-        final Container service;
+        Container service = event.service();
 
 	    log.debug("Processing service task event for service \"{}\" status \"{}\" exit code {}.",
                 task.serviceId(), task.status(), task.exitCode());
-
-        // When we create the service, we don't know all the IDs. If this is the first time we
-        // have seen a task for this service, we can set those IDs now.
-        if (StringUtils.isBlank(event.service().taskId()) || StringUtils.isBlank(event.service().nodeId())) {
-            log.debug("Service \"{}\" has no task and/or node information stored. Setting it now.", task.serviceId());
-            final Container serviceToUpdate = event.service().toBuilder()
-                    .taskId(task.taskId())
-                    .containerId(task.containerId())
-                    .nodeId(task.nodeId())
-                    .build();
-            containerEntityService.update(fromPojo(serviceToUpdate));
-            service = retrieve(serviceToUpdate.databaseId());
-        } else {
-            service = event.service();
-        }
 
         if (service == null) {
             log.error("Could not find service corresponding to event {}", event);
             return;
         }
 
+        if (StringUtils.isBlank(service.taskId()) || StringUtils.isBlank(service.nodeId()) || StringUtils.isBlank(service.containerId())) {
+            // When we create the service, we don't know all the IDs.
+            // We may be able to update some or all of them now.
+            final Container.Builder serviceToUpdateBuilder = service.toBuilder();
+            boolean shouldUpdate = false;
+
+            if (StringUtils.isBlank(service.taskId()) && StringUtils.isNotBlank(task.taskId())) {
+                log.debug("Service {} \"{}\" setting task ID to \"{}\".",
+                        service.databaseId(), service.serviceId(), task.taskId());
+                serviceToUpdateBuilder.taskId(task.taskId());
+                shouldUpdate = true;
+            }
+            if (StringUtils.isBlank(service.nodeId()) && StringUtils.isNotBlank(task.nodeId())) {
+                log.debug("Service {} \"{}\" setting node ID to \"{}\".",
+                        service.databaseId(), service.serviceId(), task.nodeId());
+                serviceToUpdateBuilder.nodeId(task.nodeId());
+                shouldUpdate = true;
+            }
+            if (StringUtils.isBlank(service.containerId()) && StringUtils.isNotBlank(task.containerId())) {
+                log.debug("Service {} \"{}\" setting container ID to \"{}\".",
+                        service.databaseId(), service.serviceId(), task.containerId());
+                serviceToUpdateBuilder.containerId(task.containerId());
+                shouldUpdate = true;
+            }
+            if (shouldUpdate) {
+                containerEntityService.update(fromPojo(serviceToUpdateBuilder.build()));
+                service = retrieve(service.databaseId());
+            }
+        }
+
+        // The service won't be null here even though the IDE thinks it might be
         if (isFinalizing(service)) {
             log.error("Service is already finalizing. service \"{}\" status \"{}\" exit code {}.",
                     task.serviceId(), task.status(), task.exitCode());
@@ -950,6 +966,17 @@ public class ContainerServiceImpl implements ContainerService {
 
         // Relaunch container in new service
         launchContainerFromDbObject(service, userI, true);
+    }
+
+    @Override
+    public boolean restartService(Container service) {
+        try {
+            return restartService(service, Users.getUser(service.userId()));
+        } catch (UserNotFoundException | UserInitException e) {
+            log.error("Could not get user from service {} \"{}\" userId \"{}\"",
+                    service.databaseId(), service.serviceId(), service.userId(), e);
+        }
+        return false;
     }
 
     @Override

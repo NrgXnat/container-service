@@ -1422,13 +1422,14 @@ public class DockerControlApi implements ContainerControlApi {
     @Nullable
     public ServiceTask getTaskForService(final DockerServer dockerServer, final Container service)
             throws DockerServerException, ServiceNotFoundException, TaskNotFoundException {
+        log.debug("Getting task for service {} \"{}\".", service.databaseId(), service.serviceId());
         try (final DockerClient client = getClient(dockerServer)) {
             Task task = null;
             final String serviceId = service.serviceId();
             final String taskId = service.taskId();
 
             if (taskId == null) {
-                log.trace("Attempting to retrieve swarm task for service: {}", service);
+                log.trace("Inspecting swarm service {} \"{}\".", service.databaseId(), service.serviceId());
                 final org.mandas.docker.client.messages.swarm.Service serviceResponse = client.inspectService(serviceId);
                 final String serviceName = serviceResponse.spec().name();
                 if (StringUtils.isBlank(serviceName)) {
@@ -1436,22 +1437,23 @@ public class DockerControlApi implements ContainerControlApi {
                             ". Cannot get taskId without this.");
                 }
 
-                log.trace("ServiceId {} has name {} based on inspection: {}. Querying for task matching this service name.",
-                        serviceId, serviceName, serviceResponse);
+                log.trace("Service {} \"{}\" has name \"{}\" based on inspection: {}. Querying for task matching this service name.",
+                        service.databaseId(), serviceId, serviceName, serviceResponse);
 
                 final List<Task> tasks = client.listTasks(Task.Criteria.builder().serviceName(serviceName).build());
 
                 if (tasks.size() == 1) {
-                    log.trace("Found one task for service name {} (serviceId {}).", serviceName, serviceId);
                     task = tasks.get(0);
+                    log.trace("Found one task \"{}\" for service {} \"{}\" name \"{}\"", task.id(), service.databaseId(), serviceId, serviceName);
                 } else if (tasks.size() == 0) {
-                    log.debug("No tasks found for service name {} (serviceId {}).", serviceName, serviceId);
+                    log.debug("No tasks found for service {} \"{}\" name \"{}\"", service.databaseId(), serviceId, serviceName);
                 } else {
-                    throw new DockerServerException("Found multiple tasks for service name " + serviceName +
-                            "(serviceId " + serviceId + "), I only know how to handle one. Tasks: " + tasks);
+                    throw new DockerServerException("Found multiple tasks for service " + service.databaseId() +
+                            " \"" + serviceId + "\" name \"" + serviceName +
+                            "\", I only know how to handle one. Tasks: " + tasks);
                 }
             } else {
-                log.trace("ServiceId {} has taskId {}.", serviceId, taskId);
+                log.trace("Service {} \"{}\" has task \"{}\"", service.databaseId(), serviceId, taskId);
                 task = client.inspectTask(taskId);
             }
 
@@ -1478,7 +1480,6 @@ public class DockerControlApi implements ContainerControlApi {
                 return serviceTask;
             }
         } catch (ServiceNotFoundException | TaskNotFoundException e) {
-            log.error(e.getMessage());
             throw e;
         } catch (DockerException | InterruptedException e) {
             log.trace("INTERRUPTED: {}", e.getMessage());
