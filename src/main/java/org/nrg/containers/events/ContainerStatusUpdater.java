@@ -29,6 +29,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
+import static org.mandas.docker.client.messages.swarm.TaskStatus.TASK_STATE_FAILED;
+
 @Slf4j
 @Component
 public class ContainerStatusUpdater implements Runnable {
@@ -321,18 +323,18 @@ public class ContainerStatusUpdater implements Runnable {
     private void throwLostTaskEventForService(@Nonnull final Container service) {
         final ServiceTask task = ServiceTask.builder()
                 .serviceId(service.serviceId())
-                .status("Lost task")
+                .taskId(null)
+                .nodeId(null)
+                .status(TASK_STATE_FAILED)
                 .swarmNodeError(true)
-                .statusTime(new Date())
+                .statusTime(null)
                 .message(ServiceTask.swarmNodeErrMsg)
                 .err(null)
                 .exitCode(null)
-                .containerId(null)
-                .taskId(null)
-                .nodeId(null)
+                .containerId(service.containerId())
                 .build();
-        final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service, ServiceTaskEvent.EventType.Restart);
-        log.trace("Throwing restart event for service {} \"{}\".", service.databaseId(), service.serviceId());
+        final ServiceTaskEvent serviceTaskEvent = ServiceTaskEvent.create(task, service);
+        log.trace("Throwing service task event for service {}.", serviceTaskEvent.service().serviceId());
         eventService.triggerEvent(serviceTaskEvent);
     }
 

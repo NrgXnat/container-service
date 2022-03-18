@@ -13,6 +13,7 @@ import org.apache.commons.lang3.SystemUtils;
 import org.hibernate.NonUniqueObjectException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -321,6 +322,7 @@ public class SwarmRestartIntegrationTest {
 
     @Test
     @DirtiesContext
+    @Ignore("Test does not reliably detect when service is running or not")
     public void testRestartClearedTask() throws Exception {
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
                 0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);

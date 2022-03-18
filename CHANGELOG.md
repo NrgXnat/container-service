@@ -11,9 +11,7 @@ Not yet released
 ### Bugfixes
 
 * [CS-687][]: Repaired unit and integration tests that had not kept up with code changes.
-* [CS-693][]: Improve handling of service update events when task or service is not found on swarm
-    * Stop service updater from trying to update `null` node IDs forever if service cannot be started
-    * If a service in the database has a task ID but we cannot find that task on the swarm, restart the service
+* [CS-693][]: Stop service updater from trying to update `null` node IDs forever if service cannot be started
 
 ### Updates
 

@@ -67,10 +67,7 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
                     containerService.queueFinalize(service.exitCode(), statusIsSucceses, service, Users.getAdminUser());
                     break;
                 case Restart:
-                    log.debug("Restarting service");
-                    containerService.restartService(event.service());
                 case ProcessTask:
-                    log.debug("Processing ordinary event");
                     containerService.processEvent(event);
                     break;
                 default:
