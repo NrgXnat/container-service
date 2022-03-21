@@ -76,9 +76,10 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -376,7 +377,11 @@ public class DockerControlApi implements ContainerControlApi {
      */
     @Override
     public Container create(Container toCreate, UserI user) throws NoContainerServerException, ContainerBackendException, ContainerException {
-        createDirectoriesForMounts(toCreate);
+        try {
+            createDirectoriesForMounts(toCreate);
+        } catch (IOException e) {
+            throw new ContainerException("Unable to createDirectoriesForMounts", e);
+        }
 
         final DockerServer server = getServer();
 
@@ -447,16 +452,12 @@ public class DockerControlApi implements ContainerControlApi {
         }
     }
 
-    private void createDirectoriesForMounts(final Container toCreate) {
+    private void createDirectoriesForMounts(final Container toCreate) throws IOException {
         final List<Container.ContainerMount> containerMounts = toCreate.mounts() == null ? Collections.emptyList() : toCreate.mounts();
         for (final Container.ContainerMount mount : containerMounts) {
-            final File mountFile = Paths.get(mount.xnatHostPath()).toFile();
-            if (!mountFile.exists()) {
-                if (mountFile.isDirectory()) {
-                    mountFile.mkdirs();
-                } else {
-                    mountFile.getParentFile().mkdirs();
-                }
+            final Path mountFile = Paths.get(mount.xnatHostPath());
+            if (!Files.isRegularFile(mountFile)) {
+                Files.createDirectories(mountFile);
             }
         }
     }
