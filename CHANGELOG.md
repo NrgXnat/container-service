@@ -12,6 +12,7 @@ Not yet released
 
 * [CS-687][]: Repaired unit and integration tests that had not kept up with code changes.
 * [CS-693][]: Stop service updater from trying to update `null` node IDs forever if service cannot be started
+* [CS-695][]: Write container logs to a unique directory per container, not timestamped
 
 ### Updates
 
@@ -50,6 +51,7 @@ Not yet released
 [CS-689]: https://issues.xnat.org/browse/CS-689
 [CS-692]: https://issues.xnat.org/browse/CS-692
 [CS-693]: https://issues.xnat.org/browse/CS-693
+[CS-695]: https://issues.xnat.org/browse/CS-695
 
 ## 3.1.1
 

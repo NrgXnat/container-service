@@ -37,7 +37,6 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xft.utils.FileUtils;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.restlet.util.XNATRestConstants;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +45,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -317,15 +316,12 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
 
                 final String archivePath = siteConfigPreferences.getArchivePath(); // TODO find a place to upload this thing. Root of the archive if sitewide, else under the archive path of the root object
                 if (StringUtils.isNotBlank(archivePath)) {
+                    final String containerExecSubdir = String.valueOf(toFinalize.databaseId());
                     final String subtype = StringUtils.defaultIfBlank(toFinalize.subtype(), "");
-                    final SimpleDateFormat formatter = new SimpleDateFormat(XNATRestConstants.PREARCHIVE_TIMESTAMP);
-                    final String datestamp = formatter.format(new Date());
-                    final String containerExecPath = FileUtils.AppendRootPath(archivePath, "CONTAINER_EXEC/");
-                    final String destinationPath = containerExecPath + datestamp + "/LOGS/" + subtype;
-                    final File destination = new File(destinationPath);
+                    final File destination = Paths.get(archivePath, "CONTAINER_EXEC", containerExecSubdir, "LOGS", subtype).toFile();
                     destination.mkdirs();
 
-                    log.info(prefix + "Saving logs to " + destinationPath);
+                    log.info(prefix + "Saving logs to " + destination.getAbsolutePath());
 
                     if (StringUtils.isNotBlank(stdoutLogStr)) {
                         log.debug("Saving stdout");
