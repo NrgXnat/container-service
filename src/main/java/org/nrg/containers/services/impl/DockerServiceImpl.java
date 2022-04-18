@@ -1,7 +1,9 @@
 package org.nrg.containers.services.impl;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
@@ -27,8 +29,11 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -236,9 +241,29 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public List<DockerImage> getImages()
+    public List<DockerImage> getInstalledImages()
             throws NoDockerServerException, DockerServerException {
         return controlApi.getAllImages();
+    }
+
+    @Override
+    public List<DockerImage> getAllImages()
+            throws NoDockerServerException, DockerServerException {
+        /* Get set of unique image names referenced in all commands */
+        Set<String> cmdImageTags = commandService.getAll().stream()
+                .filter(command ->StringUtils.isNotBlank(command.image()))
+                .map(command -> command.image())
+                .collect(Collectors.toCollection(HashSet::new));
+        // Create Image objects for command images not already installed
+        List<DockerImage> allImages = getInstalledImages();
+        List<String> installedTags = allImages.stream()
+                .map(DockerImage::tags).flatMap(List::stream).collect(Collectors.toList());
+        for (final String cmdImageTag : cmdImageTags.stream()
+                .filter(tag -> !installedTags.contains(tag))
+                .collect(Collectors.toList())){
+            allImages.add(DockerImage.builder().addTag(cmdImageTag).build());
+        }
+        return allImages;
     }
 
     @Override
