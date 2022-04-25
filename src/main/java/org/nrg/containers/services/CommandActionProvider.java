@@ -1,11 +1,16 @@
 package org.nrg.containers.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.Option;
+import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
@@ -24,6 +29,9 @@ import org.nrg.xnat.eventservice.events.ScheduledEvent;
 import org.nrg.xnat.eventservice.model.Action;
 import org.nrg.xnat.eventservice.model.ActionAttributeConfiguration;
 import org.nrg.xnat.eventservice.model.Subscription;
+import org.nrg.xnat.eventservice.model.xnat.XnatModelObject;
+import org.nrg.xnat.eventservice.services.EventService;
+import org.nrg.xnat.eventservice.services.EventServiceComponentManager;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
@@ -48,18 +56,25 @@ public class CommandActionProvider extends MultiActionProvider {
     private final ContainerConfigService containerConfigService;
     private final ObjectMapper mapper;
     private final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService;
+    private final Configuration jaywayConf = Configuration.builder().build().addOptions(Option.ALWAYS_RETURN_LIST, Option.SUPPRESS_EXCEPTIONS);
+    private final EventServiceComponentManager componentManager;
+    private final EventService eventService;
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
                                  final CommandService commandService,
                                  final ContainerConfigService containerConfigService,
                                  final ObjectMapper mapper,
-                                 final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService) {
+                                 final SubscriptionDeliveryEntityService subscriptionDeliveryEntityService,
+                                 final EventServiceComponentManager componentManager,
+                                 final EventService eventService) {
         this.containerService = containerService;
         this.commandService = commandService;
         this.containerConfigService = containerConfigService;
         this.mapper = mapper;
         this.subscriptionDeliveryEntityService = subscriptionDeliveryEntityService;
+        this.componentManager = componentManager;
+        this.eventService = eventService;
     }
 
     @Override
@@ -139,7 +154,7 @@ public class CommandActionProvider extends MultiActionProvider {
 
         final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : Maps.newHashMap();
         final Set<String> inputUris = projectIds.stream()
-                                                .map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId))
+                                                .map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId, subscription))
                                                 .flatMap(Set::stream).collect(Collectors.toSet());
 
         if(inputUris.isEmpty()){
@@ -167,9 +182,10 @@ public class CommandActionProvider extends MultiActionProvider {
      * @param contexts  - the wrapper contexts
      * @param user - the user
      * @param deliveryId - the subscription delivery id
+     * @param subscription - the subscription
      * @return A set containing the input uris in the project for the given input type
      */
-    private Set<String> getInputUrisForContainer(String inputType, String projectId, Set<String> contexts, UserI user, Long deliveryId) {
+    private Set<String> getInputUrisForContainer(String inputType, String projectId, Set<String> contexts, UserI user, Long deliveryId, Subscription subscription) {
         final XnatProjectdata projectData = AutoXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
         if(projectData == null){
             final String msg = String.format("Project %s not found. Skipping. ", projectId);
@@ -179,13 +195,14 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         final Set<String> inputUris = Sets.newHashSet();
-        if(inputType.equalsIgnoreCase("project") && xsiTypesMatch(projectData.getXSIType(), contexts)){
+        if(inputType.equalsIgnoreCase("project") && xsiTypesMatch(projectData.getXSIType(), contexts) && filterJsonForItem(projectData, subscription, user)) {
             inputUris.add(UriParserUtils.getArchiveUri(projectData));
         }else if(inputType.equalsIgnoreCase("subject")){
             inputUris.addAll(projectData.getParticipants_participant()
                                         .stream()
                                         .filter(subj -> xsiTypesMatch(subj.getXSIType(), contexts))
                                         .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
+                                        .filter(subj -> filterJsonForItem(subj, subscription, user))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
         }else if(inputType.equalsIgnoreCase("session")){
             inputUris.addAll(projectData.getExperiments()
@@ -193,6 +210,7 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
                                         .filter(exp -> exp instanceof XnatImagesessiondataI)
                                         .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
+                                        .filter(exp -> filterJsonForItem(exp, subscription, user))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
         } else if(inputType.equalsIgnoreCase("subjectassessor")){
             inputUris.addAll(projectData.getParticipants_participant()
@@ -201,6 +219,7 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .map(AutoXnatSubjectdata::getExperiments_experiment)
                                         .flatMap(List::stream)
                                         .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
+                                        .filter(exp -> filterJsonForItem(exp, subscription, user))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
         }else if(inputType.equalsIgnoreCase(("scan"))){
             inputUris.addAll(projectData.getExperiments().stream()
@@ -210,6 +229,7 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .map(XnatImagesessiondataI::getScans_scan)
                                         .flatMap(List::stream)
                                         .filter(scan -> xsiTypesMatch(scan.getXSIType(), contexts))
+                                        .filter(scan -> filterJsonForItem(scan, subscription, user))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
         }else if(inputType.equalsIgnoreCase("assessor")){
             inputUris.addAll(projectData.getExperiments()
@@ -220,9 +240,49 @@ public class CommandActionProvider extends MultiActionProvider {
                                         .map(XnatImagesessiondataI::getAssessors_assessor)
                                         .flatMap(List::stream)
                                         .filter(imgAsses -> xsiTypesMatch(imgAsses.getXSIType(), contexts))
+                                        .filter(imgAsses -> filterJsonForItem(imgAsses, subscription, user))
                                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
         }
         return inputUris;
+    }
+
+    private boolean filterJsonForItem(Object item, Subscription subscription, UserI user) {
+        String jsonItem = null;
+        XnatModelObject modelObject = null;
+        try {
+            modelObject = componentManager.getModelObject(item, user);
+            if (modelObject != null) {
+                jsonItem = mapper.writeValueAsString(modelObject);
+            } else {
+                log.debug("Could not serialize event object: {}", item);
+                return false;
+            }
+        } catch(JsonProcessingException e) {
+            log.error("Exception attempting to serialize: {}", item != null ? item.getClass().getCanonicalName() : "null", e);
+            return false;
+        }
+
+        try {
+            if (subscription.eventFilter() != null && !Strings.isNullOrEmpty(subscription.eventFilter().jsonPathFilter())) {
+                if (!Strings.isNullOrEmpty(jsonItem)) {
+                    List<String> filterResult = eventService.performJsonFilter(subscription, jsonItem);
+                    if (!filterResult.isEmpty()) {
+                        if (log.isDebugEnabled()) {
+                            int substringLen = 200;
+                            String jsonItemToLog = jsonItem.length() > substringLen ? jsonItem.substring(0, substringLen-3) + "..." : jsonItem;
+                            log.debug("JSONPath Filter Match - Serialized event:\n{}\nJSONPath Filter:\n{}", jsonItemToLog, subscription.eventFilter().jsonPathFilter());
+                        }
+                        return true;
+                    }
+                }
+            } else {
+                return true;
+            }
+        } catch (Throwable e) {
+            log.error("Aborting Event Service object filtering ", e);
+        }
+
+        return false;
     }
 
     private boolean canUserEditPrimaryProject(UserI user, ArchivableItem item, Long deliveryId){
