@@ -872,7 +872,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     console.log('imageListManagement.js');
 
-    var imageListManager,
+    var imageList,
+        imageListManager,
         imageFilterManager,
         addImage,
         commandListManager,
@@ -897,6 +898,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 label: 'On Scan Archive'
             }
         ];
+
+    XNAT.plugin.containerService.imageList = imageList =
+        getObject(XNAT.plugin.containerService.imageList || []);
 
     XNAT.plugin.containerService.imageListManager = imageListManager =
         getObject(XNAT.plugin.containerService.imageListManager || {});
@@ -926,7 +930,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             "enabled": true
         }
     ];
-    imageListManager.images = {}; // populate this object via rest
+    imageListManager.images = []; // populate this object via rest
 
     function imageUrl(appended,force){
         appended = (appended) ? '/' + appended : '';
@@ -1176,9 +1180,17 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 language: 'json'
             });
 
+            var imageOptions = imageListManager.images.reduce(function(image) { return image.imageName });
+
             _editor.openEditor({
                 title: 'Add New Command to '+imageName,
                 classes: 'plugin-json',
+                before: spawn('!',[
+                    XNAT.ui.panel.select.single({
+                        label: 'Select Image',
+                        options: imageOptions
+                    })
+                ]),
                 buttons: {
                     create: {
                         label: 'Save Command',
@@ -1216,8 +1228,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     // create table for listing commands
     commandListManager.table = function(image){
 
-        var imageName = image.tags[0];
-        var imageId = image['imageSha'];
+        var imageName = image.imageName;
+        var imageId = image['imageSha'] || image.imageName;
         var $commandListContainer = $(document).find('#'+imageId+'-commandlist');
 
         // initialize the table - we'll add to it below
@@ -1346,7 +1358,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
             if (data.length === 0) {
                 $commandListContainer.parents('.imageContainer').addClass('no-commands hidden');
-                imageListManager.images[imageId].hideable = true; // Store a parameter that tracks whether we have hidden this image in the list for use in toggling.
+                var k = imageListManager.images.findIndex(function(image) { return image.imageSha === imageId});
+                imageListManager.images[k].hideable = true; // Store a parameter that tracks whether we have hidden this image in the list for use in toggling.
 
                 imageFilterManager.refresh();
             }
@@ -1394,7 +1407,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             return spawn('button.btn.sm',{
                 html: 'Add New Command',
                 onclick: function(){
-                    commandDefinition.dialog(null,true,image.tags[0])
+                    commandDefinition.dialog(null,true,image.imageName)
                 }
             });
         }
@@ -1406,11 +1419,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             force = force || false;
             if (!force) {
                 content = spawn('div',[
-                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.tags[0]+' image?'),
+                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.imageName+' image?'),
                     spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
                 ]);
             } else {
-                content = spawn('p','Containers may have been run using '+image.tags[0]+'. Please confirm that you want to delete this image.');
+                content = spawn('p','Containers may have been run using '+image.imageName+'. Please confirm that you want to delete this image.');
             }
             XNAT.dialog.open({
                 width: 400,
@@ -1424,7 +1437,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             XNAT.xhr.delete({
                                 url: imageUrl(image['image-id'],force),
                                 success: function(){
-                                    XNAT.ui.banner.top(1000, '<b>' + image.tags[0] + ' image deleted, along with its commands and configurations.', 'success');
+                                    XNAT.ui.banner.top(1000, '<b>' + image.imageName + ' image deleted, along with its commands and configurations.', 'success');
                                     imageListManager.refreshTable();
                                     commandConfigManager.refreshTable();
                                     XNAT.plugin.containerService.historyTable.refresh();
@@ -1466,19 +1479,33 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         imageListManager.getAll().done(function(data){
             if (data.length > 0) {
-                data = data.sort(function(a,b){ if (a.tags.length && b.tags.length) return (a.tags[0] > b.tags[0]) ? 1 : -1; });
+                data = data.sort(function(a,b){ return (a.imageName > b.imageName) ? 1 : -1; });
 
                 data.forEach(function(imageInfo){
+                    // images can now be listed without pointing to a locally installed SHA.
+                    // these images exist remotely and will be pulled on demand.
+
                     if (imageInfo.tags.length && imageInfo.tags[0] !== "<none>:<none>") {
 
-                        imageInfo['imageSha'] = imageInfo['image-id'].substring(7); // cut out leading 'sha256:' from image ID for use as a HTML ID.
+                        // add image name to canonical object
+                        if (imageInfo.imageName === undefined) {
+                            imageInfo.imageName = imageInfo.tags[0];
+                        }
+
+                        if (imageInfo['image-id'] !== undefined) {
+                            imageInfo['imageSha'] = imageInfo['image-id'].substring(7); // cut out leading 'sha256:' from image ID for use as a HTML ID.
+                        }
+                        else {
+                            imageInfo['imageSha'] = imageInfo.imageName;
+                        }
 
                         // add image to canonical list of images
-                        imageListManager.images[imageInfo['imageSha']] = imageInfo;
+                        imageListManager.images.push(imageInfo);
+
 
                         $manager.append(spawn('div.imageContainer',[
                             spawn('h3.imageTitle',[
-                                imageInfo.tags[0],
+                                imageInfo.imageName,
                                 spawn( 'span.pull-right',[
                                     deleteImageButton(imageInfo)
                                 ]),
