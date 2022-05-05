@@ -1123,7 +1123,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             success: function(){
                                 imageListManager.refreshTable();
                                 commandConfigManager.refreshTable();
-                                xmodal.closeAll();
+                                XNAT.ui.dialog.closeAll();
                                 XNAT.ui.banner.top(2000, 'Command definition updated.', 'success');
                             },
                             fail: function(e){
@@ -1164,6 +1164,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 buttons: dialogButtons,
                 height: 640,
                 before: spawn('!',[
+                    spawn('p', 'Image: '+commandDef['image']),
                     spawn('p', 'Command ID: '+sanitizedVars['id']),
                     spawn('p', 'Hash: '+sanitizedVars['hash']),
                     spawn('p', [
@@ -1180,23 +1181,26 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 language: 'json'
             });
 
-            var imageOptions = imageListManager.images.reduce(function(image) { return image.imageName });
 
             _editor.openEditor({
-                title: 'Add New Command to '+imageName,
+                title: 'Add New Command',
                 classes: 'plugin-json',
-                before: spawn('!',[
-                    XNAT.ui.panel.select.single({
-                        label: 'Select Image',
-                        options: imageOptions
-                    })
-                ]),
                 buttons: {
                     create: {
                         label: 'Save Command',
                         isDefault: true,
+                        close: false,
                         action: function(){
                             var editorContent = _editor.getValue().code;
+                            commandDef = JSON.parse(editorContent);
+
+                            if (commandDef.image === undefined || commandDef.image.length === 0) {
+                                XNAT.ui.dialog.message('Error: This command definition does specify an image and cannot be saved.');
+                                return false;
+                            }
+                            else {
+                                imageName = editorContent.image;
+                            }
 
                             var url = (imageName) ? commandUrl('?image='+imageName) : commandUrl();
 
@@ -1207,7 +1211,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 success: function(obj){
                                     imageListManager.refreshTable();
                                     commandConfigManager.refreshTable();
-                                    xmodal.close(obj.$modal);
+                                    XNAT.ui.dialog.closeAll();
                                     XNAT.ui.banner.top(2000, 'Command definition created.', 'success');
                                 },
                                 fail: function(e){
@@ -1230,7 +1234,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         var imageName = image.imageName;
         var imageId = image['imageSha'] || image.imageName;
-        var $commandListContainer = $(document).find('#'+imageId+'-commandlist');
+        var $commandListContainer = $(document.getElementById(imageId+'-commandlist'));
 
         // initialize the table - we'll add to it below
         var clmTable = XNAT.table({
@@ -1375,21 +1379,32 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     imageFilterManager.init = imageFilterManager.refresh = function(){
 
+        var $header = $('#image-filter-bar').parents('.panel').find('.panel-heading');
         var $footer = $('#image-filter-bar').parents('.panel').find('.panel-footer');
 
-        // add the 'add new' button to the panel footer
-        var newImage = spawn('button.new-image.btn.btn-sm.submit', {
-            html: 'Add New Image',
+        // add the 'add new' button to the panel header
+        var newImage = spawn('button.new-image.btn.btn-sm.pad5', {
+            html: 'New Image',
             onclick: function(){
                 addImage.dialog(null);
             }
         });
-        $footer.empty().append(spawn('div.pull-right', [
-            newImage
+        var newCommand = spawn('button.new-command.btn.btn-sm.pad5',{
+            html: 'New Command',
+            onclick: function(){
+                commandDefinition.dialog(null,true)
+            }
+        });
+
+        $header.empty().append(spawn('!',[
+            spawn('h3.panel-title', [
+                'Installed Images and Commands',
+                spawn('span.pull-right', { style: { 'margin-top': '-4px' }}, [ newImage, spacer(6), newCommand ])
+            ])
         ]));
         var $hideableImages = $(document).find('.imageContainer.no-commands');
         if ($hideableImages.length) {
-            $footer.append(spawn('div.pull-right.pad5v',[
+            $footer.empty().append(spawn('div.pull-right.pad5v',[
                 spawn('a.show-hidden-images.pad20h', { href: '#!', data: { 'hidden': 'true' }},[
                     spawn('i.fa.fa-eye-slash.pad5h'),
                     spawn('span', hiddenImagesMessage($hideableImages.length, true))
@@ -1403,14 +1418,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     imageListManager.init = function(container){
         var $manager = $$(container||'div#image-list-container');
 
-        function newCommandButton(image) {
-            return spawn('button.btn.sm',{
-                html: 'Add New Command',
-                onclick: function(){
-                    commandDefinition.dialog(null,true,image.imageName)
-                }
-            });
-        }
+        // function newCommandButton() {
+        //     return spawn('button.btn.sm',{
+        //         html: 'New Command',
+        //         onclick: function(){
+        //             commandDefinition.dialog(null,true)
+        //         }
+        //     });
+        // }
 
         function deleteImage(image,force,retries) {
             var content;
@@ -1508,9 +1523,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 imageInfo.imageName,
                                 spawn( 'span.pull-right',[
                                     deleteImageButton(imageInfo)
-                                ]),
-                                spawn( 'span.pull-right.pad10h',[
-                                    newCommandButton(imageInfo)
                                 ])
                             ]),
                             spawn('div.clearfix.clear'),
