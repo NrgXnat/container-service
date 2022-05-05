@@ -525,16 +525,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
 
             // check logs and populate buttons at bottom of modal
-            if (key === 'log-paths' && (('container-id' in historyEntry) || ('service-id' in historyEntry))) {
+            if (key === 'log-paths') {
                 historyDialogButtons.push({
                     label: 'View StdOut.log',
                     close: false,
                     action: function(){
-                        var jobid = historyEntry['container-id'];
-                        if (!jobid || jobid === "") {
-                            jobid = historyEntry['service-id'];
-                        }
-                        historyTable.viewLog(jobid,'stdout')
+                        historyTable.viewLog(historyEntry.id, 'stdout')
                     }
                 });
 
@@ -542,11 +538,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     label: 'View StdErr.log',
                     close: false,
                     action: function(){
-                        var jobid = historyEntry['container-id'];
-                        if (!jobid || jobid === "") {
-                            jobid = historyEntry['service-id'];
-                        }
-                        historyTable.viewLog(jobid,'stderr')
+                        historyTable.viewLog(historyEntry.id, 'stderr')
                     }
                 })
             }
