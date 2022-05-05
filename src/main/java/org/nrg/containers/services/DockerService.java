@@ -46,7 +46,8 @@ public interface DockerService {
     DockerServerWithPing setServer(DockerServer server);
     String ping() throws NoDockerServerException, DockerServerException;
 
-    List<DockerImage> getImages() throws NoDockerServerException, DockerServerException;
+    List<DockerImage> getInstalledImages() throws NoDockerServerException, DockerServerException;
+    List<DockerImage> getAllImages() throws NoDockerServerException, DockerServerException;
     List<DockerImageAndCommandSummary> getImageSummaries() throws NoDockerServerException, DockerServerException;
     DockerImage getImage(String imageId) throws NoDockerServerException, NotFoundException;
     void removeImageById(String imageId, Boolean force) throws NotFoundException, NoDockerServerException, DockerServerException;

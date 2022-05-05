@@ -271,8 +271,9 @@ public class DockerRestApi extends AbstractXapiRestController {
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/images", method = GET, produces = JSON)
     @ResponseBody
-    public List<DockerImage> getImages() throws NoDockerServerException, DockerServerException {
-        return dockerService.getImages();
+    public List<DockerImage> getImages(final @RequestParam(value = "installed", defaultValue = "false") Boolean installed)
+            throws NoDockerServerException, DockerServerException {
+        return installed == true ? dockerService.getInstalledImages() : dockerService.getAllImages();
     }
 
     @ApiOperation(value = "Get summary list of images and commands.")

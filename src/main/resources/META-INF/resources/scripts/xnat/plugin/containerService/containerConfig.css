@@ -1,12 +1,12 @@
 .imageContainer {
-    margin: 0 0 4em;
+    margin: 0 0 2.5em;
 }
 .imageContainer:last-of-type {
     margin: 0;
 }
 .imageContainer h3 {
     border: none;
-    margin-bottom: 10px;
+    /*margin-bottom: 10px;*/
     overflow: auto;
     padding: 20px 0 0 2em;
     position: relative;

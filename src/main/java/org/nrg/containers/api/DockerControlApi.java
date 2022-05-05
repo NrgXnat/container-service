@@ -574,12 +574,14 @@ public class DockerControlApi implements ContainerControlApi {
         }
 
         try (final DockerClient client = getClient(server, toCreate.dockerImage())) {
-            final ContainerCreation container;
-            if(Strings.isNullOrEmpty(toCreate.containerName())){
-                container = client.createContainer(containerConfig);
-            } else {
-                container = client.createContainer(containerConfig, toCreate.containerName());
+
+            if (!getAllImages().stream()
+                    .filter(img -> img.tags().contains(containerConfig.image())).findAny().isPresent()) {
+                pullImage(containerConfig.image());
             }
+
+            final ContainerCreation container = client.createContainer(containerConfig,
+                    Strings.isNullOrEmpty(toCreate.containerName()) ? null : toCreate.containerName());
 
             final List<String> warnings = container.warnings();
             if (warnings != null) {
@@ -589,9 +591,12 @@ public class DockerControlApi implements ContainerControlApi {
             }
 
             return container.id();
-        } catch (DockerException | InterruptedException e) {
+        } catch (DockerException | InterruptedException | NoDockerServerException e) {
             log.error(e.getMessage());
             throw new DockerServerException("Could not create container from image " + toCreate.dockerImage(), e);
+        } catch (NotFoundException e) {
+            log.error(e.getMessage());
+            throw new DockerServerException("Could not pull image " + containerConfig.image() + " from repository.", e);
         }
     }
 
