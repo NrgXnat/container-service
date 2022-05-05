@@ -1195,7 +1195,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             commandDef = JSON.parse(editorContent);
 
                             if (commandDef.image === undefined || commandDef.image.length === 0) {
-                                XNAT.ui.dialog.message('Error: This command definition does specify an image and cannot be saved.');
+                                XNAT.ui.dialog.message('Error: This command definition does not specify an image and cannot be saved.');
                                 return false;
                             }
                             else {
