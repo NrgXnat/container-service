@@ -580,9 +580,9 @@ public class DockerControlApi implements ContainerControlApi {
                 pullImage(containerConfig.image());
             }
 
-            final ContainerCreation container = client.createContainer(containerConfig,
-                    Strings.isNullOrEmpty(toCreate.containerName()) ? null : toCreate.containerName());
-
+            final ContainerCreation container = Strings.isNullOrEmpty(toCreate.containerName()) ?
+                    client.createContainer(containerConfig) :
+                    client.createContainer(containerConfig, toCreate.containerName());
             final List<String> warnings = container.warnings();
             if (warnings != null) {
                 for (String warning : warnings) {
