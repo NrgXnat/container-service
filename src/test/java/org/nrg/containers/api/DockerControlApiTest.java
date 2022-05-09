@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
@@ -50,10 +51,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.AdditionalMatchers.or;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyVararg;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
+import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -94,6 +92,7 @@ public class DockerControlApiTest {
     @Mock private DockerServerService dockerServerService;
 
     @Mock private DockerClient mockDockerClient;
+    @Mock private DockerImage mockDockerImage;
     @Mock private LogStream logStream;
 
     @Mock private DockerServer dockerServer;
@@ -112,6 +111,10 @@ public class DockerControlApiTest {
         dockerControlApi = PowerMockito.spy(new DockerControlApi(
                 dockerServerService, commandLabelService, dockerHubService, eventService
         ));
+        PowerMockito.doReturn(mockDockerImage).when(dockerControlApi, method(
+                DockerControlApi.class, "pullImage", String.class))
+                .withArguments(anyString());
+
         PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
                 DockerControlApi.class, "getClient", DockerServer.class))
                 .withArguments(dockerServer);
