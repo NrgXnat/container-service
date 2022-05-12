@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Function;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -73,6 +74,8 @@ public abstract class Command {
     @Nullable @JsonProperty("ulimits") public abstract ImmutableMap<String, String> ulimits();
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
+    @JsonIgnore protected final static String DEFAULT_IMAGE_TAG = "latest";
+    @JsonIgnore protected final static Pattern hasLabelPattern = Pattern.compile(".+:[a-zA-Z0-9_.-]+$");
 
     @JsonCreator
     static Command create(@JsonProperty("id") final long id,
@@ -242,7 +245,7 @@ public abstract class Command {
                 .version(creation.version())
                 .schemaVersion(creation.schemaVersion())
                 .infoUrl(creation.infoUrl())
-                .image(creation.image())
+                .image(setDefaultTag(creation.image(), DEFAULT_IMAGE_TAG))
                 .containerName(creation.containerName())
                 .type(creation.type() == null ? CommandEntity.DEFAULT_TYPE.getName() : creation.type())
                 .index(creation.index())
@@ -287,10 +290,16 @@ public abstract class Command {
      */
     public static Command create(final CommandCreation commandCreation, final String image) {
         final Command command = Command.create(commandCreation);
-        if (StringUtils.isNotBlank(image)) {
+        if (StringUtils.isNotBlank(setDefaultTag(image, DEFAULT_IMAGE_TAG))) {
             return command.toBuilder().image(image).build();
         }
         return command;
+    }
+
+    private static String setDefaultTag(String image, String defaultTag){
+
+        return (Strings.isNullOrEmpty(image) || hasLabelPattern.matcher(image).matches()) ?
+            image : String.join(":", image, DEFAULT_IMAGE_TAG);
     }
 
     public abstract Builder toBuilder();
@@ -314,6 +323,9 @@ public abstract class Command {
 
         if (StringUtils.isBlank(image())) {
             errors.add(commandName + "image name cannot be blank.");
+        }
+        if (!Strings.isNullOrEmpty(image()) && !hasLabelPattern.matcher(image()).matches()) {
+            errors.add(commandName + "image name must include version tag. e.g. image_name:tag");
         }
 
         if (type().equals(CommandType.DOCKER.getName())) {

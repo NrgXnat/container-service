@@ -978,7 +978,7 @@ public class CommandLaunchIntegrationTest {
     @DirtiesContext
     public void testDeleteCommandWhenDeleteImageAfterLaunchingContainer() throws Exception {
 
-        final String imageName = "xnat/testy-test";
+        final String imageName = "xnat/testy-test:tag";
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testDeleteCommandWhenDeleteImageAfterLaunchingContainer");
 

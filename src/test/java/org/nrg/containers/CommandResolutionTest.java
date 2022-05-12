@@ -167,7 +167,7 @@ public class CommandResolutionTest {
         final String commandWrapperExternalInputConfiguredDefaultValue = "red";
         final Command command = commandService.create(Command.builder()
                 .name("command")
-                .image("whatever")
+                .image("whatever:tag")
                 .addInput(CommandInput.builder()
                         .name(commandInputName)
                         .defaultValue(commandInputDefaultValue)
@@ -763,7 +763,7 @@ public class CommandResolutionTest {
                 .addPort("1", "2")
                 .addRawInputValue("input name", "input value")
                 .addResolvedInputTree(inputTree)
-                .image("image")
+                .image("image:tag")
                 .commandLine("script.sh")
                 .addMount(ResolvedCommandMount.builder()
                         .name("mount")
