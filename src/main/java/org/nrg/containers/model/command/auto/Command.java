@@ -75,7 +75,7 @@ public abstract class Command {
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
     @JsonIgnore protected final static String DEFAULT_IMAGE_TAG = "latest";
-    @JsonIgnore protected final static Pattern hasLabelPattern = Pattern.compile(".+:[a-zA-Z0-9_.-]+$");
+    @JsonIgnore protected final static Pattern HAS_TAG = Pattern.compile(".+:[a-zA-Z0-9_.-]+$");
 
     @JsonCreator
     static Command create(@JsonProperty("id") final long id,
@@ -245,7 +245,7 @@ public abstract class Command {
                 .version(creation.version())
                 .schemaVersion(creation.schemaVersion())
                 .infoUrl(creation.infoUrl())
-                .image(setDefaultTag(creation.image(), DEFAULT_IMAGE_TAG))
+                .image(setDefaultTag(creation.image()))
                 .containerName(creation.containerName())
                 .type(creation.type() == null ? CommandEntity.DEFAULT_TYPE.getName() : creation.type())
                 .index(creation.index())
@@ -291,15 +291,17 @@ public abstract class Command {
     public static Command create(final CommandCreation commandCreation, final String image) {
         final Command command = Command.create(commandCreation);
         if (StringUtils.isNotBlank(image)) {
-            return command.toBuilder().image(setDefaultTag(image, DEFAULT_IMAGE_TAG)).build();
+            return command.toBuilder().image(setDefaultTag(image)).build();
         }
         return command;
     }
 
-    private static String setDefaultTag(String image, String defaultTag){
+    private static String setDefaultTag(String image){
+        return imageNeedsTag(image) ? String.join(":", image, DEFAULT_IMAGE_TAG) : image;
+    }
 
-        return (Strings.isNullOrEmpty(image) || hasLabelPattern.matcher(image).matches()) ?
-            image : String.join(":", image, DEFAULT_IMAGE_TAG);
+    private static boolean imageNeedsTag(String image) {
+        return !(Strings.isNullOrEmpty(image) || HAS_TAG.matcher(image).matches());
     }
 
     public abstract Builder toBuilder();
@@ -324,7 +326,7 @@ public abstract class Command {
         if (StringUtils.isBlank(image())) {
             errors.add(commandName + "image name cannot be blank.");
         }
-        if (!Strings.isNullOrEmpty(image()) && !hasLabelPattern.matcher(image()).matches()) {
+        if (imageNeedsTag(image())) {
             errors.add(commandName + "image name must include version tag. e.g. image_name:tag");
         }
 
