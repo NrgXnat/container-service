@@ -124,7 +124,7 @@ public class CommandEntityTest {
         COMMAND = Command.builder()
                 .name("docker_image_command")
                 .description("Docker Image command for the test")
-                .image("abc123")
+                .image("abc123:latest")
                 .type("docker")
                 .infoUrl("http://abc.xyz")
                 .addEnvironmentVariable("foo", "bar")
@@ -780,7 +780,7 @@ public class CommandEntityTest {
         final Command setupCommand = Command.builder()
                 .name("setup")
                 .type("docker-setup")
-                .image("a-setup-image")
+                .image("a-setup-image:latest")
                 .build();
         final List<String> errors = setupCommand.validate();
         assertThat(errors, is(Matchers.<String>emptyIterable()));
@@ -793,7 +793,7 @@ public class CommandEntityTest {
         final Command wrapup = Command.builder()
                 .name("wrapup")
                 .type("docker-wrapup")
-                .image("a-wrapup-image")
+                .image("a-wrapup-image:latest")
                 .build();
         final List<String> errors = wrapup.validate();
         assertThat(errors, is(Matchers.<String>emptyIterable()));

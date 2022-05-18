@@ -90,7 +90,7 @@ public class CommandRestApiTest {
     private MockMvc mockMvc;
 
     private final String FAKE_URL = "mock://url";
-    private final String FAKE_DOCKER_IMAGE = "abc123";
+    private final String FAKE_DOCKER_IMAGE = "abc123:tag";
     private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
     private final MediaType XML = MediaType.APPLICATION_XML;
     private final String NON_ADMIN_IS_OWNER_PROJECT = "projectowner";
