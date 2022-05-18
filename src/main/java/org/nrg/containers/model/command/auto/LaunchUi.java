@@ -490,9 +490,7 @@ public abstract class LaunchUi {
 
         final Input input = node.input();
         final CommandInputConfiguration inputConfiguration =
-                inputConfigurationMap.containsKey(input.name()) && inputConfigurationMap.get(input.name()) != null ?
-                        inputConfigurationMap.get(input.name()) :
-                        CommandInputConfiguration.builder().build();
+                inputConfigurationMap.computeIfAbsent(input.name(), k -> CommandInputConfiguration.builder().build());
 
         final Boolean requiredConfig = inputConfiguration.required();
         final boolean inputIsRequired = input.required() || (requiredConfig != null && requiredConfig);
@@ -529,10 +527,8 @@ public abstract class LaunchUi {
 
         if (uiInputType == null){
             // We know we have an external or derived wrapper input.
-            final Integer maxNumValuesObj = maxInputValues.get(input.name());
-            final int maxNumValues = maxNumValuesObj == null ? 0 : maxNumValuesObj;
-            final Integer minNumValuesObj = minInputValues.get(input.name());
-            final int minNumValues = minNumValuesObj == null ? 0 : minNumValuesObj;
+            final int maxNumValues = maxInputValues.computeIfAbsent(input.name(), k -> 0);
+            final int minNumValues = minInputValues.computeIfAbsent(input.name(), k -> 0);
 
             String itemType = "item";
             if (bulkLaunch) {

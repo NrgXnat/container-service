@@ -48,6 +48,7 @@ public interface CommandService {
     CommandConfiguration getSiteConfiguration(long commandId, String wrapperName) throws NotFoundException;
     CommandConfiguration getProjectConfiguration(String project, long wrapperId) throws NotFoundException;
     CommandConfiguration getProjectConfiguration(String project, long commandId, String wrapperName) throws NotFoundException;
+    CommandConfiguration getConfiguration(String project, long commandId, String wrapperName, long wrapperId) throws NotFoundException;
     ConfiguredCommand getAndConfigure(long wrapperId) throws NotFoundException;
     ConfiguredCommand getAndConfigure(long commandId, String wrapperName) throws NotFoundException;
     ConfiguredCommand getAndConfigure(String project, long wrapperId) throws NotFoundException;

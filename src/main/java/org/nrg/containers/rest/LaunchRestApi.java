@@ -1,7 +1,5 @@
 package org.nrg.containers.rest;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -18,31 +16,22 @@ import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
 import org.nrg.containers.model.configuration.CommandConfiguration;
-import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventService;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
-import org.nrg.xft.event.persist.PersistentWorkflowI;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
-import org.nrg.xnat.event.model.BulkLaunchEvent;
-import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -50,14 +39,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
-import java.util.Random;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
@@ -152,11 +135,12 @@ public class LaunchRestApi extends AbstractXapiRestController {
                                  final Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         log.debug("Getting {} configuration for command {}, wrapper name {}, wrapper id {}.", project == null ? "site" : "project " + project, commandId, wrapperName, wrapperId);
-        final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId, wrapperName, wrapperId);
+        final CommandConfiguration commandConfiguration = commandService.getConfiguration(project, commandId, wrapperName, wrapperId);
         try {
             log.debug("Preparing to pre-resolve command {}, wrapperName {}, wrapperId {}, in project {} with inputs {}.", commandId, wrapperName, wrapperId, project, allRequestParams);
             final UserI userI = getSessionUser();
-            final PartiallyResolvedCommand partiallyResolvedCommand = preResolve(project, commandId, wrapperName, wrapperId, allRequestParams, userI);
+            final PartiallyResolvedCommand partiallyResolvedCommand =
+                    commandResolutionService.preResolve(project, commandId, wrapperName, wrapperId, allRequestParams, userI);
             log.debug("Done pre-resolving command {}, wrapperName {}, wrapperId {}, in project {}.", commandId, wrapperName, wrapperId, project);
             log.debug("Creating launch UI.");
             return LaunchUi.create(partiallyResolvedCommand,
@@ -171,35 +155,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
             }
             return null;
         }
-    }
-
-    private PartiallyResolvedCommand preResolve(final String project,
-                                                final long commandId,
-                                                final String wrapperName,
-                                                final long wrapperId,
-                                                final Map<String, String> allRequestParams,
-                                                final UserI userI)
-            throws NotFoundException, CommandResolutionException, UnauthorizedException {
-        return project == null ?
-                (commandId == 0L && wrapperName == null ?
-                        commandResolutionService.preResolve(wrapperId, allRequestParams, userI) :
-                        commandResolutionService.preResolve(commandId, wrapperName, allRequestParams, userI)) :
-                (commandId == 0L && wrapperName == null ?
-                        commandResolutionService.preResolve(project, wrapperId, allRequestParams, userI) :
-                        commandResolutionService.preResolve(project, commandId, wrapperName, allRequestParams, userI));
-    }
-
-    private CommandConfiguration getCommandConfiguration(final String project,
-                                                         final long commandId,
-                                                         final String wrapperName,
-                                                         final long wrapperId) throws NotFoundException {
-        return project == null ?
-                (commandId == 0L && wrapperName == null ?
-                        commandService.getSiteConfiguration(wrapperId) :
-                        commandService.getSiteConfiguration(commandId, wrapperName)) :
-                (commandId == 0L && wrapperName == null ?
-                        commandService.getProjectConfiguration(project, wrapperId) :
-                        commandService.getProjectConfiguration(project, commandId, wrapperName));
     }
 
     /*
@@ -278,12 +233,12 @@ public class LaunchRestApi extends AbstractXapiRestController {
         try {
             log.debug("Getting {} configuration for command {}, wrapper name {}, wrapper id {}.",
                     project == null ? "site" : "project " + project, commandId, wrapperName, wrapperId);
-            final CommandConfiguration commandConfiguration = getCommandConfiguration(project, commandId,
-                    wrapperName, wrapperId);
+            final CommandConfiguration commandConfiguration =
+                    commandService.getConfiguration(project, commandId, wrapperName, wrapperId);
 
             final UserI userI = getSessionUser();
-            final PartiallyResolvedCommand partiallyResolvedCommand = preResolve(project, commandId, wrapperName,
-                    wrapperId, prms, userI);
+            final PartiallyResolvedCommand partiallyResolvedCommand =
+                    commandResolutionService.preResolve(project, commandId, wrapperName, wrapperId, prms, userI);
 
             log.debug("Creating launch UI.");
             return LaunchUi.create(partiallyResolvedCommand,

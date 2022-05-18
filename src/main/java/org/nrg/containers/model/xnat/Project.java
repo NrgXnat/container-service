@@ -4,10 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
@@ -25,10 +22,11 @@ import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.helpers.uri.archive.ProjectURII;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -38,7 +36,6 @@ public class Project extends XnatModelObject {
     private List<Resource> resources;
     private List<Subject> subjects;
     @JsonProperty("project-assets") private List<ProjectAsset> projectAssets;
-    private String directory;
     private String title;
     @JsonProperty("running-title") private String runningTitle;
     private String description;
@@ -89,27 +86,28 @@ public class Project extends XnatModelObject {
         this.id = xnatProjectdata.getId();
         this.label = xnatProjectdata.getName();
         this.xsiType = xnatProjectdata.getXSIType();
+        this.directory = null;
         try {
             this.directory = xnatProjectdata.getRootArchivePath() + xnatProjectdata.getCurrentArc();
-        } catch (NullPointerException e){log.error("Project could not get root archive path " + e.getMessage());}
+        } catch (NullPointerException e) {log.error("Project could not get root archive path", e);}
         try {
             this.accessibility = xnatProjectdata.getPublicAccessibility();
-        } catch (Throwable e){log.error("Could not get project accessibility.", e.getMessage());}
-        this.label = !Strings.isNullOrEmpty(xnatProjectdata.getName()) ? xnatProjectdata.getName() : xnatProjectdata.getId();
+        } catch (Throwable e){log.error("Could not get project accessibility", e);}
+        this.label = StringUtils.defaultIfBlank(xnatProjectdata.getName(), xnatProjectdata.getId());
         this.title = xnatProjectdata.getName();
         this.runningTitle = xnatProjectdata.getDisplayID();
         this.description = xnatProjectdata.getDescription();
         this.keywords = xnatProjectdata.getKeywords();
         this.aliases = xnatProjectdata.getAliases_alias().stream().map(XnatProjectdataAliasI::getAlias).collect(Collectors.toList());
 
-        this.subjects = Lists.newArrayList();
+        this.subjects = new ArrayList<>();
         if (preload && loadTypes.contains(CommandWrapperInputType.SUBJECT.getName())) {
             for (final XnatSubjectdata subject : xnatProjectdata.getParticipants_participant()) {
                 subjects.add(new Subject(subject, loadFiles, loadTypes, this.uri, xnatProjectdata.getRootArchivePath()));
             }
         }
 
-        this.resources = Lists.newArrayList();
+        this.resources = new ArrayList<>();
         if (preload && (loadFiles || loadTypes.contains(CommandWrapperInputType.RESOURCE.getName()))) {
             for (final XnatAbstractresourceI xnatAbstractresourceI : xnatProjectdata.getResources_resource()) {
                 if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
@@ -118,7 +116,7 @@ public class Project extends XnatModelObject {
                 }
             }
         }
-        this.projectAssets = Lists.newArrayList();
+        this.projectAssets = new ArrayList<>();
         if (preload && (loadFiles || loadTypes.contains(CommandWrapperInputType.PROJECT_ASSET.getName()))) {
             for (final XnatExperimentdata xnatExperimentdata : xnatProjectdata.getExperiments()) {
                 if (xnatExperimentdata instanceof XnatAbstractprojectassetI) {
@@ -130,48 +128,30 @@ public class Project extends XnatModelObject {
     }
 
     public static Function<URIManager.ArchiveItemURI, Project> uriToModelObject(final boolean loadFiles,
-                                                                                @Nonnull final Set<String> loadTypes) {
-        return uriToModelObject(loadFiles, loadTypes, true);
-    }
-
-    public static Function<URIManager.ArchiveItemURI, Project> uriToModelObject(final boolean loadFiles,
                                                                                 @Nonnull final Set<String> loadTypes,
                                                                                 final boolean preload) {
-        return new Function<URIManager.ArchiveItemURI, Project>() {
-            @Nullable
-            @Override
-            public Project apply(@Nullable URIManager.ArchiveItemURI uri) {
-                if (uri != null &&
-                        ProjectURII.class.isAssignableFrom(uri.getClass())) {
-                    return new Project((ProjectURII) uri, loadFiles, loadTypes, preload);
-                }
-
-                return null;
+        return uri -> {
+            if (uri != null &&
+                    ProjectURII.class.isAssignableFrom(uri.getClass())) {
+                return new Project((ProjectURII) uri, loadFiles, loadTypes, preload);
             }
-        };
-    }
 
-    public static Function<String, Project> idToModelObject(final UserI userI, final boolean loadFiles,
-                                                            @Nonnull final Set<String> loadTypes) {
-        return idToModelObject(userI, loadFiles, loadTypes, true);
+            return null;
+        };
     }
 
     public static Function<String, Project> idToModelObject(final UserI userI, final boolean loadFiles,
                                                             @Nonnull final Set<String> loadTypes,
                                                             final boolean preload) {
-        return new Function<String, Project>() {
-            @Nullable
-            @Override
-            public Project apply(@Nullable String s) {
-                if (StringUtils.isBlank(s)) {
-                    return null;
-                }
-                final XnatProjectdata xnatProjectdata = XnatProjectdata.getXnatProjectdatasById(s, userI, false);
-                if (xnatProjectdata != null) {
-                    return new Project(xnatProjectdata, loadFiles, loadTypes, preload);
-                }
+        return s -> {
+            if (StringUtils.isBlank(s)) {
                 return null;
             }
+            final XnatProjectdata xnatProjectdata = XnatProjectdata.getXnatProjectdatasById(s, userI, false);
+            if (xnatProjectdata != null) {
+                return new Project(xnatProjectdata, loadFiles, loadTypes, preload);
+            }
+            return null;
         };
     }
 
@@ -180,18 +160,18 @@ public class Project extends XnatModelObject {
         return this;
     }
 
-    public void loadXnatProjectdata(final UserI userI) {
-        if (xnatProjectdata == null) {
-            xnatProjectdata = XnatProjectdata.getXnatProjectdatasById(id, userI, false);
-        }
-    }
-
     public XnatProjectdata getXnatProjectdata() {
         return xnatProjectdata;
     }
 
     public void setXnatProjectdata(final XnatProjectdata xnatProjectdata) {
         this.xnatProjectdata = xnatProjectdata;
+    }
+
+    private void loadXnatProjectdata(final UserI userI) {
+        if (xnatProjectdata == null) {
+            xnatProjectdata = XnatProjectdata.getXnatProjectdatasById(id, userI, false);
+        }
     }
 
     public List<Resource> getResources() {
@@ -208,14 +188,6 @@ public class Project extends XnatModelObject {
 
     public void setSubjects(final List<Subject> subjects) {
         this.subjects = subjects;
-    }
-
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(final String directory) {
-        this.directory = directory;
     }
 
     public String getTitle() { return title; }
@@ -249,21 +221,26 @@ public class Project extends XnatModelObject {
     }
 
     @Override
-    public boolean equals(final Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         final Project that = (Project) o;
-        return Objects.equals(this.xnatProjectdata, that.xnatProjectdata) &&
-                Objects.equals(this.directory, that.directory) &&
-                Objects.equals(this.resources, that.resources) &&
-                Objects.equals(this.subjects, that.subjects);
+        return Objects.equals(resources, that.resources) &&
+                Objects.equals(subjects, that.subjects) &&
+                Objects.equals(projectAssets, that.projectAssets) &&
+                Objects.equals(title, that.title) &&
+                Objects.equals(runningTitle, that.runningTitle) &&
+                Objects.equals(description, that.description) &&
+                Objects.equals(keywords, that.keywords) &&
+                Objects.equals(accessibility, that.accessibility) &&
+                Objects.equals(aliases, that.aliases);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatProjectdata, projectAssets, directory, resources, subjects,
-                title, runningTitle, description, keywords, aliases, accessibility);
+        return Objects.hash(super.hashCode(), resources, subjects, projectAssets, title,
+                runningTitle, description, keywords, accessibility, aliases);
     }
 
     @Override
@@ -271,11 +248,9 @@ public class Project extends XnatModelObject {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
                 .add("title", title)
                 .add("running-title", runningTitle)
-                .add("description", description)
-                .add("directory", directory)
-                .add("resources", resources)
-                .add("project-assets", projectAssets)
                 .add("subjects", subjects)
+                .add("resources", resources.stream().map(XnatModelObject::getLabel).distinct().collect(Collectors.toList()))
+                .add("project-assets", projectAssets)
                 .toString();
     }
 }

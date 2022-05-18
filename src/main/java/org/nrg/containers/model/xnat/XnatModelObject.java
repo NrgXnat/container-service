@@ -29,6 +29,7 @@ public abstract class XnatModelObject {
     protected String label;
     protected String xsiType;
     protected String uri;
+    protected String directory;
 
     public String getId() {
         return id;
@@ -62,6 +63,14 @@ public abstract class XnatModelObject {
         this.uri = uri;
     }
 
+    public String getDirectory() {
+        return directory;
+    }
+
+    public void setDirectory(String directory) {
+        this.directory = directory;
+    }
+
     @JsonIgnore
     public abstract XFTItem getXftItem(final UserI userI);
 
@@ -69,16 +78,17 @@ public abstract class XnatModelObject {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        XnatModelObject that = (XnatModelObject) o;
-        return Objects.equals(this.id, that.id) &&
-                Objects.equals(this.label, that.label) &&
-                Objects.equals(this.xsiType, that.xsiType) &&
-                Objects.equals(this.uri, that.uri);
+        final XnatModelObject that = (XnatModelObject) o;
+        return Objects.equals(id, that.id) &&
+                Objects.equals(label, that.label) &&
+                Objects.equals(xsiType, that.xsiType) &&
+                Objects.equals(uri, that.uri) &&
+                Objects.equals(directory, that.directory);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, label, xsiType, uri);
+        return Objects.hash(id, label, xsiType, uri, directory);
     }
 
     public MoreObjects.ToStringHelper addParentPropertiesToString(final MoreObjects.ToStringHelper helper) {
@@ -86,6 +96,7 @@ public abstract class XnatModelObject {
                 .add("id", id)
                 .add("label", label)
                 .add("xsiType", xsiType)
-                .add("uri", uri);
+                .add("uri", uri)
+                .add("directory", directory);
     }
 }

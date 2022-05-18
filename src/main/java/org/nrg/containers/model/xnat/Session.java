@@ -4,9 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractresourceI;
@@ -26,10 +24,12 @@ import org.nrg.xnat.helpers.uri.archive.AssessedURII;
 import org.nrg.xnat.helpers.uri.archive.ExperimentURII;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @JsonInclude(Include.NON_NULL)
 public class Session extends XnatModelObject {
@@ -39,9 +39,11 @@ public class Session extends XnatModelObject {
     private List<Resource> resources;
     @JsonProperty("project-id") private String projectId;
     @JsonProperty("subject-id") private String subjectId;
-    private String directory;
     @JsonProperty("datatype-string") private String datatypeString;
     @JsonProperty("visit-id") private String visitId;
+
+    @JsonIgnore private Project project = null;
+    @JsonIgnore private Subject subject = null;
 
     public Session() {}
 
@@ -87,20 +89,21 @@ public class Session extends XnatModelObject {
         this.subjectId = xnatImagesessiondataI.getSubjectId();
         this.visitId = xnatImagesessiondataI.getVisitId();
 
+        this.directory = null;
         try {
             this.directory = ((XnatExperimentdata) xnatImagesessiondataI).getCurrentSessionFolder(true);
         } catch (UnknownPrimaryProjectException | InvalidArchiveStructure e) {
             // ignored, I guess?
         }
 
-        this.scans = Lists.newArrayList();
+        this.scans = new ArrayList<>();
         if (loadFiles || loadTypes.contains(CommandWrapperInputType.SCAN.getName())) {
             for (final XnatImagescandataI xnatImagescandataI : xnatImagesessiondataI.getScans_scan()) {
                 this.scans.add(new Scan(xnatImagescandataI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
         }
 
-        this.resources = Lists.newArrayList();
+        this.resources = new ArrayList<>();
         if (loadFiles || loadTypes.contains(CommandWrapperInputType.RESOURCE.getName())) {
             for (final XnatAbstractresourceI xnatAbstractresourceI : xnatImagesessiondataI.getResources_resource()) {
                 if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
@@ -110,7 +113,7 @@ public class Session extends XnatModelObject {
             }
         }
 
-        this.assessors = Lists.newArrayList();
+        this.assessors = new ArrayList<>();
         if (loadFiles || loadTypes.contains(CommandWrapperInputType.ASSESSOR.getName())) {
             for (final XnatImageassessordataI xnatImageassessordataI : xnatImagesessiondataI.getAssessors_assessor()) {
                 assessors.add(new Assessor(xnatImageassessordataI, loadFiles, loadTypes, this.uri, rootArchivePath));
@@ -118,7 +121,7 @@ public class Session extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagesessiondataI != null){
+        if (loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagesessiondataI != null){
             try {
                 datatypeString = xnatImagesessiondataI.toString();
             } catch (Throwable e){ }
@@ -127,64 +130,69 @@ public class Session extends XnatModelObject {
 
     public static Function<URIManager.ArchiveItemURI, Session> uriToModelObject(final boolean loadFiles,
                                                                                 @Nonnull final Set<String> loadTypes) {
-        return new Function<URIManager.ArchiveItemURI, Session>() {
-            @Nullable
-            @Override
-            public Session apply(@Nullable URIManager.ArchiveItemURI uri) {
-                XnatImagesessiondata imageSession;
-                if (uri != null &&
-                        AssessedURII.class.isAssignableFrom(uri.getClass())) {
-                    imageSession = ((AssessedURII) uri).getSession();
-
-                    if (imageSession != null) {
-                        return new Session((AssessedURII) uri, loadFiles, loadTypes);
-                    }
-                } else if (uri != null &&
-                        ExperimentURII.class.isAssignableFrom(uri.getClass())) {
-                    final XnatExperimentdata experimentdata = ((ExperimentURII) uri).getExperiment();
-                    if (experimentdata != null &&
-                            XnatImagesessiondataI.class.isAssignableFrom(experimentdata.getClass())) {
-                        return new Session((XnatImagesessiondataI) experimentdata, loadFiles, loadTypes);
-                    }
-                }
-
+        return uri -> {
+            if (uri == null) {
                 return null;
             }
+
+            XnatImagesessiondata imageSession = null;
+            if (ExperimentURII.class.isAssignableFrom(uri.getClass())) {
+                final XnatExperimentdata expt = ((ExperimentURII) uri).getExperiment();
+                if (expt != null &&
+                        XnatImagesessiondataI.class.isAssignableFrom(expt.getClass())) {
+                    imageSession = (XnatImagesessiondata) expt;
+                }
+            } else if (AssessedURII.class.isAssignableFrom(uri.getClass())) {
+                // Do we actually need this branch?
+                // I think this might be for assessors...
+                // JF 2022-05-12
+                imageSession = ((AssessedURII) uri).getSession();
+            }
+
+            if (imageSession == null) {
+                return null;
+            }
+
+            return new Session(imageSession, loadFiles, loadTypes);
         };
     }
 
     public static Function<String, Session> idToModelObject(final UserI userI, final boolean loadFiles,
                                                             @Nonnull final Set<String> loadTypes) {
-        return new Function<String, Session>() {
-            @Nullable
-            @Override
-            public Session apply(@Nullable String s) {
-                if (StringUtils.isBlank(s)) {
-                    return null;
-                }
-                final XnatImagesessiondata imagesessiondata = XnatImagesessiondata.getXnatImagesessiondatasById(s,
-                        userI, true);
-                if (imagesessiondata != null) {
-                    return new Session(imagesessiondata, loadFiles, loadTypes);
-                }
+        return s -> {
+            if (StringUtils.isBlank(s)) {
                 return null;
             }
+            final XnatImagesessiondata imagesessiondata = XnatImagesessiondata.getXnatImagesessiondatasById(s,
+                    userI, true);
+            if (imagesessiondata != null) {
+                return new Session(imagesessiondata, loadFiles, loadTypes);
+            }
+            return null;
         };
     }
 
     public Project getProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
-        loadXnatImagesessiondata(userI);
-        return new Project(xnatImagesessiondataI.getProject(), userI, loadFiles, loadTypes);
+        loadProject(userI, loadFiles, loadTypes);
+        return project;
+    }
+
+    private void loadProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (project == null) {
+            loadProjectId(userI);
+            project = new Project(projectId, userI, loadFiles, loadTypes);
+        }
     }
 
     public Subject getSubject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
-        loadXnatImagesessiondata(userI);
-        return new Subject(xnatImagesessiondataI.getSubjectId(), userI, loadFiles, loadTypes);
+        loadSubject(userI, loadFiles, loadTypes);
+        return subject;
     }
 
-    public void loadXnatImagesessiondata(final UserI userI) {
-        if (xnatImagesessiondataI == null) {
-            xnatImagesessiondataI = XnatImagesessiondata.getXnatImagesessiondatasById(id, userI, false);
+    private void loadSubject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (subject == null) {
+            loadSubjectId(userI);
+            subject = new Subject(subjectId, userI, loadFiles, loadTypes);
         }
     }
 
@@ -194,6 +202,12 @@ public class Session extends XnatModelObject {
 
     public void setXnatImagesessiondataI(final XnatImagesessiondataI xnatImagesessiondataI) {
         this.xnatImagesessiondataI = xnatImagesessiondataI;
+    }
+
+    private void loadXnatImagesessiondata(final UserI userI) {
+        if (xnatImagesessiondataI == null) {
+            xnatImagesessiondataI = XnatImagesessiondata.getXnatImagesessiondatasById(id, userI, false);
+        }
     }
 
     public List<Resource> getResources() {
@@ -228,6 +242,13 @@ public class Session extends XnatModelObject {
         this.projectId = projectId;
     }
 
+    private void loadProjectId(UserI userI) {
+        if (projectId == null) {
+            loadXnatImagesessiondata(userI);
+            projectId = xnatImagesessiondataI.getProject();
+        }
+    }
+
     public String getSubjectId() {
         return subjectId;
     }
@@ -236,17 +257,21 @@ public class Session extends XnatModelObject {
         this.subjectId = subjectId;
     }
 
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(final String directory) {
-        this.directory = directory;
+    private void loadSubjectId(UserI userI) {
+        if (subjectId == null) {
+            loadXnatImagesessiondata(userI);
+            subjectId = xnatImagesessiondataI.getSubjectId();
+        }
     }
 
     public String getDatatypeString() {
         return datatypeString;
     }
+
+    public void setDatatypeString(String datatypeString) {
+        this.datatypeString = datatypeString;
+    }
+
 
     public String getVisitId() {
         return visitId;
@@ -263,37 +288,33 @@ public class Session extends XnatModelObject {
     }
 
     @Override
-    public boolean equals(final Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         final Session that = (Session) o;
-        return Objects.equals(this.xnatImagesessiondataI, that.xnatImagesessiondataI) &&
-                Objects.equals(this.scans, that.scans) &&
-                Objects.equals(this.assessors, that.assessors) &&
-                Objects.equals(this.resources, that.resources) &&
-                Objects.equals(this.projectId, that.projectId) &&
-                Objects.equals(this.subjectId, that.subjectId) &&
-                Objects.equals(this.directory, that.directory) &&
-                Objects.equals(this.visitId, that.visitId);
+        return Objects.equals(scans, that.scans) &&
+                Objects.equals(assessors, that.assessors) &&
+                Objects.equals(resources, that.resources) &&
+                Objects.equals(projectId, that.projectId) &&
+                Objects.equals(subjectId, that.subjectId) &&
+                Objects.equals(datatypeString, that.datatypeString) &&
+                Objects.equals(visitId, that.visitId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatImagesessiondataI, scans, assessors, resources, projectId,
-                subjectId, directory, visitId);
+        return Objects.hash(super.hashCode(), scans, assessors, resources, projectId, subjectId, datatypeString, visitId);
     }
 
     @Override
     public String toString() {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
-                .add("scans", scans)
-                .add("assessors", assessors)
-                .add("resources", resources)
                 .add("projectId", projectId)
                 .add("subjectId", subjectId)
-                .add("directory", directory)
-                .add("visitId", visitId)
+                .add("scans", scans)
+                .add("assessors", assessors)
+                .add("resources", resources.stream().map(XnatModelObject::getLabel).distinct().collect(Collectors.toList()))
                 .toString();
     }
 }

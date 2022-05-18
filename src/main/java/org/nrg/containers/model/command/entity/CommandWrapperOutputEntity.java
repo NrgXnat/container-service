@@ -206,6 +206,15 @@ public class CommandWrapperOutputEntity {
             return name;
         }
 
+        public static Type fromName(String name) {
+            for (Type t : values()) {
+                if (t.name.equalsIgnoreCase(name)) {
+                    return t;
+                }
+            }
+            return null;
+        }
+
         public static List<String> names() {
             return Lists.transform(Arrays.asList(Type.values()), new Function<Type, String>() {
                 @Nullable

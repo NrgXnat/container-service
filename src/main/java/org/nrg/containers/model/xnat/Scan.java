@@ -4,9 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatImagescandataI;
@@ -19,10 +17,12 @@ import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.helpers.uri.archive.ScanURII;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @JsonInclude(Include.NON_NULL)
 public class Scan extends XnatModelObject {
@@ -32,7 +32,6 @@ public class Scan extends XnatModelObject {
     @JsonProperty("project-id") private String projectId;
     @JsonProperty("session-id") private String sessionId;
     private List<Resource> resources;
-    private String directory;
 
     private Integer frames;
     private String note;
@@ -46,6 +45,9 @@ public class Scan extends XnatModelObject {
     @JsonProperty("start-time") private Object startTime;
     private String uid;
     @JsonProperty("datatype-string") private String datatypeString;
+
+    @JsonIgnore private Project project = null;
+    @JsonIgnore private Session session = null;
 
     public Scan() {}
 
@@ -89,11 +91,12 @@ public class Scan extends XnatModelObject {
         this.startTime = xnatImagescandataI.getStarttime();
         this.uid = xnatImagescandataI.getUid();
 
+        this.directory = null;
         if (this.xnatImagescandataI instanceof XnatImagescandata) {
             this.directory = ((XnatImagescandata) xnatImagescandataI).deriveScanDir();
         }
 
-        this.resources = Lists.newArrayList();
+        this.resources = new ArrayList<>();
         if (loadFiles || loadTypes.contains(CommandWrapperInputType.RESOURCE.getName())) {
             for (final XnatAbstractresourceI xnatAbstractresourceI : this.xnatImagescandataI.getFile()) {
                 if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
@@ -104,7 +107,7 @@ public class Scan extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagescandataI != null){
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatImagescandataI != null){
             try {
                 datatypeString = xnatImagescandataI.toString();
             } catch (Throwable e){ }
@@ -114,17 +117,13 @@ public class Scan extends XnatModelObject {
 
     public static Function<URIManager.ArchiveItemURI, Scan> uriToModelObject(final boolean loadFiles,
                                                                              @Nonnull final Set<String> loadTypes) {
-        return new Function<URIManager.ArchiveItemURI, Scan>() {
-            @Nullable
-            @Override
-            public Scan apply(@Nullable URIManager.ArchiveItemURI uri) {
-                if (uri != null &&
-                        ScanURII.class.isAssignableFrom(uri.getClass())) {
-                    return new Scan((ScanURII) uri, loadFiles, loadTypes);
-                }
-
-                return null;
+        return uri -> {
+            if (uri != null &&
+                    ScanURII.class.isAssignableFrom(uri.getClass())) {
+                return new Scan((ScanURII) uri, loadFiles, loadTypes);
             }
+
+            return null;
         };
     }
 
@@ -133,21 +132,28 @@ public class Scan extends XnatModelObject {
         return null;
     }
 
-    public Project getProject(final UserI userI, final boolean loadFiles,
-                              @Nonnull final Set<String> loadTypes) {
-        loadXnatImagescandataI(userI);
-        return new Project(xnatImagescandataI.getProject(), userI, loadFiles, loadTypes);
+    public Project getProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        loadProject(userI, loadFiles, loadTypes);
+        return project;
+    }
+
+    private void loadProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (project == null) {
+            loadProjectId(userI);
+            project = new Project(projectId, userI, loadFiles, loadTypes);
+        }
     }
 
     public Session getSession(final UserI userI, final boolean loadFiles,
                               @Nonnull final Set<String> loadTypes) {
-        loadXnatImagescandataI(userI);
-        return new Session(xnatImagescandataI.getImageSessionId(), userI, loadFiles, loadTypes);
+        loadSession(userI, loadFiles, loadTypes);
+        return session;
     }
 
-    public void loadXnatImagescandataI(final UserI userI) {
-        if (xnatImagescandataI == null) {
-            xnatImagescandataI = XnatImagescandata.getXnatImagescandatasByXnatImagescandataId(integerId, userI, false);
+    private void loadSession(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (session == null) {
+            loadSessionId(userI);
+            session = new Session(sessionId, userI, loadFiles, loadTypes);
         }
     }
 
@@ -157,6 +163,12 @@ public class Scan extends XnatModelObject {
 
     public void setXnatImagescandataI(final XnatImagescandataI xnatImagescandataI) {
         this.xnatImagescandataI = xnatImagescandataI;
+    }
+
+    private void loadXnatImagescandataI(final UserI userI) {
+        if (xnatImagescandataI == null) {
+            xnatImagescandataI = XnatImagescandata.getXnatImagescandatasByXnatImagescandataId(integerId, userI, false);
+        }
     }
 
     public String getScanType() {
@@ -183,6 +195,13 @@ public class Scan extends XnatModelObject {
         this.projectId = projectId;
     }
 
+    private void loadProjectId(UserI userI) {
+        if (projectId == null) {
+            loadXnatImagescandataI(userI);
+            projectId = xnatImagescandataI.getProject();
+        }
+    }
+
     public String getSessionId() {
         return sessionId;
     }
@@ -191,12 +210,11 @@ public class Scan extends XnatModelObject {
         this.sessionId = sessionId;
     }
 
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(final String directory) {
-        this.directory = directory;
+    private void loadSessionId(UserI userI) {
+        if (sessionId == null) {
+            loadXnatImagescandataI(userI);
+            sessionId = xnatImagescandataI.getImageSessionId();
+        }
     }
 
     public Integer getIntegerId() {
@@ -306,45 +324,45 @@ public class Scan extends XnatModelObject {
     }
 
     @Override
-    public boolean equals(final Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         final Scan that = (Scan) o;
-        return Objects.equals(this.xnatImagescandataI, that.xnatImagescandataI) &&
-                Objects.equals(this.integerId, that.integerId) &&
-                Objects.equals(this.scanType, that.scanType) &&
-                Objects.equals(this.resources, that.resources) &&
-                Objects.equals(this.projectId, that.projectId) &&
-                Objects.equals(this.sessionId, that.sessionId) &&
-                Objects.equals(this.directory, that.directory);
+        return Objects.equals(integerId, that.integerId) &&
+                Objects.equals(scanType, that.scanType) &&
+                Objects.equals(projectId, that.projectId) &&
+                Objects.equals(sessionId, that.sessionId) &&
+                Objects.equals(resources, that.resources) &&
+                Objects.equals(frames, that.frames) &&
+                Objects.equals(note, that.note) &&
+                Objects.equals(modality, that.modality) &&
+                Objects.equals(quality, that.quality) &&
+                Objects.equals(scanner, that.scanner) &&
+                Objects.equals(scannerManufacturer, that.scannerManufacturer) &&
+                Objects.equals(scannerModel, that.scannerModel) &&
+                Objects.equals(scannerSoftwareVersion, that.scannerSoftwareVersion) &&
+                Objects.equals(seriesDescription, that.seriesDescription) &&
+                Objects.equals(startTime, that.startTime) &&
+                Objects.equals(uid, that.uid) &&
+                Objects.equals(datatypeString, that.datatypeString);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatImagescandataI, integerId, scanType, resources, projectId, sessionId, directory);
+        return Objects.hash(super.hashCode(), integerId, scanType, projectId, sessionId, resources,
+                frames, note, modality, quality, scanner, scannerManufacturer, scannerModel, scannerSoftwareVersion,
+                seriesDescription, startTime, uid, datatypeString);
     }
 
     @Override
     public String toString() {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
                 .add("integerId", integerId)
-                .add("scanType", scanType)
-                .add("resources", resources)
-                .add("projectId", projectId)
                 .add("sessionId", sessionId)
-                .add("directory", directory)
-                .add("frames", frames)
-                .add("note", note)
+                .add("scanType", scanType)
                 .add("modality", modality)
-                .add("quality", quality)
-                .add("scanner", scanner)
-                .add("scannerManufacturer", scannerManufacturer)
-                .add("scannerModel", scannerModel)
-                .add("scannerSoftwareVersion", scannerSoftwareVersion)
-                .add("seriesDescription", seriesDescription)
-                .add("startTime", startTime)
-                .add("uid", uid)
+                .add("resources", resources.stream().map(XnatModelObject::getLabel).distinct().collect(Collectors.toList()))
                 .toString();
     }
 }

@@ -35,6 +35,14 @@ public interface CommandResolutionService {
                                         String wrapperName,
                                         Map<String, String> inputValues,
                                         final UserI userI)
+    throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
+    PartiallyResolvedCommand preResolve(String project,
+                                        long commandId,
+                                        String wrapperName,
+                                        long wrapperId,
+                                        Map<String, String> inputValues,
+                                        final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
 
     PartiallyResolvedCommand preResolve(ConfiguredCommand configuredCommand,

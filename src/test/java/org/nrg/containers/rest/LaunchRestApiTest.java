@@ -9,8 +9,6 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.hamcrest.CoreMatchers;
-import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -26,7 +24,11 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
-import org.nrg.containers.services.*;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.RoleServiceI;
@@ -47,18 +49,24 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-import static org.hamcrest.Matchers.hasEntry;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyMapOf;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
-import static org.nrg.containers.model.server.docker.DockerServerBase.*;
+import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
@@ -334,7 +342,7 @@ public class LaunchRestApiTest {
                                 .build()
                 )
                 .build();
-        when(mockCommandService.getProjectConfiguration(project, WRAPPER_ID)).thenReturn(mockCommandConfiguration);
+        when(mockCommandService.getConfiguration(project, 0, null, WRAPPER_ID)).thenReturn(mockCommandConfiguration);
 
         // Mock out command resolution service
         final ResolvedCommand.PartiallyResolvedCommand partiallyResolvedCommand = ResolvedCommand.PartiallyResolvedCommand.builder()
@@ -344,7 +352,7 @@ public class LaunchRestApiTest {
                 .commandName(COMMAND_NAME)
                 .image(IMAGE)
                 .build();
-        when(mockCommandResolutionService.preResolve(eq(project), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
+        when(mockCommandResolutionService.preResolve(eq(project), any(long.class), any(String.class), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
                 .thenReturn(partiallyResolvedCommand);
 
         final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,
