@@ -10,6 +10,7 @@ import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandValidationException;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.configuration.CommandConfiguration;
@@ -314,11 +315,19 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     }
 
     @Override
+    public CommandConfiguration getConfiguration(String project, long commandId, String wrapperName, long wrapperId) throws NotFoundException {
+        if (wrapperId == 0 && (commandId != 0 || wrapperName != null)) {
+            wrapperId = getWrapperId(commandId, wrapperName);
+        }
+        return StringUtils.isBlank(project) ?
+                getSiteConfiguration(wrapperId) :
+                getProjectConfiguration(project, wrapperId);
+    }
+
+    @Override
     @Nonnull
     public Command.ConfiguredCommand getAndConfigure(final long wrapperId) throws NotFoundException {
-        final CommandConfiguration commandConfiguration = getSiteConfiguration(wrapperId);
-        final Command command = getCommandWithOneWrapper(wrapperId);
-        return commandConfiguration.apply(command);
+        return getAndConfigure(null, 0, null, wrapperId);
     }
 
     @Override
@@ -330,9 +339,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     @Override
     @Nonnull
     public Command.ConfiguredCommand getAndConfigure(final String project, final long wrapperId) throws NotFoundException {
-        final CommandConfiguration commandConfiguration = getProjectConfiguration(project, wrapperId);
-        final Command command = getCommandWithOneWrapper(wrapperId);
-        return commandConfiguration.apply(command);
+        return getAndConfigure(project, 0, null, wrapperId);
     }
 
     @Override
@@ -346,14 +353,10 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     public Command.ConfiguredCommand getAndConfigure(final String project,
                                                      final long commandId,
                                                      final String wrapperName,
-                                                     final long wrapperId) throws NotFoundException {
-            return project == null ?
-                    (commandId == 0L && wrapperName == null ?
-                            getAndConfigure(wrapperId) :
-                            getAndConfigure(commandId, wrapperName)) :
-                    (commandId == 0L && wrapperName == null ?
-                            getAndConfigure(project, wrapperId) :
-                            getAndConfigure(project, commandId, wrapperName));
+                                                     long wrapperId) throws NotFoundException {
+        final CommandConfiguration commandConfiguration = getConfiguration(project, commandId, wrapperName, wrapperId);
+        final Command command = getCommandWithOneWrapper(wrapperId);
+        return commandConfiguration.apply(command);
     }
 
     @Override

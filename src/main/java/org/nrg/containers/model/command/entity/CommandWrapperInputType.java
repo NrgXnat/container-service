@@ -2,12 +2,15 @@ package org.nrg.containers.model.command.entity;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
-import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public enum CommandWrapperInputType {
     STRING("string"),
@@ -29,6 +32,15 @@ public enum CommandWrapperInputType {
 
     private final String name;
 
+    private static final Map<String, CommandWrapperInputType> ENUM_MAP;
+    static {
+        Map<String, CommandWrapperInputType> map = new ConcurrentHashMap<>(CommandWrapperInputType.values().length);
+        for (CommandWrapperInputType instance : CommandWrapperInputType.values()) {
+            map.put(instance.getName().toLowerCase(), instance);
+        }
+        ENUM_MAP = Collections.unmodifiableMap(map);
+    }
+
     @JsonCreator
     CommandWrapperInputType(final String name) {
         this.name = name;
@@ -39,29 +51,18 @@ public enum CommandWrapperInputType {
         return name;
     }
 
-    public static List<String> names() {
-        return Lists.transform(Arrays.asList(CommandWrapperInputType.values()), new Function<CommandWrapperInputType, String>() {
-            @Nullable
-            @Override
-            public String apply(@Nullable final CommandWrapperInputType type) {
-                return type != null ? type.getName() : "";
-            }
-        });
+    public static Collection<String> names() {
+        return ENUM_MAP.keySet();
     }
 
     @Nullable
-    public static CommandWrapperInputType fromName(String text) {
-        for (CommandWrapperInputType e : CommandWrapperInputType.values()) {
-            if (e.name.equals(text)) {
-                return e;
-            }
-        }
-        return null;
+    public static CommandWrapperInputType fromName(String name) {
+        return ENUM_MAP.get(name.toLowerCase());
     }
 
     public static List<String> xnatTypeNames() {
-        return Arrays.asList(DIRECTORY.getName(), FILE.getName(), FILES.getName(), PROJECT.getName(),
-                PROJECT_ASSET.getName(),SUBJECT.getName(), SESSION.getName(), SCAN.getName(), ASSESSOR.getName(),
-                RESOURCE.getName(), CONFIG.getName());
+        return Stream.of(
+                DIRECTORY, FILE, FILES, PROJECT, PROJECT_ASSET, SUBJECT, SESSION, SCAN, ASSESSOR, RESOURCE, CONFIG
+        ).map(CommandWrapperInputType::getName).collect(Collectors.toList());
     }
 }

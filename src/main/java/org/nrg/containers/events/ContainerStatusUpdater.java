@@ -79,7 +79,7 @@ public class ContainerStatusUpdater implements Runnable {
                 if (!entry.successful) {
                     log.error("Could not update status for {}. Message: {}", entry.id, entry.message);
                 } else {
-                    log.debug("Updated successfully for {}.", entry.id);
+                    log.trace("Updated successfully for {}.", entry.id);
                 }
             }
 
@@ -89,7 +89,7 @@ public class ContainerStatusUpdater implements Runnable {
             haveLoggedNoServerInDb = false;
         } else if (updateReport.successful) {
             if (updateReport.updateReports.size() > 0) {
-                log.debug("Updated status successfully.");
+                log.trace("Updated status successfully.");
             }
             // Reset failure flags
             haveLoggedDockerConnectFailure = false;

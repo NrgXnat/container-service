@@ -1218,15 +1218,15 @@ public abstract class Command {
 
         @Nonnull
         List<String> validate() {
-            final List<String> errors = Lists.newArrayList();
+            final List<String> errors = new ArrayList<>();
             if (StringUtils.isBlank(name())) {
                 errors.add("Command wrapper input name cannot be blank.");
             }
 
-            final List<String> types = CommandWrapperInputType.names();
-            if (!types.contains(type())) {
+            final CommandWrapperInputType enumType = CommandWrapperInputType.fromName(type());
+            if (enumType == null) {
                 errors.add("Command wrapper input \"" + name() + "\" - Unknown type \"" + type() + "\". Known types: " +
-                        StringUtils.join(types, ", "));
+                        StringUtils.join(CommandWrapperInputType.names(), ", "));
             }
 
             if (StringUtils.isNotBlank(viaSetupCommand()) && StringUtils.isBlank(providesFilesForCommandMount())) {

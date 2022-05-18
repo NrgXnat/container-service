@@ -39,7 +39,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -275,10 +274,8 @@ public abstract class Container {
      */
     @JsonIgnore
     public List<ContainerOutput> getOrderedOutputs() {
-        Map<String, ContainerOutput> outputsByHandler = new HashMap<>();
-        for (ContainerOutput out : this.outputs()) {
-            outputsByHandler.put(out.fromOutputHandler(), out);
-        }
+        Map<String, ContainerOutput> outputsByHandler = outputs().stream()
+                .collect(Collectors.toMap(ContainerOutput::fromOutputHandler, java.util.function.Function.identity()));
 
         List<ContainerOutput> orderedOutputs = new ArrayList<>();
         for (ContainerOutput output : this.outputs()) {
