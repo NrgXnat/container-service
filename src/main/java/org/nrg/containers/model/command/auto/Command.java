@@ -290,8 +290,8 @@ public abstract class Command {
      */
     public static Command create(final CommandCreation commandCreation, final String image) {
         final Command command = Command.create(commandCreation);
-        if (StringUtils.isNotBlank(setDefaultTag(image, DEFAULT_IMAGE_TAG))) {
-            return command.toBuilder().image(image).build();
+        if (StringUtils.isNotBlank(image)) {
+            return command.toBuilder().image(setDefaultTag(image, DEFAULT_IMAGE_TAG)).build();
         }
         return command;
     }
