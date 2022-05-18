@@ -3,10 +3,10 @@
 #### Container Setup Group
 ####
 
-dockerSetupPanel:
+serverSetupPanel:
     kind: panel
-    name: dockerSetupPanel
-    label: Docker Server Setup
+    name: serverSetupPanel
+    label: Server Setup
     contents:
         containerHostTable:
             tag: "div#container-host-manager"
@@ -300,7 +300,7 @@ siteSettings:
             group: containerServiceTabGroup
             active: true
             contents:
-                ${dockerSetupPanel}
+                ${serverSetupPanel}
                 ${imageHostsPanel}
         imageCommandTab:
             kind: tab

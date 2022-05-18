@@ -135,6 +135,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     XNAT.plugin.containerService.containerHostManager = containerHostManager =
         getObject(XNAT.plugin.containerService.containerHostManager || {});
 
+    let backends = [
+        { label: 'Select Backend Type', value: '' },
+        { label: 'Docker', value: 'docker' },
+        { label: 'Docker Swarm', value: 'swarm' }
+    ];
+
     function containerHostUrl(appended){
         appended = isDefined(appended) ? '/' + appended : '';
         return restUrl('/xapi/docker/server' + appended);
@@ -172,84 +178,116 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             name: 'name',
                             label: 'Host Name'
                         }).element,
-                        XNAT.ui.panel.input.text({
-                            name: 'host',
-                            label: 'URL'
-                        }).element,
-                        XNAT.ui.panel.input.text({
-                            name: 'cert-path',
-                            label: 'Certificate Path'
-                        }).element,
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'swarm-mode',
-                            label: 'Swarm Mode',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'true'
+                        XNAT.ui.panel.select.single({
+                            id: 'backend',
+                            name: 'backend',
+                            label: 'Type',
+                            className: 'backend-selector',
+                            options: backends
                         }),
-                        spawn('div.swarm-constraints', [
-                            spawn('p.divider.swarm-constraints-divider', '<strong>Swarm Node Constraints (Optional, only relevant when Swarm mode = ON)</strong>' +
-                                '<br> Use these settings to add site-wide and user-settable swarm node constraints. See the ' +
-                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints">Swarm documentation</a> ' +
+                        spawn('div.message.host-type-placeholder','Settings will populate based on selected host type'),
+
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider','<strong>Host Settings</strong>'),
+                            XNAT.ui.panel.input.text({
+                                name: 'host',
+                                className: 'docker swarm',
+                                label: 'Host Path'
+                            }).element,
+                            XNAT.ui.panel.input.text({
+                                name: 'cert-path',
+                                className: 'docker swarm',
+                                label: 'Certificate Path'
+                            }).element
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data.'),
+                            XNAT.ui.panel.input.text({
+                                name: 'path-translation-xnat-prefix',
+                                label: 'XNAT Path Prefix',
+                                addClass: 'path-prefix',
+                                description: 'Enter the XNAT_HOME server path, i.e. "/data/xnat"'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'path-translation-docker-prefix',
+                                label: 'Server Path Prefix',
+                                className: 'path-prefix',
+                                description: 'Enter the Server path to the XNAT_HOME mount, i.e. "/docker/my-data/XNAT"'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider', '<strong>Re-Pull Images on Init (Optional)</strong><br> Use this setting to force the Docker server to re-pull your images whenever the Apache Tomcat server is restarted. Images are only pulled if they are missing.'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'pull-images-on-xnat-init',
+                                label: 'Re-pull Images?',
+                                onText: 'ON',
+                                offText: 'OFF',
+                                value: 'false'
+                            }),
+                        ]),
+                        spawn('div.host-type-settings.swarm.kubernetes',[
+                            spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
+                                '<br> Use these settings to add site-wide and user-settable processing node constraints. See ' +
+                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints" target="_blank">Docker Swarm documentation</a> ' +
                                 'for more information about constraints.'),
-                            spawn('button.new-swarm-constraint.btn.btn-sm.submit', {
-                                html: 'Add Swarm node constraint',
+                            spawn('button.new-swarm-constraint.btn.btn-sm', {
+                                html: 'Add Constraint',
+                                style: { 'margin-top': '0.75em' },
                                 onclick: function(){
                                     containerHostManager.addSwarmConstraint();
                                     return false;
                                 }
                             })
                         ]),
-                        spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Docker Server mount point for your XNAT data.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'path-translation-xnat-prefix',
-                            label: 'XNAT Path Prefix',
-                            addClass: 'path-prefix',
-                            description: 'Enter the XNAT_HOME server path, i.e. "/data/xnat"'
-                        }),
-                        XNAT.ui.panel.input.text({
-                            name: 'path-translation-docker-prefix',
-                            label: 'Docker Server Path Prefix',
-                            addClass: 'path-prefix',
-                            description: 'Enter the Docker Server path to the XNAT_HOME mount, i.e. "/docker/my-data/XNAT"'
-                        }),
-                        spawn('p.divider', '<strong>Re-Pull Images on Init (Optional)</strong><br> Use this setting to force the Docker server to re-pull your images whenever the Apache Tomcat server is restarted. Images are only pulled if they are missing.'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'pull-images-on-xnat-init',
-                            label: 'Re-pull Images?',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'false'
-                        }),
-                        spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
-                            'Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. ' +
-                            '<br>If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is root.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'container-user',
-                            label: 'Container User'
-                        }),
-                        spawn('p.divider', '<strong>Automatically cleanup completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'auto-cleanup',
-                            label: 'Automatically cleanup containers?',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'true'
-                        }),
-                        spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time, only relevant for Swarm mode.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'max-concurrent-finalizing-jobs',
-                            label: 'Max concurrent finalizing jobs',
-                            description: 'Leave blank for no throttling'
-                        }),
-                        spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'status-email-enabled',
-                            label: 'Email on container completion/failure?',
-                            onText: 'YES',
-                            offText: 'NO',
-                            value: 'true'
-                        })
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
+                                'Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. ' +
+                                '<br>If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is root.'),
+                        ]),
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
+                                '<br>In Kubernetes mode, value must be an integer.')
+                        ]),
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            XNAT.ui.panel.input.text({
+                                name: 'container-user',
+                                label: 'Container User'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Automatically cleanup completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'auto-cleanup',
+                                label: 'Automatically cleanup containers?',
+                                onText: 'ON',
+                                offText: 'OFF',
+                                value: 'true'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.swarm',[
+                            spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time.'),
+                            XNAT.ui.panel.input.text({
+                                name: 'max-concurrent-finalizing-jobs',
+                                label: 'Max concurrent finalizing jobs',
+                                className: 'swarm',
+                                description: 'Leave blank for no throttling'
+                            }),
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'status-email-enabled',
+                                label: 'Email on container completion/failure?',
+                                onText: 'YES',
+                                offText: 'NO',
+                                value: 'true'
+                            })
+                        ])
                     ])
                 );
 
@@ -261,7 +299,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     $formContainer.find('form').setValues(item);
                 }
 
-                $('input[name="swarm-mode"]').change();
+                containerHostManager.displaySettings(item.backend || false);
+
+                $('select[name=backend]').change();
             },
             buttons: [
                 {
@@ -328,7 +368,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     function submitHostEditor($form){
         // validate path prefix fields
 
-
         $form.submitJSON({
             method: 'POST',
             url: containerHostUrl(),
@@ -340,18 +379,32 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         });
     }
 
-    $(document).on('change', 'input[name="swarm-mode"]', function(){
-        if ($(this).prop('checked')) {
-            $('.swarm-constraints').show();
-        } else {
-            $('.swarm-constraints').hide();
-        }
+    $(document).on('change','select.backend-selector',function(){
+        containerHostManager.displaySettings($(this).find(':selected').prop('value'))
     });
+
+    containerHostManager.displaySettings = function(selectedType) {
+        $(document).find('.host-type-settings').hide();
+        if (!selectedType) {
+            $(document).find('.host-type-placeholder').show();
+            return false;
+        }
+        else {
+            $(document).find('.host-type-placeholder').hide();
+            $(document).find('.host-type-settings').each(function(){
+                if ($(this).hasClass(selectedType)) $(this).slideDown(200);
+            });
+            // calculate innerheight
+            var dlg = XNAT.dialog.getDialog();
+            var bodyHeight = (dlg.windowHeight * 0.9) - dlg.footerHeight - 40 - 2;
+            $(document).find('.xnat-dialog.open .xnat-dialog-body').css('max-height',bodyHeight); // reset inner height of dialog
+        }
+    };
 
     containerHostManager.addSwarmConstraint = function() {
         var element = spawn('div#swarm-constraint-'+containerHostManager.nconstraints+'.swarm-constraint', [
             spawn('a#close-'+containerHostManager.nconstraints+'.close', {
-                html: '<i class="fa fa-close"/>',
+                html: '<i class="fa fa-close" title="Remove Constraint"/>',
                 onclick: function(){
                     var idx = parseInt($(this).prop('id').replace('close-',''));
                     // Remove all of this constraint, then relabel
