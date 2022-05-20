@@ -474,9 +474,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         // add table header row
         chmTable.tr()
             .th({ addClass: 'left', html: '<b>Host Name</b>' })
-            .th('<b>Host Path</b>')
+            // .th({ addClass: 'hostPath', html: '<b>Host Path</b>'})
             .th('<b>Default</b>')
-            .th('<b>Swarm Mode</b>')
+            .th('<b>Type</b>')
             .th('<b>Status</b>')
             .th('<b>Actions</b>');
 
@@ -529,9 +529,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             data.forEach(function(item){
                 chmTable.tr({ title: item.name, data: { id: item.id, host: item.host, certPath: item.certPath}})
                     .td([editLink(item, item.name)]).addClass('host')
-                    .td([ spawn('div.center', [item.host]) ])
+                    // .td([ spawn('div.center', [item.host]) ]).addClass('hostPath')
                     .td([ spawn('div.center', [defaultToggle(item)]) ])
-                    .td([ spawn('div.center', item['swarm-mode'] ? 'ON' : 'OFF' )])
+                    .td([ spawn('div.center', [ backends.filter((backend) => { return backend.value === item.backend } )[0].label ]) ])
                     .td([ spawn('div.center', [hostPingStatus(item.ping)]) ])
                     .td([ spawn('div.center', [editButton(item)]) ])
             });
