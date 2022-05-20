@@ -6,13 +6,18 @@ Not yet released
 
 ### Features
 
-* 
+* [XNAT-7003][]: Run containers as scheduled events
+    This increases the minimum XNAT version requirement to 1.8.5.
+* [CS-625][]: Enable adding Commands in the site configuration UI independently of adding Docker images
 
 ### Bugfixes
 
+* [CS-682][]: Fix NullPointerError in Orchestration equals method
+* [CS-686][]: Fixed: Command with Project Asset type external input fails when launched with BLP
 * [CS-687][]: Repaired unit and integration tests that had not kept up with code changes.
 * [CS-693][]: Stop service updater from trying to update `null` node IDs forever if service cannot be started
 * [CS-695][]: Write container logs to a unique directory per container, not timestamped
+* [CS-699][]: Fix issue viewing logs in Container History UI with certain container IDs
 
 ### Updates
 
@@ -45,13 +50,18 @@ Not yet released
     * Remove google `Lists` and `Maps` constructors where I saw them
     * Replace google `Function` code with streams and lambdas where appropriate
     * Lots of logging changes
+* [CS-701][]: Ensure a new Command's `image` property has a tag, defaulting to `latest`
 
+[CS-625]: https://issues.xnat.org/browse/CS-625
 [CS-681]: https://issues.xnat.org/browse/CS-681
+[CS-682]: https://issues.xnat.org/browse/CS-682
 [CS-687]: https://issues.xnat.org/browse/CS-687
 [CS-689]: https://issues.xnat.org/browse/CS-689
 [CS-692]: https://issues.xnat.org/browse/CS-692
 [CS-693]: https://issues.xnat.org/browse/CS-693
 [CS-695]: https://issues.xnat.org/browse/CS-695
+[CS-699]: https://issues.xnat.org/browse/CS-699
+[XNAT-7003]: https://issues.xnat.org/browse/XNAT-7003
 
 ## 3.1.1
 
