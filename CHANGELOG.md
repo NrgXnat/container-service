@@ -18,6 +18,7 @@ Not yet released
 * [CS-693][]: Stop service updater from trying to update `null` node IDs forever if service cannot be started
 * [CS-695][]: Write container logs to a unique directory per container, not timestamped
 * [CS-699][]: Fix issue viewing logs in Container History UI with certain container IDs
+* [CS-707][]: Fixed issue that blocked mounting Subject Assessor as an input  
 
 ### Updates
 
@@ -61,6 +62,7 @@ Not yet released
 [CS-693]: https://issues.xnat.org/browse/CS-693
 [CS-695]: https://issues.xnat.org/browse/CS-695
 [CS-699]: https://issues.xnat.org/browse/CS-699
+[CS-707]: https://issues.xnat.org/browse/CS-707
 [XNAT-7003]: https://issues.xnat.org/browse/XNAT-7003
 
 ## 3.1.1

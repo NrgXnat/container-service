@@ -2553,10 +2553,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 String rootDirectory = null;
                 String uri = null;
 
-                if (inputType.equals(PROJECT.getName()) || inputType.equals(SESSION.getName()) ||
+                if (inputType.equals(PROJECT.getName()) || inputType.equals(PROJECT_ASSET.getName()) ||
+                        inputType.equals(SUBJECT_ASSESSOR.getName()) || inputType.equals(SESSION.getName()) ||
                         inputType.equals(SCAN.getName()) || inputType.equals(ASSESSOR.getName()) ||
-                        inputType.equals(RESOURCE.getName()) || inputType.equals(FILE.getName()) ||
-                        inputType.equals(PROJECT_ASSET.getName())) {
+                        inputType.equals(RESOURCE.getName()) || inputType.equals(FILE.getName())) {
 
                     log.debug("Looking for directory on source input.");
                     final XnatModelObject xnatModelObject = resolvedInputValue.xnatModelObject();
