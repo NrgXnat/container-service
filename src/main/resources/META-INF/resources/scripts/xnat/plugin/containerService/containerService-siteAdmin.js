@@ -310,13 +310,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     close: false,
                     action: function(obj){
                         var $form = obj.$modal.find('form');
-                        var $host = $form.find('input[name=host]');
+                        // var $host = $form.find('input[name=host]');
                         var pathPrefixes = $form.find('input.path-prefix').toArray();
 
                         $form.find(':input').removeClass('invalid');
 
                         var errors = [];
-                        if (csValidator([$host]).length) errors = errors.concat(csValidator([$host]));
+                        // if (csValidator([$host]).length) errors = errors.concat(csValidator([$host]));
                         if (csMultiFieldValidator(pathPrefixes).length) errors = errors.concat(csMultiFieldValidator(pathPrefixes));
 
                         if (errors.length) {
