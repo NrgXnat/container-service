@@ -19,7 +19,7 @@ import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.services.CommandEventMappingService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
@@ -48,7 +48,7 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
     private ObjectMapper mapper;
     private ContainerService containerService;
     private CommandEventMappingService commandEventMappingService;
-    private NrgEventService eventService;
+    private NrgEventServiceI eventService;
     private UserManagementServiceI userManagementService;
 
     @Autowired
@@ -56,7 +56,7 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
                                                     final ObjectMapper mapper,
                                                     final ContainerService containerService,
                                                     final CommandEventMappingService commandEventMappingService,
-                                                    final NrgEventService eventService,
+                                                    final NrgEventServiceI eventService,
                                                     final UserManagementServiceI userManagementService) {
         eventBus.on(type(SessionMergeOrArchiveEvent.class), this);
         this.mapper = mapper;

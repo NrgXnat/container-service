@@ -36,6 +36,7 @@ import org.nrg.containers.services.*;
 import org.nrg.containers.services.impl.*;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -73,7 +74,7 @@ public class IntegrationTestConfig {
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
                                              final DockerHubService dockerHubService,
-                                             final NrgEventService eventService) {
+                                             final NrgEventServiceI eventService) {
         return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
     }
 
@@ -108,7 +109,7 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public NrgEventService nrgEventService(final EventBus eventBus) {
+    public NrgEventServiceI nrgEventService(final EventBus eventBus) {
         return new NrgEventService(eventBus);
     }
 
@@ -155,7 +156,7 @@ public class IntegrationTestConfig {
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
-                                             final NrgEventService mockNrgEventService,
+                                             final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService,

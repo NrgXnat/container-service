@@ -4,7 +4,7 @@ import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -29,7 +29,7 @@ public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
     public ContainerStatusUpdater containerStatusUpdater(final ContainerControlApi containerControlApi,
                                                          final ContainerService containerService,
                                                          final DockerServerService dockerServerService,
-                                                         final NrgEventService eventService,
+                                                         final NrgEventServiceI eventService,
                                                          @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo) {
         return new ContainerStatusUpdater(
                 containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo

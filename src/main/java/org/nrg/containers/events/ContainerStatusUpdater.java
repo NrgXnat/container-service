@@ -16,7 +16,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
@@ -38,7 +38,7 @@ public class ContainerStatusUpdater implements Runnable {
     private final ContainerControlApi containerControlApi;
     private final ContainerService containerService;
     private final DockerServerService dockerServerService;
-    private final NrgEventService eventService;
+    private final NrgEventServiceI eventService;
     private final XnatAppInfo xnatAppInfo;
 
     private boolean haveLoggedDockerConnectFailure = false;
@@ -50,7 +50,7 @@ public class ContainerStatusUpdater implements Runnable {
     public ContainerStatusUpdater(final ContainerControlApi containerControlApi,
                                   final ContainerService containerService,
                                   final DockerServerService dockerServerService,
-                                  final NrgEventService eventService,
+                                  final NrgEventServiceI eventService,
                                   final XnatAppInfo xnatAppInfo) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;

@@ -31,7 +31,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xft.security.UserI;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
@@ -88,7 +88,7 @@ public class DockerControlApiTest {
 
     @Mock private CommandLabelService commandLabelService;
     @Mock private DockerHubService dockerHubService;
-    @Mock private NrgEventService eventService;
+    @Mock private NrgEventServiceI eventService;
     @Mock private DockerServerService dockerServerService;
 
     @Mock private DockerClient mockDockerClient;

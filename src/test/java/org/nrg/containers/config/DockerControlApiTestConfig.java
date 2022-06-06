@@ -10,6 +10,7 @@ import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandLabelServiceImpl;
 import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.prefs.beans.AbstractPreferenceBean;
 import org.nrg.prefs.entities.Tool;
 import org.nrg.prefs.services.NrgPreferenceService;
@@ -28,7 +29,7 @@ public class DockerControlApiTestConfig {
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
                                              final DockerHubService dockerHubService,
-                                             final NrgEventService eventService) {
+                                             final NrgEventServiceI eventService) {
         return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
     }
 
@@ -69,7 +70,7 @@ public class DockerControlApiTestConfig {
     }
 
     @Bean
-    public NrgEventService mockNrgEventService() {
+    public NrgEventServiceI mockNrgEventService() {
         return Mockito.mock(NrgEventService.class);
     }
 }

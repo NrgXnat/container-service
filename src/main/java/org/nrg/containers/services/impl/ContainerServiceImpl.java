@@ -54,7 +54,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.om.WrkWorkflowdata;
@@ -158,7 +158,7 @@ public class ContainerServiceImpl implements ContainerService {
     private final OrchestrationService orchestrationService;
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
-    private final NrgEventService eventService;
+    private final NrgEventServiceI eventService;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -174,7 +174,7 @@ public class ContainerServiceImpl implements ContainerService {
                                 final XnatAppInfo xnatAppInfo,
                                 final CatalogService catalogService,
                                 final OrchestrationService orchestrationService,
-                                final NrgEventService eventService,
+                                final NrgEventServiceI eventService,
                                 final ObjectMapper mapper,
                                 @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
                                     final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {

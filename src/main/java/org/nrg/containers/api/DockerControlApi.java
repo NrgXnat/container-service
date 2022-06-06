@@ -68,7 +68,7 @@ import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -103,13 +103,13 @@ public class DockerControlApi implements ContainerControlApi {
     private final DockerServerService dockerServerService;
     private final CommandLabelService commandLabelService;
     private final DockerHubService dockerHubService;
-    private final NrgEventService eventService;
+    private final NrgEventServiceI eventService;
 
     @Autowired
     public DockerControlApi(final DockerServerService dockerServerService,
                             final CommandLabelService commandLabelService,
                             final DockerHubService dockerHubService,
-                            final NrgEventService eventService) {
+                            final NrgEventServiceI eventService) {
         this.dockerServerService = dockerServerService;
         this.commandLabelService = commandLabelService;
         this.dockerHubService = dockerHubService;
@@ -1525,7 +1525,7 @@ public class DockerControlApi implements ContainerControlApi {
 
     /**
      * @deprecated Get events using {@link ContainerControlApi#getContainerEvents(Date, Date)} and
-     *             trigger them with {@link NrgEventService#triggerEvent(org.nrg.framework.event.EventI)}.
+     *             trigger them with {@link NrgEventServiceI#triggerEvent(org.nrg.framework.event.EventI)}.
      */
     @Override
     @Deprecated
