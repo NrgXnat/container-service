@@ -9,6 +9,12 @@ Not yet released
 * [XNAT-7003][]: Run containers as scheduled events
     This increases the minimum XNAT version requirement to 1.8.5.
 * [CS-625][]: Enable adding Commands in the site configuration UI independently of adding Docker images
+* [CS-601][]: Improve checks for whether a user will be able to perform all actions required by a command
+  * Add `"xsi-type"` property to command wrapper output handler
+  * Command wrappers that create a session assessor no longer require the user to have edit permissions on the session.
+    If the output handler declares an `xsi-type` for the assessor, we can verify the user has permissions to create it before launch.
+  * Filter `Run Containers` menu to only those items that a user will have permission to run
+* [CS-715][]: Run containers on shared sessions
 
 ### Bugfixes
 
@@ -53,6 +59,7 @@ Not yet released
     * Lots of logging changes
 * [CS-701][]: Ensure a new Command's `image` property has a tag, defaulting to `latest`
 
+[CS-601]: https://issues.xnat.org/browse/CS-601
 [CS-625]: https://issues.xnat.org/browse/CS-625
 [CS-681]: https://issues.xnat.org/browse/CS-681
 [CS-682]: https://issues.xnat.org/browse/CS-682
@@ -63,6 +70,7 @@ Not yet released
 [CS-695]: https://issues.xnat.org/browse/CS-695
 [CS-699]: https://issues.xnat.org/browse/CS-699
 [CS-707]: https://issues.xnat.org/browse/CS-707
+[CS-715]: https://issues.xnat.org/browse/CS-715
 [XNAT-7003]: https://issues.xnat.org/browse/XNAT-7003
 
 ## 3.1.1

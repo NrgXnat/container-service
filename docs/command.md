@@ -117,6 +117,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                     {
                         "name": "",
                         "type": "",
+                        "xsi-type": "",
                         "accepts-command-output": "",
                         "via-wrapup-command": "",
                         "as-a-child-of": "",
@@ -213,6 +214,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
     - **output-handlers** - A list of [output handlers](#output-handling). You use these to instruct the container service how and where to upload your container's outputs.
         - **name**
         - **type** - The type of object that will be created in XNAT. Currently `"Resource", "Assessor", and "Scan"` are accepted. The latter two must be xml files.
+        - **xsi-type** - If the **type** is `"Scan"` or `"Assessor"`, this is the XNAT XSI Type of the object that will be created from the XML. (Examples: `fs:fsData` for Freesurfer assessors, or `xnat:mrScanData` for MR scans.) Providing this field enables the Container Service to verify before launching a container that the user has sufficient permissions to create the output object.
         - **accepts-command-output** - The name of a [command output](#command-outputs) whose files will be handled.
         - **via-wrapup-command** - A reference to a wrapup command image (format: `repo/image:version[:commandname]` where the `commandname` is optional). See the page on [Wrapup Commands](https://wiki.xnat.org/display/CS/Wrapup+Commands) for more.
         - **as-a-child-of** - The name of a [wrapper input](#wrapper-inputs)—either external or derived—that refers to an XNAT object, or the name of a [wrapper output](#output-handling) that creates an XNAT object. The output files will be uploaded as a new child of that object.

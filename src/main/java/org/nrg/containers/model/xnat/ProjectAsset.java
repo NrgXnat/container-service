@@ -10,10 +10,10 @@ import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractprojectassetI;
 import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatExperimentdataI;
-import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
 import org.nrg.xdat.om.XnatAbstractprojectasset;
 import org.nrg.xdat.om.XnatExperimentdata;
+import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.om.base.BaseXnatExperimentdata;
@@ -88,8 +88,8 @@ public class ProjectAsset extends XnatModelObject {
 
         this.sessions = new ArrayList<>();
         for (final XnatExperimentdataI xnatExperimentdataI : xnatProjectAssetI.getExperiments_experiment()) {
-            if (xnatExperimentdataI instanceof XnatImagesessiondataI) {
-                sessions.add(new Session((XnatImagesessiondataI) xnatExperimentdataI, loadFiles, loadTypes, this.uri, rootArchivePath));
+            if (xnatExperimentdataI instanceof XnatImagesessiondata) {
+                sessions.add(new Session((XnatImagesessiondata) xnatExperimentdataI, loadFiles, loadTypes, this.uri, rootArchivePath));
             }
         }
 

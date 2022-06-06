@@ -137,6 +137,11 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
         return isEnabledForSite(wrapperId) && projectIsEnabledConfig != null && projectIsEnabledConfig;
     }
 
+    @Override
+    public boolean isEnabled(final String project, final long wrapperId) {
+        return StringUtils.isBlank(project) ? isEnabledForSite(wrapperId) : isEnabledForProject(project, wrapperId);
+    }
+
     private void setCommandEnabled(final Boolean enabled, final Scope scope, final String project, final long wrapperId, final String username, final String reason) throws CommandConfigurationException {
         final CommandConfigurationInternal alreadyExists = getCommandConfiguration(scope, project, wrapperId);
         final CommandConfigurationInternal toSet =

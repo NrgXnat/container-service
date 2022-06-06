@@ -64,12 +64,14 @@ import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xft.security.UserI;
+import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.URIManager.ArchiveItemURI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
@@ -204,18 +206,16 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                final Map<String, String> inputValues,
                                                final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
-        return preResolve(commandService.getAndConfigure(project, commandId, wrapperName, wrapperId), inputValues, userI)
-                .toBuilder()
-                .project(project)
-                .build();
+        return preResolve(commandService.getAndConfigure(project, commandId, wrapperName, wrapperId), inputValues, project, userI);
     }
 
     @Override
     public PartiallyResolvedCommand preResolve(final ConfiguredCommand configuredCommand,
                                                final Map<String, String> inputValues,
+                                               final String project,
                                                final UserI userI)
             throws CommandResolutionException, UnauthorizedException {
-        final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, userI);
+        final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI);
         return helper.preResolve();
     }
 
@@ -225,7 +225,17 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                    final Map<String, String> inputValues,
                                    final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
-        final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, userI);
+        return resolve(configuredCommand, inputValues, null, userI);
+    }
+
+    @Override
+    @Nonnull
+    public ResolvedCommand resolve(final ConfiguredCommand configuredCommand,
+                                   final Map<String, String> inputValues,
+                                   final String project,
+                                   final UserI userI)
+            throws NotFoundException, CommandResolutionException, UnauthorizedException {
+        final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI);
         return helper.resolve();
     }
 
@@ -233,9 +243,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private final CommandWrapper commandWrapper;
         private final ConfiguredCommand command;
+        private final String project;
+        private final UserI userI;
+
         private final Map<String, Set<String>> loadTypesMap;
 
-        private final UserI userI;
         private final DocumentContext commandJsonpathSearchContext;
         private final DocumentContext commandWrapperJsonpathSearchContext;
 
@@ -249,9 +261,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private CommandResolutionHelper(final ConfiguredCommand configuredCommand,
                                         final Map<String, String> inputValues,
+                                        final String project,
                                         final UserI userI) throws CommandResolutionException {
             this.commandWrapper = configuredCommand.wrapper();
             this.command = configuredCommand;
+            this.project = project;
             this.userI = userI;
 
             try {
@@ -329,6 +343,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees = preResolveInputTrees();
 
             return PartiallyResolvedCommand.builder()
+                    .project(project)
                     .wrapperId(commandWrapper.id())
                     .wrapperName(commandWrapper.name())
                     .wrapperLabel(commandWrapper.label())
@@ -401,6 +416,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final List<String> swarmConstraints = resolveSwarmConstraints();
 
             final ResolvedCommand resolvedCommand = ResolvedCommand.builder()
+                    .project(project)
                     .wrapperId(commandWrapper.id())
                     .wrapperName(commandWrapper.name())
                     .wrapperDescription(commandWrapper.description())
@@ -637,7 +653,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             Set<String> parents = new HashSet<>();
             if (StringUtils.isNotBlank(derivedFrom)) {
                 CommandWrapperInput parent = inputsByName.get(derivedFrom);
-                if (parentIsAboveInHierarchy(input, parent)) {
+                if (input.parentIsAboveInHierarchy(parent)) {
                     // We only need to add load type dependencies from parents who are above us in the tree
                     // (project > subject > session > [assessor/scan] > resource > file); we don't need to pass
                     // loadtypes back down the tree
@@ -650,44 +666,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
             childToParentsMap.put(input.name(), parents);
         }
-
-        /**
-         * "Parent" element can actually be below child in XNAT hierarchy.
-         * @param input the input
-         * @param parent the parent
-         * @return true if parent is above input in XNAT hierarchy
-         */
-        private boolean parentIsAboveInHierarchy(CommandWrapperDerivedInput input, CommandWrapperInput parent) {
-            CommandWrapperInputType type = CommandWrapperInputType.fromName(input.type());
-            CommandWrapperInputType parentType = CommandWrapperInputType.fromName(parent.type());
-            if (parentType == null || type == null) {
-                log.warn("Unable to determine type for parent {} and/or input {}", parent, input);
-                return false;
-            }
-            switch (type) {
-                case PROJECT_ASSET:
-                case SUBJECT:
-                    return parentType == PROJECT;
-                case SUBJECT_ASSESSOR:
-                case SESSION:
-                    return Arrays.asList(PROJECT, SUBJECT).contains(parentType);
-                case ASSESSOR:
-                    return Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION).contains(parentType);
-                case SCAN:
-                    return Arrays.asList(PROJECT, SUBJECT, SESSION).contains(parentType);
-                case RESOURCE:
-                    return Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN).contains(parentType);
-                case FILE:
-                case FILE_INPUT:
-                case FILES:
-                case DIRECTORY:
-                case STRING:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
 
         @Nonnull
         private ResolvedInputValue resolveExternalWrapperInput(final CommandWrapperExternalInput input,
@@ -707,10 +685,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             // If a value was provided at runtime, use that over the default
-            log.debug("Runtime value: \"{}\"", inputValues.get(input.name()));
-            if (inputValues.containsKey(input.name()) && inputValues.get(input.name()) != null) {
-                log.debug("Setting resolved value to \"{}\".", inputValues.get(input.name()));
-                resolvedValue = inputValues.get(input.name());
+            final String runtimeValue = inputValues.get(input.name());
+            log.debug("Runtime value: \"{}\"", runtimeValue);
+            if (runtimeValue != null) {
+                resolvedValue = runtimeValue;
             }
 
             // Check for JSONPath substring in input value
@@ -737,9 +715,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     Set<String> typesNeeded = loadTypesMap.get(input.name());
 
                     final XnatModelObject xnatModelObject;
-                    final boolean preload = input.loadChildren();
                     try {
-                        xnatModelObject = resolveXnatObject(type, resolvedValue, resolvedMatcher, loadFiles, typesNeeded, preload);
+                        xnatModelObject = resolveXnatObject(type, resolvedValue, resolvedMatcher, loadFiles, typesNeeded, input.loadChildren());
                     } catch (CommandInputResolutionException e) {
                         // When resolveXnatObject throws this, it does not have the input object in scope
                         // So we just add the input and throw a new exception with everything else the same.
@@ -1921,8 +1898,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     break;
                 case SESSION:
                     xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
-                            Session.class, Session.uriToModelObject(loadFiles, typesNeeded),
-                            Session.idToModelObject(userI, loadFiles, typesNeeded));
+                            Session.class, Session.uriToModelObject(project, loadFiles, typesNeeded),
+                            Session.idToModelObject(userI, project, loadFiles, typesNeeded));
                     break;
                 case SCAN:
                     xnatModelObject = resolveXnatObject(resolvedValue, resolvedMatcher,
@@ -1966,38 +1943,35 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             if (value.startsWith("/")) {
                 log.debug("Attempting to initialize a {} using value as URI.", modelName);
 
-                URIManager.DataURIA uri = null;
+                final ResourceData resourceData;
                 try {
-                    uri = UriParserUtils.parseURI(value.startsWith("/archive") ? value : "/archive" + value);
-                } catch (MalformedURLException ignored) {
-                    // ignored
+                    resourceData = catalogService.getResourceDataFromUri(value.startsWith("/archive") ? value : "/archive" + value);
+                } catch (ClientException e) {
+                    log.error("Invalid {} uri {}", modelName, value, e);
+                    throw new CommandInputResolutionException("Invalid " + modelName + " uri " + value, value, e);
                 }
 
-                if (!(uri instanceof ArchiveItemURI)) {
-                    log.debug("Cannot interpret \"{}\" as a URI.", value);
-                } else {
-                    try {
-                        newModelObject = uriToModelObject.apply((ArchiveItemURI) uri);
-                    } catch (Throwable e) {
-                        final String message = String.format("Could not instantiate %s with URI %s.", modelName, value);
-                        log.error(message, e);
-                        throw new CommandInputResolutionException(message, value);
-                    }
+                final ArchiveItemURI uri = resourceData.getXnatUri();
+                try {
+                    newModelObject = uriToModelObject.apply(uri);
+                } catch (Throwable e) { // We have to throw non-checked exceptions from a Function
+                    log.error("Invalid {} uri {}", modelName, value, e);
+                    throw new CommandInputResolutionException("Invalid " + modelName + " uri " + value, value, e);
+                }
 
-                    // TODO This is a workaround for CS-263 and XXX-55. Once XXX-55 is fixed, this can (hopefully) be removed.
-                    try {
-                        if (!Permissions.canRead(userI, ((ArchiveItemURI) uri).getSecurityItem())) {
-                            final String message = String.format("User does not have permission to read %s with URI %s.", modelName, value);
-                            log.error(message);
-                            throw new UnauthorizedException(message);
-                        }
-                    } catch (UnauthorizedException e) {
-                        throw e;
-                    } catch (Exception e) {  // Need to catch this here because Permissions.canRead() can throw whatever
-                        final String message = String.format("Could not verify read permissions for user %s with URI %s.", userI.getLogin(), value);
-                        log.error(message, e);
-                        throw new CommandInputResolutionException(message, value);
+                // TODO This is a workaround for CS-263 and XXX-55. Once XXX-55 is fixed, this can (hopefully) be removed.
+                try {
+                    if (!Permissions.canRead(userI, uri.getSecurityItem())) {
+                        final String message = String.format("User does not have permission to read %s with URI %s.", modelName, value);
+                        log.error(message);
+                        throw new UnauthorizedException(message);
                     }
+                } catch (UnauthorizedException e) {
+                    throw e;
+                } catch (Exception e) {  // Need to catch this here because Permissions.canRead() can throw whatever
+                    final String message = String.format("Could not verify read permissions for user %s with URI %s.", userI.getLogin(), value);
+                    log.error(message, e);
+                    throw new CommandInputResolutionException(message, value);
                 }
 
             } else if (value.startsWith("{")) {
@@ -2008,8 +1982,13 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.debug("Could not deserialize {} from value as JSON.", modelName);
                 }
             } else if (idToModelObject != null) {
-                log.info("Attempting to initialize a {} using value as ID string.", modelName);
-                newModelObject = idToModelObject.apply(value);
+                log.debug("Attempting to initialize a {} using value as ID string.", modelName);
+                try {
+                    newModelObject = idToModelObject.apply(value);
+                } catch (Throwable e) {
+                    log.error("Could not instantiate {} by ID {}", modelName, value, e);
+                    throw new CommandInputResolutionException("Could not instantiate " + modelName + " by ID " + value, value, e);
+                }
             }
 
             if (newModelObject == null) {
@@ -2058,12 +2037,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
             if (aMatch == null) {
                 log.info("Failed to instantiate matching {}.", modelName);
-                return null;
             } else {
                 log.info("Successfully instantiated matching {}.", modelName);
-                log.debug("Match: {}", aMatch);
-                return aMatch;
+                log.trace("Match: {}", aMatch);
             }
+            return aMatch;
         }
 
         @Nonnull
@@ -2075,20 +2053,22 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 return Collections.emptyList();
             }
 
-            final Map<String, List<CommandWrapperOutput>> wrapperOutputsByHandledCommandOutputName = new HashMap<>();
-            final Map<String, CommandWrapperOutput> wrapperOutputsByName = new HashMap<>();
-            if (commandWrapper.outputHandlers() != null) {
-                for (final CommandWrapperOutput commandWrapperOutput : commandWrapper.outputHandlers()) {
-                    if (wrapperOutputsByHandledCommandOutputName.containsKey(commandWrapperOutput.commandOutputName())) {
-                        wrapperOutputsByHandledCommandOutputName.get(commandWrapperOutput.commandOutputName()).add(commandWrapperOutput);
-                    } else {
-                        final List<CommandWrapperOutput> outputs = new ArrayList<>();
-                        outputs.add(commandWrapperOutput);
-                        wrapperOutputsByHandledCommandOutputName.put(commandWrapperOutput.commandOutputName(), outputs);
-                    }
+            final List<CommandWrapperOutput> outputHandlers = commandWrapper.outputHandlers();
+            final Map<String, CommandWrapperOutput> wrapperOutputsByName;
+            final Map<String, List<CommandWrapperOutput>> wrapperOutputsByHandledCommandOutputName;
+            if (outputHandlers != null) {
+                wrapperOutputsByName = new HashMap<>();
+                wrapperOutputsByHandledCommandOutputName = new HashMap<>();
+                for (final CommandWrapperOutput commandWrapperOutput : outputHandlers) {
+                    wrapperOutputsByHandledCommandOutputName
+                            .computeIfAbsent(commandWrapperOutput.commandOutputName(), k -> new ArrayList<>())
+                            .add(commandWrapperOutput);
 
                     wrapperOutputsByName.put(commandWrapperOutput.name(), commandWrapperOutput);
                 }
+            } else {
+                wrapperOutputsByName = Collections.emptyMap();
+                wrapperOutputsByHandledCommandOutputName = Collections.emptyMap();
             }
 
             final Map<String, ResolvedCommandOutput> resolvedCommandOutputsByOutputHandlerName = new HashMap<>();
@@ -2190,25 +2170,19 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     }
 
                     // Next check that the user has edit permissions on the handler target input's XNAT object
-                    boolean canEdit;
-                    try {
-                        canEdit = Permissions.canEdit(userI, parentXnatObject.getXftItem(userI));
-                    } catch (Exception ignored) {
-                        canEdit = false;
-                    }
-                    if (!canEdit) {
-                        final String message = String.format("Cannot resolve output \"%s\". " +
-                                        "Input \"%s\" is supposed to handle the output, but user \"%s\" does not have permission " +
-                                        "to edit the XNAT object \"%s\".",
-                                commandOutput.name(), commandOutputHandler.targetName(),
-                                userI.getLogin(), parentXnatObject.getUri());
+                    if (!ContainerServicePermissionUtils.canCreateOutputObject(userI, project, parentXnatObject.getXsiType(), commandOutputHandler)) {
+                        final String message = "User \"" + userI.getUsername() + "\" " +
+                                "does not have sufficient permissions to create the output " +
+                                commandOutputHandler.type() +
+                                ".";
+                        log.error("Skipping handler \"{}\". {}", commandOutputHandler.name(), message);
                         if (Boolean.TRUE.equals(commandOutput.required())) {
                             throw new CommandResolutionException(message);
                         } else {
-                            log.error("Skipping handler \"{}\". {}", commandOutputHandler.name(), message);
                             continue;
                         }
                     }
+                    log.debug("User has permission to create an output {} in project {}", commandOutputHandler.type(), project);
                 } else {
                     // If we are here, either the output handler is uploading to another output,
                     // or its target is just wrong and we can't find anything
@@ -2266,6 +2240,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         .mount(commandOutput.mount())
                         .glob(commandOutput.glob())
                         .type(commandOutputHandler.type())
+                        .xsiType(commandOutputHandler.xsiType())
                         .handledBy(commandOutputHandler.targetName())
                         .viaWrapupCommand(commandOutputHandler.viaWrapupCommand())
                         .path(resolveTemplate(commandOutput.path(), resolvedInputValuesByReplacementKey))

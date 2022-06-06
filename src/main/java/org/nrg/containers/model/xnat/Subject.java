@@ -9,9 +9,9 @@ import org.apache.commons.lang.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractresourceI;
 import org.nrg.xdat.model.XnatExperimentdataI;
-import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.model.XnatSubjectassessordataI;
 import org.nrg.xdat.model.XnatSubjectdataI;
+import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xdat.om.XnatSubjectassessordata;
 import org.nrg.xdat.om.XnatSubjectdata;
@@ -89,8 +89,8 @@ public class Subject extends XnatModelObject {
         this.sessions = new ArrayList<>();
         if (loadTypes.contains(CommandWrapperInputType.SESSION.getName())) {
             for (final XnatExperimentdataI xnatExperimentdataI : xnatSubjectdataI.getExperiments_experiment()) {
-                if (xnatExperimentdataI instanceof XnatImagesessiondataI) {
-                    sessions.add(new Session((XnatImagesessiondataI) xnatExperimentdataI, loadFiles,
+                if (xnatExperimentdataI instanceof XnatImagesessiondata) {
+                    sessions.add(new Session((XnatImagesessiondata) xnatExperimentdataI, loadFiles,
                             loadTypes, this.uri, rootArchivePath));
                 }
             }

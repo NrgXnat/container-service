@@ -26,6 +26,7 @@ public interface ContainerConfigService {
     void enableForProject(String project, long wrapperId, final String username, final String reason) throws CommandConfigurationException;
     void disableForProject(String project, long wrapperId, final String username, final String reason) throws CommandConfigurationException;
     boolean isEnabledForProject(String project, long wrapperId);
+    boolean isEnabled(String project, long wrapperId);
 
     class CommandConfigurationException extends Exception {
         public CommandConfigurationException(final String message, final Throwable e) {

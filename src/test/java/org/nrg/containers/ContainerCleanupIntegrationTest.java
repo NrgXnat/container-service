@@ -8,13 +8,6 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.junit.rules.TestRule;
-import org.junit.rules.TestWatcher;
-import org.junit.runner.Description;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.ContainerNotFoundException;
-import org.mandas.docker.client.exceptions.NotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -23,8 +16,15 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.ContainerNotFoundException;
+import org.mandas.docker.client.exceptions.NotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.config.SpringJUnit4ClassRunnerFactory;
@@ -34,9 +34,11 @@ import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -68,7 +70,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nullable;
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -78,18 +87,22 @@ import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class})
+        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
@@ -172,6 +185,7 @@ public class ContainerCleanupIntegrationTest {
         // Mock the userI
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
+        when(mockUser.getUsername()).thenReturn(FAKE_USER);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -217,6 +231,18 @@ public class ContainerCleanupIntegrationTest {
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
+
+        // We can't load the XFT item in the session, so don't try
+        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
+        mockStatic(Session.class);
+        when(Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+                .thenReturn(null);
+
+        // Permissions checks
+        mockStatic(ContainerServicePermissionUtils.class);
+        when(ContainerServicePermissionUtils.canCreateOutputObject(
+                eq(mockUser), any(String.class), any(String.class), any(Command.CommandWrapperOutput.class)
+        )).thenReturn(true);
 
         setupServer();
     }

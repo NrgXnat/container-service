@@ -10,7 +10,6 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.QueueConsumerTestConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
@@ -18,8 +17,6 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
-import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandResolutionService;
@@ -61,7 +58,6 @@ import java.util.regex.Pattern;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
@@ -206,6 +202,7 @@ public class QueueConsumerTest {
         when(mockCommandResolutionService.resolve(
                 mockConfiguredCommand,
                 Collections.emptyMap(),
+                null,
                 mockUser
         )).thenReturn(RESOLVED_COMMAND);
 
@@ -236,6 +233,7 @@ public class QueueConsumerTest {
         when(mockCommandResolutionService.resolve(
                 eq(mockConfiguredCommand),
                 argThat(TestingUtils.isMapWithEntry(INPUT_NAME, badInputValue)),
+                isNull(String.class),
                 eq(mockUser)
         )).thenThrow(new CommandResolutionException(exceptionMessage));
 

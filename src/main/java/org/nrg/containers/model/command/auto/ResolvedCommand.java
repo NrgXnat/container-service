@@ -519,6 +519,7 @@ public abstract class ResolvedCommand {
         @JsonProperty("from-command-output") public abstract String fromCommandOutput();
         @JsonProperty("from-output-handler") public abstract String fromOutputHandler();
         @JsonProperty("type") public abstract String type();
+        @Nullable @JsonProperty("xsi-type") public abstract String xsiType();
         @JsonProperty("required") public abstract Boolean required();
         @JsonProperty("mount") public abstract String mount();
         @JsonProperty("path") @Nullable public abstract String path();
@@ -541,6 +542,7 @@ public abstract class ResolvedCommand {
             public abstract Builder fromCommandOutput(String fromCommandOutput);
             public abstract Builder fromOutputHandler(String fromOutputHandler);
             public abstract Builder type(String type);
+            public abstract Builder xsiType(String type);
             public abstract Builder required(Boolean required);
             public abstract Builder mount(String mount);
             public abstract Builder path(String path);

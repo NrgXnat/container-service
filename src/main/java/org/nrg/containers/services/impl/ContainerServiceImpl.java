@@ -563,10 +563,7 @@ public class ContainerServiceImpl implements ContainerService {
             ConfiguredCommand configuredCommand = commandService.getAndConfigure(project, commandId, wrapperName, wrapperId);
 
             log.debug("Resolving command for wfid {}", workflowid);
-            ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, inputValues, userI);
-            if (StringUtils.isNotBlank(project)) {
-                resolvedCommand = resolvedCommand.toBuilder().project(project).build();
-            }
+            ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, inputValues, project, userI);
 
             // Launch resolvedCommand
             log.debug("Launching command for wfid {}", workflowid);

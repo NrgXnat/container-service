@@ -47,11 +47,18 @@ public interface CommandResolutionService {
 
     PartiallyResolvedCommand preResolve(ConfiguredCommand configuredCommand,
                                         Map<String, String> inputValues,
+                                        String project,
                                         UserI userI)
             throws CommandResolutionException, UnauthorizedException;
 
     ResolvedCommand resolve(ConfiguredCommand configuredCommand,
                             Map<String, String> inputValues,
+                            UserI userI)
+            throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
+    ResolvedCommand resolve(ConfiguredCommand configuredCommand,
+                            Map<String, String> inputValues,
+                            String project,
                             UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
 }

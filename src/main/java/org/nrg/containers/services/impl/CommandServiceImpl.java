@@ -1,6 +1,5 @@
 package org.nrg.containers.services.impl;
 
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.jayway.jsonpath.Configuration;
@@ -12,25 +11,24 @@ import com.jayway.jsonpath.spi.mapper.MappingProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandValidationException;
-import org.nrg.containers.model.command.auto.CommandSummaryForContext;
-import org.nrg.containers.model.configuration.CommandConfiguration;
-import org.nrg.containers.model.command.entity.CommandEntity;
-import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
+import org.nrg.containers.model.command.auto.CommandSummaryForContext;
+import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperEntity;
+import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.configuration.CommandConfigurationInternal;
 import org.nrg.containers.model.configuration.ProjectEnabledReport;
 import org.nrg.containers.services.CommandEntityService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerConfigService;
 import org.nrg.containers.services.ContainerConfigService.CommandConfigurationException;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
-import org.nrg.xdat.schema.SchemaElement;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xft.exception.ElementNotFoundException;
-import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,11 +38,12 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -456,8 +455,20 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     @Override
     @Nonnull
     public List<CommandSummaryForContext> available(final String project,
-                                                    final String xsiType,
+                                                    final String context,
                                                     final UserI userI) throws ElementNotFoundException {
+        if (StringUtils.isBlank(context)) {
+            return Collections.emptyList();
+        }
+
+        final boolean isSiteWide = StringUtils.isBlank(project);
+
+        // Are they able to read the project at all?
+        if (!isSiteWide && !Permissions.canReadProject(userI, project)) {
+            log.debug("User \"{}\" cannot read project \"{}\"", userI.getUsername(), project);
+            return Collections.emptyList();
+        }
+
         final List<CommandSummaryForContext> available = new ArrayList<>();
 
         for (final Command command : getAll()) {
@@ -465,26 +476,29 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
                 // Can only launch if the user gave us an xsiType that matches
                 // one of the wrapper's contexts
-                if (xsiType != null && !xsiTypesMatch(xsiType, wrapper.contexts())) {
+                if (!xsiTypesMatch(context, wrapper.contexts())) {
                     continue;
+                }
+
+                final Command.CommandWrapperExternalInput firstExternalInput = wrapper.firstExternalInput();
+                final String externalInputName;
+                if (firstExternalInput == null) {
+                    if (!isSiteWide) {
+                        // Only sitewide wrappers can have 0 external inputs
+                        continue;
+                    }
+                    externalInputName = "";
+                } else {
+                    externalInputName = firstExternalInput.name();
                 }
 
                 // Can only launch if this user has permission
-                if (!userCanLaunch(userI, project, wrapper)) {
-                    continue;
-                }
-
-                // Removed requirement for only a single external input, as we need to launch with multiple inputs
-                // e.g. clara:trainSession & clara:model
-                final String externalInputName;
-                if (wrapper.externalInputs().size() >= 1) {
-                    externalInputName = wrapper.externalInputs().get(0).name();
-                } else {
+                if (!ContainerServicePermissionUtils.userHasRequiredPermissions(userI, project, context, wrapper)) {
                     continue;
                 }
 
                 available.add(CommandSummaryForContext.create(command, wrapper,
-                        containerConfigService.isEnabledForProject(project, wrapper.id()),
+                        containerConfigService.isEnabled(project, wrapper.id()),
                         externalInputName));
             }
         }
@@ -496,49 +510,13 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
     @Nonnull
     public List<CommandSummaryForContext> available(final String xsiType,
                                                     final UserI userI) throws ElementNotFoundException {
-        final List<CommandSummaryForContext> available = new ArrayList<>();
-
-        for (final Command command : getAll()) {
-            for (final CommandWrapper wrapper : command.xnatCommandWrappers()) {
-
-                // Can only launch if the user gave us an xsiType that matches
-                // one of the wrapper's contexts
-                if (!xsiTypesMatch(xsiType, wrapper.contexts())) {
-                    continue;
-                }
-
-                // Can only launch with a single external input
-                // It seems iffy to me to bake this into the code, but I don't know a way around it.
-                // We don't have any UI right now where a user can sensibly launch
-                //   on two completely unconnected objects.
-                final String externalInputName;
-                if (wrapper.externalInputs().size() == 1) {
-                    externalInputName = wrapper.externalInputs().get(0).name();
-                } else if (wrapper.externalInputs().size() == 0) {
-                    // I guess it's fine to have no external inputs. Site-wide command wrappers won't have any.
-                    //      - JF 2017-09-28
-                    externalInputName = "";
-                } else {
-                    continue;
-                }
-
-                available.add(CommandSummaryForContext.create(command, wrapper,
-                        containerConfigService.isEnabledForSite(wrapper.id()),
-                        externalInputName));
-            }
-        }
-
-        return available;
+        return available(null, xsiType, userI);
     }
 
     @Override
     public void throwExceptionIfCommandExists(@Nonnull Command command) throws NrgRuntimeException {
         commandEntityService.throwExceptionIfCommandExists(fromPojo(command));
     }
-
-    // Cache the pairs of (parent, child) xsiType relationships.
-    // If child is descended from parent, return true. Else return false.
-    private Map<XsiTypePair, Boolean> xsiTypePairCache = new HashMap<>();
 
     /**
      * Check if the xsiType that the user gave us is equal to *or* *descended* *from*
@@ -562,46 +540,7 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
      */
     public boolean xsiTypesMatch(final @Nonnull String xsiType,
                                   final @Nonnull Set<String> wrapperXsiTypes) throws ElementNotFoundException {
-        if (wrapperXsiTypes.contains(xsiType)) {
-            return true;
-        }
-
-        for (final String wrapperXsiType : wrapperXsiTypes) {
-            final XsiTypePair xsiTypeKey = new XsiTypePair(wrapperXsiType, xsiType);
-
-            // Return a result from the cache if it exists.
-            if (xsiTypePairCache.containsKey(xsiTypeKey)) {
-                final Boolean cached = xsiTypePairCache.get(xsiTypeKey);
-                return cached == null ? false : cached; // Should never be null. But let's check for safety.
-            }
-
-            // Compute new result
-            boolean match = false;
-            try {
-                match = SchemaElement.GetElement(xsiType).getGenericXFTElement().instanceOf(wrapperXsiType);
-            } catch (XFTInitException e) {
-                log.error("XFT not initialized."); // If this happens, we have a lot of other problems.
-            } catch (ElementNotFoundException e) {
-                // I was treating this as an error. Now I want to log it and move on.
-                // This will allow users to set whatever they want as the context and request it by name.
-                //      - JF 2017-09-28
-                log.debug("Did not find XSI type \"{}\".", xsiType);
-            }
-
-            // Add result to cache
-            xsiTypePairCache.put(xsiTypeKey, match);
-
-            // Shortcut loop if a result is true
-            if (match) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean userCanLaunch(final UserI userI, final String project, final CommandWrapper wrapper) {
-        // TODO How do we know if the user can launch this particular command wrapper in this project?
-        return Permissions.canReadProject(userI, project);
+        return ContainerServicePermissionUtils.xsiTypeEqualToOrInstanceOf(xsiType, wrapperXsiTypes);
     }
 
 
@@ -612,17 +551,11 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
 
     @Nonnull
     private List<Command> toPojo(final List<CommandEntity> commandEntityList) {
-        final List<Command> returnList = Lists.newArrayList();
-        if (commandEntityList != null) {
-            returnList.addAll(Lists.transform(commandEntityList, new Function<CommandEntity, Command>() {
-                @Nullable
-                @Override
-                public Command apply(@Nullable final CommandEntity commandEntity) {
-                    return commandEntity == null ? null : toPojo(commandEntity);
-                }
-            }));
-        }
-        return returnList;
+        return commandEntityList == null ? Collections.emptyList() :
+                commandEntityList.stream()
+                        .filter(Objects::nonNull)
+                        .map(this::toPojo)
+                        .collect(Collectors.toList());
     }
 
     @Nonnull
@@ -658,30 +591,5 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
         commandEntity.setCommandWrapperEntities(listWithOneWrapper);
         return toPojo(commandEntity);
 
-    }
-
-    private static class XsiTypePair {
-        private String wrapperXsiType;
-        private String userRequestedXsiType;
-
-        XsiTypePair(final String wrapperXsiType,
-                    final String userRequestedXsiType) {
-            this.wrapperXsiType = wrapperXsiType;
-            this.userRequestedXsiType = userRequestedXsiType;
-        }
-
-        @Override
-        public boolean equals(final Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            final XsiTypePair that = (XsiTypePair) o;
-            return Objects.equals(this.wrapperXsiType, that.wrapperXsiType) &&
-                    Objects.equals(this.userRequestedXsiType, that.userRequestedXsiType);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(wrapperXsiType, userRequestedXsiType);
-        }
     }
 }

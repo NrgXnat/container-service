@@ -4,10 +4,13 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -36,7 +39,7 @@ public enum CommandWrapperInputType {
     static {
         Map<String, CommandWrapperInputType> map = new ConcurrentHashMap<>(CommandWrapperInputType.values().length);
         for (CommandWrapperInputType instance : CommandWrapperInputType.values()) {
-            map.put(instance.getName().toLowerCase(), instance);
+            map.put(instance.getName(), instance);
         }
         ENUM_MAP = Collections.unmodifiableMap(map);
     }
@@ -57,12 +60,31 @@ public enum CommandWrapperInputType {
 
     @Nullable
     public static CommandWrapperInputType fromName(String name) {
-        return ENUM_MAP.get(name.toLowerCase());
+        return ENUM_MAP.get(name);
     }
 
     public static List<String> xnatTypeNames() {
         return Stream.of(
                 DIRECTORY, FILE, FILES, PROJECT, PROJECT_ASSET, SUBJECT, SESSION, SCAN, ASSESSOR, RESOURCE, CONFIG
         ).map(CommandWrapperInputType::getName).collect(Collectors.toList());
+    }
+
+    public Set<CommandWrapperInputType> aboveInXnatHierarchy() {
+        switch (this) {
+            case PROJECT_ASSET:
+            case SUBJECT:
+                return Collections.singleton(PROJECT);
+            case SUBJECT_ASSESSOR:
+            case SESSION:
+                return new HashSet<>(Arrays.asList(PROJECT, SUBJECT));
+            case ASSESSOR:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION));
+            case SCAN:
+                return new HashSet<>(Arrays.asList(PROJECT, SUBJECT, SESSION));
+            case RESOURCE:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN));
+            default:
+                return Collections.emptySet();
+        }
     }
 }

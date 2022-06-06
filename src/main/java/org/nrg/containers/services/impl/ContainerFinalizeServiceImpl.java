@@ -498,7 +498,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 try {
                     // Get item from xml
                     XFTItem item = catalogService.insertXmlObject(userI, itemXml,
-                            true, Collections.<String, Object>emptyMap(), uploadEventId);
+                            true, Collections.emptyMap(), uploadEventId);
 
                     if (item == null) {
                         throw new Exception();

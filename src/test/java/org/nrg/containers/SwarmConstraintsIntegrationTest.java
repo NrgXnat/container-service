@@ -31,11 +31,13 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -100,7 +102,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class})
+        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
@@ -171,6 +173,7 @@ public class SwarmConstraintsIntegrationTest {
         // Mock the userI
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
+        when(mockUser.getUsername()).thenReturn(FAKE_USER);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(Mockito.any(UserI.class), Mockito.any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -216,6 +219,18 @@ public class SwarmConstraintsIntegrationTest {
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
+
+        // We can't load the XFT item in the session, so don't try
+        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
+        mockStatic(Session.class);
+        when(Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+                .thenReturn(null);
+
+        // Permissions checks
+        mockStatic(ContainerServicePermissionUtils.class);
+        when(ContainerServicePermissionUtils.canCreateOutputObject(
+                eq(mockUser), any(String.class), any(String.class), any(Command.CommandWrapperOutput.class)
+        )).thenReturn(true);
 
         // Setup docker server
         final String defaultHost = "unix:///var/run/docker.sock";
