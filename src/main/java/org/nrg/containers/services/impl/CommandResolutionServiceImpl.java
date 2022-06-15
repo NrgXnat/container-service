@@ -56,6 +56,8 @@ import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
+import org.nrg.containers.model.command.MountPoint;
+import org.nrg.containers.model.xnat.ModelObjectArchivePath;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.ProjectAsset;
 import org.nrg.containers.model.xnat.Resource;
@@ -285,6 +287,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private String pathTranslationXnatPrefix = null;
         private String pathTranslationContainerHostPrefix = null;
+        private final String archivePath;
 
         private final List<ResolvedCommand> resolvedSetupCommands;
 
@@ -308,6 +311,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             } catch (NotFoundException e) {
                 log.debug("Could not get docker server. I'll keep going, but this is likely to cause other problems down the line.");
             }
+            archivePath = siteConfigPreferences.getArchivePath();
 
             try {
                 commandJsonpathContext = alwaysListParseContext.parse(mapper.writeValueAsString(command));
@@ -492,15 +496,19 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                               List<ResolvedCommandMount> resolvedCommandMounts,
                                               Map<String, String> resolvedCommandLineValuesByReplacementKey)
                 throws CommandResolutionException {
-            ResolvedCommandMount mount = null;
+            MountPoint mountPoint = null;
             for (ResolvedCommandMount cmdMount : resolvedCommandMounts) {
-                if (cmdMount.writable() && cmdMount.viaSetupCommand() == null) {
-                    mount = cmdMount;
+                if (cmdMount.writable() && cmdMount.viaSetupCommand() == null &&
+                        cmdMount.mountPoints() != null && cmdMount.mountPoints().size() == 1 &&
+                        !cmdMount.mountPoints().get(0).isOpaqueOverlay()
+                ) {
+                    mountPoint = cmdMount.mountPoints().get(0);
                     break;
                 }
             }
 
-            if (mount == null) {
+            final String xnatHostPath;
+            if (mountPoint == null || (xnatHostPath = mountPoint.getXnatHostPath()) == null) {
                 // just pass the user cache path, can be retrieved by REST API
                 return;
             }
@@ -519,7 +527,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     Path relativePath = Paths.get(resource, filename);
 
                     // download file to mount loc
-                    File xnatLoc = Paths.get(mount.xnatHostPath()).resolve(relativePath).toFile();
+                    File xnatLoc = Paths.get(xnatHostPath).resolve(relativePath).toFile();
                     File f = userDataCache.getUserDataCacheFile(userI, relativePath);
                     try {
                         FileUtils.copyFile(f, xnatLoc);
@@ -529,7 +537,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     }
 
                     // update CLI with this path
-                    String containerPath = Paths.get(mount.containerPath()).resolve(relativePath).toString();
+                    final String originalContainerPath = mountPoint.getContainerPath();
+                    final String containerPath = (originalContainerPath == null ? relativePath :
+                            Paths.get(originalContainerPath).resolve(relativePath)).toString();
                     resolvedCommandLineValuesByReplacementKey.put(input.replacementKey(),
                             getValueForCommandLine((CommandInput) input, containerPath));
                 }
@@ -539,7 +549,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private ResolvedCommand resolveSpecialCommandType(final CommandType type,
                                                           final String image,
-                                                          final String inputMountXnatHostPath,
+                                                          final List<MountPoint> inputMountPoints,
+                                                          final String inputMountContainerPathPrefixToRemove,
                                                           final String outputMountXnatHostPath,
                                                           final String parentSourceObjectName)
                 throws CommandResolutionException {
@@ -569,12 +580,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             log.debug("Done resolving {} command {} from image {}.", typeStringForLog, command.name(), image);
-
-            return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, getMountContainerHostPath(inputMountXnatHostPath),
-                    outputMountXnatHostPath, getMountContainerHostPath(outputMountXnatHostPath), parentSourceObjectName);
+            return ResolvedCommand.fromSpecialCommandType(command, inputMountPoints, inputMountContainerPathPrefixToRemove,
+                    outputMountXnatHostPath, translateXnatHostPath(outputMountXnatHostPath), parentSourceObjectName);
         }
 
-        private String getMountContainerHostPath(final String mountXnatHostPath) {
+        private String translateXnatHostPath(final String mountXnatHostPath) {
             return (pathTranslationXnatPrefix != null && pathTranslationContainerHostPrefix != null) ?
                     mountXnatHostPath.replace(pathTranslationXnatPrefix, pathTranslationContainerHostPrefix) :
                     mountXnatHostPath;
@@ -2428,7 +2438,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
                     final String writableMountPath = getBuildDirectory();
 
-                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(), resolvedCommandMount.xnatHostPath(), writableMountPath, resolvedCommandOutput.name()));
+                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(), resolvedCommandMount.mountPoints(), resolvedCommandMount.rootContainerPath(), writableMountPath, resolvedCommandOutput.name()));
                 }
             }
 
@@ -2523,8 +2533,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             // Get xnat model object from input
             final XnatModelObject xnatModelObject = getXnatModelObjectForMounting(resolvedSourceInput);
 
-            // Get a path to whatever we need to mount
-            String mountPath = resolveMountPathForModelObject(commandMount, xnatModelObject);
+            // Get all the mount points
+            List<MountPoint> mountPoints = resolveMountPointsForModelObject(commandMount, xnatModelObject, resolvedContainerPath);
 
             // Determine if we need to insert a setup command
             final Input input = resolvedSourceInput.input();
@@ -2533,30 +2543,24 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             if (StringUtils.isNotBlank(viaSetupCommand)) {
                 log.debug("Command mount will be set up with setup command {}.", viaSetupCommand);
                 // If there is a setup command, we do a switcheroo.
-                // Normally, we would mount mountPath into this mount. Instead, we mount mountPath
-                // into the setup command as its input, along with another writable build directory as its output.
-                // Then we mount the output build directory into this mount.
-                // In that way, the setup command will write to the mount whatever files we need to find.
+                // Normally, we would mount all the mountPaths into this container. Instead, we mount the mountPaths
+                // into the setup container as its input, along with another writable build directory as its output.
+                // Then we mount the output build directory into this container.
+                // In that way, the setup container will write to the mount whatever files we need to find.
                 final String writableMountPath = getBuildDirectory();
                 resolvedSetupCommands.add(
-                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPath, writableMountPath, mountName)
+                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPoints, resolvedContainerPath, writableMountPath, mountName)
                 );
-                mountPath = writableMountPath;
+
+                mountPoints = Collections.singletonList(createMountPointAndTranslatePath(writableMountPath, resolvedContainerPath));
             }
-
-            log.debug("Setting mount \"{}\" xnat host path to \"{}\".", mountName, mountPath);
-
-            // Translate paths from XNAT prefix to container host prefix
-            final String mountPathOnContainerHost = getMountContainerHostPath(mountPath);
-            log.debug("Setting mount \"{}\" container host path to \"{}\".", mountName, mountPathOnContainerHost);
 
             final ResolvedCommandMount resolvedCommandMount = ResolvedCommandMount.builder()
                     .name(mountName)
                     .writable(commandMount.writable())
-                    .containerPath(resolvedContainerPath)
                     .viaSetupCommand(viaSetupCommand)
-                    .xnatHostPath(mountPath)
-                    .containerHostPath(mountPathOnContainerHost)
+                    .rootContainerPath(resolvedContainerPath)
+                    .mountPoints(mountPoints)
                     .build();
 
             log.debug("Done resolving mount \"{}\", source input \"{}\".", mountName, input.name());
@@ -2572,7 +2576,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.debug("Command mount \"{}\" has no inputs that provide it files. Assuming it is an output mount.", name);
 
             final String xnatHostPath = getBuildDirectory();
-            final String containerHostPath = getMountContainerHostPath(xnatHostPath);
+            final String containerHostPath = translateXnatHostPath(xnatHostPath);
 
             return ResolvedCommandMount.output(name, xnatHostPath, containerHostPath, resolvedContainerPath);
         }
@@ -2602,54 +2606,99 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
-        private String resolveMountPathForModelObject(@Nonnull CommandMount commandMount, @Nonnull XnatModelObject xnatModelObject) throws CommandResolutionException {
-            final String srcPath = xnatModelObject.getRootPath();
+        private List<MountPoint> resolveMountPointsForModelObject(final @Nonnull CommandMount commandMount,
+                                                                  final @Nonnull XnatModelObject xnatModelObject,
+                                                                  final @Nonnull String resolvedContainerPath) throws CommandResolutionException {
+            final List<ModelObjectArchivePath> archivePaths = xnatModelObject.getMountablePaths(userI);
 
-            if (StringUtils.isBlank(srcPath)) {
-                throw new CommandMountResolutionException("Mount \"" + commandMount.name() + "\" should have a root path but does not.", commandMount);
-            }
-            final Path srcPathObj = Paths.get(srcPath);
-            final File srcPathFile = srcPathObj.toFile();
-            final boolean srcIsFile = srcPathFile.isFile();
-
-            // Determine if this particular URI has remote files
-            final String uri = xnatModelObject.getUri();
-            boolean hasRemoteFiles;
-            if (srcIsFile) {
-                // If the file isn't local, assume it's remote (attempting to pull with throw an exception if it isn't)
-                hasRemoteFiles = !srcPathFile.exists();
-            } else {
-                hasRemoteFiles = hasRemoteFiles(uri);
+            if (archivePaths.isEmpty()) {
+                throw new CommandMountResolutionException("Mount \"" + commandMount.name() + "\" can't mount anything from " +
+                        xnatModelObject.getClass().getName() + " " + xnatModelObject.getLabel(), commandMount);
             }
 
-            // Determine if we can mount the archive path directly or if we need to create a build directory
-            String mountPath;
-            final boolean writable = commandMount.writable();
-            if (!(writable || hasRemoteFiles)) {
-                // The source can be directly mounted
-                log.debug("Mount \"{}\" has a root path and is not set to \"writable\". The root path can be " +
-                        "mounted directly into the container.", commandMount.name());
-                mountPath = srcPath;
-            } else {
-                // The mount has a source path and is set to "writable" or may have remote files. We must copy files
-                // from the root path into a writable build location.
-                mountPath = getBuildDirectory();
+            // For a writable mount, we copy everything into a single build directory
+            final boolean isWritableMount = commandMount.writable();
+            final String rootBuildDir = isWritableMount ? getBuildDirectory() : null;
 
-                if (srcIsFile) {
-                    mountPath = Paths.get(mountPath).resolve(srcPathObj.getFileName()).toString();
+            // Resolve the mount points + copy/prepare files if necessary
+            final List<MountPoint> resolvedMountPoints = new ArrayList<>(archivePaths.size());
+            for (final ModelObjectArchivePath archivePath : archivePaths) {
+                resolvedMountPoints.add(resolveMountPointForArchivePath(archivePath, rootBuildDir, resolvedContainerPath));
+            }
+
+            if (isWritableMount) {
+                // We ignore the values returned during mount point resolution and simply mount the root build dir.
+                // This root build dir contains all the files at the correct relative paths
+                return Collections.singletonList(createMountPointAndTranslatePath(rootBuildDir, resolvedContainerPath));
+            } else {
+                // Return all the mount points, which may be a mix of archive paths, build directories, and opaque overlays
+                return resolvedMountPoints;
+            }
+        }
+
+        private MountPoint resolveMountPointForArchivePath(final @Nonnull ModelObjectArchivePath archivePath,
+                                                           final @Nullable String rootBuildDir,
+                                                           final @Nonnull String rootContainerPath)
+                throws CommandResolutionException {
+            final String uri = archivePath.getSourceObject().getUri();
+            final String srcPath = archivePath.getPath();
+            final String relativePath = archivePath.getRelativePath();
+            final boolean srcIsFile = archivePath.getPathFile().isFile();
+
+            final String containerPath = joinPaths(rootContainerPath, relativePath);
+
+            final boolean hasRootBuildDir = rootBuildDir != null;
+
+            if (archivePath.isOpaqueOverlay()) {
+                // We will not mount or copy any files for this object
+                // However, if we are putting everything into a root build dir, we will have already copied
+                //  these files and should remove them.
+                if (hasRootBuildDir) {
+                    // Remove any files that already exist
+                    removeLocalFiles(srcPath, srcIsFile);
                 }
+                // Create a mount point with a null local path
+                // This will signal to the control api to make an empty mount
+                return new MountPoint(null, null, containerPath);
+            }
 
-                if (hasRemoteFiles) {
-                    log.debug("Pulling any remote files into mount \"{}\".", commandMount.name());
-                    pullRemoteFiles(uri, srcPath, mountPath);
+            final String mountXnatHostPath;
+            if (!hasRootBuildDir && !hasRemoteFiles(archivePath)) {
+                // Root path can be mounted directly into the container
+                mountXnatHostPath = srcPath;
+            } else {
+                // We must prepare files in a build directory
+                mountXnatHostPath = joinPaths(hasRootBuildDir ? rootBuildDir : getBuildDirectory(), relativePath);
+                if (hasRemoteFiles(archivePath)) {
+                    log.debug("Pulling remote files into build directory for object {}", uri);
+                    pullRemoteFiles(uri, srcPath, mountXnatHostPath);
                 } else {
-                    // CS-54 Copy all files out of the root directory to a build directory.
-                    log.debug("Mount \"{}\" has a root directory and is set to \"writable\". Copying all files " +
-                            "from the root directory to build directory.", commandMount.name());
-                    copyLocalFiles(srcPath, mountPath, srcIsFile);
+                    log.debug("Copying files to build directory for object {}.", uri);
+                    copyLocalFiles(srcPath, mountXnatHostPath, srcIsFile);
                 }
             }
-            return mountPath;
+            return createMountPointAndTranslatePath(mountXnatHostPath, containerPath);
+        }
+
+        private MountPoint createMountPointAndTranslatePath(final @Nonnull String xnatHostPath, final @Nullable String containerPath) {
+            return new MountPoint(xnatHostPath, translateXnatHostPath(xnatHostPath), containerPath);
+        }
+
+        private String joinPaths(final @Nonnull String rootPath, final @Nullable String relativePath) {
+            if (relativePath == null) {
+                return rootPath;
+            } else {
+                return Paths.get(rootPath, relativePath).toString();
+            }
+        }
+
+        private boolean hasRemoteFiles(final @Nonnull ModelObjectArchivePath archivePath) throws CommandMountResolutionException {
+            // Determine if this particular object archive path has remote files
+            final String uri = archivePath.getSourceObject().getUri();
+            final File srcPathFile = archivePath.getPathFile();
+
+            // If it's a file which doesn't exist, assume it's remote (attempting to pull with throw an exception if it isn't)
+            return srcPathFile.isFile() && !srcPathFile.exists() || hasRemoteFiles(uri);
         }
 
         private boolean hasRemoteFiles(final String uri) throws CommandMountResolutionException {
@@ -2664,6 +2713,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         private void pullRemoteFiles(final String uri, final String archiveSrc, final String localPath) throws CommandMountResolutionException {
+            log.debug("Pulling files for {} to {}", uri, localPath);
             try {
                 catalogService.pullResourceCatalogsToDestination(Users.getAdminUser(), uri, archiveSrc, localPath);
             } catch (ServerException | ClientException e) {
@@ -2673,6 +2723,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         private void copyLocalFiles(final String src, final String dest, final boolean srcIsFile) throws CommandMountResolutionException {
+            log.debug("Copying file(s) from {} to {}", src, dest);
             try {
                 if (srcIsFile) {
                     Files.copy(Paths.get(src), Paths.get(dest), StandardCopyOption.REPLACE_EXISTING);
@@ -2680,8 +2731,28 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     FileUtils.copyDirectory(new File(src), new File(dest));
                 }
             } catch (IOException e) {
-                throw new CommandMountResolutionException("Could not copy archive path " + src +
-                        " into writable build path " + dest, e);
+                throw new CommandMountResolutionException("Could not copy " + src + " to " + dest, e);
+            }
+        }
+
+        /**
+         * Clean up files that were copied into a build directory that the user should not see
+         * @throws CommandMountResolutionException On any IOException from the underlying calls, or if
+         * src is a path in the archive.
+         */
+        private void removeLocalFiles(final @Nonnull String src, final boolean srcIsFile) throws CommandMountResolutionException {
+            if (src.startsWith(archivePath)) {
+                throw new CommandMountResolutionException("Cannot remove files from archive path " + src);
+            }
+            log.debug("Removing file(s) {}", src);
+            try {
+                if (srcIsFile) {
+                    Files.deleteIfExists(Paths.get(src));
+                } else {
+                    FileUtils.deleteDirectory(new File(src));
+                }
+            } catch (IOException e) {
+                throw new CommandMountResolutionException("Could not remove path " + src, e);
             }
         }
 

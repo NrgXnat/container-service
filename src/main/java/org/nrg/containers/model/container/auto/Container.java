@@ -19,6 +19,7 @@ import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommandMount;
+import org.nrg.containers.model.command.MountPoint;
 import org.nrg.containers.model.container.ContainerInputType;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
@@ -710,12 +711,36 @@ public abstract class Container {
             return this;
         }
         public Builder mountsFromResolvedCommand(final List<ResolvedCommandMount> resolvedCommandMounts) {
-            if (resolvedCommandMounts != null) {
-                for (final ResolvedCommandMount resolvedCommandMount : resolvedCommandMounts) {
-                    addMount(ContainerMount.create(resolvedCommandMount));
-                }
+            if (resolvedCommandMounts == null) {
+                return this;
             }
+            for (final ResolvedCommandMount resolvedCommandMount : resolvedCommandMounts) {
+                addMountsFromResolvedCommandMount(resolvedCommandMount);
+            }
+
             return this;
+        }
+        private void addMountsFromResolvedCommandMount(final ResolvedCommandMount resolvedCommandMount) {
+            final List<MountPoint> mountPoints = resolvedCommandMount.mountPoints();
+            if (mountPoints == null) {
+                return;
+            }
+            final String baseName = resolvedCommandMount.name();
+            final int numMountPoints = mountPoints.size();
+            for (int i = 0; i < numMountPoints; i++) {
+                final MountPoint mountPoint = mountPoints.get(i);
+
+                final String mountName = numMountPoints == 1 ? baseName : baseName + i;
+
+                addMount(ContainerMount.builder()
+                        .databaseId(0L)
+                        .name(mountName)
+                        .writable(resolvedCommandMount.writable())
+                        .xnatHostPath(mountPoint.getXnatHostPath())
+                        .containerHostPath(mountPoint.getContainerHostPath())
+                        .containerPath(mountPoint.getContainerPath())
+                        .build());
+            }
         }
 
         public abstract Builder inputs(List<ContainerInput> inputs);
@@ -795,6 +820,11 @@ public abstract class Container {
          */
         @Deprecated @JsonProperty("input-files") public abstract ImmutableList<ContainerMountFiles> inputFiles();
 
+        @JsonIgnore
+        public boolean isOpaqueOverlay() {
+            return containerHostPath() == null;
+        }
+
         @JsonCreator
         @SuppressWarnings("deprecation")
         public static ContainerMount create(@JsonProperty("id") final long databaseId,
@@ -827,16 +857,6 @@ public abstract class Container {
             return create(containerEntityMount.getId(), containerEntityMount.getName(), containerEntityMount.isWritable(),
                     containerEntityMount.getXnatHostPath(), containerEntityMount.getContainerHostPath(),
                     containerEntityMount.getContainerPath(), containerMountFiles);
-        }
-
-        public static ContainerMount create(final ResolvedCommandMount resolvedCommandMount) {
-            return create(0L,
-                    resolvedCommandMount.name(),
-                    resolvedCommandMount.writable(),
-                    resolvedCommandMount.xnatHostPath(),
-                    resolvedCommandMount.containerHostPath(),
-                    resolvedCommandMount.containerPath(),
-                    null);
         }
 
         @JsonIgnore

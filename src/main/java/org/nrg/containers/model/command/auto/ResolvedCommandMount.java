@@ -2,8 +2,12 @@ package org.nrg.containers.model.command.auto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
+import org.nrg.containers.model.command.MountPoint;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @AutoValue
 public abstract class ResolvedCommandMount {
@@ -14,28 +18,31 @@ public abstract class ResolvedCommandMount {
 
     @JsonProperty("name") public abstract String name();
     @JsonProperty("writable") public abstract Boolean writable();
-    @JsonProperty("container-path") public abstract String containerPath();
-    @JsonProperty("xnat-host-path") public abstract String xnatHostPath();
-    @JsonProperty("container-host-path") public abstract String containerHostPath();
+    @Nullable @JsonProperty("root-container-path") public abstract String rootContainerPath();
+    @JsonProperty("mount-points") public abstract List<MountPoint> mountPoints();
     @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
 
-    public static ResolvedCommandMount specialInput(final String xnatHostPath, final String containerHostPath) {
+    public static ResolvedCommandMount specialInput(final List<MountPoint> inputMountPoints, final String inputMountPointRootContainerPath) {
         return ResolvedCommandMount.builder()
                 .name(INPUT)
                 .writable(false)
-                .xnatHostPath(xnatHostPath)
-                .containerHostPath(containerHostPath)
-                .containerPath(SETUP_WRAPUP_INPUT_PATH)
+                .rootContainerPath(SETUP_WRAPUP_INPUT_PATH)
+                .mountPoints(inputMountPoints.stream()
+                        .map(inputMount -> inputMount.newWithSwappedContainerPathPrefix(inputMountPointRootContainerPath, SETUP_WRAPUP_INPUT_PATH))
+                        .collect(Collectors.toList()))
                 .build();
+    }
+
+    public static ResolvedCommandMount specialInputSingleMountPoint(final String xnatHostPath, final String containerHostPath) {
+        return specialInput(Collections.singletonList(new MountPoint(xnatHostPath, containerHostPath, null)), null);
     }
 
     public static ResolvedCommandMount output(final String name, final String xnatHostPath, final String containerHostPath, final String containerPath) {
         return ResolvedCommandMount.builder()
                 .name(name)
                 .writable(true)
-                .xnatHostPath(xnatHostPath)
-                .containerHostPath(containerHostPath)
-                .containerPath(containerPath)
+                .rootContainerPath(containerPath)
+                .mountPoints(Collections.singletonList(new MountPoint(xnatHostPath, containerHostPath, containerPath)))
                 .build();
     }
 
@@ -53,10 +60,9 @@ public abstract class ResolvedCommandMount {
     public abstract static class Builder {
         public abstract Builder name(String name);
         public abstract Builder writable(Boolean writable);
-        public abstract Builder xnatHostPath(String xnatHostPath);
-        public abstract Builder containerHostPath(String containerHostPath);
-        public abstract Builder containerPath(String containerPath);
+        public abstract Builder rootContainerPath(String rootContainerPath);
         public abstract Builder viaSetupCommand(String viaSetupCommand);
+        public abstract Builder mountPoints(List<MountPoint> mountPoints);
 
         public abstract ResolvedCommandMount build();
     }

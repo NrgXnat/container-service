@@ -521,7 +521,11 @@ public class DockerControlApi implements ContainerControlApi {
     private void createDirectoriesForMounts(final Container toCreate) throws IOException {
         final List<Container.ContainerMount> containerMounts = toCreate.mounts() == null ? Collections.emptyList() : toCreate.mounts();
         for (final Container.ContainerMount mount : containerMounts) {
-            final Path mountFile = Paths.get(mount.xnatHostPath());
+            final String xnatHostPath = mount.xnatHostPath();
+            if (StringUtils.isBlank(xnatHostPath)) {
+                continue;
+            }
+            final Path mountFile = Paths.get(xnatHostPath);
             if (!Files.isRegularFile(mountFile)) {
                 Files.createDirectories(mountFile);
             }
@@ -564,7 +568,7 @@ public class DockerControlApi implements ContainerControlApi {
 
         final List<Mount> mounts = toCreate.mounts().stream().map(containerMount ->
                 Mount.builder()
-                        .type("bind")
+                        .type(containerMount.isOpaqueOverlay() ? "tmpfs" : "bind")
                         .source(containerMount.containerHostPath())
                         .target(containerMount.containerPath())
                         .readOnly(!containerMount.writable())
@@ -735,6 +739,7 @@ public class DockerControlApi implements ContainerControlApi {
 
         final List<Mount> mounts = toCreate.mounts().stream().map(containerMount ->
             Mount.builder()
+                    .type(containerMount.isOpaqueOverlay() ? "tmpfs" : null)
                     .source(containerMount.containerHostPath())
                     .target(containerMount.containerPath())
                     .readOnly(!containerMount.writable())

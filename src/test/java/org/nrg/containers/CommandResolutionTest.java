@@ -21,6 +21,7 @@ import org.mockito.Mockito;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.IllegalInputException;
+import org.nrg.containers.model.command.MountPoint;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperExternalInput;
@@ -76,6 +77,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
@@ -493,7 +495,6 @@ public class CommandResolutionTest {
                         ResolvedCommand.ResolvedCommandInput.command("MULTI_SPACE", spacedScanIds),
                         ResolvedCommand.ResolvedCommandInput.command("MULTI_DEFAULT", spacedScanIds),
                         ResolvedCommand.ResolvedCommandInput.command("MULTI_COMMA_FLAG", spacedScanIds)
-
                 )
         );
 
@@ -595,10 +596,8 @@ public class CommandResolutionTest {
                 .commandLine("script.sh")
                 .addMount(ResolvedCommandMount.builder()
                         .name("mount")
-                        .containerPath("/path")
                         .writable(true)
-                        .xnatHostPath("/xnat/path")
-                        .containerHostPath("/container/path")
+                        .mountPoints(Collections.singletonList(new MountPoint("/xnat/path", "/container/path", "/path")))
                         .build())
                 .containerLabels(ImmutableMap.of("label_key", "label_value"))
                 .genericResources(ImmutableMap.of("GenericResourceKey", "GenericResourceLabel"))
@@ -637,8 +636,11 @@ public class CommandResolutionTest {
         final ResolvedCommandMount resolvedCommandMount = resolvedCommand.mounts().get(0);
         assertThat(resolvedCommandMount.viaSetupCommand(), is("xnat/test-setup-command:latest:setup-command"));
 
-        final String resolvedCommandMountPath = resolvedCommandMount.xnatHostPath();
-        assertThat(resolvedCommandMountPath, is(resolvedCommandMount.containerHostPath()));
+        final List<MountPoint> mountPoints = resolvedCommandMount.mountPoints();
+        assertThat(mountPoints, hasSize(1));
+        final MountPoint mountPoint = mountPoints.get(0);
+        final String resolvedCommandMountPath = mountPoint.getXnatHostPath();
+        assertThat(resolvedCommandMountPath, is(mountPoint.getContainerHostPath()));
         assertThat(resolvedCommandMountPath, startsWith(buildDir));
 
         assertThat(resolvedCommand.setupCommands(), hasSize(1));
@@ -652,7 +654,7 @@ public class CommandResolutionTest {
         assertThat(resolvedSetupCommand.workingDirectory(), is(setupCommand.workingDirectory()));
 
         assertThat(resolvedSetupCommand.mounts(), hasSize(2));
-        final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInput(resourceDir, resourceDir);
+        final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInputSingleMountPoint(resourceDir, resourceDir);
         final ResolvedCommandMount expectedOutputMount = ResolvedCommandMount.specialOutput(resolvedCommandMountPath, resolvedCommandMountPath);
         assertThat(resolvedSetupCommand.mounts(), containsInAnyOrder(expectedInputMount, expectedOutputMount));
     }
@@ -682,9 +684,9 @@ public class CommandResolutionTest {
 
         assertThat(resolvedCommand.mounts(), Matchers.hasSize(1));
 
-        final ResolvedCommandMount resolvedMount = resolvedCommand.mounts().get(0);
-        assertThat(resolvedMount.xnatHostPath(), is(xnatHostDir));
-        assertThat(resolvedMount.containerHostPath(), is(containerHostDir));
+        final MountPoint mountPoint = resolvedCommand.mounts().get(0).mountPoints().get(0);
+        assertThat(mountPoint.getXnatHostPath(), is(xnatHostDir));
+        assertThat(mountPoint.getContainerHostPath(), is(containerHostDir));
     }
 
     @Test
@@ -734,9 +736,11 @@ public class CommandResolutionTest {
         assertThat(resolvedCommand.mounts(), Matchers.hasSize(1));
 
         final ResolvedCommandMount resolvedMount = resolvedCommand.mounts().get(0);
-        assertThat(resolvedMount.containerPath(), is(command.mounts().get(0).path()));
+        final MountPoint mountPoint = resolvedMount.mountPoints().get(0);
+        assertThat(mountPoint.getContainerPath(), is(command.mounts().get(0).path()));
 
-        final String mountedDir = resolvedMount.containerHostPath();
+        final String mountedDir = mountPoint.getContainerHostPath();
+        assertThat(mountedDir, is(notNullValue()));
 
         if (buildDirMount) {
             final String pattern = buildDir + File.separator + buildDirPattern;

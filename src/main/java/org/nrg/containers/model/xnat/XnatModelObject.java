@@ -6,11 +6,15 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.google.common.base.MoreObjects;
+import lombok.extern.slf4j.Slf4j;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.security.UserI;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
+@Slf4j
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
         @JsonSubTypes.Type(value = Project.class, name = "Project"),
@@ -77,6 +81,13 @@ public abstract class XnatModelObject {
     @JsonIgnore
     public String getRootPath() {
         return getDirectory();
+    }
+
+    @JsonIgnore
+    public List<ModelObjectArchivePath> getMountablePaths(final UserI userI) {
+        // This recreates old behavior: All mounts are direct archive mounts
+        // TODO Add logic for all the cases we want to consider
+        return Collections.singletonList(new ModelObjectArchivePath(this, getRootPath(), null));
     }
 
     @Override

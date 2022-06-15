@@ -11,6 +11,7 @@ import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.MountPoint;
 import org.nrg.containers.model.container.ContainerInputType;
 import org.nrg.containers.secrets.ResolvedSecret;
 
@@ -259,19 +260,22 @@ public abstract class ResolvedCommand {
 
     /**
      * Creates ResolvedCommands for setup and wrapup commands.
-     * @param command The Command definition for the setup or wrapup command
-     * @param inputMountXnatHostPath Path on the XNAT host to the input mount
-     * @param inputMountContainerHostPath Path on the container host to the input mount
-     * @param outputMountXnatHostPath Path on the XNAT host to the output mount
-     * @param outputMountContainerHostPath Path on the container host to the output mount
-     * @param parentSourceObjectName Name of the Resolved Command Mount / Container Mount (for setup commands) or
-     *                               Resolved Command Output / Container Ouput (for wrapup commands) from which this
-     *                               special Resolved Command is being created.
+     *
+     * @param command                               The Command definition for the setup or wrapup command
+     * @param inputMounts                           Resolved input mounts with xnat and container host paths.
+     *                                              Container paths will be changed to be under common prefix /input after
+     *                                              removing existing prefix (if any)
+     * @param inputMountContainerPathPrefixToRemove Container path prefix to remove from all input mount container paths
+     * @param outputMountXnatHostPath               Path on the XNAT host to the output mount
+     * @param outputMountContainerHostPath          Path on the container host to the output mount
+     * @param parentSourceObjectName                Name of the Resolved Command Mount / Container Mount (for setup commands) or
+     *                                              Resolved Command Output / Container Ouput (for wrapup commands) from which this
+     *                                              special Resolved Command is being created.
      * @return A Resolved Setup Command or Resolved Wrapup Command
      */
     public static ResolvedCommand fromSpecialCommandType(final Command command,
-                                                         final String inputMountXnatHostPath,
-                                                         final String inputMountContainerHostPath,
+                                                         final List<MountPoint> inputMounts,
+                                                         final String inputMountContainerPathPrefixToRemove,
                                                          final String outputMountXnatHostPath,
                                                          final String outputMountContainerHostPath,
                                                          final String parentSourceObjectName) {
@@ -299,7 +303,7 @@ public abstract class ResolvedCommand {
                 .ulimits(command.ulimits())
                 .parentSourceObjectName(parentSourceObjectName)
                 .secrets(command.secrets().stream().map(ResolvedSecret::fromUnresolved).collect(Collectors.toList()))
-                .addMount(ResolvedCommandMount.specialInput(inputMountXnatHostPath, inputMountContainerHostPath))
+                .addMount(ResolvedCommandMount.specialInput(inputMounts, inputMountContainerPathPrefixToRemove))
                 .addMount(ResolvedCommandMount.specialOutput(outputMountXnatHostPath, outputMountContainerHostPath))
                 .build();
     }
