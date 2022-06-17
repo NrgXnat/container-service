@@ -1,6 +1,16 @@
 package org.nrg.containers;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.BeanDescription;
+import com.fasterxml.jackson.databind.DeserializationConfig;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
+import com.fasterxml.jackson.databind.deser.ResolvableDeserializer;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
@@ -34,6 +44,7 @@ import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
+import org.nrg.containers.model.xnat.ModelObjectArchivePath;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
@@ -59,12 +70,15 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -805,5 +819,189 @@ public class CommandResolutionTest {
         expectedException.expectMessage(inputValue);
         expectedException.expectMessage(secretDestinationIdentifier);
         final ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, runtimeValues, userI);
+    }
+
+    @Test
+    public void testMultipleMountPoints_noOverlay() throws Exception {
+        runMultipleMountPointTest(Arrays.asList(
+                new MountPointTestOptions(HELLO_1, false),
+                new MountPointTestOptions(SUBDIR, false)
+        ));
+    }
+
+    @Test
+    public void testMultipleMountPoints_withOverlay() throws Exception {
+        runMultipleMountPointTest(Arrays.asList(
+                new MountPointTestOptions(HELLO_1, false),
+                new MountPointTestOptions(SUBDIR, true)
+        ));
+    }
+
+    private void runMultipleMountPointTest(final List<MountPointTestOptions> mountPointTestOptionsList) throws Exception {
+        final String commandFileName = "command";
+
+        final String testResourceDir = Paths.get(ClassLoader.getSystemResource("commandResolutionTest/mountTests")
+                .toURI()).toString().replace("%20", " ");
+        final String commandJsonFile = testResourceDir + "/" + commandFileName + ".json";
+        final Command command = mapper.readValue(new File(commandJsonFile), Command.class);
+        final CommandWrapper wrapper = wrapperByName(command, "resource-wrapper");
+        final Command.ConfiguredCommand configuredCommand = configure(command, wrapper);
+
+        final Path inputPath = Paths.get(testResourceDir, "resource.json");
+        final String archiveDir = Paths.get(testResourceDir, "data").toString();
+
+        // We need to modify the archive paths returned by getMountablePaths.
+        // To do that we make jackson deserialize our resource json into a custom subclass that returns what we want.
+        // Why can't we put the mountable paths into the json? Because I marked XnatModelObject.getMountablePaths as @JsonIgnore.
+        // Later we will fill in an actual implementation for XnatModelObject.getMountablePaths, and
+        //  I would expect that would let us test this more easily through mocking out permissions checks.
+        final List<ModelObjectArchivePath> archivePaths = mountPointTestOptionsList.stream()
+                .map(mpc -> new ModelObjectArchivePath(null, Paths.get(archiveDir, mpc.relativePath).toString(), mpc.relativePath, mpc.overlay))
+                .collect(Collectors.toList());
+
+        final SimpleModule module = new SimpleModule();
+        module.setDeserializerModifier(new BeanDeserializerModifier() {
+            @Override
+            public JsonDeserializer<?> modifyDeserializer(DeserializationConfig config, BeanDescription beanDesc, JsonDeserializer<?> deserializer) {
+                if (Resource.class.isAssignableFrom(beanDesc.getBeanClass())) {
+                    return new CustomResourceDeserializer(deserializer, beanDesc.getBeanClass(), archivePaths);
+                }
+                return deserializer;
+            }
+        });
+
+        // We want to register before we deserialize the test Resource in case the object mapper caches the deserializer.
+        // That way next time it deserializes the Resource (in the method under test) it will get our custom deserializer.
+        mapper.registerModule(module);
+
+        final Resource resource = mapper.readValue(inputPath.toFile(), Resource.class);
+        resource.setDirectory(archiveDir);
+
+        // Because we deserialized to the custom class, when we serialize back we get the custom class name in the "type".
+        // Have to swap that out to make this look like an ordinary Resource.
+        // Nothing to see here, Jackson, just an ordinary Resource!
+        final String customResourceClassName = CommandResolutionTest.class.getSimpleName() + "$" + ResourceWithArchivePaths.class.getSimpleName();
+        final String resourceJson = mapper.writeValueAsString(resource)
+                .replace("\"type\":\"" + customResourceClassName + "\"", "\"type\":\"Resource\"");
+        final Map<String, String> runtimeValues = Collections.singletonMap("resource", resourceJson);
+
+        final ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, runtimeValues, userI);
+
+        assertThat(resolvedCommand.mounts(), Matchers.hasSize(1));
+
+        final ResolvedCommandMount resolvedMount = resolvedCommand.mounts().get(0);
+        final String rootContainerPath = resolvedMount.rootContainerPath();
+        assertThat(rootContainerPath, is(notNullValue()));
+        assertThat(rootContainerPath, is(command.mounts().get(0).path()));
+
+        final List<MountPoint> mountPoints = resolvedMount.mountPoints();
+        assertThat("Number of mount points should equal the number of archive paths returned by the custom test Resource",
+                mountPoints, Matchers.hasSize(mountPointTestOptionsList.size()));
+
+        // Want to "zip" these two lists together and iterate over them simultaneously, but that isn't simple in java.
+        // Cobbled together this monstrosity from a few SO posts:
+        // https://stackoverflow.com/a/23529010 for the main iterator body,
+        // and https://stackoverflow.com/a/8555153 for the "iterable as iterator lambda"
+        final Iterator<MountPointTestPair> iterator = new Iterator<MountPointTestPair>() {
+            final Iterator<MountPointTestOptions> mountPointTestOptionsIterator = mountPointTestOptionsList.iterator();
+            final Iterator<MountPoint> mountPointIterator = mountPoints.iterator();
+
+            @Override
+            public boolean hasNext() {
+                return mountPointTestOptionsIterator.hasNext() && mountPointIterator.hasNext();
+            }
+
+            @Override
+            public MountPointTestPair next() {
+                return new MountPointTestPair(mountPointTestOptionsIterator.next(), mountPointIterator.next());
+            }
+        };
+        for (final MountPointTestPair pair : (Iterable<MountPointTestPair>) () -> iterator) {
+            final MountPointTestOptions mountPointTestOptions = pair.mountPointTestOptions;
+            final MountPoint mountPoint = pair.mountPoint;
+
+            final String expectedContainerPath = Paths.get(rootContainerPath, mountPointTestOptions.relativePath).toString();
+            assertThat(mountPoint.getContainerPath(), is(expectedContainerPath));
+
+            final String mountedPath = mountPoint.getContainerHostPath();
+            if (mountPointTestOptions.overlay) {
+                assertThat(mountedPath, is(nullValue()));
+            } else {
+                assertThat(mountedPath, is(notNullValue()));
+                final File file = Paths.get(mountedPath).toFile();
+
+                // This file should exist
+                assertThat("File " + mountPointTestOptions.relativePath + " does not exist at path " + mountedPath,
+                        file.exists(), is(true));
+            }
+        }
+    }
+
+    private static class MountPointTestPair {
+        MountPointTestOptions mountPointTestOptions;
+        MountPoint mountPoint;
+
+        public MountPointTestPair(MountPointTestOptions mountPointTestOptions, MountPoint mountPoint) {
+            this.mountPointTestOptions = mountPointTestOptions;
+            this.mountPoint = mountPoint;
+        }
+    }
+
+    private static class MountPointTestOptions {
+        String relativePath;
+        boolean overlay;
+
+        public MountPointTestOptions(String relativePath, boolean overlay) {
+            this.relativePath = relativePath;
+            this.overlay = overlay;
+        }
+    }
+
+    private static class ResourceWithArchivePaths extends Resource {
+        private final List<ModelObjectArchivePath> archivePaths;
+
+        ResourceWithArchivePaths(final Resource resource, List<ModelObjectArchivePath> archivePaths) {
+            id = resource.getId();
+            label = resource.getLabel();
+            directory = resource.getDirectory();
+            uri = resource.getUri();
+
+            this.archivePaths = archivePaths;
+        }
+
+        @Override
+        public List<ModelObjectArchivePath> getMountablePaths(UserI userI) {
+            return archivePaths;
+        }
+    }
+    private static class CustomResourceDeserializer extends StdDeserializer<Resource> implements ResolvableDeserializer {
+
+        private final JsonDeserializer<?> defaultDeserializer;
+        private final List<ModelObjectArchivePath> archivePaths;
+
+        public CustomResourceDeserializer(JsonDeserializer<?> defaultDeserializer, Class<?> clazz, List<ModelObjectArchivePath> modelObjectArchivePaths) {
+            super(clazz);
+            this.defaultDeserializer = defaultDeserializer;
+            this.archivePaths = modelObjectArchivePaths;
+        }
+
+        @Override
+        public Resource deserialize(JsonParser p, DeserializationContext ctxt)
+                throws IOException {
+
+            @SuppressWarnings("unchecked")
+            Resource resource = (Resource) defaultDeserializer.deserialize(p, ctxt);
+
+            return new ResourceWithArchivePaths(resource, archivePaths.stream()
+                    .map(archivePath -> new ModelObjectArchivePath(resource, archivePath.getPath(), archivePath.getRelativePath(), archivePath.isOpaqueOverlay()))
+                    .collect(Collectors.toList()));
+        }
+
+        // for some reason you have to implement ResolvableDeserializer when modifying BeanDeserializer
+        // otherwise deserializing throws JsonMappingException??
+        @Override public void resolve(DeserializationContext ctxt) throws JsonMappingException
+        {
+            ((ResolvableDeserializer) defaultDeserializer).resolve(ctxt);
+        }
     }
 }

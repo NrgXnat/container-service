@@ -2011,7 +2011,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.debug("Attempting to deserialize {} from value as JSON.", modelName);
                     newModelObject = mapper.readValue(value, model);
                 } catch (IOException e) {
-                    log.debug("Could not deserialize {} from value as JSON.", modelName);
+                    throw new CommandInputResolutionException("Could not instantiate " + modelName + " as JSON", value, e);
                 }
             } else if (idToModelObject != null) {
                 log.debug("Attempting to initialize a {} using value as ID string.", modelName);
