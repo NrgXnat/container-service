@@ -562,6 +562,15 @@ public class DockerControlApi implements ContainerControlApi {
             }
         }
 
+        final List<Mount> mounts = toCreate.mounts().stream().map(containerMount ->
+                Mount.builder()
+                        .type("bind")
+                        .source(containerMount.containerHostPath())
+                        .target(containerMount.containerPath())
+                        .readOnly(!containerMount.writable())
+                        .build()
+        ).collect(Collectors.toList());
+
         // Secrets
         final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
                 ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
@@ -574,7 +583,7 @@ public class DockerControlApi implements ContainerControlApi {
                         .autoRemove(toCreate.autoRemove())
                         .runtime(instanceOrDefault(toCreate.runtime(), ""))
                         .ipcMode(instanceOrDefault(toCreate.ipcMode(), ""))
-                        .binds(toCreate.bindMountStrings())
+                        .mounts(mounts)
                         .portBindings(portBindings)
                         .memoryReservation(toCreate.reserveMemoryBytes())
                         .memory(toCreate.limitMemoryBytes())
