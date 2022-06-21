@@ -3,7 +3,6 @@ package org.nrg.containers.services.impl;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -169,8 +168,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         // private String exitCode;
         private boolean isFailed;
 
-        private Map<String, ContainerMount> outputMounts;
-
         private String prefix;
 
         private Map<String, Container> wrapupContainerMap;
@@ -184,8 +181,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             this.toFinalize = toFinalize;
             this.userI = userI;
             this.isFailed = isFailed;
-
-            outputMounts = Maps.newHashMap();
 
             prefix = "Container " + toFinalize.databaseId() + ": ";
 
@@ -242,9 +237,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
 
             if (processingCompleted) {
                 // Upload outputs if processing completed successfully
-                for (final ContainerMount mountOut : toFinalize.mounts()) {
-                    outputMounts.put(mountOut.name(), mountOut);
-                }
 
                 final OutputsAndExceptions outputsAndExceptions = uploadOutputs(eventId);
                 final List<Exception> failedRequiredOutputs = outputsAndExceptions.exceptions;
@@ -359,8 +351,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         private OutputsAndExceptions uploadOutputs(@Nullable Integer uploadEventId) {
             log.info(prefix + "Uploading outputs.");
 
-            final List<ContainerOutput> outputs = Lists.newArrayList();
-            final List<Exception> exceptions = Lists.newArrayList();
+            final List<ContainerOutput> outputs = new ArrayList<>();
+            final List<Exception> exceptions = new ArrayList<>();
             for (final ContainerOutput nonUploadedOuput: toFinalize.getOrderedOutputs()) {
                 try {
                     outputs.add(uploadOutput(nonUploadedOuput, uploadEventId));
@@ -386,7 +378,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             final String viaWrapupContainer = output.viaWrapupContainer();
             if (StringUtils.isBlank(viaWrapupContainer)) {
                 final String mountName = output.mount();
-                final ContainerMount mount = getMount(mountName);
+
+                ContainerMount mount = null;
+                for (final ContainerMount outputMounts : toFinalize.mounts()) {
+                    if (mountName.equals(outputMounts.name())) {
+                        mount = outputMounts;
+                        break;
+                    }
+                }
                 if (mount == null) {
                     throw new ContainerException(String.format(prefix + "Mount \"%s\" does not exist.", mountName));
                 }
@@ -534,22 +533,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             wrapperInputAndOutputValues.put(output.fromOutputHandler(), createdUri);
             
             return output.toBuilder().created(createdUri).build();
-        }
-
-        private ContainerMount getMount(final String mountName) throws ContainerException {
-
-            if(outputMounts == null || outputMounts.isEmpty()){
-                for (final ContainerMount mountOut : toFinalize.mounts()) {
-                    outputMounts.put(mountOut.name(), mountOut);
-                }
-            }
-            ContainerMount containerMount = outputMounts.get(mountName);
-            if(containerMount != null){
-                return containerMount;
-            }
-
-            // Mount does not exist
-            throw new ContainerException(String.format(prefix + "Mount \"%s\" does not exist.", mountName));
         }
 
         private String getUriByInputOrOutputHandlerName(final String name) {

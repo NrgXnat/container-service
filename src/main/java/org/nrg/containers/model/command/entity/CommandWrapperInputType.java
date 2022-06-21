@@ -44,6 +44,10 @@ public enum CommandWrapperInputType {
         ENUM_MAP = Collections.unmodifiableMap(map);
     }
 
+    public static final Set<CommandWrapperInputType> MOUNTABLE_TYPES = Stream.of(
+            PROJECT, PROJECT_ASSET, SUBJECT_ASSESSOR, SESSION, SCAN, ASSESSOR, RESOURCE, FILE
+    ).collect(Collectors.toSet());
+
     @JsonCreator
     CommandWrapperInputType(final String name) {
         this.name = name;

@@ -8,7 +8,7 @@
         {
             "name": "mount",
             "writable": "false",
-            "path": "/remote_input",
+            "path": "/input",
             "required": true
         }
     ],

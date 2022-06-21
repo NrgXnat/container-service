@@ -726,14 +726,14 @@ public abstract class Command {
         public static CommandMount create(@JsonProperty("name") final String name,
                                           @JsonProperty("writable") final Boolean writable,
                                           @JsonProperty("path") final String path) {
-            return create(0L, name == null ? "" : name, writable == null ? false : writable, path);
+            return create(0L, name, writable, path);
         }
 
         public static CommandMount create(final long id,
                                           final String name,
                                           final Boolean writable,
                                           final String path) {
-            return new AutoValue_Command_CommandMount(id, name == null ? "" : name, writable == null ? false : writable, path);
+            return new AutoValue_Command_CommandMount(id, name == null ? "" : name, writable != null && writable, path);
         }
 
         public static CommandMount create(final CommandMountEntity mount) {

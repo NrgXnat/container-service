@@ -167,14 +167,13 @@ public class IntegrationTestConfig {
 
     @Bean
     public CommandResolutionService commandResolutionService(final CommandService commandService,
-                                                             final ConfigService configService,
                                                              final DockerServerService serverService,
                                                              final SiteConfigPreferences siteConfigPreferences,
                                                              final ObjectMapper objectMapper,
                                                              final DockerService dockerService,
                                                              final CatalogService mockCatalogService,
                                                              final UserDataCache mockUserDataCache) {
-        return new CommandResolutionServiceImpl(commandService, configService, serverService,
+        return new CommandResolutionServiceImpl(commandService, serverService,
                 siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache);
     }
 

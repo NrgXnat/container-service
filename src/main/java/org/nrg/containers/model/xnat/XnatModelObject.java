@@ -74,6 +74,11 @@ public abstract class XnatModelObject {
     @JsonIgnore
     public abstract XFTItem getXftItem(final UserI userI);
 
+    @JsonIgnore
+    public String getRootPath() {
+        return getDirectory();
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

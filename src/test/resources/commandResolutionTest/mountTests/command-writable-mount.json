@@ -7,8 +7,8 @@
     "mounts": [
         {
             "name": "mount",
-            "writable": "true",
-            "path": "/writable_input",
+            "writable": true,
+            "path": "/input",
             "required": true
         }
     ],

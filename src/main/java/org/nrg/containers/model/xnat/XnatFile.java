@@ -110,6 +110,11 @@ public class XnatFile extends XnatModelObject {
     }
 
     @Override
+    public String getRootPath() {
+        return getPath();
+    }
+
+    @Override
     public XFTItem getXftItem(final UserI userI) {
         return null;
     }
