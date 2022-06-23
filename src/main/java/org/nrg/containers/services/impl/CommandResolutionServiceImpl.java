@@ -9,7 +9,10 @@ import com.jayway.jsonpath.InvalidJsonException;
 import com.jayway.jsonpath.InvalidPathException;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.Option;
+import com.jayway.jsonpath.ParseContext;
 import com.jayway.jsonpath.TypeRef;
+import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
@@ -134,10 +137,13 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
     private final DockerServerService dockerServerService;
     private final SiteConfigPreferences siteConfigPreferences;
-    private final ObjectMapper mapper;
     private final DockerService dockerService;
     private final CatalogService catalogService;
     private final UserDataCache userDataCache;
+
+    private final ObjectMapper mapper;
+    private final ParseContext jsonpathContext;
+    private final ParseContext alwaysListParseContext;
 
     public static final String swarmConstraintsTag = "swarm-constraints";
 
@@ -152,10 +158,18 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         this.commandService = commandService;
         this.dockerServerService = dockerServerService;
         this.siteConfigPreferences = siteConfigPreferences;
-        this.mapper = mapper;
         this.dockerService = dockerService;
         this.catalogService = catalogService;
         this.userDataCache = userDataCache;
+
+        this.mapper = mapper;
+        final Configuration jsonpathJackson = Configuration.builder()
+                .mappingProvider(new JacksonMappingProvider(mapper))
+                .jsonProvider(new JacksonJsonProvider(mapper))
+                .build();
+        jsonpathContext = JsonPath.using(jsonpathJackson);
+        final Configuration alwaysListConfiguration = jsonpathJackson.addOptions(Option.ALWAYS_RETURN_LIST);
+        alwaysListParseContext = JsonPath.using(alwaysListConfiguration);
     }
 
     @Override
@@ -254,8 +268,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private final Map<String, Set<String>> loadTypesMap;
 
-        private final DocumentContext commandJsonpathSearchContext;
-        private final DocumentContext commandWrapperJsonpathSearchContext;
+        private final DocumentContext commandJsonpathContext;
+        private final DocumentContext commandWrapperJsonpathContext;
 
         private String pathTranslationXnatPrefix = null;
         private String pathTranslationContainerHostPrefix = null;
@@ -283,10 +297,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Could not get docker server. I'll keep going, but this is likely to cause other problems down the line.");
             }
 
-            // Set up JSONPath search contexts
-            final Configuration c = Configuration.defaultConfiguration().addOptions(Option.ALWAYS_RETURN_LIST);
-            commandJsonpathSearchContext = serializeToJson(command, c);
-            commandWrapperJsonpathSearchContext = serializeToJson(commandWrapper, c);
+            try {
+                commandJsonpathContext = alwaysListParseContext.parse(mapper.writeValueAsString(command));
+                commandWrapperJsonpathContext = alwaysListParseContext.parse(mapper.writeValueAsString(commandWrapper));
+            } catch (JsonProcessingException e) {
+                throw new CommandResolutionException("Could not serialize command to JSON.", e);
+            }
 
             this.inputValues = inputValues == null ?
                     Collections.emptyMap() :
@@ -297,16 +313,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             // During preresolution, we want to work as quickly as possible (user is waiting for UI form). As such,
             // we determine how deeply we need to resolve the XNAT objects for JSON serialization.
             this.loadTypesMap = getTypeLoadMapForWrapper();
-        }
-
-        private DocumentContext serializeToJson(Object command, Configuration c)
-                throws CommandResolutionException {
-            try {
-                final String commandJson = mapper.writeValueAsString(command);
-                return JsonPath.using(c).parse(commandJson);
-            } catch (JsonProcessingException e) {
-                throw new CommandResolutionException("Could not serialize command to JSON.", e);
-            }
         }
 
         @Nonnull
@@ -1807,7 +1813,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                      final String jsonPathSearch,
                                      final TypeRef<T> typeRef) {
             try {
-                return JsonPath.parse(parentJson).read(jsonPathSearch, typeRef);
+                return jsonpathContext.parse(parentJson).read(jsonPathSearch, typeRef);
             } catch (InvalidPathException | InvalidJsonException | MappingException e) {
                 log.error("Error searching through json with search string \"{}\"", jsonPathSearch, e);
                 log.debug("json: {}", parentJson);
@@ -2014,7 +2020,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     );
 
                     log.debug("Using JSONPath matcher \"{}\" to search for matching items.", jsonPathSearch);
-                    doMatch = JsonPath.parse(newModelObjectJson).read(jsonPathSearch, new TypeRef<List<T>>() {});
+                    doMatch = jsonpathContext.parse(newModelObjectJson).read(jsonPathSearch, new TypeRef<List<T>>() {});
 
                     if (doMatch != null && !doMatch.isEmpty()) {
                         // We found a match!
@@ -2760,10 +2766,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         final List<String> searchResult;
                         if (StringUtils.isNotBlank(useWrapper)) {
                             log.trace("Performing JSONPath search through command wrapper with search string \"{}\".", jsonpathSearchWithoutMarkers);
-                            searchResult = commandWrapperJsonpathSearchContext.read(jsonpathSearchWithoutMarkers);
+                            searchResult = commandWrapperJsonpathContext.read(jsonpathSearchWithoutMarkers);
                         } else {
                             log.trace("Performing JSONPath search through command with search string \"{}\".", jsonpathSearchWithoutMarkers);
-                            searchResult = commandJsonpathSearchContext.read(jsonpathSearchWithoutMarkers);
+                            searchResult = commandJsonpathContext.read(jsonpathSearchWithoutMarkers);
                         }
 
                         if (searchResult != null && !searchResult.isEmpty() && searchResult.get(0) != null) {

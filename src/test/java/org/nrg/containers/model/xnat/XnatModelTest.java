@@ -1,20 +1,15 @@
 package org.nrg.containers.model.xnat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Sets;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.Option;
+import com.jayway.jsonpath.ParseContext;
 import com.jayway.jsonpath.TypeRef;
 import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
@@ -33,30 +28,10 @@ public class XnatModelTest {
             "\"xsiType\":\"xnat:fakesessiondata\", \"resources\":[" + RESOURCE_JSON + "]}";
 
     private final ObjectMapper mapper = new ObjectMapper();
-
-    @Before
-    public void setup() {
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
-            }
-        });
-    }
+    private final ParseContext parseContext = JsonPath.using(Configuration.builder()
+            .jsonProvider(new JacksonJsonProvider(mapper))
+            .mappingProvider(new JacksonMappingProvider(mapper))
+            .build());
 
     @Test
     public void testDeserializeFile() throws Exception {
@@ -93,7 +68,7 @@ public class XnatModelTest {
     @Test
     public void testJsonPathOnXnatObjects() throws Exception {
         final Resource expected = mapper.readValue(RESOURCE_JSON, Resource.class);
-        final List<Resource> resources = JsonPath.parse(SESSION_JSON).read("$.resources[*]", new TypeRef<List<Resource>>(){});
+        final List<Resource> resources = parseContext.parse(SESSION_JSON).read("$.resources[*]", new TypeRef<List<Resource>>(){});
 
         assertThat(resources, hasSize(1));
         assertThat(resources.get(0), instanceOf(Resource.class));
@@ -111,7 +86,7 @@ public class XnatModelTest {
                         "\"value\": \"" + scantype + "\"}"
                         + "]}";
 
-        final List<String> results = JsonPath.parse(commandJson).read("$.inputs[?(@.name == 'T1-scantype')].value");
+        final List<String> results = parseContext.parse(commandJson).read("$.inputs[?(@.name == 'T1-scantype')].value");
         assertThat(results, contains(scantype));
     }
 
@@ -127,7 +102,7 @@ public class XnatModelTest {
                         "}";
         final Scan expected = mapper.readValue(scanRuntimeJson, Scan.class);
 
-        final List<Scan> results = JsonPath.parse(sessionRuntimeJson).read("$.scans[?(@.scan-type in [\"SCANTYPE\", \"OTHER_SCANTYPE\"])]", new TypeRef<List<Scan>>(){});
+        final List<Scan> results = parseContext.parse(sessionRuntimeJson).read("$.scans[?(@.scan-type in [\"SCANTYPE\", \"OTHER_SCANTYPE\"])]", new TypeRef<List<Scan>>(){});
 
         assertThat(results, contains(expected));
     }

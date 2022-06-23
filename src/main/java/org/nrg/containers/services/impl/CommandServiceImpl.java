@@ -1,13 +1,6 @@
 package org.nrg.containers.services.impl;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandValidationException;
@@ -30,7 +23,6 @@ import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +39,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class CommandServiceImpl implements CommandService, InitializingBean {
+public class CommandServiceImpl implements CommandService {
 
     private final CommandEntityService commandEntityService;
     private final ContainerConfigService containerConfigService;
@@ -57,31 +49,6 @@ public class CommandServiceImpl implements CommandService, InitializingBean {
                               final ContainerConfigService containerConfigService) {
         this.commandEntityService = commandEntityService;
         this.containerConfigService = containerConfigService;
-    }
-
-    @Override
-    public void afterPropertiesSet() {
-        // Set the default JayWay JSONPath configuration
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
-            }
-        });
     }
 
     @Override
