@@ -82,7 +82,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
-public class JmsExceptionTest {
+public class JmsExceptionIntegrationTest {
     @Autowired private JmsTemplate mockJmsTemplate;
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
@@ -261,9 +261,7 @@ public class JmsExceptionTest {
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.FAILED + " (JMS)"));
         assertThat(fakeWorkflow.getDetails(), is(exceptionMsg));
 
-        Thread.sleep(1000L); // Pause a sec for email to be attempted
-
-        Mockito.verify(mockMailService, times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
+        Mockito.verify(mockMailService, timeout(1000).times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
                 aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), Matchers.<String[]>eq(null),
                 Mockito.matches(".*" + wrapper.name() + ".*Failed.*"),
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),

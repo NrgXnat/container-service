@@ -55,7 +55,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = {JmsConfig.class, IntegrationTestConfig.class})
 @Transactional
-public class JmsConsumerExceptionTest {
+public class JmsConsumerExceptionIntegrationTest {
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;
@@ -151,8 +151,7 @@ public class JmsConsumerExceptionTest {
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L, wrapper.name(), Collections.<String, String>emptyMap(), mockUser, fakeWorkflow
         );
 
-        Thread.sleep(500L); // give it time to invoke mail in JMS
-        Mockito.verify(mockMailService, times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
+        Mockito.verify(mockMailService, timeout(500).times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
                 eq(FAKE_EMAIL), eq(FAKE_SITEID + " JMS Error"), contains(exceptionMsg));
     }
 }
