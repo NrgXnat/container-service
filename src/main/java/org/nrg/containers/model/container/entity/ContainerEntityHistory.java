@@ -34,6 +34,7 @@ public class ContainerEntityHistory {
                                                             final ContainerEntity parent) {
         final ContainerEntityHistory history = new ContainerEntityHistory();
         history.status = containerEvent.status();
+        history.message = containerEvent.details();
         history.entityType = "event";
         history.entityId = null;
         history.timeRecorded = new Date();

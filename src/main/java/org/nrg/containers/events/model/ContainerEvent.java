@@ -7,6 +7,7 @@ import java.util.Map;
 public interface ContainerEvent extends EventI {
     String containerId();
     String status();
+    String details();
     String externalTimestamp();
     Map<String, String> attributes();
     boolean isExitStatus();

@@ -212,7 +212,8 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
             final KubernetesStatusChangeEvent event = new KubernetesStatusChangeEvent(
                     new KubernetesJobInfo(jobNameFromPodLabels(pod), objName(pod), containerId),
-                    containerPhase != null ? containerPhase : podPhase,
+                    podPhase,
+                    containerPhase,
                     exitCode
             );
             log.debug("Triggering event {}", event);

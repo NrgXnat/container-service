@@ -8,11 +8,13 @@ import java.util.Map;
 public class KubernetesStatusChangeEvent implements ContainerEvent {
     private final KubernetesJobInfo kubernetesJobInfo;
     private final String status;
+    private final String details;
     private final Integer exitCode;
 
-    public KubernetesStatusChangeEvent(KubernetesJobInfo kubernetesJobInfo, String status, Integer exitCode) {
+    public KubernetesStatusChangeEvent(KubernetesJobInfo kubernetesJobInfo, String status, String details, Integer exitCode) {
         this.kubernetesJobInfo = kubernetesJobInfo;
         this.status = status;
+        this.details = details;
         this.exitCode = exitCode;
     }
 
@@ -53,11 +55,17 @@ public class KubernetesStatusChangeEvent implements ContainerEvent {
     }
 
     @Override
+    public String details() {
+        return details;
+    }
+
+    @Override
     public String toString() {
         return "KubernetesStatusChangeEvent{" +
                 "kubernetesJobInfo=" + kubernetesJobInfo +
-                ", status='" + status + '\'' +
-                ", exitCode='" + exitCode + '\'' +
-                '}';
+                ", status=\"" + status + "\"" +
+                ", details=\"" + details + "\"" +
+                ", exitCode=\"" + exitCode + "\"" +
+                "}";
     }
 }

@@ -34,6 +34,11 @@ public abstract class DockerContainerEvent implements ContainerEvent {
                 null;
     }
 
+    @Override
+    public String details() {
+        return null;
+    }
+
     public static DockerContainerEvent create(final String status,
                                               final String containerId,
                                               final Date time,
