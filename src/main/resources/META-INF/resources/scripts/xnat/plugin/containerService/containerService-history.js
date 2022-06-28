@@ -398,7 +398,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
             },
             error: function (e) {
-                errorHandler(e, 'Cannot retrieve ' + logFile + '; container may have restarted.', true);
+                if (e.status === 403) {
+                    errorHandler(e, 'Insufficient permissions to retrieve ' + logFile , true);
+                } else {
+                    errorHandler(e, 'Cannot retrieve ' + logFile + '; container may have restarted.', true);
+                }
             }
         });
     };
