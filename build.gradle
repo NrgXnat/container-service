@@ -119,6 +119,7 @@ dependencies {
     implementation "org.springframework:spring-messaging"
     implementation "javax.jms:javax.jms-api:2.0.1"
     implementation "org.apache.activemq:activemq-all:${vActiveMQ}"
+    implementation "org.aspectj:aspectjweaver"
 
     implementation "io.springfox:springfox-swagger2"
     implementation "io.springfox:springfox-swagger-ui"
