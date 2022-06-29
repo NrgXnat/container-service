@@ -6,7 +6,7 @@
 serverSetupPanel:
     kind: panel
     name: serverSetupPanel
-    label: Server Setup
+    label: Compute Backend Configuration
     contents:
         containerHostTable:
             tag: "div#container-host-manager"
@@ -296,7 +296,7 @@ siteSettings:
         containerServicesTab:
             kind: tab
             name: containerSetupTab
-            label: Container Server Setup
+            label: Compute Backend
             group: containerServiceTabGroup
             active: true
             contents:

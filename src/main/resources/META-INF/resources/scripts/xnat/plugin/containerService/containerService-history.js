@@ -526,21 +526,33 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
             // check logs and populate buttons at bottom of modal
             if (key === 'log-paths') {
-                historyDialogButtons.push({
-                    label: 'View StdOut.log',
-                    close: false,
-                    action: function(){
-                        historyTable.viewLog(historyEntry.id, 'stdout')
-                    }
-                });
+                if (historyEntry.backend.toLowerCase() !== 'kubernetes') {
+                    historyDialogButtons.push({
+                        label: 'View StdOut.log',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stdout')
+                        }
+                    });
 
-                historyDialogButtons.push({
-                    label: 'View StdErr.log',
-                    close: false,
-                    action: function(){
-                        historyTable.viewLog(historyEntry.id, 'stderr')
-                    }
-                })
+                    historyDialogButtons.push({
+                        label: 'View StdErr.log',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stderr')
+                        }
+                    });
+                }
+                else {
+                    // Container executions in Kubernetes do not publish a StdErr log
+                    historyDialogButtons.push({
+                        label: 'View Logs',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stdout')
+                        }
+                    });
+                }
             }
             if (key === 'setup-container-id') {
                 historyDialogButtons.push({

@@ -526,6 +526,21 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         containerHostManager.getAll().done(function(data){
             data = [].concat(data);
+
+            var hostType;
+            if (Array.isArray(data)) {
+                hostType = data[0].backend;
+            } else {
+                hostType = data.backend;
+
+            }
+            if (hostType.toLowerCase() === 'kubernetes') {
+                // modify elements of the UI
+                $(document).find('button.new-image').addClass('hidden');
+            } else {
+                $(document).find('button.new-image').removeClass('hidden');
+            }
+
             data.forEach(function(item){
                 chmTable.tr({ title: item.name, data: { id: item.id, host: item.host, certPath: item.certPath}})
                     .td([editLink(item, item.name)]).addClass('host')
@@ -1435,7 +1450,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var $header = $('#image-filter-bar').parents('.panel').find('.panel-heading');
         var $footer = $('#image-filter-bar').parents('.panel').find('.panel-footer');
 
-        // add the 'add new' button to the panel header
+        // add two 'add new' buttons to the panel header. The 'add new image' button is hidden in a Kubernetes environment
         var newImage = spawn('button.new-image.btn.btn-sm.pad5', {
             html: 'New Image',
             onclick: function(){
