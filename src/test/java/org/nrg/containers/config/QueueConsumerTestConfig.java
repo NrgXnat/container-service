@@ -8,7 +8,7 @@ import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
-import org.nrg.containers.events.listeners.DockerContainerEventListener;
+import org.nrg.containers.events.listeners.ContainerEventListener;
 import org.nrg.containers.events.listeners.DockerServiceEventListener;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
@@ -121,8 +121,8 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
-    public DockerContainerEventListener containerEventListener(final EventBus eventBus) {
-        return new DockerContainerEventListener(eventBus);
+    public ContainerEventListener containerEventListener(final EventBus eventBus) {
+        return new ContainerEventListener(eventBus);
     }
 
     @Bean

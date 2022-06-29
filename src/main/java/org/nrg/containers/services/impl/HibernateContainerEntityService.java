@@ -170,7 +170,10 @@ public class HibernateContainerEntityService
                         (containerEntity.getStatusTime() == null ||
                                 history.getTimeRecorded().getTime() > containerEntity.getStatusTime().getTime());
 
-        if (historyEntryIsMoreRecentThanContainerStatus && !containerEntity.statusIsTerminal()) {
+        if (historyEntryIsMoreRecentThanContainerStatus &&
+                (!ContainerUtils.statusIsTerminal(containerEntity.getStatus()) ||  // Don't overwrite a terminal status
+                        ContainerUtils.statusIsTerminal(history.getStatus()))  // ...except with a newer terminal status (i.e. Complete -> Failed)
+        ) {
             containerEntity.setStatusTime(history.getTimeRecorded());
             containerEntity.setStatus(history.getStatus());
             log.debug("Setting container entity {} status to \"{}\", based on history entry status \"{}\".",

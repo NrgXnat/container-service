@@ -13,7 +13,6 @@ import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
-import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerBackendException;
@@ -801,42 +800,45 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void processEvent(final ContainerEvent event) {
-        log.debug("Processing container event");
+        log.debug("Processing container event: {}", event);
         final Container container = retrieve(event.containerId());
 
         // container will be null if either we aren't tracking the container
         // that this event is about, or if we have already recorded the event
-        if (container != null) {
-            if (isFinalizing(container)) {
-                log.debug("Container {} finalizing, skipping addl event {}", container.containerOrServiceId(), event);
-                return;
-            }
-
-            final String userLogin = container.userId();
-            try {
-                final UserI userI = Users.getUser(userLogin);
-
-                Container containerWithAddedEvent = addContainerEventToHistory(event, userI);
-                if (containerWithAddedEvent == null) {
-                    // Ignore this issue?
-                    containerWithAddedEvent = container;
-                }
-                if (event.isExitStatus()) {
-                    log.debug("Container is dead. Finalizing.");
-                    String status = containerWithAddedEvent.status();
-
-                    // If we don't have a status, assume success
-                    queueFinalize(event.exitCode(), status == null || DockerContainerEvent.isSuccessfulStatus(status),
-                            containerWithAddedEvent, userI);
-                }
-            } catch (UserInitException | UserNotFoundException e) {
-                log.error("Could not update container status. Could not get user details for user " + userLogin, e);
-            }
-        } else {
+        if (container == null) {
             log.debug("Nothing to do. Container was null after retrieving by id {}.", event.containerId());
+            return;
         }
 
-        log.debug("Done processing docker container event: {}", event);
+        if (isFinalizing(container)) {
+            log.debug("Container {} finalizing, skipping addl event {}", container.containerOrServiceId(), event);
+            return;
+        }
+
+        final String userLogin = container.userId();
+        final UserI userI;
+        try {
+            userI = Users.getUser(userLogin);
+        } catch (UserInitException | UserNotFoundException e) {
+            log.error("Could not get user details for user {}. Done processing container event: {}", userLogin, event, e);
+            return;
+        }
+
+        Container containerWithAddedEvent = addContainerEventToHistory(event, userI);
+        if (containerWithAddedEvent == null) {
+            // Ignore this issue?
+            containerWithAddedEvent = container;
+        }
+
+        if (event.isExitStatus()) {
+            log.debug("Container is dead. Finalizing.");
+
+            // If we don't have a status, assume success
+            queueFinalize(event.exitCode(), containerWithAddedEvent.status() == null,
+                    containerWithAddedEvent, userI);
+        }
+
+        log.debug("Done processing container event: {}", event);
     }
 
     @Override
@@ -1197,9 +1199,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws ContainerException {
         String status = container.lastHistoryStatus();
         boolean isSuccessfulStatus = status == null || status.equals(FINALIZING) ||
-                (container.isSwarmService() ?
-                    ServiceTask.isSuccessfulStatus(status) :
-                    DockerContainerEvent.isSuccessfulStatus(status));
+                ContainerUtils.statusIsSuccessful(status, container.isSwarmService());
         finalize(container, userI, container.exitCode(), isSuccessfulStatus);
     }
 

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.MoreObjects;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.events.model.ContainerEvent;
-import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.model.container.auto.Container;
 
 import javax.persistence.Column;
@@ -39,9 +38,7 @@ public class ContainerEntityHistory {
         history.entityId = null;
         history.timeRecorded = new Date();
         history.exitCode = containerEvent.exitCode();
-        if (containerEvent instanceof DockerContainerEvent) {
-            history.externalTimestamp = String.valueOf(((DockerContainerEvent)containerEvent).timeNano());
-        }
+        history.externalTimestamp = containerEvent.externalTimestamp();
         history.containerEntity = parent;
         return history;
     }

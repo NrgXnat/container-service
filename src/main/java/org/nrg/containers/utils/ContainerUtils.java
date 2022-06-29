@@ -2,18 +2,40 @@ package org.nrg.containers.utils;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.utils.WorkflowUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.EnumSet;
 
 @Slf4j
 public class ContainerUtils {
     public static final int KIB_TO_BYTES = 1024;
     public static final int MIB_TO_BYTES = KIB_TO_BYTES * KIB_TO_BYTES;
     public static final double NANO = 1e9;
+
+    enum TerminalState {
+        COMPLETE("Complete"),
+        FAILED("Failed"),
+        KILLED("Killed");
+
+        public final String value;
+
+        TerminalState(String value) {
+            this.value = value;
+        }
+    }
+
+    public static boolean statusIsTerminal(String status) {
+        return status != null && EnumSet.allOf(TerminalState.class).stream().anyMatch(s -> status.startsWith(s.value));
+    }
+
+    public static boolean statusIsSuccessful(final String status, final boolean isSwarmService) {
+        return !isSwarmService || ServiceTask.isSuccessfulStatus(status);
+    }
 
     public static void updateWorkflowStatus(final String workflowId, final String status, final UserI userI,
                                             @Nullable String details) {

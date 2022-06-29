@@ -15,7 +15,6 @@ import com.google.common.collect.Ordering;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ContainerEvent;
-import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommandMount;
@@ -26,6 +25,7 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.containers.utils.JsonDateSerializer;
 import org.nrg.containers.utils.JsonStringToDateSerializer;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
@@ -252,15 +252,7 @@ public abstract class Container {
 
     @JsonIgnore
     public boolean statusIsTerminal() {
-        final String status = status();
-        if (status != null) {
-            for (final String terminalStatus : ContainerEntity.TERMINAL_STATI) {
-                if (status.startsWith(terminalStatus)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ContainerUtils.statusIsTerminal(status());
     }
 
 
@@ -1097,7 +1089,7 @@ public abstract class Container {
                     .entityType("event")
                     .entityId(null)
                     .timeRecorded(new Date())
-                    .externalTimestamp(containerEvent instanceof DockerContainerEvent ? String.valueOf(((DockerContainerEvent)containerEvent).timeNano()) : null)
+                    .externalTimestamp(containerEvent.externalTimestamp())
                     .message(null)
                     .exitCode(containerEvent.exitCode())
                     .build();

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 
@@ -16,24 +17,17 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Entity
 @Slf4j
 public class ContainerEntity extends AbstractHibernateEntity {
     public static final String KILL_STATUS = "kill";
-    public static final Set<String> TERMINAL_STATI = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "Complete", "Failed", "Killed"
-    )));
 
     private long commandId;
     private long wrapperId;
@@ -194,16 +188,13 @@ public class ContainerEntity extends AbstractHibernateEntity {
         return swarm ? ContainerServiceImpl.WAITING + " (" +inStatus+ ")" : inStatus;
     }
 
+    /**
+     * @deprecated Pass {@link ContainerEntity#getStatus()} to {@link ContainerUtils#statusIsTerminal(String)}
+     */
     @Transient
+    @Deprecated
     public boolean statusIsTerminal() {
-        if (status != null) {
-            for (final String terminalStatus : TERMINAL_STATI) {
-                if (status.startsWith(terminalStatus)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ContainerUtils.statusIsTerminal(this.status);
     }
 
     public Date getStatusTime() {
