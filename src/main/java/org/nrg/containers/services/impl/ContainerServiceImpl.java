@@ -833,9 +833,8 @@ public class ContainerServiceImpl implements ContainerService {
         if (event.isExitStatus()) {
             log.debug("Container is dead. Finalizing.");
 
-            // If we don't have a status, assume success
-            queueFinalize(event.exitCode(), containerWithAddedEvent.status() == null,
-                    containerWithAddedEvent, userI);
+            // Docker containers always end with status "die". Have to determine success/failure from exit code.
+            queueFinalize(event.exitCode(), true, containerWithAddedEvent, userI);
         }
 
         log.debug("Done processing container event: {}", event);
