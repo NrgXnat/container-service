@@ -10,10 +10,7 @@ import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.model.XnatImagesessiondataI;
-import org.nrg.xdat.om.XnatAbstractprojectasset;
-import org.nrg.xdat.om.XnatExperimentdata;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xdat.om.*;
 import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.xdat.om.base.auto.AutoXnatSubjectdata;
 import org.nrg.xft.exception.ElementNotFoundException;
@@ -55,9 +52,13 @@ public class CommandActionProvider extends MultiActionProvider {
     private final EventService eventService;
 
     private final static List<CommandWrapperInputType> SCHEDULED_EVENT_SUPPORTED_TYPES
-            = Arrays.asList(CommandWrapperInputType.PROJECT, CommandWrapperInputType.SUBJECT,
-            CommandWrapperInputType.SESSION, CommandWrapperInputType.ASSESSOR, CommandWrapperInputType.SCAN,
-            CommandWrapperInputType.PROJECT_ASSET, CommandWrapperInputType.SUBJECT_ASSESSOR);
+                                    = Arrays.asList(CommandWrapperInputType.PROJECT,
+                                                    CommandWrapperInputType.SUBJECT,
+                                                    CommandWrapperInputType.SESSION,
+                                                    CommandWrapperInputType.ASSESSOR,
+                                                    CommandWrapperInputType.SCAN,
+                                                    CommandWrapperInputType.PROJECT_ASSET,
+                                                    CommandWrapperInputType.SUBJECT_ASSESSOR);
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
@@ -127,7 +128,19 @@ public class CommandActionProvider extends MultiActionProvider {
                 final String projectId = (subscription.eventFilter().projectIds() == null || subscription.eventFilter().projectIds().isEmpty()) ? null :
                         (subscription.eventFilter().projectIds().size() == 1 ? subscription.eventFilter().projectIds().get(0) : event.getProjectId());
                 final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : new HashMap<>();
-                inputValues.put(externalInputName, UriParserUtils.getArchiveUri(event.getObject(user)));
+                final Object eventObject = event.getObject(user);
+
+                final String inputUri;
+                if (XnatResourcecatalog.class.isAssignableFrom(eventObject.getClass())) {
+                    // TODO XNAT-7129: UriParserUtils::getArchiveUri returns null for XnatResourcecatalog types
+                    //  so we need to build it relative to the parent URI. Remove after XNAT-7129 is fixed.
+                    final XnatResourcecatalog resource = (XnatResourcecatalog) eventObject;
+                    inputUri = UriParserUtils.getArchiveUri(resource.getParent()) + "/resources/" + resource.getLabel();
+                } else {
+                    inputUri = UriParserUtils.getArchiveUri(eventObject);
+                }
+
+                inputValues.put(externalInputName, inputUri);
                 containerService.launchContainer(Strings.isNullOrEmpty(projectId) ? null : projectId, 0L, null, wrapperId, externalInputName, inputValues, user);
                 subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), "Container queued.");
             } catch (Exception e) {
@@ -135,6 +148,13 @@ public class CommandActionProvider extends MultiActionProvider {
                 log.error("Aborting subscription: {}", subscription.name());
                 subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), e.getMessage());
             }
+            return;
+        }
+
+        if (!SCHEDULED_EVENT_SUPPORTED_TYPES.contains(externalInputType)) {
+            final String msg = "External Input type:" + externalInputType + " is not supported by scheduled events.";
+            log.error(msg);
+            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), msg);
             return;
         }
 
@@ -345,10 +365,8 @@ public class CommandActionProvider extends MultiActionProvider {
     private Command.CommandWrapperExternalInput getExternalInput(Command.CommandWrapper wrapper) throws Exception {
         return wrapper.externalInputs()
                 .stream()
-                .filter(i -> SCHEDULED_EVENT_SUPPORTED_TYPES.contains(CommandWrapperInputType.fromName(i.type())))
                 .findFirst()
-                .orElseThrow(() -> new Exception("Command wrapper: " + wrapper.id()
-                        + " doesn't have an external input that is supported by scheduled events."));
+                .orElseThrow(() -> new Exception("Failed to determine external input type for command wrapper with id: " + wrapper.id()));
     }
 
     @Override
