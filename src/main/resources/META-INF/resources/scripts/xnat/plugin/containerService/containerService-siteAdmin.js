@@ -1496,6 +1496,79 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         //     });
         // }
 
+        function deleteCommandList(image){
+            content = spawn('div',[
+                spawn('p','Are you sure you\'d like to remove the '+image.imageName+' image listing and its commands?'),
+                spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
+            ]);
+
+
+            XNAT.dialog.open({
+                width: 400,
+                content: content,
+                buttons: [
+                    {
+                        label: 'OK',
+                        isDefault: true,
+                        close: false,
+                        action: function (obj) {
+                            commandListManager.getAll(image.imageName).done((commands) => {
+                                if (!commands.length || !Array.isArray(commands)) return false;
+                                let itemTracker = [];
+
+                                commands.forEach((item) => {
+                                    console.log('delete id ' + item.id);
+                                    XNAT.xhr.delete({
+                                        url: commandUrl('/' + item.id),
+                                        async: false,
+                                        success: function () {
+                                            console.log('"' + item.name + '" command deleted');
+                                            itemTracker.push([item.name,true]);
+                                        },
+                                        failure: function(e) {
+                                            console.log(e);
+                                            itemTracker.push([item.name,false]);
+                                        }
+                                    });
+                                });
+                                
+                                let deletedCommands = [], errList = [];
+                                itemTracker.forEach((item) => { if (item[1]) { deletedCommands.push(item[0]) } else { errList.push(item[0]) }});
+
+                                if (deletedCommands.length == commands.length) {
+                                    XNAT.ui.banner.top(2000, '<b>Deleted commands: "' + deletedCommands.join(', ') + '"</b>.', 'success');
+                                }
+                                else if (deletedCommands.length) {
+                                    XNAT.ui.dialog.message(
+                                        'Command Deletion Error',
+                                        '<p>Could only delete some commands: <b>"' + deletedCommands.join(', ') + '"</b>.</p> <p>These commands could not be deleted: <b>' + errList.join(',') +'</b></p>',
+                                        'OK'
+                                    );
+                                }
+                                else {
+                                    XNAT.ui.dialog.message(
+                                        'Command Deletion Error',
+                                        '<b>Error: Could not delete commands</b>.',
+                                        'OK'
+                                    );
+                                }
+
+                                imageListManager.refreshTable();
+                                commandConfigManager.refreshTable();
+                                XNAT.plugin.containerService.historyTable.refresh();
+                                XNAT.ui.dialog.closeAll();
+                            });
+                        }
+                    },
+                    {
+                        label: 'Cancel',
+                        close: true
+                    }
+                ]
+            })
+
+        }
+
         function deleteImage(image,force,retries) {
             var content;
             retries = retries || 0;
@@ -1503,7 +1576,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             force = force || false;
             if (!force) {
                 content = spawn('div',[
-                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.imageName+' image?'),
+                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.imageName+' image and its commands?'),
                     spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
                 ]);
             } else {
@@ -1528,7 +1601,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                     XNAT.dialog.closeAll();
                                 },
                                 fail: function(e){
-                                    if (e.status === 500) {
+                                    if (e.status === 405) {
+                                        // error if user tries to delete a remote image using this command
+                                        XNAT.dialog.closeAll();
+                                        deleteCommandList(image,true);
+                                    }
+                                    else if (e.status === 500) {
                                         XNAT.dialog.closeAll();
                                         if (retries < 3) {
                                             deleteImage(image,true, ++retries);
@@ -1552,11 +1630,23 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
 
         function deleteImageButton(image) {
-            return spawn('button.btn.sm',{
-                onclick: function(){
-                    deleteImage(image);
-                }
-            }, 'Delete Image');
+            var remoteImage = (image['image-id'] === undefined);
+            if (remoteImage){
+                return spawn('button.btn.sm.remove-image',{
+                    onclick: function(){
+                        deleteCommandList(image)
+                    }
+                }, 'Delete Image');
+
+            }
+            else {
+                return spawn('button.btn.sm',{
+                    onclick: function(){
+                        deleteImage(image);
+                    }
+                }, 'Delete Image');
+            }
+
         }
 
         imageListManager.container = $manager;
