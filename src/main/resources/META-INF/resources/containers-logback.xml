@@ -10,6 +10,16 @@
             <fileNamePattern>${xnat.home}/logs/containers-spotify.log.%d{yyyy-MM-dd}</fileNamePattern>
         </rollingPolicy>
     </appender>
+    <appender class="ch.qos.logback.core.rolling.RollingFileAppender" name="kubernetes">
+        <append>false</append>
+        <file>${xnat.home}/logs/containers-kubernetes.log</file>
+        <encoder>
+            <pattern>%d [%t] %-5p %c - %m%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${xnat.home}/logs/containers-kubernetes.log.%d{yyyy-MM-dd}</fileNamePattern>
+        </rollingPolicy>
+    </appender>
     <appender class="ch.qos.logback.core.rolling.RollingFileAppender" name="containers">
         <append>false</append>
         <file>${xnat.home}/logs/containers.log</file>
@@ -35,6 +45,9 @@
     </logger>
     <logger additivity="false" level="WARN" name="org.mandas">
         <appender-ref ref="spotify"/>
+    </logger>
+    <logger additivity="false" level="WARN" name="io.kubernetes.client">
+        <appender-ref ref="kubernetes"/>
     </logger>
     <logger additivity="false" level="WARN" name="org.nrg.containers.services.impl.CommandResolutionServiceImpl">
         <appender-ref ref="services"/>

@@ -19,6 +19,7 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
@@ -61,6 +62,7 @@ import javax.jms.JMSRuntimeException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -300,9 +302,13 @@ public class JmsExceptionIntegrationTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServerBase.DockerServer.create(0L, "Test server", containerHost, certPath,
-                false, null, null, null,
-                false, null, true, null, null, true));
+        dockerServerService.setServer(DockerServerBase.DockerServer.builder()
+                .name("Test server")
+                .host(containerHost)
+                .certPath(certPath)
+                .backend(Backend.DOCKER)
+                .lastEventCheckTime(new Date())
+                .build());
 
         String img = "busybox:latest";
         CLIENT = controlApi.getClient();
@@ -310,6 +316,6 @@ public class JmsExceptionIntegrationTest {
         imagesToCleanUp.add(img);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+        TestingUtils.skipIfCannotConnectToDocker(CLIENT);
     }
 }

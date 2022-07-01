@@ -2,8 +2,6 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
@@ -19,10 +17,12 @@ import org.springframework.jms.core.MessagePostProcessor;
 
 import javax.jms.Destination;
 import javax.jms.JMSException;
+import java.util.concurrent.ExecutorService;
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 
 @Configuration
 public class MockJmsConfig {
@@ -52,35 +52,36 @@ public class MockJmsConfig {
     public JmsTemplate mockJmsTemplate(Destination containerStagingRequest,
                                        final ContainerStagingRequestListener containerStagingRequestListener,
                                        Destination containerFinalizingRequest,
-                                       final ContainerFinalizingRequestListener containerFinalizingRequestListener) {
+                                       final ContainerFinalizingRequestListener containerFinalizingRequestListener,
+                                       ExecutorService executorService) {
         JmsTemplate mockJmsTemplate = Mockito.mock(JmsTemplate.class);
         doAnswer(
-                new Answer() {
-                    public Object answer(InvocationOnMock invocation) {
-                        Object[] args = invocation.getArguments();
-                        ContainerStagingRequest request = (ContainerStagingRequest) args[1];
+                invocation -> {
+                    Object[] args = invocation.getArguments();
+                    ContainerStagingRequest request = (ContainerStagingRequest) args[1];
+                    executorService.submit(() -> {
                         try {
                             containerStagingRequestListener.onRequest(request);
                         } catch (Exception e) {
-                            return false;
+                            // ignored
                         }
-                        return true;
-                    }
+                    });
+                    return null;
                 }
         ).when(mockJmsTemplate).convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
 
         doAnswer(
-                new Answer() {
-                    public Object answer(InvocationOnMock invocation) {
-                        Object[] args = invocation.getArguments();
-                        ContainerFinalizingRequest request = (ContainerFinalizingRequest) args[1];
+                invocation -> {
+                    Object[] args = invocation.getArguments();
+                    ContainerFinalizingRequest request = (ContainerFinalizingRequest) args[1];
+                    executorService.submit(() -> {
                         try {
                             containerFinalizingRequestListener.onRequest(request);
                         } catch (Exception e) {
-                            return false;
+                            // ignored
                         }
-                        return true;
-                    }
+                    });
+                    return null;
                 }
         ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
 

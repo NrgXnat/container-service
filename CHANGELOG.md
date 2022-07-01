@@ -15,6 +15,7 @@ Not yet released
     If the output handler declares an `xsi-type` for the assessor, we can verify the user has permissions to create it before launch.
   * Filter `Run Containers` menu to only those items that a user will have permission to run
 * [CS-715][]: Run containers on shared sessions
+* [CS-688][]: Add support for running containers on Kubernetes.
 
 ### Bugfixes
 
@@ -64,6 +65,7 @@ Not yet released
 [CS-681]: https://issues.xnat.org/browse/CS-681
 [CS-682]: https://issues.xnat.org/browse/CS-682
 [CS-687]: https://issues.xnat.org/browse/CS-687
+[CS-688]: https://issues.xnat.org/browse/CS-688
 [CS-689]: https://issues.xnat.org/browse/CS-689
 [CS-692]: https://issues.xnat.org/browse/CS-692
 [CS-693]: https://issues.xnat.org/browse/CS-693

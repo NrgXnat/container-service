@@ -6,6 +6,8 @@ import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.api.KubernetesClientFactoryImpl;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
 import org.nrg.containers.events.listeners.ContainerEventListener;
@@ -32,8 +34,25 @@ import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
-import org.nrg.containers.services.*;
-import org.nrg.containers.services.impl.*;
+import org.nrg.containers.services.CommandLabelService;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerHubService;
+import org.nrg.containers.services.DockerServerEntityService;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.DockerService;
+import org.nrg.containers.services.OrchestrationService;
+import org.nrg.containers.services.impl.CommandLabelServiceImpl;
+import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
+import org.nrg.containers.services.impl.ContainerFinalizeServiceImpl;
+import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.impl.DockerServerServiceImpl;
+import org.nrg.containers.services.impl.DockerServiceImpl;
+import org.nrg.containers.services.impl.HibernateContainerEntityService;
+import org.nrg.containers.services.impl.HibernateDockerServerEntityService;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
@@ -62,6 +81,7 @@ import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
 
 @Configuration
 @EnableTransactionManagement
@@ -74,8 +94,9 @@ public class IntegrationTestConfig {
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
                                              final DockerHubService dockerHubService,
-                                             final NrgEventServiceI eventService) {
-        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
+                                             final NrgEventServiceI eventService,
+                                             final KubernetesClientFactory kubernetesClientFactory) {
+        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory);
     }
 
     @Bean
@@ -126,6 +147,11 @@ public class IntegrationTestConfig {
     @Bean
     public CommandLabelService commandLabelService(final ObjectMapper objectMapper) {
         return new CommandLabelServiceImpl(objectMapper);
+    }
+
+    @Bean
+    public KubernetesClientFactory kubernetesClientFactory(ExecutorService executorService, NrgEventServiceI eventService) {
+        return new KubernetesClientFactoryImpl(executorService, eventService);
     }
 
     /*

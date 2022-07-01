@@ -1,5 +1,6 @@
 package org.nrg.containers.api;
 
+import io.kubernetes.client.util.PatchUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
@@ -27,6 +28,7 @@ import org.mockito.Mockito;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
@@ -39,9 +41,9 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.powermock.reflect.Whitebox;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -49,6 +51,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.Matchers.*;
@@ -61,18 +65,19 @@ import static org.powermock.api.support.membermodification.MemberMatcher.method;
 @Slf4j
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
-@PrepareForTest(DockerControlApi.class)
+@PrepareForTest({DockerControlApi.class, PatchUtils.class})
 public class DockerControlApiTest {
     final String BACKEND_ID = UUID.randomUUID().toString();
     final String LOG_CONTENTS = UUID.randomUUID().toString();
     final String USER_LOGIN = UUID.randomUUID().toString();
 
-    @Parameterized.Parameters(name="swarmMode={0}")
-    public static Collection<Boolean> swarmModeValues() {
-        return Arrays.asList(Boolean.TRUE, Boolean.FALSE);
+    @Parameterized.Parameters(name="backend={0}")
+    public static Collection<Backend> backend() {
+        return EnumSet.allOf(Backend.class);
     }
 
     @Parameterized.Parameter
+    public Backend backend;
     public boolean swarmMode;
 
     @Rule
@@ -90,6 +95,8 @@ public class DockerControlApiTest {
     @Mock private DockerHubService dockerHubService;
     @Mock private NrgEventServiceI eventService;
     @Mock private DockerServerService dockerServerService;
+    @Mock private KubernetesClientFactory kubernetesClientFactory;
+    @Mock private KubernetesClient kubernetesClient;
 
     @Mock private DockerClient mockDockerClient;
     @Mock private DockerImage mockDockerImage;
@@ -109,12 +116,11 @@ public class DockerControlApiTest {
         // The fact that we have to do this is a code smell!
         // Should probably inject this client instance into DockerControlApi as a bean.
         dockerControlApi = PowerMockito.spy(new DockerControlApi(
-                dockerServerService, commandLabelService, dockerHubService, eventService
+                dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory
         ));
         PowerMockito.doReturn(mockDockerImage).when(dockerControlApi, method(
                 DockerControlApi.class, "pullImage", String.class))
                 .withArguments(anyString());
-
         PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
                 DockerControlApi.class, "getClient", DockerServer.class))
                 .withArguments(dockerServer);
@@ -123,21 +129,52 @@ public class DockerControlApiTest {
                 .withArguments(eq(dockerServer), or(any(String.class), isNull(String.class)));
 
         // Mock simple return values
-        when(dockerServer.swarmMode()).thenReturn(swarmMode);
+        when(dockerServer.backend()).thenReturn(backend);
         when(dockerServerService.getServer()).thenReturn(dockerServer);
-        when(container.isSwarmService()).thenReturn(swarmMode);
+        when(kubernetesClientFactory.getKubernetesClient(dockerServer)).thenReturn(kubernetesClient);
 
-        if (swarmMode) {
-            when(container.containerId()).thenThrow(new RuntimeException("Should not be called"));
-            when(container.serviceId()).thenReturn(BACKEND_ID);
-        } else {
-            when(container.containerId()).thenReturn(BACKEND_ID);
-            when(container.serviceId()).thenThrow(new RuntimeException("Should not be called"));
+        switch (backend) {
+            case SWARM:
+                when(container.containerId()).thenThrow(new RuntimeException("Should not be called"));
+                when(container.serviceId()).thenReturn(BACKEND_ID);
+                break;
+            case KUBERNETES:
+                when(container.jobName()).thenReturn(BACKEND_ID);
+                break;
+            case DOCKER:
+                when(container.containerId()).thenReturn(BACKEND_ID);
+                when(container.serviceId()).thenThrow(new RuntimeException("Should not be called"));
+                break;
         }
+        swarmMode = backend == Backend.SWARM;  // backwards compatibility
 
         when(logStream.readFully()).thenReturn(LOG_CONTENTS);
 
         when(user.getLogin()).thenReturn(USER_LOGIN);
+    }
+
+    @Test
+    public void testPing() throws Exception {
+        final String ok = "OK";
+
+        // Set up test-specific mocks
+        switch (backend) {
+            case DOCKER:
+                when(mockDockerClient.ping()).thenReturn(ok);
+                break;
+            case SWARM:
+                when(mockDockerClient.listServices()).thenReturn(Collections.emptyList());
+                break;
+            case KUBERNETES:
+                when(kubernetesClient.ping()).thenReturn(ok);
+                break;
+        }
+
+        // Run the test
+        final String ping = dockerControlApi.ping();
+
+        // Check the results
+        assumeThat(ping, is(ok));
     }
 
     @Test
@@ -146,10 +183,15 @@ public class DockerControlApiTest {
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
 
         // Set up test-specific mocks
-        if (swarmMode) {
+        if (backend == Backend.SWARM) {
             when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
                     .thenThrow(new RuntimeException("Should not be called"));
             when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+        } else if (backend == Backend.KUBERNETES) {
+            when(container.podName()).thenReturn(BACKEND_ID);
+            when(kubernetesClient.getLog(
+                    BACKEND_ID, logType, null, null
+            )).thenReturn(LOG_CONTENTS);
         } else {
             when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
             when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
@@ -157,16 +199,16 @@ public class DockerControlApiTest {
         }
 
         // Run the test
-        final String log_withContainer = dockerControlApi.getLog(container, logType);
-        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType);
+        final String log = dockerControlApi.getLog(container, logType);
 
         // Check results
-        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
-        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
     }
 
     @Test
     public void testGetLog_stderr() throws Exception {
+        assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
+
         final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
@@ -182,16 +224,28 @@ public class DockerControlApiTest {
         }
 
         // Run the test
-        final String log_withContainer = dockerControlApi.getLog(container, logType);
-        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType);
+        final String log = dockerControlApi.getLog(container, logType);
 
         // Check results
-        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
-        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
+    }
+
+    @Test
+    public void testGetLog_stderr_kubernetes() throws Exception {
+        assumeThat("Special stderr handling for kubernetes", backend, is(Backend.KUBERNETES));
+
+        // No need to mock anything
+
+        // Run the test
+        final String log = dockerControlApi.getLog(container, ContainerControlApi.LogType.STDERR);
+
+        // Check results
+        assertThat(log, is(nullValue()));
     }
 
     @Test
     public void testGetLog_stdout_params() throws Exception {
+
         final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDOUT;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
 
@@ -201,11 +255,16 @@ public class DockerControlApiTest {
         final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
 
         // Set up test-specific mocks
-        if (swarmMode) {
+        if (backend == Backend.SWARM) {
             when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
                     .thenThrow(new RuntimeException("Should not be called"));
             when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
                     .thenReturn(logStream);
+        } else if (backend == Backend.KUBERNETES) {
+            when(container.podName()).thenReturn(BACKEND_ID);
+            when(kubernetesClient.getLog(
+                    eq(BACKEND_ID), eq(logType), eq(withTimestamp), any(Integer.class)
+            )).thenReturn(LOG_CONTENTS);
         } else {
             when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
                     .thenReturn(logStream);
@@ -214,16 +273,16 @@ public class DockerControlApiTest {
         }
 
         // Run the test
-        final String log_withContainer = dockerControlApi.getLog(container, logType, withTimestamp, since);
-        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType, withTimestamp, since);
+        final String log = dockerControlApi.getLog(container, logType, withTimestamp, since);
 
         // Check results
-        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
-        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
     }
 
     @Test
     public void testGetLog_stderr_params() throws Exception {
+        assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
+
         final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
@@ -246,12 +305,10 @@ public class DockerControlApiTest {
         }
 
         // Run the test
-        final String log_withContainer = dockerControlApi.getLog(container, logType, withTimestamp, since);
-        final String log_withBackendId = dockerControlApi.getLog(BACKEND_ID, logType, withTimestamp, since);
+        final String log = dockerControlApi.getLog(container, logType, withTimestamp, since);
 
         // Check results
-        assertThat(log_withContainer, is(equalTo(LOG_CONTENTS)));
-        assertThat(log_withBackendId, is(equalTo(LOG_CONTENTS)));
+        assertThat(log, is(equalTo(LOG_CONTENTS)));
     }
 
     @Test
@@ -261,10 +318,15 @@ public class DockerControlApiTest {
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
 
         // Set up test-specific mocks
-        if (swarmMode) {
+        if (backend == Backend.SWARM) {
             when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
                     .thenThrow(new RuntimeException("Should not be called"));
             when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
+        } else if (backend == Backend.KUBERNETES) {
+            when(container.podName()).thenReturn(BACKEND_ID);
+            when(kubernetesClient.getLog(
+                    BACKEND_ID, ContainerControlApi.LogType.STDOUT, null, null
+            )).thenReturn(LOG_CONTENTS);
         } else {
             when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
             when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
@@ -281,6 +343,8 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testGetStderrLog() throws Exception {
+        assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
+
         // Test values
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
@@ -305,8 +369,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testGetContainerStdoutLog() throws Exception {
-        // This method is only called in local docker mode
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
 
         // Test values.
         // Ideally these values would be parameterized, but I don't know how to make
@@ -332,8 +395,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testGetContainerStderrLog() throws Exception {
-        // This method is only called in local docker mode
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
 
         // Test values.
         // Ideally these values would be parameterized, but I don't know how to make
@@ -359,8 +421,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testGetServiceStdoutLog() throws Exception {
-        // This method is only called in local docker mode
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
 
         // Test values.
         // Ideally these values would be parameterized, but I don't know how to make
@@ -386,8 +447,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testGetServiceStderrLog() throws Exception {
-        // This method is only called in local docker mode
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
 
         // Test values.
         // Ideally these values would be parameterized, but I don't know how to make
@@ -412,6 +472,7 @@ public class DockerControlApiTest {
 
     @Test
     public void testCreate_container() throws Exception {
+
         // Make test objects
         final ThreadLocalRandom random = ThreadLocalRandom.current();
         final Container.Builder toLaunchAndExpectedContainerBuilder = Container.builder()
@@ -421,13 +482,13 @@ public class DockerControlApiTest {
                 .userId(USER_LOGIN)
                 .dockerImage("image")
                 .commandLine("echo foo")
-                .swarm(swarmMode)
+                .backend(backend)
                 .addEnvironmentVariable("key", "value")
                 .mounts(Collections.emptyList())
                 .containerLabels(Collections.emptyMap());
         final Container toLaunch = toLaunchAndExpectedContainerBuilder.build();
 
-        if (swarmMode) {
+        if (backend == Backend.SWARM) {
             toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
 
             // Have to mock out the response from docker-client.
@@ -438,6 +499,12 @@ public class DockerControlApiTest {
             when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
             when(mockDockerClient.createService(any(ServiceSpec.class)))
                     .thenReturn(serviceCreateResponse);
+        } else if (backend == Backend.KUBERNETES) {
+            toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
+
+            when(kubernetesClient.createJob(
+                    toLaunch, DockerControlApi.NumReplicas.ZERO
+            )).thenReturn(BACKEND_ID);
         } else {
             toLaunchAndExpectedContainerBuilder.containerId(BACKEND_ID);
 
@@ -455,6 +522,7 @@ public class DockerControlApiTest {
 
     @Test
     public void testCreate_resolvedCommand() throws Exception {
+
         // Make test objects
         final ThreadLocalRandom random = ThreadLocalRandom.current();
         final ResolvedCommand resolvedCommandToLaunch = ResolvedCommand.builder()
@@ -471,9 +539,9 @@ public class DockerControlApiTest {
 
         final Container.Builder expectedCreatedBuilder = Container.builderFromResolvedCommand(resolvedCommandToLaunch)
                 .userId(USER_LOGIN)
-                .swarm(swarmMode);
+                .backend(backend);
 
-        if (swarmMode) {
+        if (backend == Backend.SWARM) {
             // Have to mock out the response from docker-client.
             // I would just make a real ServiceCreateResponse object,
             // but it doesn't have a build() method to return a Builder, and the
@@ -482,6 +550,12 @@ public class DockerControlApiTest {
             when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
             when(mockDockerClient.createService(any(ServiceSpec.class)))
                     .thenReturn(serviceCreateResponse);
+
+            expectedCreatedBuilder.serviceId(BACKEND_ID);
+        } else if (backend == Backend.KUBERNETES) {
+            when(kubernetesClient.createJob(
+                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO)
+            )).thenReturn(BACKEND_ID);
 
             expectedCreatedBuilder.serviceId(BACKEND_ID);
         } else {
@@ -529,13 +603,13 @@ public class DockerControlApiTest {
 
     @Test
     public void testCreateDockerSwarmService_zeroReplicas() throws Exception {
-        assumeThat(swarmMode, is(true));
+        assumeThat(backend, is(Backend.SWARM));
         invokeCreateDockerSwarmServicePrivateMethod(DockerControlApi.NumReplicas.ZERO);
     }
 
     @Test
     public void testCreateDockerSwarmService_oneReplica() throws Exception {
-        assumeThat(swarmMode, is(true));
+        assumeThat(backend, is(Backend.SWARM));
         invokeCreateDockerSwarmServicePrivateMethod(DockerControlApi.NumReplicas.ONE);
     }
 
@@ -583,10 +657,16 @@ public class DockerControlApiTest {
 
     @Test
     public void testStart() throws Exception {
-        if (swarmMode) {
-            testStart_swarmMode();
-        } else {
-            testStart_localDocker();
+        switch (backend) {
+            case SWARM:
+                testStart_swarmMode();
+                break;
+            case DOCKER:
+                testStart_localDocker();
+                break;
+            case KUBERNETES:
+                testStart_kubernetes();
+                break;
         }
     }
 
@@ -643,6 +723,14 @@ public class DockerControlApiTest {
         verify(mockDockerClient).updateService(BACKEND_ID, serviceVersion, expectedUpdateSpec);
     }
 
+    private void testStart_kubernetes() throws Exception {
+
+        // Run the test
+        dockerControlApi.start(container);
+
+        verify(kubernetesClient).unsuspendJob(BACKEND_ID);
+    }
+
     private void testStart_localDocker() throws Exception {
 
         // Run the test
@@ -655,7 +743,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testKillContainer() throws Exception {
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
 
         // Run the test
         dockerControlApi.killContainer(BACKEND_ID);
@@ -667,7 +755,7 @@ public class DockerControlApiTest {
     @Test
     @SuppressWarnings("deprecation")
     public void testKillService() throws Exception {
-        assumeThat(swarmMode, is(false));
+        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
 
         // Run the test
         dockerControlApi.killService(BACKEND_ID);
@@ -696,10 +784,16 @@ public class DockerControlApiTest {
         dockerControlApi.kill(container);
 
         // Verify the client method was called as expected
-        if (swarmMode) {
-            verify(mockDockerClient).removeService(BACKEND_ID);
-        } else {
-            verify(mockDockerClient).killContainer(BACKEND_ID);
+        switch (backend) {
+            case DOCKER:
+                verify(mockDockerClient).killContainer(BACKEND_ID);
+                break;
+            case SWARM:
+                verify(mockDockerClient).removeService(BACKEND_ID);
+                break;
+            case KUBERNETES:
+                verify(kubernetesClient).removeJob(BACKEND_ID);
+                break;
         }
     }
 
@@ -715,21 +809,29 @@ public class DockerControlApiTest {
         // In this case we expect nothing will happen
         verify(mockDockerClient, times(0)).removeService(BACKEND_ID);
         verify(mockDockerClient, times(0)).removeContainer(BACKEND_ID);
+        verify(kubernetesClient, times(0))
+                .removeJob(BACKEND_ID);
     }
 
     @Test
     public void testAutoCleanup_autoCleanupTrue() throws Exception {
-        // mock server settings to not autocleanup
+        // mock server settings to autocleanup
         when(dockerServer.autoCleanup()).thenReturn(true);
 
         // Run the test
         dockerControlApi.autoCleanup(container);
 
         // Verify the client method was called as expected
-        if (swarmMode) {
-            verify(mockDockerClient).removeService(BACKEND_ID);
-        } else {
-            verify(mockDockerClient).removeContainer(BACKEND_ID);
+        switch (backend) {
+            case DOCKER:
+                verify(mockDockerClient).removeContainer(BACKEND_ID);
+                break;
+            case SWARM:
+                verify(mockDockerClient).removeService(BACKEND_ID);
+                break;
+            case KUBERNETES:
+                verify(kubernetesClient).removeJob(BACKEND_ID);
+                break;
         }
     }
 
@@ -739,10 +841,16 @@ public class DockerControlApiTest {
         dockerControlApi.remove(container);
 
         // Verify the client method was called as expected
-        if (swarmMode) {
-            verify(mockDockerClient).removeService(BACKEND_ID);
-        } else {
-            verify(mockDockerClient).removeContainer(BACKEND_ID);
+        switch (backend) {
+            case DOCKER:
+                verify(mockDockerClient).removeContainer(BACKEND_ID);
+                break;
+            case SWARM:
+                verify(mockDockerClient).removeService(BACKEND_ID);
+                break;
+            case KUBERNETES:
+                verify(kubernetesClient).removeJob(BACKEND_ID);
+                break;
         }
     }
 }

@@ -62,6 +62,7 @@ import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
@@ -86,7 +87,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.mandas.docker.client.DockerClient.EventsParam.since;
@@ -104,41 +104,66 @@ public class DockerControlApi implements ContainerControlApi {
     private final CommandLabelService commandLabelService;
     private final DockerHubService dockerHubService;
     private final NrgEventServiceI eventService;
+    private final KubernetesClientFactory kubernetesClientFactory;
 
     @Autowired
     public DockerControlApi(final DockerServerService dockerServerService,
                             final CommandLabelService commandLabelService,
                             final DockerHubService dockerHubService,
-                            final NrgEventServiceI eventService) {
+                            final NrgEventServiceI eventService,
+                            final KubernetesClientFactory kubernetesClientFactory) {
         this.dockerServerService = dockerServerService;
         this.commandLabelService = commandLabelService;
         this.dockerHubService = dockerHubService;
         this.eventService = eventService;
+        this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
     @Nonnull
     private DockerServer getServer() throws NoDockerServerException {
+        DockerServer dockerServer;
         try {
-            return dockerServerService.getServer();
+            dockerServer = dockerServerService.getServer();
         } catch (NotFoundException e) {
             throw new NoDockerServerException(e);
         }
+        if (dockerServer.backend() != Backend.KUBERNETES) {
+            kubernetesClientFactory.shutdown();
+        }
+        return dockerServer;
+    }
+
+    private KubernetesClient getKubernetesClient(DockerServer dockerServer) throws NoContainerServerException {
+        return kubernetesClientFactory.getKubernetesClient(dockerServer);
     }
 
     @Override
     public String ping() throws NoDockerServerException, DockerServerException {
-        return ping(getServer());
-    }
+        final DockerServer dockerServer = getServer();
 
-    private String ping(final DockerServer dockerServer) throws DockerServerException {
-        return dockerServer.swarmMode() ? pingSwarmMaster(dockerServer) : pingServer(dockerServer);
+        switch (dockerServer.backend()) {
+            case SWARM:
+                return pingSwarmMaster(dockerServer);
+            case DOCKER:
+                return pingServer(dockerServer);
+            case KUBERNETES:
+                try {
+                    return getKubernetesClient(dockerServer).ping();
+                } catch (ContainerBackendException e) {
+                    throw (e instanceof DockerServerException) ? (DockerServerException) e : new DockerServerException(e);
+                } catch (NoContainerServerException e) {
+                    throw (e instanceof NoDockerServerException) ? (NoDockerServerException) e : new NoDockerServerException(e);
+                }
+            default:
+                throw new NoDockerServerException("Not implemented");
+        }
     }
 
     private String pingServer(final DockerServer dockerServer) throws DockerServerException {
         try (final DockerClient client = getClient(dockerServer)) {
             return client.ping();
         } catch (DockerException | InterruptedException e) {
-            log.error("Unable to connect with Docker server {}:\n{}", dockerServer == null ? "" : dockerServer.toString(), e.getMessage());
+            log.error("Unable to connect with Docker server {}:\n{}", dockerServer, e.getMessage());
             throw new DockerServerException(e);
         }
     }
@@ -235,7 +260,16 @@ public class DockerControlApi implements ContainerControlApi {
     @Nonnull
     private List<DockerImage> getImages(final Map<String, String> params)
             throws NoDockerServerException, DockerServerException {
-        return _getImages(params).stream().map(this::spotifyToNrg).collect(Collectors.toList());
+
+            final DockerServer server = getServer();
+        switch (server.backend()) {
+            case SWARM:
+            case DOCKER:
+                return _getImages(params).stream().map(this::spotifyToNrg).collect(Collectors.toList());
+            case KUBERNETES:
+            default:
+                return Lists.newArrayList();
+        }
     }
 
     private List<org.mandas.docker.client.messages.Image> _getImages(final Map<String, String> params)
@@ -387,23 +421,27 @@ public class DockerControlApi implements ContainerControlApi {
 
         final Container.Builder createdBuilder = toCreate
                 .toBuilder()
-                .userId(user.getLogin());
+                .userId(user.getLogin())
+                .backend(server.backend());
 
-        if (server.swarmMode()) {
-            final String serviceId = createDockerSwarmService(toCreate, server, NumReplicas.ZERO);
-            createdBuilder
-                    .serviceId(serviceId)
-                    .swarm(true);
-        } else {
-            final String containerId = createDockerContainer(toCreate, server);
-            createdBuilder
-                    .containerId(containerId)
-                    .swarm(false);
+        switch (server.backend()) {
+            case SWARM:
+                final String serviceId = createDockerSwarmService(toCreate, server, NumReplicas.ZERO);
+                createdBuilder.serviceId(serviceId);
+                break;
+            case DOCKER:
+                final String containerId = createDockerContainer(toCreate, server);
+                createdBuilder.containerId(containerId);
+                break;
+            case KUBERNETES:
+                final String kubernetesJobId = getKubernetesClient(server).createJob(toCreate, NumReplicas.ZERO);
+                createdBuilder.serviceId(kubernetesJobId);
+                break;
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
 
-        return createdBuilder
-                .userId(user.getLogin())
-                .build();
+        return createdBuilder.build();
 
     }
 
@@ -724,7 +762,8 @@ public class DockerControlApi implements ContainerControlApi {
         final TaskSpec.Builder taskSpecBuilder = TaskSpec
                 .builder()
                 .containerSpec(containerSpec)
-                .placement(Placement.create(toCreate.swarmConstraints()))
+                // ImmutablePlacement.Builder#addAllConstraints requires non-null even through it handles null right after that...
+                .placement(Placement.create(toCreate.swarmConstraints() == null ? Collections.emptyList() : toCreate.swarmConstraints()))
                 .restartPolicy(RestartPolicy.builder()
                         .condition(RestartPolicy.RESTART_POLICY_NONE)
                         .build())
@@ -742,7 +781,7 @@ public class DockerControlApi implements ContainerControlApi {
                                 .build())
                         .build())
                 .endpointSpec(EndpointSpec.builder().ports(portConfigs).build())
-                .name(Strings.isNullOrEmpty(toCreate.containerName()) ? UUID.randomUUID().toString() : toCreate.containerName())
+                .name(toCreate.containerNameOrRandom())
                 .labels(toCreate.containerLabels())
                 .build();
 
@@ -797,10 +836,18 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public void start(final Container toStart) throws NoContainerServerException, ContainerBackendException {
         final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            setSwarmServiceReplicasToOne(toStart.serviceId(), toStart.dockerImage(), server);
-        } else {
-            startDockerContainer(toStart.containerId(), server);
+        switch (server.backend()) {
+            case SWARM:
+                setSwarmServiceReplicasToOne(toStart.serviceId(), toStart.dockerImage(), server);
+                break;
+            case DOCKER:
+                startDockerContainer(toStart.containerId(), server);
+                break;
+            case KUBERNETES:
+                getKubernetesClient(server).unsuspendJob(toStart.jobName());
+                break;
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
     }
 
@@ -964,8 +1011,10 @@ public class DockerControlApi implements ContainerControlApi {
      * @param backendId Identifier for backend entity: docker container ID or swarm service ID.
      * @param logType Stdout or Stderr
      * @return Container log string
+     * @deprecated Use {@link ContainerControlApi#getLog(Container, LogType)} instead
      */
     @Override
+    @Deprecated
     public String getLog(final String backendId, final LogType logType) throws NoContainerServerException, ContainerBackendException {
         return getLog(backendId, logType, null, null);
     }
@@ -990,14 +1039,22 @@ public class DockerControlApi implements ContainerControlApi {
      * @param withTimestamps Whether timestamps should be added to the log records on the backend
      * @param since Read logs produced after this Unix timestamp
      * @return Container log string
+     * @deprecated Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead
      */
     @Override
+    @Deprecated
     public String getLog(final String backendId, final LogType logType, final Boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
         final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            return getSwarmServiceLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
-        } else {
-            return getDockerContainerLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
+        switch (server.backend()) {
+            case DOCKER:
+                return getDockerContainerLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
+            case SWARM:
+                return getSwarmServiceLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
+            case KUBERNETES:
+                log.debug("Assuming backend id {} is a pod name", backendId);
+                return getKubernetesClient(server).getLog(backendId, logType, withTimestamps, since);
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
     }
 
@@ -1013,10 +1070,15 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public String getLog(final Container container, final LogType logType, final Boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
         final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            return getSwarmServiceLog(container.serviceId(), assembleDockerClientLogsParams(logType, withTimestamps, since));
-        } else {
-            return getDockerContainerLog(container.containerId(), assembleDockerClientLogsParams(logType, withTimestamps, since));
+        switch (server.backend()) {
+            case SWARM:
+                return getSwarmServiceLog(container.serviceId(), assembleDockerClientLogsParams(logType, withTimestamps, since));
+            case DOCKER:
+                return getDockerContainerLog(container.containerId(), assembleDockerClientLogsParams(logType, withTimestamps, since));
+            case KUBERNETES:
+                return getKubernetesClient(server).getLog(container.podName(), logType, withTimestamps, since);
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
     }
 
@@ -1072,7 +1134,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(String, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
      */
     @Deprecated
     @Override
@@ -1087,7 +1149,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(String, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
      */
     @Deprecated
     @Override
@@ -1102,7 +1164,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(String, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
      */
     @Deprecated
     @Override
@@ -1117,7 +1179,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(String, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
      */
     @Deprecated
     @Override
@@ -1275,11 +1337,18 @@ public class DockerControlApi implements ContainerControlApi {
     @Override
     public void kill(final Container container) throws NoContainerServerException, ContainerBackendException, NotFoundException {
         final DockerServer server = getServer();
-        if (server.swarmMode()) {
-            log.debug("There is no \"kill\" command for Docker Swarm Services. Calling \"remove\" instead.");
-            removeDockerSwarmService(container.serviceId(), server);
-        } else {
-            killDockerContainer(container.containerId(), server);
+        switch (server.backend()) {
+            case SWARM:
+                removeDockerSwarmService(container.serviceId(), server);
+                break;
+            case DOCKER:
+                killDockerContainer(container.containerId(), server);
+                break;
+            case KUBERNETES:
+                getKubernetesClient(server).removeJob(container.jobName());
+                break;
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
     }
 
@@ -1309,11 +1378,19 @@ public class DockerControlApi implements ContainerControlApi {
     }
 
     private void remove(final Container container, final DockerServer server)
-            throws ContainerBackendException, NotFoundException {
-        if (server.swarmMode()) {
-            removeDockerSwarmService(container.serviceId(), server);
-        } else {
-            removeDockerContainer(container.containerId(), server);
+            throws ContainerBackendException, NoContainerServerException, NotFoundException {
+        switch (server.backend()) {
+            case SWARM:
+                removeDockerSwarmService(container.serviceId(), server);
+                break;
+            case DOCKER:
+                removeDockerContainer(container.containerId(), server);
+                break;
+            case KUBERNETES:
+                getKubernetesClient(server).removeJob(container.jobName());
+                break;
+            default:
+                throw new NoContainerServerException("Not implemented");
         }
     }
 
@@ -1379,7 +1456,7 @@ public class DockerControlApi implements ContainerControlApi {
     private void killDockerContainer(final String backendId, final DockerServer server)
             throws DockerServerException, NotFoundException {
         try(final DockerClient client = getClient(server)) {
-            log.info("Killing container {}", backendId);
+            log.debug("Killing container {}", backendId);
             client.killContainer(backendId);
         } catch (ContainerNotFoundException e) {
             log.error(e.getMessage(), e);
@@ -1407,7 +1484,7 @@ public class DockerControlApi implements ContainerControlApi {
     private void removeDockerSwarmService(final String backendId, final DockerServer server)
             throws DockerServerException, NotFoundException {
         try(final DockerClient client = getClient(server)) {
-            log.info("Removing service {}", backendId);
+            log.debug("Removing service {}", backendId);
             client.removeService(backendId);
         } catch (ServiceNotFoundException e) {
             log.error(e.getMessage(), e);
@@ -1655,7 +1732,13 @@ public class DockerControlApi implements ContainerControlApi {
     public Integer getFinalizingThrottle() {
         try {
             DockerServer server = getServer();
-            return server.swarmMode() ? server.maxConcurrentFinalizingJobs() : null;
+            switch (server.backend()) {
+                case SWARM:
+                case KUBERNETES:
+                    return server.maxConcurrentFinalizingJobs();
+                default:
+                    return null;
+            }
         } catch (NoDockerServerException e) {
             log.error("Unable to find server to determine finalizing queue throttle", e);
             return null;
@@ -1740,4 +1823,5 @@ public class DockerControlApi implements ContainerControlApi {
             this.value = value;
         }
     }
+
 }

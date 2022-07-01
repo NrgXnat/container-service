@@ -80,7 +80,6 @@ public class ContainerEntityTest {
         final Container container = Container.builderFromResolvedCommand(resolvedCommand)
                 .userId(mockAdmin.getLogin())
                 .containerId(containerId)
-                .swarm(false)
                 .workflowId(workflowId)
                 .build();
         final ContainerEntity toCreate = ContainerEntity.fromPojo(container);

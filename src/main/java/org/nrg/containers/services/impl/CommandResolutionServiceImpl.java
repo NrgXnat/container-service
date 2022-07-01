@@ -49,6 +49,7 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
@@ -425,6 +426,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                               .build());
             }
 
+            log.debug("Checking for node constraints");
             final List<String> swarmConstraints = resolveSwarmConstraints();
 
             final ResolvedCommand resolvedCommand = ResolvedCommand.builder()
@@ -2848,50 +2850,62 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.error("No docker server", e);
                 return null;
             }
-            if (!server.swarmMode()) {
+            if (!Backend.SUPPORTS_CONSTRAINTS.contains(server.backend())) {
+                log.debug("Skipping constraints for {} backend", server.backend().toString());
                 return null;
             }
-            List<DockerServerBase.DockerServerSwarmConstraint> constraints = server.swarmConstraints();
-            if (constraints == null || constraints.isEmpty()) {
+            List<DockerServerBase.DockerServerSwarmConstraint> serverConstraints = server.swarmConstraints();
+            if (serverConstraints == null || serverConstraints.isEmpty()) {
+                log.debug("No server constraints defined");
                 return null;
             }
 
-            log.debug("Checking for swarm node constraints");
-            List<String> constraintsList = new ArrayList<>();
+            List<String> resolvedConstraints = new ArrayList<>(serverConstraints.size());
 
             // Get user inputs
-            Map<String, String> userConstraintsMap = null;
-            String constraintsJson = inputValues.get(swarmConstraintsTag);
-            if (constraintsJson != null) {
+            Map<String, String> userConstraints = new HashMap<>(serverConstraints.size());
+            String userConstraintsInputJson = inputValues.get(swarmConstraintsTag);
+            if (userConstraintsInputJson != null) {
                 try {
-                    List<LaunchUi.LaunchUiServerConstraintSelected> userConstraints = mapper.readValue(constraintsJson,
+                    List<LaunchUi.LaunchUiServerConstraintSelected> userConstraintsInput = mapper.readValue(userConstraintsInputJson,
                             new TypeReference<List<LaunchUi.LaunchUiServerConstraintSelected>>() {});
-                    userConstraintsMap = new HashMap<>(userConstraints.size());
-                    for (LaunchUi.LaunchUiServerConstraintSelected c : userConstraints) {
-                        userConstraintsMap.put(c.attribute(), c.value());
+                    for (LaunchUi.LaunchUiServerConstraintSelected c : userConstraintsInput) {
+                        userConstraints.put(c.attribute(), c.value());
                     }
 
                 } catch (IOException e) {
-                    log.error("Problem reading constraint json \"{}\"", constraintsJson, e);
+                    log.error("Problem reading constraint json \"{}\"", userConstraintsInputJson, e);
                 }
             }
 
             // Populate list from user inputs & server "defaults"
-            for (DockerServerBase.DockerServerSwarmConstraint constraint : constraints) {
-                if (constraint.userSettable() && userConstraintsMap != null) {
+            for (DockerServerBase.DockerServerSwarmConstraint constraint : serverConstraints) {
+                if (constraint.userSettable()) {
                     // If the constraint is user settable, only add it if we have non-empty values from user input map
-                    // don't default to first value or whatever, just let Swarm do its default thing
-                    String value = userConstraintsMap.get(constraint.attribute());
+                    // Don't default to first value or whatever, just let Swarm do its default thing.
+                    // If user did not select a value we do not include the constraint
+                    String value = userConstraints.get(constraint.attribute());
                     if (StringUtils.isNotBlank(value)) {
-                        constraintsList.add(constraint.asStringConstraint(value));
+                        String resolvedConstraint = constraint.asStringConstraint(value);
+                        if (resolvedConstraint != null) {
+                            resolvedConstraints.add(resolvedConstraint);
+                            log.debug("Resolved user-specified constraint \"{}\"", resolvedConstraint);
+                        } else {
+                            log.debug("Skipping constraint {}. User-supplied value {} was not one of the constraint's allowed values {}",
+                                    constraint.attribute(), value, constraint.values());
+                        }
+                    } else {
+                        log.debug("Skipping constraint {}. No user selected value.", constraint.attribute());
                     }
                 } else {
-                    constraintsList.add(constraint.asStringConstraint());
+                    // Always add non-user-settable constraints (with default value)
+                    final String resolvedConstraint = constraint.asStringConstraint();
+                    resolvedConstraints.add(resolvedConstraint);
+                    log.debug("Resolved non-user-settable constraint using default value \"{}\"", resolvedConstraint);
                 }
             }
 
-            constraintsList = constraintsList.isEmpty() ? null : constraintsList;
-            return constraintsList;
+            return resolvedConstraints.isEmpty() ? null : resolvedConstraints;
         }
     }
 

@@ -1,6 +1,7 @@
 package org.nrg.containers.services;
 
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.command.auto.Command;
@@ -43,7 +44,7 @@ public interface DockerService {
             throws DockerServerException, NoDockerServerException, NotFoundException;
 
     DockerServerWithPing getServer() throws NotFoundException;
-    DockerServerWithPing setServer(DockerServer server);
+    DockerServerWithPing setServer(DockerServer server) throws InvalidDefinitionException;
     String ping() throws NoDockerServerException, DockerServerException;
 
     List<DockerImage> getInstalledImages() throws NoDockerServerException, DockerServerException;

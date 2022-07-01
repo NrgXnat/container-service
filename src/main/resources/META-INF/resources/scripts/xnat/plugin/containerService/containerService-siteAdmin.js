@@ -138,7 +138,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     let backends = [
         { label: 'Select Backend Type', value: '' },
         { label: 'Docker', value: 'docker' },
-        { label: 'Docker Swarm', value: 'swarm' }
+        { label: 'Docker Swarm', value: 'swarm' },
+        { label: 'Kubernetes', value: 'kubernetes' }
     ];
 
     function containerHostUrl(appended){

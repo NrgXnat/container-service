@@ -5,7 +5,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hamcrest.Matchers;
 import org.junit.After;
@@ -22,12 +21,15 @@ import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.LoggingBuildHandler;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClient;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.config.SpringJUnit4ClassRunnerFactory;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerMount;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.model.xnat.Project;
@@ -85,10 +87,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
@@ -131,27 +136,27 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @Transactional
 public class CommandLaunchIntegrationTest {
 
-    @Parameterized.Parameters(name = "swarmMode={0}")
-    public static Collection<Boolean> swarmModes() {
-        return Arrays.asList(true, false);
+    @Parameterized.Parameters(name = "backend={0}")
+    public static Collection<Backend> backend() {
+        return EnumSet.allOf(Backend.class);
     }
     @Parameterized.Parameter
-    public boolean swarmMode;
+    public Backend backend;
 
     private UserI mockUser;
-    private String buildDir;
-    private String archiveDir;
 
     private final String FAKE_USER = "mockUser";
     private final String FAKE_ALIAS = "alias";
     private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
-    private FakeWorkflow fakeWorkflow = new FakeWorkflow();
+    private FakeWorkflow fakeWorkflow;
 
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
 
-    private static DockerClient CLIENT;
+    private DockerClient dockerClient;
+    private KubernetesClient kubernetesClient;
+    private String kubernetesNamespace;
 
     @Autowired private ObjectMapper mapper;
     @Autowired private CommandService commandService;
@@ -164,6 +169,8 @@ public class CommandLaunchIntegrationTest {
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;
     @Autowired private CatalogService mockCatalogService;
+    @Autowired private ExecutorService executorService;
+    @Autowired private KubernetesClientFactory kubernetesClientFactory;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
 
@@ -180,7 +187,6 @@ public class CommandLaunchIntegrationTest {
 
     @Before
     public void setup() throws Exception {
-
         // Mock out the prefs bean
         // Mock the userI
         mockUser = mock(UserI.class);
@@ -207,8 +213,8 @@ public class CommandLaunchIntegrationTest {
         when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
-        buildDir = folder.newFolder().getAbsolutePath();
-        archiveDir = folder.newFolder().getAbsolutePath();
+        final String buildDir = folder.newFolder().getAbsolutePath();
+        final String archiveDir = folder.newFolder().getAbsolutePath();
         when(mockSiteConfigPreferences.getSiteUrl()).thenReturn(FAKE_HOST);
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
@@ -221,6 +227,7 @@ public class CommandLaunchIntegrationTest {
         when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
+        fakeWorkflow = new FakeWorkflow();
         mockStatic(WorkflowUtils.class);
         when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
@@ -245,79 +252,57 @@ public class CommandLaunchIntegrationTest {
         )).thenReturn(true);
 
         // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
+        DockerServer dockerServer = DockerServer.builder()
+                .name("Test server")
+                .host("unix:///var/run/docker.sock")
+                .backend(backend)
+                .autoCleanup(true)
+                .lastEventCheckTime(new Date())  // Set last event check time = now to filter out old events
+                .build();
+        dockerServerService.setServer(dockerServer);
+        TestingUtils.commitTransaction();
 
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
+        dockerClient = controlApi.getClient();
+        kubernetesClient = kubernetesClientFactory.getKubernetesClient(dockerServer);
 
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, true, null, null, true));
+        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        TestingUtils.skipIfCannotConnect(backend, dockerClient, kubernetesClient.getBackendClient());
+        kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
 
-        CLIENT = controlApi.getClient();
-
-        // Skip tests if cannot connect
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-
-        TestingUtils.pullBusyBox(CLIENT);
+        kubernetesClient.start();
     }
 
     @After
     public void cleanup() throws Exception {
-        fakeWorkflow = new FakeWorkflow();
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, dockerClient, kubernetesClient.getBackendClient(), kubernetesNamespace);
+        assertThat(containerCleanupFunction, notNullValue());
         for (final String containerToCleanUp : containersToCleanUp) {
-            try {
-                if (swarmMode) {
-                    CLIENT.removeService(containerToCleanUp);
-                } else {
-                    CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
-                }
-            } catch (Exception e) {
-                // do nothing
+            if (containerToCleanUp == null) {
+                continue;
             }
+            containerCleanupFunction.accept(containerToCleanUp);
         }
         containersToCleanUp.clear();
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
+                dockerClient.removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
 
-        CLIENT.close();
+        dockerClient.close();
+
+        kubernetesClient.stop();
+        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
+        executorService.shutdown();
     }
 
     @Test
     @DirtiesContext
     public void testFakeReconAll() throws Exception {
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String commandJsonFile = Paths.get(dir, "/fakeReconAllCommand.json").toString();
@@ -327,6 +312,7 @@ public class CommandLaunchIntegrationTest {
 
         final Command fakeReconAll = mapper.readValue(new File(commandJsonFile), Command.class);
         final Command fakeReconAllCreated = commandService.create(fakeReconAll);
+        TestingUtils.commitTransaction();
 
         CommandWrapper commandWrapper = null;
         for (final CommandWrapper commandWrapperLoop : fakeReconAllCreated.xnatCommandWrappers()) {
@@ -353,11 +339,18 @@ public class CommandLaunchIntegrationTest {
         runtimeValues.put("session", sessionJson);
         runtimeValues.put("T1-scantype", t1Scantype);
 
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, commandWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container execution = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? execution.serviceId() : execution.containerId());
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, execution), is(false));
+        containersToCleanUp.add(execution.containerOrServiceId());
+        log.debug("Waiting until container {} {} is finalized...", execution.databaseId(), execution.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, execution), is(true));
+        log.debug("Container {} {} is finalized!", execution.databaseId(), execution.containerOrServiceId());
+
+        TestingUtils.commitTransaction();
 
         // Raw inputs
         assertThat(execution.getRawInputs(), is(runtimeValues));
@@ -448,6 +441,7 @@ public class CommandLaunchIntegrationTest {
 
         final Command command = mapper.readValue(new File(commandJsonFile), Command.class);
         final Command commandCreated = commandService.create(command);
+        TestingUtils.commitTransaction();
         final CommandWrapper commandWrapper = commandCreated.xnatCommandWrappers().get(0);
         assertThat(commandWrapper, is(not(nullValue())));
 
@@ -464,11 +458,18 @@ public class CommandLaunchIntegrationTest {
         final Map<String, String> runtimeValues = Maps.newHashMap();
         runtimeValues.put("project", projectJson);
 
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, commandWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container execution = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? execution.serviceId() : execution.containerId());
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, execution), is(false));
+        containersToCleanUp.add(execution.containerOrServiceId());
+        log.debug("Waiting until container {} {} is finalized...", execution.databaseId(), execution.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, execution), is(true));
+        log.debug("Container {} {} is finalized!", execution.databaseId(), execution.containerOrServiceId());
+
+        TestingUtils.commitTransaction();
 
         // Raw inputs
         assertThat(execution.getRawInputs(), is(runtimeValues));
@@ -552,7 +553,7 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testLaunchCommandWithSetupCommand() throws Exception {
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        assumeThat("Images with auth not yet supported", backend, is(not(Backend.KUBERNETES)));
 
         final Path setupCommandDirPath = Paths.get(ClassLoader.getSystemResource("setupCommand").toURI());
         final String setupCommandDir = setupCommandDirPath.toString().replace("%20", " ");
@@ -573,7 +574,7 @@ public class CommandLaunchIntegrationTest {
         final String setupCommandImageName = setupCommandSplitOnColon[0] + ":" + setupCommandSplitOnColon[1];
         final String setupCommandName = setupCommandSplitOnColon[2];
 
-        CLIENT.build(setupCommandDirPath, setupCommandImageName);
+        dockerClient.build(setupCommandDirPath, setupCommandImageName);
         imagesToCleanUp.add(setupCommandImageName);
 
         // Make the setup command from the json file.
@@ -627,20 +628,27 @@ public class CommandLaunchIntegrationTest {
                 .thenReturn(setupWrapupWorkflow);
 
         // Time to launch this thing
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, commandWithSetupCommandWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container mainContainerRightAfterLaunch = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? mainContainerRightAfterLaunch.serviceId() : mainContainerRightAfterLaunch.containerId());
-        TestingUtils.commitTransaction();
-        log.debug("Waiting until container is finalized or has failed");
-        await().atMost(30L, TimeUnit.SECONDS)
+
+        containersToCleanUp.add(mainContainerRightAfterLaunch.containerOrServiceId());
+        log.debug("Waiting until container {} {} is finalized...",
+                mainContainerRightAfterLaunch.databaseId(), mainContainerRightAfterLaunch.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, mainContainerRightAfterLaunch), is(true));
+        log.debug("Container {} {} is finalized!",
+                mainContainerRightAfterLaunch.databaseId(), mainContainerRightAfterLaunch.containerOrServiceId());
+
+        TestingUtils.commitTransaction();
 
         final Container mainContainerAWhileAfterLaunch = containerService.get(mainContainerRightAfterLaunch.databaseId());
         final List<Container> setupContainers = containerService.retrieveSetupContainersForParent(mainContainerAWhileAfterLaunch.databaseId());
         assertThat(setupContainers, hasSize(1));
         final Container setupContainer = setupContainers.get(0);
-        containersToCleanUp.add(swarmMode ? setupContainer.serviceId() : setupContainer.containerId());
+        containersToCleanUp.add(setupContainer.containerOrServiceId());
 
         // Print the logs for debugging in case weird stuff happened
         printContainerLogs(setupContainer, "setup");
@@ -670,7 +678,7 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testLaunchCommandWithWrapupCommand() throws Exception {
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        assumeThat("Images with auth not yet supported", backend, is(not(Backend.KUBERNETES)));
 
         final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
         final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
@@ -694,8 +702,8 @@ public class CommandLaunchIntegrationTest {
         final String commandWithWrapupCommandImageName = commandWithWrapupCommand.image();
 
         // Build two images: the wrapup image and the main image
-        CLIENT.build(wrapupCommandDirPath, wrapupCommandImageName, "Dockerfile.wrapup", new LoggingBuildHandler());
-        CLIENT.build(wrapupCommandDirPath, commandWithWrapupCommandImageName, "Dockerfile.main", new LoggingBuildHandler());
+        dockerClient.build(wrapupCommandDirPath, wrapupCommandImageName, "Dockerfile.wrapup", new LoggingBuildHandler());
+        dockerClient.build(wrapupCommandDirPath, commandWithWrapupCommandImageName, "Dockerfile.main", new LoggingBuildHandler());
         imagesToCleanUp.add(wrapupCommandImageName);
         imagesToCleanUp.add(commandWithWrapupCommandImageName);
 
@@ -755,24 +763,29 @@ public class CommandLaunchIntegrationTest {
                 .thenReturn(setupWrapupWorkflow);
 
         // Time to launch this thing
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, commandWithWrapupCommandWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container mainContainerRightAfterLaunch = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? mainContainerRightAfterLaunch.serviceId() : mainContainerRightAfterLaunch.containerId());
+        containersToCleanUp.add(mainContainerRightAfterLaunch.containerOrServiceId());
+        log.debug("Waiting until container {} {} is finalized...",
+                mainContainerRightAfterLaunch.databaseId(), mainContainerRightAfterLaunch.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, mainContainerRightAfterLaunch), is(true));
+        log.debug("Container {} {} is finalized!",
+                mainContainerRightAfterLaunch.databaseId(), mainContainerRightAfterLaunch.containerOrServiceId());
 
         TestingUtils.commitTransaction();
 
-        log.debug("Waiting until container is finalized or has failed");
-        await().atMost(20L, TimeUnit.SECONDS)
-                .until(TestingUtils.containerIsFinalized(containerService, mainContainerRightAfterLaunch), is(true));
-        Container mainContainerAWhileAfterLaunch = containerService.get(mainContainerRightAfterLaunch.databaseId()); //refresh it
+        final Container mainContainerAWhileAfterLaunch = containerService.get(mainContainerRightAfterLaunch.databaseId());
         assertThat(mainContainerAWhileAfterLaunch.status(), not(containsString("Failed")));
         assertThat(fakeWorkflow.getStatus(), not(startsWith(PersistentWorkflowUtils.FAILED)));
 
         final List<Container> wrapupContainers = containerService.retrieveWrapupContainersForParent(mainContainerAWhileAfterLaunch.databaseId());
         assertThat(wrapupContainers, hasSize(1));
         final Container wrapupContainer = wrapupContainers.get(0);
-        containersToCleanUp.add(swarmMode ? wrapupContainer.serviceId() : wrapupContainer.containerId());
+        containersToCleanUp.add(wrapupContainer.containerOrServiceId());
 
         // Print the logs for debugging in case weird stuff happened
         printContainerLogs(wrapupContainer, "wrapup");
@@ -813,7 +826,6 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testFailedContainer() throws Exception {
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
 
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
@@ -828,23 +840,19 @@ public class CommandLaunchIntegrationTest {
 
         TestingUtils.commitTransaction();
 
-
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, willFailWrapper.id(), 0L,
                 null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
+        containersToCleanUp.add(container.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", container.databaseId(), container.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Container {} {} is finalized!", container.databaseId(), container.containerOrServiceId());
 
         TestingUtils.commitTransaction();
-
-        log.debug("Waiting until task has started");
-        await().until(TestingUtils.containerHasStarted(CLIENT, swarmMode, container), is(true));
-        log.debug("Waiting until task has finished");
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
-        //Finalizing queue adds system history item, so this is no longer relevant
-        //log.debug("Waiting until status updater has picked up finished task and added item to history");
-        //await().until(containerHistoryHasItemFromSystem(container.databaseId()), is(true));
-        log.debug("Waiting until container is finalized");
-        await().until(TestingUtils.containerIsFinalized(containerService, container), is(true));
 
         final Container exited = containerService.get(container.databaseId());
         printContainerLogs(exited);
@@ -856,13 +864,14 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testEntrypointIsPreserved() throws Exception {
+        assumeThat("Images with auth not yet supported", backend, is(not(Backend.KUBERNETES)));
 
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testEntrypointIsPreserved");
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        CLIENT.build(testDir, imageName);
+        dockerClient.build(testDir, imageName);
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -871,16 +880,20 @@ public class CommandLaunchIntegrationTest {
 
         TestingUtils.commitTransaction();
 
-
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L,
                 null, Collections.emptyMap(), mockUser, fakeWorkflow);
+
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
+        containersToCleanUp.add(container.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", container.databaseId(), container.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Container {} {} is finalized!", container.databaseId(), container.containerOrServiceId());
 
         TestingUtils.commitTransaction();
-
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
-        await().until(TestingUtils.containerHasLogPaths(containerService, container.databaseId())); // Thus we know it has been finalized
 
         final Container exited = containerService.get(container.databaseId());
         printContainerLogs(exited);
@@ -891,14 +904,14 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testEntrypointIsRemoved() throws Exception {
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+        assumeThat("Images with auth not yet supported", backend, is(not(Backend.KUBERNETES)));
 
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testEntrypointIsRemoved");
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        CLIENT.build(testDir, imageName);
+        dockerClient.build(testDir, imageName);
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -907,16 +920,19 @@ public class CommandLaunchIntegrationTest {
 
         TestingUtils.commitTransaction();
 
-
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
+        containersToCleanUp.add(container.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", container.databaseId(), container.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Container {} {} is finalized!", container.databaseId(), container.containerOrServiceId());
 
         TestingUtils.commitTransaction();
-
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
-        await().until(TestingUtils.containerHasLogPaths(containerService, container.databaseId())); // Thus we know it has been finalized
 
         final Container exited = containerService.get(container.databaseId());
         printContainerLogs(exited);
@@ -928,7 +944,6 @@ public class CommandLaunchIntegrationTest {
     @Test
     @DirtiesContext
     public void testContainerWorkingDirectory() throws Exception {
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
 
         final String workingDirectory = "/usr/local/bin";
         final Command command = commandService.create(Command.builder()
@@ -945,30 +960,37 @@ public class CommandLaunchIntegrationTest {
 
         TestingUtils.commitTransaction();
 
-
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
+        containersToCleanUp.add(container.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", container.databaseId(), container.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Container {} {} is finalized!", container.databaseId(), container.containerOrServiceId());
 
         TestingUtils.commitTransaction();
-
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
 
         final Container exited = containerService.get(container.databaseId());
         printContainerLogs(exited);
         assertThat(exited.workingDirectory(), is(workingDirectory));
+        assertThat(exited.status(), not(containsString("Failed")));
+        assertThat(exited.exitCode(), is("0"));
     }
 
     @Test
     @DirtiesContext
     public void testDeleteCommandWhenDeleteImageAfterLaunchingContainer() throws Exception {
+        assumeThat("Not ready to test this on Kubernetes", backend, is(not(Backend.KUBERNETES)));
 
         final String imageName = "xnat/testy-test:tag";
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testDeleteCommandWhenDeleteImageAfterLaunchingContainer");
 
-        final String imageId = CLIENT.build(testDir, imageName);
+        final String imageId = dockerClient.build(testDir, imageName);
 
         final List<Command> commands = dockerService.saveFromImageLabels(imageName);
 
@@ -977,15 +999,18 @@ public class CommandLaunchIntegrationTest {
         final Command command = commands.get(0);
         final CommandWrapper wrapper = command.xnatCommandWrappers().get(0);
 
-
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
+        containersToCleanUp.add(container.containerOrServiceId());
 
-        TestingUtils.commitTransaction();
+        log.debug("Waiting until container {} {} is finalized...", container.databaseId(), container.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Container {} {} is finalized!", container.databaseId(), container.containerOrServiceId());
 
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
         final Container exited = containerService.get(container.databaseId());
         printContainerLogs(exited);
 
@@ -1015,8 +1040,6 @@ public class CommandLaunchIntegrationTest {
     public void testScanUpload() throws Exception {
         // NOTE: this doesn't test the actual upload of the xml, which is xnat-web functionality
 
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testScanUpload").toString();
         final String fakeDataDir = Paths.get(curDir, "fakeDirForCopy").toString();
@@ -1025,6 +1048,7 @@ public class CommandLaunchIntegrationTest {
         final Command tempCommand = mapper.readValue(new File(commandJsonFile), Command.class);
         Command cmd = commandService.create(tempCommand);
         CommandWrapper wrapper = cmd.xnatCommandWrappers().get(0);
+        TestingUtils.commitTransaction();
 
         final String sessionJsonFile = Paths.get(dir, "/session.json").toString();
         final Session session = mapper.readValue(new File(sessionJsonFile), Session.class);
@@ -1107,26 +1131,31 @@ public class CommandLaunchIntegrationTest {
         final Map<String, String> runtimeValues = Maps.newHashMap();
         runtimeValues.put("session", sessionJson);
 
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container execution = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? execution.serviceId() : execution.containerId());
+        containersToCleanUp.add(execution.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", execution.databaseId(), execution.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, execution), is(true));
+        log.debug("Container {} {} is finalized!", execution.databaseId(), execution.containerOrServiceId());
 
         TestingUtils.commitTransaction();
 
-        log.debug("Waiting until container is done finalizing");
-        await().until(TestingUtils.containerIsFinalized(containerService, execution));
-
-        // Assert that upload doesn't fail, this means that the proper files and params were passed to our mock methods
+        final Container exited = containerService.get(execution.databaseId());
+        assertThat(exited.status(), not(containsString("Failed")));
+        assertThat(exited.exitCode(), is("0"));
         assertThat(fakeWorkflow.getStatus(), not(startsWith(PersistentWorkflowUtils.FAILED)));
+
     }
 
     @Test
     @DirtiesContext
     public void testAssessorUpload() throws Exception {
         // NOTE: this doesn't test the actual upload of the xml, which is xnat-web functionality
-
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
 
         final String dir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final String curDir = Paths.get(dir, "testAssessorUpload").toString();
@@ -1143,6 +1172,7 @@ public class CommandLaunchIntegrationTest {
                 .toBuilder().id(cmd.id()).build();
         cmd = commandService.update(tempCommandNew);
         CommandWrapper wrapper = cmd.xnatCommandWrappers().get(0);
+        TestingUtils.commitTransaction();
 
         final String sessionJsonFile = Paths.get(dir, "/session.json").toString();
         final Session session = mapper.readValue(new File(sessionJsonFile), Session.class);
@@ -1225,18 +1255,24 @@ public class CommandLaunchIntegrationTest {
         final Map<String, String> runtimeValues = Maps.newHashMap();
         runtimeValues.put("session", sessionJson);
 
+        log.debug("Queueing command for launch");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
         final Container execution = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? execution.serviceId() : execution.containerId());
+        containersToCleanUp.add(execution.containerOrServiceId());
+
+        log.debug("Waiting until container {} {} is finalized...", execution.databaseId(), execution.containerOrServiceId());
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, execution), is(true));
+        log.debug("Container {} {} is finalized!", execution.databaseId(), execution.containerOrServiceId());
 
         TestingUtils.commitTransaction();
 
-        log.debug("Waiting until container is done finalizing");
-        await().until(TestingUtils.containerIsFinalized(containerService, execution));
-
-        // Assert that upload doesn't fail, this means that the proper files and params were passed to our mock methods
-        assertThat(fakeWorkflow.getStatus(),  not(startsWith(PersistentWorkflowUtils.FAILED)));
+        final Container exited = containerService.get(execution.databaseId());
+        assertThat(exited.status(), not(containsString("Failed")));
+        assertThat(exited.exitCode(), is("0"));
+        assertThat(fakeWorkflow.getStatus(), not(startsWith(PersistentWorkflowUtils.FAILED)));
     }
 
     private void printContainerLogs(final Container container) throws IOException {

@@ -4,6 +4,7 @@ import com.google.common.base.MoreObjects;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
@@ -13,6 +14,8 @@ import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
@@ -44,6 +47,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private String containerId;
     private String workflowId;
     private String userId;
+    private Backend backend;
     private Boolean swarm;
     private String serviceId;
     private String taskId;
@@ -95,7 +99,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setServiceId(containerPojo.serviceId());
         this.setTaskId(containerPojo.taskId());
         this.setNodeId(containerPojo.nodeId());
-        this.setSwarm(containerPojo.swarm());
+        this.setBackend(containerPojo.backend());
         this.setDockerImage(containerPojo.dockerImage());
         this.setContainerName(containerPojo.containerName());
         this.setCommandLine(containerPojo.commandLine());
@@ -310,12 +314,27 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.userId = user;
     }
 
-    public Boolean getSwarm() {
-        return swarm;
+    @Enumerated(EnumType.STRING)
+    public Backend getBackend() {
+        return backend;
     }
 
-    public void setSwarm(final Boolean swarm) {
-        this.swarm = swarm != null && swarm;
+    public void setBackend(Backend backend) {
+        if (backend == null) {
+            // Default for backwards compatibility
+            backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
+        }
+        this.backend = backend;
+    }
+
+    @Deprecated
+    public boolean getSwarm() {
+        return getBackend() == Backend.SWARM;
+    }
+
+    @Deprecated
+    public void setSwarm(final boolean swarmMode) {
+        this.swarm = swarmMode;
     }
 
     public String getServiceId() {

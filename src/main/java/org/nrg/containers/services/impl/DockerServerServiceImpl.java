@@ -1,7 +1,5 @@
 package org.nrg.containers.services.impl;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -12,7 +10,9 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class DockerServerServiceImpl implements DockerServerService {
@@ -26,7 +26,9 @@ public class DockerServerServiceImpl implements DockerServerService {
     @Override
     @Nonnull
     public List<DockerServer> getServers() {
-        return toPojo(dockerServerEntityService.getAllWithDisabled());
+        final List<DockerServerEntity> dockerServerEntities = dockerServerEntityService.getAllWithDisabled();
+        return dockerServerEntities == null ? Collections.emptyList() :
+                dockerServerEntities.stream().map(this::toPojo).collect(Collectors.toList());
     }
 
     @Override
@@ -58,20 +60,6 @@ public class DockerServerServiceImpl implements DockerServerService {
     @Nullable
     public DockerServer toPojo(final DockerServerEntity dockerServerEntity) {
         return dockerServerEntity == null ? null : DockerServer.create(dockerServerEntity);
-    }
-
-    @Nonnull
-    public List<DockerServer> toPojo(final List<DockerServerEntity> dockerServerEntities) {
-        final List<DockerServer> returnList = Lists.newArrayList();
-        if (dockerServerEntities != null) {
-            returnList.addAll(Lists.transform(dockerServerEntities, new Function<DockerServerEntity, DockerServer>() {
-                @Override
-                public DockerServer apply(final DockerServerEntity input) {
-                    return toPojo(input);
-                }
-            }));
-        }
-        return returnList;
     }
 
     @Nonnull

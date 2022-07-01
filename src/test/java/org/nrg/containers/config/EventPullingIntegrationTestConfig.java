@@ -1,6 +1,7 @@
 package org.nrg.containers.config;
 
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
@@ -30,9 +31,10 @@ public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
                                                          final ContainerService containerService,
                                                          final DockerServerService dockerServerService,
                                                          final NrgEventServiceI eventService,
-                                                         @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo) {
+                                                         @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
+                                                         final KubernetesClientFactory kubernetesClientFactory) {
         return new ContainerStatusUpdater(
-                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo
+                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo, kubernetesClientFactory
         );
     }
 

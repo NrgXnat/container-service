@@ -1,13 +1,12 @@
 package org.nrg.containers.services.impl;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.command.auto.Command;
@@ -15,6 +14,7 @@ import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.image.docker.DockerImageAndCommandSummary;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
 import org.nrg.containers.services.CommandLabelService;
@@ -229,7 +229,25 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerServerWithPing setServer(final DockerServer server) {
+    public DockerServerWithPing setServer(final DockerServer server) throws InvalidDefinitionException {
+        if (server.backend() == Backend.KUBERNETES) {
+            // Check that container user is parsable as a long
+            final String containerUser = server.containerUser();
+            if (StringUtils.isNotBlank(containerUser)) {
+                try {
+                    Long.parseLong(containerUser);
+                } catch (NumberFormatException e) {
+                    throw new InvalidDefinitionException("If set, container user must be a string with integer value with " +
+                            "kubernetes backend");
+                }
+            }
+        } else {
+            // Docker + Swarm must have a host configured
+            if (StringUtils.isBlank(server.host())) {
+                throw new InvalidDefinitionException("Host cannot be empty for " + server.backend() + " server setting");
+            }
+        }
+
         final DockerServer dockerServer = dockerServerService.setServer(server);
         final boolean ping = controlApi.canConnect();
         return DockerServerWithPing.create(dockerServer, ping);
@@ -244,20 +262,24 @@ public class DockerServiceImpl implements DockerService {
     public List<DockerImage> getInstalledImages()
             throws NoDockerServerException, DockerServerException {
         return controlApi.getAllImages();
+
     }
 
     @Override
     public List<DockerImage> getAllImages()
             throws NoDockerServerException, DockerServerException {
-        /* Get set of unique image names referenced in all commands */
+        // Pre-populate list from Docker-installed images
+        List<DockerImage> allImages = getInstalledImages();
+
+        // Get set of unique image names referenced in all commands
         Set<String> cmdImageTags = commandService.getAll().stream()
                 .filter(command ->StringUtils.isNotBlank(command.image()))
                 .map(command -> command.image())
                 .collect(Collectors.toCollection(HashSet::new));
+
         // Create Image objects for command images not already installed
-        List<DockerImage> allImages = getInstalledImages();
-        List<String> installedTags = allImages.stream()
-                .map(DockerImage::tags).flatMap(List::stream).collect(Collectors.toList());
+        List<String> installedTags = allImages.stream().map(DockerImage::tags)
+                .flatMap(List::stream).collect(Collectors.toList());
         for (final String cmdImageTag : cmdImageTags.stream()
                 .filter(tag -> !installedTags.contains(tag))
                 .collect(Collectors.toList())){

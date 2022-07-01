@@ -11,6 +11,7 @@ import org.junit.runner.RunWith;
 import org.nrg.containers.config.ContainerRestApiTestConfig;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.xdat.security.helpers.Permissions;
@@ -105,7 +106,7 @@ public class ContainerRestApiTest {
                         Container.builder()
                                 .containerId(containerIds[i])
                                 .serviceId(serviceIds[i])
-                                .swarm(serviceIds[i] != null)
+                                .backend(serviceIds[i] != null ? Backend.SWARM : Backend.DOCKER)
                                 .status(states[i])
                                 .project(projects[i])
                                 .commandLine("")

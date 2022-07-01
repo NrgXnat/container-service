@@ -27,6 +27,7 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.configuration.CommandConfiguration;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
@@ -151,7 +152,7 @@ public class CommandResolutionTest {
                 .id(0)
                 .name("")
                 .host("")
-                .swarmMode(false)
+                .backend(Backend.DOCKER)
                 .lastEventCheckTime(new Date())
                 .pullImagesOnXnatInit(false)
                 .autoCleanup(false)

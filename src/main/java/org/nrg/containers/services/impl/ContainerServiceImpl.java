@@ -13,6 +13,7 @@ import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerBackendException;
@@ -35,6 +36,7 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
+import org.nrg.containers.model.container.KubernetesJobInfo;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerHistory;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
@@ -43,6 +45,7 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandResolutionService;
@@ -830,11 +833,38 @@ public class ContainerServiceImpl implements ContainerService {
             containerWithAddedEvent = container;
         }
 
+        if (containerWithAddedEvent.backend() == Backend.KUBERNETES && event instanceof KubernetesStatusChangeEvent) {
+            KubernetesJobInfo kInfo = ((KubernetesStatusChangeEvent) event).kubernetesJobInfo();
+
+            // Check if we need to set additional ids
+            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kInfo.podName() != null;
+            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kInfo.containerId() != null;
+            if (shouldUpdatePodName || shouldUpdateContainerId) {
+                Container.Builder builder = containerWithAddedEvent.toBuilder();
+
+                if (shouldUpdatePodName) {
+                    log.debug("Container {} for job {}: setting taskId to pod name {}",
+                            container.databaseId(), container.jobName(), kInfo.podName()
+                    );
+                    builder.taskId(kInfo.podName());
+                }
+                if (shouldUpdateContainerId) {
+                    log.debug("Container {} for job {}: setting containerId to container id {}",
+                            container.databaseId(), container.jobName(), kInfo.containerId()
+                    );
+                    builder.containerId(kInfo.containerId());
+                }
+                containerEntityService.update(fromPojo(builder.build()));
+                containerWithAddedEvent = retrieve(container.databaseId());
+            }
+        }
+
         if (event.isExitStatus()) {
             log.debug("Container is dead. Finalizing.");
 
-            // Docker containers always end with status "die". Have to determine success/failure from exit code.
-            queueFinalize(event.exitCode(), true, containerWithAddedEvent, userI);
+            queueFinalize(event.exitCode(),
+                    ContainerUtils.statusIsSuccessful(containerWithAddedEvent.status(), containerWithAddedEvent.backend()),
+                    containerWithAddedEvent, userI);
         }
 
         log.debug("Done processing container event: {}", event);
@@ -1198,7 +1228,7 @@ public class ContainerServiceImpl implements ContainerService {
             throws ContainerException {
         String status = container.lastHistoryStatus();
         boolean isSuccessfulStatus = status == null || status.equals(FINALIZING) ||
-                ContainerUtils.statusIsSuccessful(status, container.isSwarmService());
+                ContainerUtils.statusIsSuccessful(status, container.backend());
         finalize(container, userI, container.exitCode(), isSuccessfulStatus);
     }
 

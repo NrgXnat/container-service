@@ -6,9 +6,9 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.exceptions.UnauthorizedException;
@@ -25,9 +25,9 @@ import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
+import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
-import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
@@ -92,17 +92,18 @@ public class DockerRestApi extends AbstractXapiRestController {
             notes = "Save new Docker server configuration values")
     @ApiResponses({
             @ApiResponse(code = 201, message = "The Docker server configuration was saved"),
-            @ApiResponse(code = 400, message = "Must set the \"host\" property in request body"),
+            @ApiResponse(code = 400, message = "Configuration was invalid"),
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/server", method = POST, restrictTo = Admin)
     public ResponseEntity<DockerServerWithPing> setServer(final @RequestBody DockerServer dockerServer)
             throws JsonProcessingException, UnauthorizedException, BadRequestException {
-        if (StringUtils.isBlank(dockerServer.host())) {
-            throw new BadRequestException("Must set the \"host\" property in request body.");
-        }
 
-        final DockerServerWithPing server = dockerService.setServer(dockerServer);
-        return new ResponseEntity<>(server, HttpStatus.CREATED);
+        try {
+            final DockerServerWithPing server = dockerService.setServer(dockerServer);
+            return new ResponseEntity<>(server, HttpStatus.CREATED);
+        } catch (InvalidDefinitionException e) {
+            throw new BadRequestException(e.getMessage());
+        }
     }
 
     @XapiRequestMapping(value = "/server/ping", method = GET)

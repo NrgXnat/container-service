@@ -5,10 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.mandas.docker.client.exceptions.TaskNotFoundException;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
@@ -40,6 +42,7 @@ public class ContainerStatusUpdater implements Runnable {
     private final DockerServerService dockerServerService;
     private final NrgEventServiceI eventService;
     private final XnatAppInfo xnatAppInfo;
+    private final KubernetesClientFactory kubernetesClientFactory;
 
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
@@ -51,12 +54,14 @@ public class ContainerStatusUpdater implements Runnable {
                                   final ContainerService containerService,
                                   final DockerServerService dockerServerService,
                                   final NrgEventServiceI eventService,
-                                  final XnatAppInfo xnatAppInfo) {
+                                  final XnatAppInfo xnatAppInfo,
+                                  final KubernetesClientFactory kubernetesClientFactory) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.eventService = eventService;
         this.xnatAppInfo = xnatAppInfo;
+        this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
     @Override
@@ -152,12 +157,21 @@ public class ContainerStatusUpdater implements Runnable {
     @Nonnull
     private UpdateReport checkForUpdatesAndThrowEvents(final DockerServer server) {
         // Delegate to backend-specific update methods
-        if (server.swarmMode()) {
-            return checkForDockerSwarmServiceUpdatesAndThrowEvents(server);
-        } else {
-            return checkForDockerContainerUpdatesAndThrowEvents(server);
-        }
+        switch (server.backend()) {
+            case SWARM:
+                return checkForDockerSwarmServiceUpdatesAndThrowEvents(server);
+            case DOCKER:
+                return checkForDockerContainerUpdatesAndThrowEvents(server);
+            case KUBERNETES:
+                try {
+                    // Make sure the informer is running. It will handle throwing events on its own.
+                    kubernetesClientFactory.getKubernetesClient(server).start();
+                } catch (NoContainerServerException e) {
+                    return UpdateReport.singleton(UpdateReportEntry.failure(null, e.getMessage()));
+                }
 
+        }
+        return UpdateReport.singleton(UpdateReportEntry.success());
     }
 
     @Nonnull

@@ -17,6 +17,7 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandResolutionService;
@@ -144,9 +145,12 @@ public class QueueConsumerTest {
             }
         }
 
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
-                false, null, null, null,
-                false, null, true,null, null, true));
+        dockerServerService.setServer(DockerServer.builder()
+                .name("Test server")
+                .host(containerHost)
+                .certPath(certPath)
+                .backend(Backend.DOCKER)
+                .build());
 
         // Mock the userI
         mockUser = mock(UserI.class);

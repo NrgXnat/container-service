@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Function;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -25,6 +26,7 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.containers.utils.JsonDateSerializer;
 import org.nrg.containers.utils.JsonStringToDateSerializer;
@@ -41,6 +43,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.nrg.containers.utils.ContainerUtils.MIB_TO_BYTES;
@@ -50,11 +53,11 @@ import static org.nrg.containers.utils.ContainerUtils.instanceOrDefault;
 @Slf4j
 @AutoValue
 public abstract class Container {
-    @JsonIgnore private List<String> _bindMountStrings = null;
-    @JsonIgnore private List<String> _envStrings = null;
-    @JsonIgnore private List<String> _portStrings = null;
-    @JsonIgnore private String exitCode;
-    @JsonIgnore private List<ContainerHistory> sortedHist = null;
+    @JsonIgnore private volatile List<String> _bindMountStrings = null;
+    @JsonIgnore private volatile List<String> _envStrings = null;
+    @JsonIgnore private volatile List<String> _portStrings = null;
+    @JsonIgnore private volatile String exitCode;
+    @JsonIgnore private volatile List<ContainerHistory> sortedHist = null;
 
     @JsonProperty("id") public abstract long databaseId();
     @JsonProperty("command-id") public abstract long commandId();
@@ -66,7 +69,7 @@ public abstract class Container {
     @Nullable @JsonProperty("workflow-id") public abstract String workflowId();
     @JsonProperty("user-id") public abstract String userId();
     @JsonProperty("project") @Nullable public abstract String project();
-    @Nullable @JsonProperty("swarm") public abstract Boolean swarm();
+    @JsonProperty("backend") public abstract Backend backend();
     @Nullable @JsonProperty("service-id") public abstract String serviceId();
     @Nullable @JsonProperty("task-id") public abstract String taskId();
     @Nullable @JsonProperty("node-id") public abstract String nodeId();
@@ -98,6 +101,31 @@ public abstract class Container {
     @JsonProperty("gpus") @Nullable public abstract String gpus();
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
+
+    /**
+     * @deprecated Use {@link Container#backend()} instead
+     */
+    @Deprecated
+    @JsonProperty("swarm")
+    public Boolean swarm() {
+        return backend() == Backend.SWARM;
+    }
+
+    @JsonIgnore
+    public String podName() {
+        return backend() == Backend.KUBERNETES ? taskId() : null;
+    }
+
+    @JsonIgnore
+    public String jobName() {
+        return backend() == Backend.KUBERNETES ? serviceId() : null;
+    }
+
+    @JsonIgnore
+    public String containerNameOrRandom() {
+        final String name = containerName();
+        return Strings.isNullOrEmpty(name) ? UUID.randomUUID().toString() : name;
+    }
 
     @JsonIgnore
     public boolean overrideEntrypointNonnull() {
@@ -158,15 +186,18 @@ public abstract class Container {
         return _portStrings;
     }
 
+    /**
+     * @deprecated Use {@link Container#backend()} instead
+     */
+    @Deprecated
     @JsonIgnore
     public boolean isSwarmService() {
-        final Boolean swarm = swarm();
-        return swarm != null && swarm;
+        return backend() == Backend.SWARM;
     }
 
     @JsonIgnore
     public String containerOrServiceId() {
-        return isSwarmService() ? serviceId() : containerId();
+        return backend() == Backend.DOCKER ? containerId() : serviceId();
     }
 
     @JsonIgnore
@@ -308,6 +339,7 @@ public abstract class Container {
                                    @JsonProperty("workflow-id") final String workflowId,
                                    @JsonProperty("user-id") final String userId,
                                    @JsonProperty("project") final String project,
+                                   @JsonProperty("backend") Backend backend,
                                    @JsonProperty("swarm") final Boolean swarm,
                                    @JsonProperty("service-id") final String serviceId,
                                    @JsonProperty("task-id") final String taskId,
@@ -337,7 +369,9 @@ public abstract class Container {
                                    @JsonProperty("network") final String network,
                                    @JsonProperty("container-labels") final Map<String, String> containerLabels)
     {
-
+        if (backend == null) {
+            backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
+        }
         return builder()
                 .databaseId(databaseId)
                 .status(status)
@@ -348,7 +382,7 @@ public abstract class Container {
                 .workflowId(workflowId)
                 .userId(userId)
                 .project(project)
-                .swarm(swarm)
+                .backend(backend)
                 .serviceId(serviceId)
                 .taskId(taskId)
                 .nodeId(nodeId)
@@ -393,7 +427,7 @@ public abstract class Container {
                 .workflowId(containerEntity.getWorkflowId())
                 .userId(containerEntity.getUserId())
                 .project(containerEntity.getProject())
-                .swarm(containerEntity.getSwarm())
+                .backend(containerEntity.getBackend())
                 .serviceId(containerEntity.getServiceId())
                 .taskId(containerEntity.getTaskId())
                 .nodeId(containerEntity.getNodeId())
@@ -440,30 +474,8 @@ public abstract class Container {
                 .build();
     }
 
-    public static Container containerFromResolvedCommand(final ResolvedCommand resolvedCommand,
-                                                         final String containerId,
-                                                         final String userId) {
-        return builderFromResolvedCommand(resolvedCommand)
-                .userId(userId)
-                .containerId(containerId)
-                .swarm(false)
-                .build();
-    }
-
-    public static Container serviceFromResolvedCommand(final ResolvedCommand resolvedCommand,
-                                                       final String serviceId,
-                                                       final String userId) {
-        return builderFromResolvedCommand(resolvedCommand)
-                .userId(userId)
-                .serviceId(serviceId)
-                .swarm(true)
-                .build();
-    }
-
     public static Container.Builder builderFromResolvedCommand(final ResolvedCommand resolvedCommand) {
-
         return builder()
-                .databaseId(0L)
                 .commandId(resolvedCommand.commandId())
                 .wrapperId(resolvedCommand.wrapperId())
                 .project(resolvedCommand.project())
@@ -497,7 +509,9 @@ public abstract class Container {
     }
 
     public static Builder builder() {
-        return new AutoValue_Container.Builder();
+        return new AutoValue_Container.Builder()
+                .databaseId(0L)
+                .backend(Backend.DOCKER);
     }
 
     public abstract Builder toBuilder();
@@ -623,7 +637,7 @@ public abstract class Container {
         public abstract Builder commandLine(String commandLine);
         public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
         public abstract Builder workingDirectory(String workingDirectory);
-        public abstract Builder swarm(Boolean swarm);
+        public abstract Builder backend(Backend backend);
         public abstract Builder serviceId(String serviceId);
         public abstract Builder taskId(String taskId);
         public abstract Builder nodeId(String nodeId);

@@ -60,9 +60,9 @@ public interface ContainerControlApi {
     ContainerMessage getContainer(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
     String getContainerStatus(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
 
-    String getLog(String backendId, LogType logType) throws ContainerBackendException, NoContainerServerException;
+    @Deprecated String getLog(String backendId, LogType logType) throws ContainerBackendException, NoContainerServerException;
     String getLog(Container container, LogType logType) throws ContainerBackendException, NoContainerServerException;
-    String getLog(String backendId, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
+    @Deprecated String getLog(String backendId, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
     String getLog(Container container, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
     InputStream getLogStream(Container container, LogType logType, boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
     @Deprecated String getStdoutLog(Container container) throws NoDockerServerException, DockerServerException;

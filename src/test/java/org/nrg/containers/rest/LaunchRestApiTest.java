@@ -175,8 +175,11 @@ public class LaunchRestApiTest {
                 .commandLine("echo hello world")
                 .addRawInputValue(INPUT_NAME, INPUT_VALUE)
                 .build();
-        CONTAINER = Container.containerFromResolvedCommand(RESOLVED_COMMAND, FAKE_CONTAINER_ID, username)
-                .toBuilder().workflowId(FAKE_WORKFLOW_ID).build();
+        CONTAINER = Container.builderFromResolvedCommand(RESOLVED_COMMAND)
+                .userId(username)
+                .containerId(FAKE_CONTAINER_ID)
+                .workflowId(FAKE_WORKFLOW_ID)
+                .build();
         final ContainerEntity containerEntity = ContainerEntity.fromPojo(CONTAINER);
         when(mockContainerEntityService.save(containerEntity, mockAdmin)).thenReturn(containerEntity);
 

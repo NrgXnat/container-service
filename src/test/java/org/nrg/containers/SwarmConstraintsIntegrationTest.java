@@ -9,6 +9,9 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.messages.swarm.Node;
@@ -21,6 +24,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
@@ -29,7 +33,6 @@ import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
-import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
@@ -65,18 +68,23 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.either;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.any;
@@ -99,12 +107,8 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmConstraintsIntegrationTest {
-    private boolean swarmMode = true;
-
     private String certPath;
     private String containerHost;
-    private Node managerNode = null;
-    private Map<String, String> managerNodeLabels = null;
 
     private UserI mockUser;
     private String buildDir;
@@ -116,12 +120,53 @@ public class SwarmConstraintsIntegrationTest {
     private final String FAKE_HOST = "mock://url";
     private FakeWorkflow fakeWorkflow = new FakeWorkflow();
 
+    private final static String LABEL_NAME = "cstesttype";
+    private final static String CONSTRAINT_LABEL_ATTRIBUTE = "node.labels." + LABEL_NAME;
+    private final static String CORRECT_LABEL_VALUE = "Fun";
+    private final static String INCORRECT_LABEL_VALUE = "NOT " + CORRECT_LABEL_VALUE;
+    private final static String RED_HERRING_LABEL_VALUE = "Boring";
+
+    private final static DockerServerBase.DockerServerSwarmConstraint IS_MANAGER_NODE_UNSETTABLE_CONSTRAINT =
+            DockerServerBase.DockerServerSwarmConstraint.builder()
+                    .id(0L)
+                    .attribute("node.role")
+                    .comparator("==")
+                    .values(Collections.singletonList("manager"))
+                    .userSettable(false)
+                    .build();
+    private final static DockerServerBase.DockerServerSwarmConstraint SETTABLE_CONSTRAINT =
+            DockerServerBase.DockerServerSwarmConstraint.builder()
+                    .id(0L)
+                    .attribute(CONSTRAINT_LABEL_ATTRIBUTE)
+                    .comparator("==")
+                    .values(Arrays.asList(CORRECT_LABEL_VALUE, INCORRECT_LABEL_VALUE, RED_HERRING_LABEL_VALUE))
+                    .userSettable(true)
+                    .build();
+
+    private final static List<DockerServerBase.DockerServerSwarmConstraint> DEFAULT_SWARM_SERVER_CONSTRAINTS =
+            Arrays.asList(IS_MANAGER_NODE_UNSETTABLE_CONSTRAINT, SETTABLE_CONSTRAINT);
+    private final static Map<String, String> DEFAULT_MANAGER_NODE_LABELS = new HashMap<>();
+    static {
+        DEFAULT_MANAGER_NODE_LABELS.put(LABEL_NAME, CORRECT_LABEL_VALUE);
+    }
+
+    private final static LaunchUi.LaunchUiServerConstraintSelected CORRECT_SELECTED_CONSTRAINT =
+            LaunchUi.LaunchUiServerConstraintSelected.builder()
+                    .attribute(CONSTRAINT_LABEL_ATTRIBUTE)
+                    .value(CORRECT_LABEL_VALUE)
+                    .build();
+    private final static LaunchUi.LaunchUiServerConstraintSelected INCORRECT_SELECTED_CONSTRAINT =
+            LaunchUi.LaunchUiServerConstraintSelected.builder()
+                    .attribute(CONSTRAINT_LABEL_ATTRIBUTE)
+                    .value(INCORRECT_LABEL_VALUE)
+                    .build();
+
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
+    private final Map<String, Map<String, String>> nodeLabelsToReset = new HashMap<>();
 
+    private DockerServer.Builder dockerServerBuilder;
     private static DockerClient CLIENT;
-
-    private List<DockerServerBase.DockerServerSwarmConstraint> constraints;
 
     @Autowired private CommandService commandService;
     @Autowired private ContainerService containerService;
@@ -137,6 +182,17 @@ public class SwarmConstraintsIntegrationTest {
     private CommandWrapper sleeperWrapper;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
+
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
+
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
 
     @Before
     public void setup() throws Exception {
@@ -242,6 +298,21 @@ public class SwarmConstraintsIntegrationTest {
                         .build())
                 .build());
         sleeperWrapper = sleeper.xnatCommandWrappers().get(0);
+
+        dockerServerBuilder = DockerServer.builder()
+                .name("Test server")
+                .host(containerHost)
+                .certPath(certPath)
+                .lastEventCheckTime(new Date())
+                .backend(Backend.SWARM);
+
+        // Start with no constraints
+        dockerServerService.setServer(dockerServerBuilder.swarmConstraints(Collections.emptyList()).build());
+        TestingUtils.commitTransaction();
+
+        CLIENT = controlApi.getClient();
+        TestingUtils.skipIfCannotConnectToSwarm(CLIENT);
+        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
     }
 
     @After
@@ -249,11 +320,7 @@ public class SwarmConstraintsIntegrationTest {
         fakeWorkflow = new FakeWorkflow();
         for (final String containerToCleanUp : containersToCleanUp) {
             try {
-                if (swarmMode) {
-                    CLIENT.removeService(containerToCleanUp);
-                } else {
-                    CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
-                }
+                CLIENT.removeService(containerToCleanUp);
             } catch (Exception e) {
                 // do nothing
             }
@@ -269,102 +336,176 @@ public class SwarmConstraintsIntegrationTest {
         }
         imagesToCleanUp.clear();
 
-        if (managerNode != null) {
-            NodeInfo nodeInfo = CLIENT.inspectNode(managerNode.id());
-            NodeSpec origSpec = NodeSpec.builder(managerNode.spec())
-                    .labels(managerNodeLabels)
+        for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
+            String nodeId = entry.getKey();
+            Map<String, String> originalLabels = entry.getValue();
+            NodeInfo nodeInfo = CLIENT.inspectNode(nodeId);
+            NodeSpec current = nodeInfo.spec();
+            NodeSpec original = NodeSpec.builder()
+                    .name(current.name())
+                    .role(current.role())
+                    .availability(current.availability())
+                    .labels(originalLabels)
                     .build();
-            CLIENT.updateNode(managerNode.id(), nodeInfo.version().index(), origSpec);
+            CLIENT.updateNode(nodeId, nodeInfo.version().index(), original);
         }
-        managerNode = null;
-        managerNodeLabels = null;
+        nodeLabelsToReset.clear();
 
         CLIENT.close();
     }
 
-    private void setClient() throws Exception {
-        CLIENT = controlApi.getClient();
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.pullBusyBox(CLIENT);
+    private List<DockerServerBase.DockerServerSwarmConstraint> setUpServerWithConstraints() throws Exception {
+        // We will do two things here:
+        //  1. Add labels to a manager node.
+        //     (We target manager bc every swarm has one, some test ones may not have workers.)
+        //  2. Add constraint values to our DockerServer instance that are capable of matching the manager node.
+        // The various tests will launch containers with inputs that either do or don't match the constraints.
+
+        // The server constraints
+        final List<DockerServerBase.DockerServerSwarmConstraint> constraints = new ArrayList<>(DEFAULT_SWARM_SERVER_CONSTRAINTS);
+
+        // Find manager
+        List<Node> managerNodes = CLIENT.listNodes(Node.Criteria.builder().nodeRole("manager").build());
+        assertThat(managerNodes.size(), greaterThan(0));
+        Node managerNode = managerNodes.get(0);
+
+        // Add test labels
+        Map<String, String> oldLabels = managerNode.spec().labels();
+        Map<String, String> labelsToAdd = new HashMap<>(DEFAULT_MANAGER_NODE_LABELS);
+
+        if (managerNodes.size() > 1) {
+            // We have multiple manager nodes
+            // We only want to target one, so we need to isolate it.
+            // Add a new label to the node + a criterion on our settings that matches the label
+            final String uniqueLabelName = UUID.randomUUID().toString();
+            final String uniqueLabelValue = UUID.randomUUID().toString();
+
+            // Add this unique value to our swarm constraints
+            constraints.add(DockerServerBase.DockerServerSwarmConstraint.builder()
+                    .id(0L)
+                    .attribute("node.labels." + uniqueLabelName)
+                    .comparator("==")
+                    .values(Collections.singletonList(uniqueLabelValue))
+                    .userSettable(false)
+                    .build()
+            );
+
+            // Add label to manager node so we can isolate it
+            labelsToAdd.put(uniqueLabelName, uniqueLabelValue);
+        }
+
+        // Ensure we clean up node label changes
+        nodeLabelsToReset.put(managerNode.id(), oldLabels);
+        Map<String, String> newLabels = new HashMap<>(oldLabels);
+        newLabels.putAll(labelsToAdd);
+
+        // Update manager node to match constraints
+        CLIENT.updateNode(managerNode.id(), managerNode.version().index(),
+                NodeSpec.builder(managerNode.spec()).labels(newLabels).build()
+        );
+
+        // Add constraints to DockerServer settings
+        DockerServer server = dockerServerBuilder
+                .swarmConstraints(constraints)
+                .build();
+
+        dockerServerService.setServer(server);
+        TestingUtils.commitTransaction();
+
+        return constraints;
     }
 
     @Test
     @DirtiesContext
-    public void testThatServicesRunWithoutConstraints() throws Exception {
-        DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, true, null, null, true);
-        dockerServerService.setServer(server);
-        setClient();
+    public void testAlwaysRunIfNoConstraints() throws Exception {
+        // Server currently has no constraints defined
+        assertThat(dockerServerService.getServer().swarmConstraints(), is(either(empty()).or(nullValue())));
 
+        log.debug("Launching with no constraints");
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
+
+        log.debug("Waiting for service to start running...");
         await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
+        log.debug("SUCCESS: Service is running");
     }
 
     @Test
     @DirtiesContext
-    public void testThatServicesRunWithoutConstraintsAlt() throws Exception {
-        DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, true,
-                Collections.emptyList(), null, true);
-        dockerServerService.setServer(server);
-        setClient();
+    public void testRunIfConstraintsAreSatisfied() throws Exception {
+        // Set up DockerService constraints + node labels
+        setUpServerWithConstraints();
 
-        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
-        TestingUtils.commitTransaction();
-        Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(service.serviceId());
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
-    }
-
-    @Test
-    @DirtiesContext
-    public void testThatServicesRunWithCorrectConstraintsAndNotOtherwise() throws Exception {
-        LaunchUi.LaunchUiServerConstraintSelected selConstr = setupServerWithConstraints();
+        // Launch with a matching constraint
         Map<String, String> userInputs = new HashMap<>();
         userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
-                mapper.writeValueAsString(Collections.singletonList(selConstr)));
+                mapper.writeValueAsString(Collections.singletonList(CORRECT_SELECTED_CONSTRAINT)));
 
+        log.debug("Launching with satisfiable constraints");
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
                 0L, null, userInputs, mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
 
-        // Now update it so that it fails
-        NodeInfo nodeInfo = CLIENT.inspectNode(managerNode.id());
-        NodeSpec noRunSpec = NodeSpec.builder(managerNode.spec())
-                .addLabel(selConstr.attribute().replace("node.labels.", ""),
-                        "NOT" + selConstr.value())
-                .build();
-        CLIENT.updateNode(managerNode.id(), nodeInfo.version().index(), noRunSpec);
+        // Check that service does run
+        log.debug("Waiting for service to start running...");
+        await().until(TestingUtils.serviceIsRunning(CLIENT, service));
+        log.debug("SUCCESS: Service is running");
+    }
 
+    @Test
+    @DirtiesContext
+    public void testDoNotRunIfConstraintsAreNotSatisfied() throws Exception {
+        // Set up DockerService constraints + node labels
+        setUpServerWithConstraints();
+
+        // Launch with a non-matching constraint
+        Map<String, String> userInputs = new HashMap<>();
+        userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
+                mapper.writeValueAsString(Collections.singletonList(INCORRECT_SELECTED_CONSTRAINT)));
+
+        log.debug("Launching with non-satisfiable constraints");
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
                 0L, null, userInputs, mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
-        Container service2 = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(service2.serviceId());
+        Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        containersToCleanUp.add(service.serviceId());
+
+        // Check that service is created
+        log.debug("Waiting for service to be created...");
         await().until(() -> {
             try {
-                return Objects.equals(containerService.get(service2.serviceId()).status(), ContainerServiceImpl.CREATED);
+                return Objects.equals(containerService.get(service.serviceId()).status(), "pending");
             } catch (Exception e) {
                 return false;
             }
         });
-        assertThat(TestingUtils.serviceIsRunning(CLIENT, service2, true).call(), is(false));
+        // Check that service is not running
+        log.debug("Service was created. Checking that service is not running");
+        assertThat(TestingUtils.serviceIsRunning(CLIENT, service, true).call(), is(false));
+        log.debug("SUCCESS: Service is not running");
     }
 
     @Test
     @DirtiesContext
     public void testConstraintsWithSetupAndWrapup() throws Exception {
+        // Set up DockerService constraints + node labels
+        final List<DockerServerBase.DockerServerSwarmConstraint> constraints = setUpServerWithConstraints();
+
+        // make a list for comparison
+        String[] expectedConstraints = constraints.stream().map(c -> {
+            if (c.attribute().equals(CONSTRAINT_LABEL_ATTRIBUTE)) {
+                return c.asStringConstraint(CORRECT_LABEL_VALUE);
+            } else {
+                return c.asStringConstraint();
+            }
+        }).toArray(String[]::new);
+
+        // Define command and wrapper with setup + wrapup
         String cmd = "/bin/sh -c \"echo hi; exit 0\"";
         String img = "busybox:latest";
         String setup = "setup";
@@ -376,7 +517,6 @@ public class SwarmConstraintsIntegrationTest {
                 .commandLine(cmd)
                 .type(DOCKER_SETUP.getName())
                 .build());
-        TestingUtils.commitTransaction();
 
         commandService.create(Command.builder()
                 .name(wrapup)
@@ -385,9 +525,8 @@ public class SwarmConstraintsIntegrationTest {
                 .commandLine(cmd)
                 .type(DOCKER_WRAPUP.getName())
                 .build());
-        TestingUtils.commitTransaction();
 
-        final Command mainCommand = commandService.create(Command.builder()
+        final Command main = commandService.create(Command.builder()
                 .name("main")
                 .image(img)
                 .version("0")
@@ -428,26 +567,17 @@ public class SwarmConstraintsIntegrationTest {
                         .build())
                 .build());
         TestingUtils.commitTransaction();
-        CommandWrapper wrapper = mainCommand.xnatCommandWrappers().get(0);
+        CommandWrapper wrapper = main.xnatCommandWrappers().get(0);
 
-        // setup server with constraints, return the one the user is to be "selecting"
-        LaunchUi.LaunchUiServerConstraintSelected selConstr = setupServerWithConstraints();
-        // make a list for comparison
-        List<String> expectedConstraints = constraints.stream().map(c -> {
-            if (c.attribute().equals(selConstr.attribute())) {
-                return c.asStringConstraint(selConstr.value());
-            } else {
-                return c.asStringConstraint();
-            }
-        }).collect(Collectors.toList());
-
+        // Launch with correct constraint
         Map<String, String> userInputs = new HashMap<>();
         userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
-                mapper.writeValueAsString(Collections.singletonList(selConstr)));
+                mapper.writeValueAsString(Collections.singletonList(CORRECT_SELECTED_CONSTRAINT)));
 
         String uri = TestingUtils.setupSessionMock(folder, mapper, userInputs);
         TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
+        log.debug("Launching with satisfiable constraints + setup + wrapup");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),
                 0L, null, userInputs, mockUser, fakeWorkflow);
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
@@ -456,6 +586,7 @@ public class SwarmConstraintsIntegrationTest {
         log.debug("Waiting until container is finalized");
         await().atMost(90L, TimeUnit.SECONDS)
                 .until(TestingUtils.containerIsFinalized(containerService, service), is(true));
+        log.debug("Service was finalized");
 
         final long databaseId = service.databaseId();
         final Container exited = containerService.get(databaseId);
@@ -467,126 +598,51 @@ public class SwarmConstraintsIntegrationTest {
         toCleanup.addAll(containerService.retrieveWrapupContainersForParent(databaseId));
         containersToCleanUp.addAll(toCleanup.stream().map(Container::serviceId)
                 .collect(Collectors.toList()));
+
+        // For the main container + setup + wrapup...
         for (Container ck : toCleanup) {
-            assertThat(ck.swarmConstraints(), containsInAnyOrder(expectedConstraints.toArray()));
+            log.debug("Checking {} container {} {}", ck.subtype(), ck.databaseId(), ck.serviceId());
+            // Each container got the same constraints
+            assertThat(ck.swarmConstraints(), containsInAnyOrder(expectedConstraints));
+
+            // Each exited successfully
             assertThat(ck.exitCode(), is("0"));
+
+            // Each workflow was marked complete
             assertThat(ck.status(), is(PersistentWorkflowUtils.COMPLETE));
         }
-    }
-
-    private LaunchUi.LaunchUiServerConstraintSelected setupServerWithConstraints() throws Exception {
-        // We need a client so we have to create a server, we'll update it shortly
-        DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, true, null, null, true);
-        DockerServerBase.DockerServer curServer = dockerServerService.setServer(server);
-        setClient();
-
-        // target manager bc every swarm has one and we want to test a non-label constraint
-        DockerServerBase.DockerServerSwarmConstraint constraintNotSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("node.role")
-                .comparator("==")
-                .values(Collections.singletonList("manager"))
-                .userSettable(false)
-                .build();
-
-        DockerServerBase.DockerServerSwarmConstraint constraintSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("node.labels.cstesttype")
-                .comparator("==")
-                .values(Arrays.asList("Fun","Boring"))
-                .userSettable(true)
-                .build();
-
-        constraints = Arrays.asList(constraintNotSettable, constraintSettable);
-
-        // target manager bc every swarm has one, some test ones may not have workers
-        List<Node> nodes = CLIENT.listNodes(Node.Criteria.builder().nodeRole("manager").build());
-        assertThat(nodes.size(), greaterThan(0));
-        managerNode = nodes.get(0);
-        managerNodeLabels = managerNode.spec().labels();
-
-        if (nodes.size() > 1) {
-            // we have to add a new criterion to isolate this particular node
-            DockerServerBase.DockerServerSwarmConstraint addlConstr = DockerServerBase.DockerServerSwarmConstraint.builder()
-                    .id(0L)
-                    .attribute("node.labels.addllabeltest")
-                    .comparator("==")
-                    .values(Collections.singletonList("iamatester"))
-                    .userSettable(false)
-                    .build();
-            constraints.add(addlConstr);
-
-            NodeSpec addlSpec = NodeSpec.builder(managerNode.spec())
-                    .addLabel(addlConstr.attribute().replace("node.labels.", ""),
-                            addlConstr.values().get(0))
-                    .build();
-
-            // Update single manager node so we can isolate it
-            CLIENT.updateNode(managerNode.id(), managerNode.version().index(), addlSpec);
-        }
-
-        dockerServerService.update(curServer.toBuilder().swarmConstraints(constraints).build());
-        TestingUtils.commitTransaction();
-
-        LaunchUi.LaunchUiServerConstraintSelected selConstr = LaunchUi.LaunchUiServerConstraintSelected.builder()
-                .attribute(constraintSettable.attribute())
-                .value(constraintSettable.values().get(0))
-                .build();
-
-        NodeSpec runSpec = NodeSpec.builder(managerNode.spec())
-                .addLabel(selConstr.attribute().replace("node.labels.", ""),
-                        selConstr.value())
-                .build();
-
-        // Update manager node to match constraints
-        CLIENT.updateNode(managerNode.id(), managerNode.version().index(), runSpec);
-
-        return selConstr;
+        log.debug("SUCCESS: All constraints were as expected and containers exited successfully");
     }
 
     @Test
     @DirtiesContext
-    public void testThatStandaloneContainersRunRegardlessOfConstraints() throws Exception {
-        // target manager bc every swarm has one and we want to test a non-label constraint
-        DockerServerBase.DockerServerSwarmConstraint constraintNotSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("node.role")
-                .comparator("==")
-                .values(Collections.singletonList("manager"))
-                .userSettable(false)
+    public void testDockerBackendIgnoresConstraints() throws Exception {
+        // Add constraints to DockerServer settings, but with Docker backend instead of Swarm
+        DockerServer server = dockerServerBuilder
+                .backend(Backend.DOCKER)
+                .swarmConstraints(DEFAULT_SWARM_SERVER_CONSTRAINTS)
                 .build();
-
-        DockerServerBase.DockerServerSwarmConstraint constraintSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("node.labels.type")
-                .comparator("==")
-                .values(Arrays.asList("Fun","Boring"))
-                .userSettable(true)
-                .build();
-
-        List<DockerServerBase.DockerServerSwarmConstraint> constraints = Arrays.asList(constraintNotSettable, constraintSettable);
-
-        DockerServer server = DockerServer.create(0L, "Test server", containerHost, certPath,
-                false, null, null, null,
-                false, null, true, constraints, null, true);
         dockerServerService.setServer(server);
-        setClient();
+        TestingUtils.commitTransaction();
 
+        // We do not set labels on manager node, which means constraints should be unsatisfiable
+
+        // In addition, we pass inputs that also make constraints unsatisfiable
         Map<String, String> userInputs = new HashMap<>();
-        LaunchUi.LaunchUiServerConstraintSelected selConstr = LaunchUi.LaunchUiServerConstraintSelected.builder()
-                .attribute(constraintSettable.attribute())
-                .value(constraintSettable.values().get(0))
-                .build();
         userInputs.put(CommandResolutionServiceImpl.swarmConstraintsTag,
-                mapper.writeValueAsString(Collections.singletonList(selConstr)));
+                mapper.writeValueAsString(Collections.singletonList(INCORRECT_SELECTED_CONSTRAINT)));
 
+        // Launch on local docker
+        log.debug("Launching on local docker with unsatisfiable constraints");
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
                 0L, null, userInputs, mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(container.containerId());
+
+        // Expect that constraints are ignored and container runs
+        log.debug("Waiting for container to run...");
         await().until(TestingUtils.containerIsRunning(CLIENT, false, container)); //Running = success!
+        log.debug("SUCCESS: Container is running");
     }
 }

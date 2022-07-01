@@ -37,18 +37,6 @@ public class DockerServerPrefsBean extends AbstractPreferenceBean {
         super(preferenceService, configFolderPaths, initPrefs);
     }
 
-    public void fromPojo(final DockerServerBase.DockerServer dockerServer) throws InvalidPreferenceName {
-        setHost(dockerServer.host());
-        setName(dockerServer.name());
-        setCertPath(dockerServer.certPath());
-        setContainerUser(dockerServer.containerUser());
-        setLastEventCheckTime(new Date()); // Initialize with current time
-    }
-
-    public DockerServerBase.DockerServer toPojo() {
-        return DockerServerBase.DockerServer.create(this);
-    }
-
     @NrgPreference(defaultValue = "Local socket")
     public String getName() {
         return getValue("name");
