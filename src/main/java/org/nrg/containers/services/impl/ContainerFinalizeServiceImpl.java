@@ -232,7 +232,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             }
 
             String status = null;
-            String details = "";
+            String details = wrkFlow != null ? wrkFlow.getDetails() : "";
             boolean processingCompleted = !isFailed;
 
             if (processingCompleted) {
@@ -261,24 +261,38 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                         .statusTime(statusTime);
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
-                for (Container.ContainerHistory history : toFinalize.history()) {
+                String exitCode = null;
+
+                // We have a sorted history which is most recent first.
+                // It will be better to iterate from least recent (i.e. oldest) to most recent,
+                //  that way when we find a "failed" state we know it is the first.
+                final List<Container.ContainerHistory> historyEntries = toFinalize.getSortedHistory();
+                Collections.reverse(historyEntries);
+                for (final Container.ContainerHistory history : historyEntries) {
                     String containerStatus = history.status();
                     containerStatus = containerStatus != null ?
                             containerStatus.replaceAll("^" + ContainerRequest.inQueueStatusPrefix, "")
                                     .replaceFirst(ContainerServiceImpl.WAITING + " \\(([^)]*)\\)", "$1")
                             : "";
-                    if (containerStatus.startsWith(PersistentWorkflowUtils.FAILED)) {
-                        status = containerStatus;
-                    } else if ((containerStatus.equals(TaskStatus.TASK_STATE_FAILED) || containerStatus.equals("die")) &&
-                            StringUtils.isNotBlank(history.message())) {
+                    final boolean startsWithFailed = containerStatus.startsWith(PersistentWorkflowUtils.FAILED);
+                    if (startsWithFailed ||
+                            containerStatus.equals(TaskStatus.TASK_STATE_FAILED) ||
+                            containerStatus.equals("die")) {
+                        // This history entry should give us the details that we need
+                        if (startsWithFailed) {
+                            status = containerStatus;
+                        }
                         details = history.message();
+                        exitCode = history.exitCode();
+
+                        break;
                     }
                 }
                 if (status == null || !status.startsWith(PersistentWorkflowUtils.FAILED)) {
                     // If it's not an XNAT failure status, we need to make it so
                     status = PersistentWorkflowUtils.FAILED;
                 }
-                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details));
+                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details, exitCode));
                 finalizedContainerBuilder.status(status)
                         .statusTime(new Date());
 

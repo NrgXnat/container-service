@@ -170,11 +170,11 @@ public abstract class Container {
     }
 
     @JsonIgnore
-    private synchronized List<ContainerHistory> getSortedHistory() {
+    public synchronized List<ContainerHistory> getSortedHistory() {
         if (sortedHist == null) {
             sortedHist = Ordering.natural().reverse().sortedCopy(this.history()); //Descending order (most recent first)
         }
-        return sortedHist;
+        return new ArrayList<>(sortedHist);
     }
 
     @JsonIgnore
