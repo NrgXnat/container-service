@@ -87,6 +87,14 @@ public enum CommandWrapperInputType {
                 return new HashSet<>(Arrays.asList(PROJECT, SUBJECT, SESSION));
             case RESOURCE:
                 return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN));
+            case FILE:
+            case FILE_INPUT:
+            case FILES:
+            case DIRECTORY:
+            case STRING:
+            case BOOLEAN:
+            case NUMBER:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN, RESOURCE));
             default:
                 return Collections.emptySet();
         }
