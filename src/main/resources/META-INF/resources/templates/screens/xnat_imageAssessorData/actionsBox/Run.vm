@@ -2,7 +2,5 @@
 
 <!-- xnat_projectData/actionsBox/RunContainer.vm -->
 
-#if ($turbineUtils.canEdit($user, $item))
-    <script src="$content.getURI('/scripts/xnat/plugin/containerService/commandUiLauncher.js')" type="text/javascript"></script>
-    <link href="$content.getURI('/scripts/xnat/plugin/containerService/commandUI.css')" rel="stylesheet" />
-#end
+<script src="$content.getURI('/scripts/xnat/plugin/containerService/commandUiLauncher.js')" type="text/javascript"></script>
+<link href="$content.getURI('/scripts/xnat/plugin/containerService/commandUI.css')" rel="stylesheet" />
