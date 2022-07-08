@@ -244,17 +244,18 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         ]),
                         spawn('div.host-type-settings.docker.swarm',[
                             spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
-                                'Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. ' +
-                                '<br>If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is root.'),
+                                'If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is "root".' +
+                                '<br><br>Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. '),
                         ]),
                         spawn('div.host-type-settings.kubernetes',[
                             spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
-                                '<br>In Kubernetes mode, value must be an integer.')
+                                '<br><br><strong>Note: In Kubernetes mode, value must be an integer uid.</strong>')
                         ]),
                         spawn('div.host-type-settings.docker.swarm.kubernetes',[
                             XNAT.ui.panel.input.text({
                                 name: 'container-user',
-                                label: 'Container User'
+                                label: 'Container User',
+                                className: 'validate-container-user'
                             })
                         ]),
 
@@ -310,15 +311,28 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     isDefault: true,
                     close: false,
                     action: function(obj){
-                        var $form = obj.$modal.find('form');
-                        // var $host = $form.find('input[name=host]');
-                        var pathPrefixes = $form.find('input.path-prefix').toArray();
+                        let $form = obj.$modal.find('form');
+                        let pathPrefixes = $form.find('input.path-prefix').toArray();
 
                         $form.find(':input').removeClass('invalid');
 
-                        var errors = [];
+                        let errors = [];
                         // if (csValidator([$host]).length) errors = errors.concat(csValidator([$host]));
                         if (csMultiFieldValidator(pathPrefixes).length) errors = errors.concat(csMultiFieldValidator(pathPrefixes));
+
+                        // custom validation for container user field
+                        let containerUser = $form.find('input[name=container-user]').val();
+                        let hostType = $form.find('.backend-selector').find('option:selected').val();
+                        if (containerUser.length && hostType === 'kubernetes') {
+                            let acceptablePatterns = [
+                                /^[0-9]+$/
+                            ];
+                            let passK8sValidation = false;
+                            acceptablePatterns.forEach((pattern) => {
+                                if (pattern.test(containerUser)) passK8sValidation=true;
+                            });
+                            if (!passK8sValidation) errors = errors.concat('Validation error: Kubernetes mode expects an integer UID for the container user input')
+                        }
 
                         if (errors.length) {
 
@@ -376,6 +390,14 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 containerHostManager.refreshTable();
                 xmodal.closeAll();
                 XNAT.ui.banner.top(2000, 'Saved.', 'success')
+            },
+            fail: function(e){
+                console.warn(e);
+                XNAT.dialog.open({
+                    title: 'Form Submission Error',
+                    width: 300,
+                    content: displayErrors(e.responseText)
+                })
             }
         });
     }
