@@ -1734,7 +1734,6 @@ public class DockerControlApi implements ContainerControlApi {
             DockerServer server = getServer();
             switch (server.backend()) {
                 case SWARM:
-                case KUBERNETES:
                     return server.maxConcurrentFinalizingJobs();
                 default:
                     return null;
