@@ -13,6 +13,7 @@ import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
@@ -192,19 +193,19 @@ public class DockerRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = "/hubs/{id:" + ID_REGEX + "}/ping", method = GET)
-    @ApiOperation(value = "Ping Docker Hub by ID", notes = "Returns \"OK\" on success.")
+    @ApiOperation(value = "Ping Docker Hub by ID", notes = "Returns status, \"OK\" response, and message on success.")
     @ResponseBody
-    public String pingHub(final @PathVariable long id,
-                          final @RequestParam(value = "username", required = false) String username,
-                          final @RequestParam(value = "password", required = false) String password)
+    public DockerHubBase.DockerHubStatus pingHub(final @PathVariable long id,
+                                                 final @RequestParam(value = "username", required = false) String username,
+                                                 final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         return dockerService.pingHub(id, username, password, null, null);
     }
 
     @XapiRequestMapping(value = "/hubs/{name:" + NAME_REGEX + "}/ping", method = GET)
-    @ApiOperation(value = "Ping Docker Hub by Name", notes = "Returns \"OK\" on success.")
+    @ApiOperation(value = "Ping Docker Hub by Name", notes = "Returns status, \"OK\" response, and message on success.")
     @ResponseBody
-    public String pingHub(final @PathVariable String name,
+    public DockerHubBase.DockerHubStatus pingHub(final @PathVariable String name,
                           final @RequestParam(value = "username", required = false) String username,
                           final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException, NotUniqueException {

@@ -60,7 +60,6 @@ public class DockerControlApiIntegrationTest {
 
     private static final String BUSYBOX_LATEST = "busybox:latest";
     private static final String ALPINE_LATEST = "alpine:latest";
-    // private static final String KELSEYM_PYDICOM = "kelseym/pydicom:latest";
     private static final String BUSYBOX_ID = "sha256:47bcc53f74dc94b1920f0b34f6036096526296767650f223433fe65c35f149eb";
     private static final String BUSYBOX_NAME = "busybox:1.24.2-uclibc";
     private static final DockerHubBase.DockerHub DOCKER_HUB = DockerHubBase.DockerHub.DEFAULT;
@@ -190,7 +189,7 @@ public class DockerControlApiIntegrationTest {
 
     @Test
     public void testPingHub() throws Exception {
-        assertThat(controlApi.pingHub(DOCKER_HUB), is("OK"));
+        assertThat(controlApi.pingHub(DOCKER_HUB).ping(), is(true));
     }
 
     @Test

@@ -5,6 +5,7 @@ import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
@@ -27,10 +28,10 @@ public interface DockerService {
     void setDefaultHub(long id, String username, String reason);
     void deleteHub(long id) throws DockerHubDeleteDefaultException;
     void deleteHub(String name) throws DockerHubDeleteDefaultException, NotUniqueException;
-    String pingHub(long hubId) throws DockerServerException, NoDockerServerException, NotFoundException;
-    String pingHub(long hubId, String username, String password, String token, String email) throws DockerServerException, NoDockerServerException, NotFoundException;
-    String pingHub(String hubName) throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException;
-    String pingHub(String hubName, String username, String password, String token, String email)
+    DockerHubBase.DockerHubStatus pingHub(long hubId) throws DockerServerException, NoDockerServerException, NotFoundException;
+    DockerHubBase.DockerHubStatus pingHub(long hubId, String username, String password, String token, String email) throws NotFoundException;
+    DockerHubBase.DockerHubStatus pingHub(String hubName) throws NotUniqueException, NotFoundException;
+    DockerHubBase.DockerHubStatus pingHub(String hubName, String username, String password, String token, String email)
             throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException;
     DockerImage pullFromHub(long hubId, String imageName, boolean saveCommands)
             throws DockerServerException, NoDockerServerException, NotFoundException;

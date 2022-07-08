@@ -60,8 +60,10 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
@@ -189,23 +191,49 @@ public class DockerControlApi implements ContainerControlApi {
 
     @Override
     @Nonnull
-    public String pingHub(final @Nonnull DockerHub hub) throws DockerServerException, NoDockerServerException {
+    public DockerHubBase.DockerHubStatus pingHub(final @Nonnull DockerHub hub) {
         return pingHub(hub, null, null, null, null);
     }
 
     @Override
     @Nonnull
-    public String pingHub(final @Nonnull DockerHub hub, final @Nullable String username, final @Nullable String password,
-                          final @Nullable String token, final @Nullable String email)
-            throws DockerServerException, NoDockerServerException {
+    public DockerHubBase.DockerHubStatus pingHub(final @Nonnull DockerHub hub, final @Nullable String username, final @Nullable String password,
+                                                 final @Nullable String token, final @Nullable String email) {
+        DockerHubBase.DockerHubStatus.Builder hubStatusBuilder = DockerHubBase.DockerHubStatus.create(false).toBuilder();
         int status = 500;
-        try (final DockerClient client = getClient()) {
-            status = client.auth(registryAuth(hub, username, password, token, email, true));
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new DockerServerException(e);
+        Backend backend = null;
+        try {
+            backend = getServer().backend();
+        } catch (NoDockerServerException e) {
+            // ignore
         }
-        return status < 400 ? "OK" : "";
+        switch (backend) {
+            case DOCKER:
+            case SWARM:
+                try (final DockerClient client = getClient()) {
+                    status = client.auth(registryAuth(hub, username, password, token, email, true));
+                    hubStatusBuilder.ping(status < 400)
+                            .response(status < 400 ? "OK" : "Down")
+                            .message(StringUtils.join("Hub response: ", Integer.toString(status)));
+                } catch (Exception e) {
+                    log.error(e.getMessage());
+                    hubStatusBuilder.ping(false)
+                            .response("Error")
+                            .message("Hub status check created exception. Check Docker server status.");
+                }
+                break;
+            case KUBERNETES:
+                // TODO: CS-746 - Use Docker registry APIs to ping image host, regardless of server mode
+                hubStatusBuilder.ping(false)
+                        .response("Unknown")
+                        .message("Cannot ping image host in Kubernetes mode.");
+                break;
+            default:
+                hubStatusBuilder.ping(false)
+                        .response("Error")
+                        .message("Docker server unavailable.");
+        }
+        return hubStatusBuilder.build();
     }
 
     @Nullable

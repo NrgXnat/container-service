@@ -14,6 +14,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -34,8 +35,8 @@ public interface ContainerControlApi {
     String ping() throws NoDockerServerException, DockerServerException;
     boolean canConnect();
 
-    String pingHub(DockerHub hub) throws DockerServerException, NoDockerServerException;
-    String pingHub(DockerHub hub, String username, String password, String token, String email) throws DockerServerException, NoDockerServerException;
+    DockerHubBase.DockerHubStatus pingHub(DockerHub hub);
+    DockerHubBase.DockerHubStatus pingHub(DockerHub hub, String username, String password, String token, String email);
 
     List<DockerImage> getAllImages() throws NoDockerServerException, DockerServerException;
     DockerImage getImageById(final String imageId) throws NotFoundException, DockerServerException, NoDockerServerException;

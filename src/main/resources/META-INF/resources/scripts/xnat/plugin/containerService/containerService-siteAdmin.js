@@ -860,12 +860,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             return (status) ? valIfTrue : valIfFalse;
         }
 
-        function hubPingStatus(ping) {
-            var status = {};
-            if (ping !== undefined) {
-                status = (ping) ? { label: 'OK', message: 'Ping Status: OK' } : { label: 'Down', message: 'Ping Status: False' };
-            } else {
-                status = { label: 'Error', message: 'No response to ping' };
+        function hubPingStatus(hubStatus) {
+            var status = { label: 'Error', message: 'Hub status not reported.'};
+            if (hubStatus) {
+                status = {label: hubStatus.response, message: hubStatus.message}
             }
             return spawn('span',{ title: status.message }, status.label);
         }
@@ -906,7 +904,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     .td([ editLink(item, item.name) ]).addClass('name')
                     .td( item.url )
                     .td([ defaultToggle(item)] ).addClass('status')
-                    .td([ spawn('div.center', [hubPingStatus(item.ping)]) ])
+                    .td([ spawn('div.center', [hubPingStatus(item.status)]) ])
                     .td([ spawn('div.center', [editButton(item), spacer(10), deleteButton(item)]) ]);
             });
 

@@ -10,6 +10,7 @@ import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
@@ -109,55 +110,43 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public String pingHub(final long hubId) throws DockerServerException, NoDockerServerException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final long hubId) throws DockerServerException, NoDockerServerException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
         return pingHub(hub);
     }
 
     @Override
-    public String pingHub(final long hubId, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final long hubId, final String username, final String password, final String token, final String email)
+            throws NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
         return pingHub(hub, username, password, token, email);
     }
 
     @Override
-    public String pingHub(final String hubName)
-            throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final String hubName)
+            throws NotUniqueException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubName);
         return pingHub(hub);
     }
 
     @Override
-    public String pingHub(final String hubName, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final String hubName, final String username, final String password, final String token, final String email)
+            throws NotUniqueException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubName);
         return pingHub(hub, username, password, token, email);
     }
 
-    private String pingHub(final DockerHub hub) throws DockerServerException, NoDockerServerException {
+    private DockerHubBase.DockerHubStatus pingHub(final DockerHub hub) {
         return pingHub(hub, null, null, null, null);
     }
 
-    private String pingHub(final DockerHub hub, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException {
+    private DockerHubBase.DockerHubStatus pingHub(final DockerHub hub, final String username, final String password, final String token, final String email) {
         return controlApi.pingHub(hub, username, password, token, email);
-    }
-
-    @Nullable
-    private Boolean canConnectToHub(final DockerHub hub) {
-        try {
-            return "OK".equals(pingHub(hub));
-        } catch (DockerServerException | NoDockerServerException e) {
-            // ignored
-        }
-        return null;
     }
 
     @Nonnull
     private DockerHubWithPing ping(final DockerHub hubBeforePing) {
-        final Boolean ping = canConnectToHub(hubBeforePing);
-        return DockerHubWithPing.create(hubBeforePing, ping);
+        return DockerHubWithPing.create(hubBeforePing, pingHub(hubBeforePing));
     }
 
     @Nonnull
