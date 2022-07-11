@@ -241,7 +241,7 @@ public class ContainerCleanupIntegrationTest {
         dockerServerService.setServer(dockerServer);
 
         dockerClient = controlApi.getClient();
-        kubernetesClient = kubernetesClientFactory.getKubernetesClient(dockerServer);
+        kubernetesClient = kubernetesClientFactory.getKubernetesClient();
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         TestingUtils.skipIfCannotConnect(backend, dockerClient, kubernetesClient.getBackendClient());

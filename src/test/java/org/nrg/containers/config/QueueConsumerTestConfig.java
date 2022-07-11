@@ -6,6 +6,7 @@ import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClientFactoryImpl;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
 import org.nrg.containers.events.listeners.ContainerEventListener;
@@ -87,7 +88,7 @@ public class QueueConsumerTestConfig {
      */
     @Bean
     public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService) {
-        return new DockerServerServiceImpl(dockerServerEntityService);
+        return new DockerServerServiceImpl(dockerServerEntityService, Mockito.mock(KubernetesClientFactoryImpl.class));
     }
 
     @Bean

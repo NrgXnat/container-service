@@ -165,7 +165,7 @@ public class ContainerStatusUpdater implements Runnable {
             case KUBERNETES:
                 try {
                     // Make sure the informer is running. It will handle throwing events on its own.
-                    kubernetesClientFactory.getKubernetesClient(server).start();
+                    kubernetesClientFactory.getKubernetesClient().start();
                 } catch (NoContainerServerException e) {
                     return UpdateReport.singleton(UpdateReportEntry.failure(null, e.getMessage()));
                 }

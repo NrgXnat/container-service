@@ -62,7 +62,6 @@ import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
-import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
@@ -121,20 +120,15 @@ public class DockerControlApi implements ContainerControlApi {
 
     @Nonnull
     private DockerServer getServer() throws NoDockerServerException {
-        DockerServer dockerServer;
         try {
-            dockerServer = dockerServerService.getServer();
+            return dockerServerService.getServer();
         } catch (NotFoundException e) {
             throw new NoDockerServerException(e);
         }
-        if (dockerServer.backend() != Backend.KUBERNETES) {
-            kubernetesClientFactory.shutdown();
-        }
-        return dockerServer;
     }
 
-    private KubernetesClient getKubernetesClient(DockerServer dockerServer) throws NoContainerServerException {
-        return kubernetesClientFactory.getKubernetesClient(dockerServer);
+    private KubernetesClient getKubernetesClient() throws NoContainerServerException {
+        return kubernetesClientFactory.getKubernetesClient();
     }
 
     @Override
@@ -148,7 +142,7 @@ public class DockerControlApi implements ContainerControlApi {
                 return pingServer(dockerServer);
             case KUBERNETES:
                 try {
-                    return getKubernetesClient(dockerServer).ping();
+                    return getKubernetesClient().ping();
                 } catch (ContainerBackendException e) {
                     throw (e instanceof DockerServerException) ? (DockerServerException) e : new DockerServerException(e);
                 } catch (NoContainerServerException e) {
@@ -434,7 +428,7 @@ public class DockerControlApi implements ContainerControlApi {
                 createdBuilder.containerId(containerId);
                 break;
             case KUBERNETES:
-                final String kubernetesJobId = getKubernetesClient(server).createJob(toCreate, NumReplicas.ZERO);
+                final String kubernetesJobId = getKubernetesClient().createJob(toCreate, NumReplicas.ZERO, server.containerUser());
                 createdBuilder.serviceId(kubernetesJobId);
                 break;
             default:
@@ -844,7 +838,7 @@ public class DockerControlApi implements ContainerControlApi {
                 startDockerContainer(toStart.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient(server).unsuspendJob(toStart.jobName());
+                getKubernetesClient().unsuspendJob(toStart.jobName());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");
@@ -1052,7 +1046,7 @@ public class DockerControlApi implements ContainerControlApi {
                 return getSwarmServiceLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
             case KUBERNETES:
                 log.debug("Assuming backend id {} is a pod name", backendId);
-                return getKubernetesClient(server).getLog(backendId, logType, withTimestamps, since);
+                return getKubernetesClient().getLog(backendId, logType, withTimestamps, since);
             default:
                 throw new NoContainerServerException("Not implemented");
         }
@@ -1076,7 +1070,7 @@ public class DockerControlApi implements ContainerControlApi {
             case DOCKER:
                 return getDockerContainerLog(container.containerId(), assembleDockerClientLogsParams(logType, withTimestamps, since));
             case KUBERNETES:
-                return getKubernetesClient(server).getLog(container.podName(), logType, withTimestamps, since);
+                return getKubernetesClient().getLog(container.podName(), logType, withTimestamps, since);
             default:
                 throw new NoContainerServerException("Not implemented");
         }
@@ -1345,7 +1339,7 @@ public class DockerControlApi implements ContainerControlApi {
                 killDockerContainer(container.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient(server).removeJob(container.jobName());
+                getKubernetesClient().removeJob(container.jobName());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");
@@ -1387,7 +1381,7 @@ public class DockerControlApi implements ContainerControlApi {
                 removeDockerContainer(container.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient(server).removeJob(container.jobName());
+                getKubernetesClient().removeJob(container.jobName());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");

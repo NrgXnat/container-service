@@ -131,7 +131,7 @@ public class DockerControlApiTest {
         // Mock simple return values
         when(dockerServer.backend()).thenReturn(backend);
         when(dockerServerService.getServer()).thenReturn(dockerServer);
-        when(kubernetesClientFactory.getKubernetesClient(dockerServer)).thenReturn(kubernetesClient);
+        when(kubernetesClientFactory.getKubernetesClient()).thenReturn(kubernetesClient);
 
         switch (backend) {
             case SWARM:
@@ -503,7 +503,7 @@ public class DockerControlApiTest {
             toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
 
             when(kubernetesClient.createJob(
-                    toLaunch, DockerControlApi.NumReplicas.ZERO
+                    toLaunch, DockerControlApi.NumReplicas.ZERO, null
             )).thenReturn(BACKEND_ID);
         } else {
             toLaunchAndExpectedContainerBuilder.containerId(BACKEND_ID);
@@ -554,7 +554,7 @@ public class DockerControlApiTest {
             expectedCreatedBuilder.serviceId(BACKEND_ID);
         } else if (backend == Backend.KUBERNETES) {
             when(kubernetesClient.createJob(
-                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO)
+                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO), any(String.class)
             )).thenReturn(BACKEND_ID);
 
             expectedCreatedBuilder.serviceId(BACKEND_ID);

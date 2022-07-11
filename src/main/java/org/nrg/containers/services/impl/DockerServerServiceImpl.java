@@ -1,5 +1,6 @@
 package org.nrg.containers.services.impl;
 
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -17,10 +18,13 @@ import java.util.stream.Collectors;
 @Service
 public class DockerServerServiceImpl implements DockerServerService {
     private final DockerServerEntityService dockerServerEntityService;
+    private final KubernetesClientFactory kubernetesClientFactory;
 
     @Autowired
-    public DockerServerServiceImpl(final DockerServerEntityService dockerServerEntityService) {
+    public DockerServerServiceImpl(final DockerServerEntityService dockerServerEntityService,
+                                   final KubernetesClientFactory kubernetesClientFactory) {
         this.dockerServerEntityService = dockerServerEntityService;
+        this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
     @Override
@@ -49,11 +53,13 @@ public class DockerServerServiceImpl implements DockerServerService {
 
     @Override
     public DockerServer setServer(final DockerServer dockerServer) {
+        kubernetesClientFactory.shutdown();
         return toPojo(dockerServerEntityService.create(fromPojo(dockerServer)));
     }
 
     @Override
     public void update(final DockerServer dockerServer) {
+        kubernetesClientFactory.shutdown();
         dockerServerEntityService.update(fromPojo(dockerServer));
     }
 

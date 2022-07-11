@@ -100,8 +100,9 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService) {
-        return new DockerServerServiceImpl(dockerServerEntityService);
+    public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService,
+                                                   final KubernetesClientFactory kubernetesClientFactory) {
+        return new DockerServerServiceImpl(dockerServerEntityService, kubernetesClientFactory);
     }
 
     @Bean

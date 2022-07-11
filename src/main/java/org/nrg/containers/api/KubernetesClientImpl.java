@@ -33,7 +33,6 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -70,8 +69,6 @@ public class KubernetesClientImpl implements KubernetesClient {
     private final ExecutorService executorService;
     private final NrgEventServiceI eventService;
 
-    private final DockerServer dockerServer;
-    private final Long containerUserId;
     private ApiClient apiClient;
     private CoreV1Api coreApi;
     private BatchV1Api batchApi;
@@ -81,24 +78,10 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     public KubernetesClientImpl(
             ExecutorService executorService,
-            NrgEventServiceI eventService,
-            DockerServer dockerServer
+            NrgEventServiceI eventService
     ) throws IOException, NoContainerServerException {
         this.executorService = executorService;
         this.eventService = eventService;
-        this.dockerServer = dockerServer;
-
-        final String serverContainerUser = dockerServer.containerUser();
-        Long containerUserId = null;
-        if (StringUtils.isNotBlank(serverContainerUser)) {
-            try {
-                containerUserId = Long.parseLong(serverContainerUser);
-            } catch (NumberFormatException e) {
-                // We would have caught this earlier when setting the DockerServer. But just in case...
-                log.error("Container user ID \"{}\" is not an integer ID, which is incompatible with Kubernetes backend. Ignoring value.", serverContainerUser);
-            }
-        }
-        this.containerUserId = containerUserId;
 
         ApiClient apiClient = null;
         String namespace = null;
@@ -215,9 +198,19 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas)
+    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser)
             throws ContainerBackendException, ContainerException {
         log.debug("Creating kubernetes job");
+
+        Long containerUserId = null;
+        if (StringUtils.isNotBlank(serverContainerUser)) {
+            try {
+                containerUserId = Long.parseLong(serverContainerUser);
+            } catch (NumberFormatException e) {
+                // We would have caught this earlier when setting the DockerServer. But just in case...
+                log.error("Container user ID \"{}\" is not an integer ID, which is incompatible with Kubernetes backend. Ignoring value.", serverContainerUser);
+            }
+        }
 
         // Ulimits
         final Map<String, String> ulimits = toCreate.ulimits();
@@ -420,21 +413,17 @@ public class KubernetesClientImpl implements KubernetesClient {
             log.trace("Creating kubernetes job: {}", job);
         } else if (log.isDebugEnabled()) {
             log.debug("Creating kubernetes job:" +
-                            "\n\tserver {} {}" +
                             "\n\timage {}" +
                             "\n\tcommand \"{}\"" +
                             "\n\tworking directory \"{}\"" +
                             "\n\tcontainerUser \"{}\"" +
                             "\n\tvolumes [{}]" +
-                            "\n\tenvironment variables [{}]" +
                             "\n\texposed ports: {}",
-                    dockerServer.name(), dockerServer.host(),
                     toCreate.dockerImage(),
                     toCreate.commandLine(),
                     toCreate.workingDirectory(),
-                    dockerServer.containerUser(),
+                    containerUserId,
                     StringUtils.join(toCreate.bindMountStrings(), ", "),
-                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
                     StringUtils.join(toCreate.portStrings(), ", "));
         }
 

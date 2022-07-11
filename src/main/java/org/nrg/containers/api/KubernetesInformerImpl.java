@@ -27,8 +27,6 @@ import org.nrg.framework.services.NrgEventServiceI;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 
 @Slf4j
@@ -41,13 +39,10 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     private final Lister<V1Job> jobLister;
     private final Lister<V1Pod> podLister;
 
-    private final ConcurrentMap<String, V1Pod> jobNameToPodMap;
-
     public KubernetesInformerImpl(final String namespace,
                                   final ApiClient apiClient,
                                   final ExecutorService executorService,
                                   final NrgEventServiceI eventService) {
-        jobNameToPodMap = new ConcurrentHashMap<>();
 
         // Required to set read timeout to zero (disabling timeout) so long-lived watches work
         apiClient.setReadTimeout(0);
@@ -92,7 +87,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                                 null
                         ),
                 V1Pod.class, V1PodList.class, RESYNC_PERIOD_MILLISECONDS);
-        podInformer.addEventHandler(new PodEventHandler(jobNameToPodMap, eventService));
+        podInformer.addEventHandler(new PodEventHandler(eventService));
         podLister = new Lister<>(podInformer.getIndexer(), namespace);
 
         if (log.isTraceEnabled()) {
@@ -132,7 +127,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
         if (isStarted) {
             log.debug("Stopping kubernetes informer");
             sharedInformerFactory.stopAllRegisteredInformers(false);
-            jobNameToPodMap.clear();
             isStarted = false;
         }
     }
@@ -145,11 +139,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     @Override
     public V1Pod getPod(final String name) {
         return podLister.get(name);
-    }
-
-    @Override
-    public V1Pod getPodForJob(final String jobName) {
-        return jobNameToPodMap.get(jobName);
     }
 
     static class LoggingResourceEventHandler<T extends KubernetesObject> implements ResourceEventHandler<T> {
@@ -175,12 +164,9 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     }
 
     static class PodEventHandler implements ResourceEventHandler<V1Pod> {
-        private final Map<String, V1Pod> jobNameToPodMap;
         private final NrgEventServiceI eventService;
 
-        PodEventHandler(Map<String, V1Pod> jobNameToPodMap,
-                        NrgEventServiceI eventService) {
-            this.jobNameToPodMap = jobNameToPodMap;
+        PodEventHandler(NrgEventServiceI eventService) {
             this.eventService = eventService;
         }
 
@@ -229,8 +215,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             }
 
             log.debug("Added pod {} produced by job {}", podName, jobName);
-            jobNameToPodMap.put(jobName, obj);
-
             triggerEvent(obj);
         }
 
@@ -264,11 +248,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         @Override
         public void onDelete(V1Pod obj, boolean deletedFinalStateUnknown) {
-            final String jobName = jobNameFromPodLabels(obj);
-            if (jobName == null) {
-                return;
-            }
-            jobNameToPodMap.remove(jobName);
+            // ignored
         }
     }
 }

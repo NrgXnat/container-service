@@ -18,7 +18,7 @@ public interface KubernetesClient {
     String ping() throws ContainerBackendException;
     String getLog(String podName, final ContainerControlApi.LogType logType, final Boolean withTimestamp, final Integer since) throws ContainerBackendException;
 
-    String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas)
+    String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, String serverContainerUser)
             throws ContainerBackendException, ContainerException;
     void unsuspendJob(final String jobName) throws ContainerBackendException;
     void removeJob(String jobName) throws NotFoundException, ContainerBackendException;

@@ -9,5 +9,4 @@ public interface KubernetesInformer {
 
     V1Job getJob(final String name);
     V1Pod getPod(final String name);
-    V1Pod getPodForJob(final String jobName);
 }
