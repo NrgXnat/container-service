@@ -31,6 +31,7 @@ job_role="job-admin"
 job_role_binding="${service_account}-job-binding"
 api_ready_role="api-ready-reader"
 api_ready_role_binding="${service_account}-api-ready-binding"
+service_account_secret="${service_account}-secret"
 
 kubectl apply -f - << EOF
 ---
@@ -94,4 +95,13 @@ roleRef:
   kind: ClusterRole
   name: ${api_ready_role}
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${service_account_secret}
+  namespace: ${namespace}
+  annotations:
+    kubernetes.io/service-account.name: ${service_account}
+type: kubernetes.io/service-account-token
 EOF

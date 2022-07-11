@@ -72,6 +72,7 @@ job_role="job-admin"
 job_role_binding="${service_account}-job-binding"
 api_ready_role="api-ready-reader"
 api_ready_role_binding="${service_account}-api-ready-binding"
+service_account_secret="${service_account}-secret"
 
 # Apply cluster configuration
 echo "Configuring cluster"
@@ -138,13 +139,25 @@ roleRef:
   kind: ClusterRole
   name: ${api_ready_role}
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${service_account_secret}
+  namespace: ${namespace}
+  annotations:
+    kubernetes.io/service-account.name: ${service_account}
+type: kubernetes.io/service-account-token
 EOF
 ```
 
 **Notes**  
+
 * The `${namespace}` value is an input argument to the script and can be whatever you wish.
 * The `Role` and `RoleBinding` are the minimum permissions required by the container service to function.
 * The `ClusterRole` and `ClusterRoleBinding` are currently optional, but may become required in the future.
+* We create a secret containing a non-expiring authentication token for the service account. This token is how the container service
+  will authenticate as the service account when communicating with the cluster.
 
 ## Passing Configuration to the Container Service
 
@@ -180,10 +193,14 @@ If you prefer to build this file yourself, or if you want to know what it does, 
 the contents of the script. (Technically the script linked above will both create the ServiceAccount
 and create the kubeconfig file. The second part is contained in a partner script [here][kubeconfig-script].)
 
-It takes three inputs:
+It takes four inputs:
+
 1. The path to the output kubeconfig file. In the code below this is called `$kubeconfig`.
 2. The namespace, called `$namespace`.
-3. The service account, called `$service_account`.
+3. (Optional) The service account, called `$service_account`.
+4. (Optional) The name of a secret containing a token to authenticate as the service account, called `$service_account_secret`
+
+The values for 3 and 4 can be omitted if they are the defaults, `${namespace}-account` and `${namespace}-account-secret` respectively.
 
 The first step is to read your kubernetes configuration to find the path to the cluster.
 
@@ -196,19 +213,17 @@ server=$(kubectl config view -o jsonpath='{.clusters[?(@.name=="'$cluster'")].cl
 If you have multiple clusters configured, please ensure that the one you intend for the
 Container Service to use is set in the "current context".
 
-The next step is to read the token and certificate data for the ServiceAccount. Whoever
-is running these commands must have permissions to get ServiceAccounts and
-Secrets within the given Namespace.
+The next step is to read the token and certificate data for the ServiceAccount's Secret. Whoever
+is running these commands must have permissions to get Secrets within the given Namespace.
 
 ```shell
 # Service account secrets
-secret_name=$(kubectl --namespace $namespace get sa $service_account -o jsonpath='{.secrets[0].name}')
-token=$(kubectl --namespace $namespace get secret/$secret_name -o jsonpath='{.data.token}' | base64 --decode)
+token=$(kubectl --namespace $namespace get secret/$service_account_secret -o jsonpath='{.data.token}' | base64 --decode)
 
 # Write certificate data to temp file
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp/}$(basename $0).XXXXXXXXXXXX")
 ca_crt="${tmpdir}/ca.crt"
-kubectl --namespace $namespace get secret/$secret_name -o jsonpath='{.data.ca\.crt}' | base64 --decode > $ca_crt
+kubectl --namespace $namespace get secret/$service_account_secret -o jsonpath='{.data.ca\.crt}' | base64 --decode > $ca_crt
 ```
 
 The final step is to write all the required values into a new kubeconfig file at the given location.

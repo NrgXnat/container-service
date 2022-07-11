@@ -3,10 +3,16 @@ set -e
 set -o pipefail
 
 _usage="
-Usage: $(basename $0) KUBECONFIG_OUT NAMESPACE SERVICE_ACCOUNT
+Usage: $(basename $0) KUBECONFIG_OUT NAMESPACE [SERVICE_ACCOUNT SERVICE_ACCOUNT_SECRET]
 
 This script writes a kubeconfig file to a specified location which contains
-the credentials to authenticate as a specified ServiceAccount.
+the credentials to authenticate as a particular ServiceAccount.
+
+You must create a non-expiring Secret that can be used to authenticate as the
+ServiceAccount. See https://kubernetes.io/docs/concepts/configuration/secret/#service-account-token-secrets.
+
+If the ServiceAccount is named ${namespace}-account and the Secret ${namespace}-account-secret,
+then the last argument to the script is optional. Otherwise both need to be passed to this script.
 
 Requirements:
  * \`base64' must be installed
@@ -27,6 +33,7 @@ fi
 
 namespace=${2:?$_usage}
 service_account=${3:-"${namespace}-account"}
+service_account_secret=${4:-"${service_account}-secret"}
 
 # Create kubeconfig
 mkdir -p $(dirname $kubeconfig)  # Make output directory
@@ -36,14 +43,13 @@ context=$(kubectl config current-context)
 cluster=$(kubectl config view -o jsonpath='{.contexts[?(@.name=="'$context'")].context.cluster}')
 server=$(kubectl config view -o jsonpath='{.clusters[?(@.name=="'$cluster'")].cluster.server}')
 
-# Service account secrets
-secret_name=$(kubectl --namespace $namespace get sa $service_account -o jsonpath='{.secrets[0].name}')
-token=$(kubectl --namespace $namespace get secret/$secret_name -o jsonpath='{.data.token}' | base64 --decode)
+# Read token for service account secret
+token=$(kubectl --namespace $namespace get secret/$service_account_secret -o jsonpath='{.data.token}' | base64 --decode)
 
 # Write certificate data to temp file
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp/}$(basename $0).XXXXXXXXXXXX")
 ca_crt="${tmpdir}/ca.crt"
-kubectl --namespace $namespace get secret/$secret_name -o jsonpath='{.data.ca\.crt}' | base64 --decode > $ca_crt
+kubectl --namespace $namespace get secret/$service_account_secret -o jsonpath='{.data.ca\.crt}' | base64 --decode > $ca_crt
 
 # This will be the name of the user and the context within the kubeconfig file
 user_name="${service_account}"
