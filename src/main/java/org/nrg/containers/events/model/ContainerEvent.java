@@ -5,7 +5,7 @@ import org.nrg.framework.event.EventI;
 import java.util.Map;
 
 public interface ContainerEvent extends EventI {
-    String containerId();
+    String backendId();
     String status();
     String details();
     String externalTimestamp();

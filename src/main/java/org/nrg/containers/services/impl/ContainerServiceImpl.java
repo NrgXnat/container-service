@@ -36,7 +36,6 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
-import org.nrg.containers.model.container.KubernetesJobInfo;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerHistory;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
@@ -804,12 +803,12 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void processEvent(final ContainerEvent event) {
         log.debug("Processing container event: {}", event);
-        final Container container = retrieve(event.containerId());
+        final Container container = retrieve(event.backendId());
 
         // container will be null if either we aren't tracking the container
         // that this event is about, or if we have already recorded the event
         if (container == null) {
-            log.debug("Nothing to do. Container was null after retrieving by id {}.", event.containerId());
+            log.debug("Nothing to do. Container was null after retrieving by id {}.", event.backendId());
             return;
         }
 
@@ -834,25 +833,25 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
         if (containerWithAddedEvent.backend() == Backend.KUBERNETES && event instanceof KubernetesStatusChangeEvent) {
-            KubernetesJobInfo kInfo = ((KubernetesStatusChangeEvent) event).kubernetesJobInfo();
+            KubernetesStatusChangeEvent kEvent = ((KubernetesStatusChangeEvent) event);
 
             // Check if we need to set additional ids
-            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kInfo.podName() != null;
-            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kInfo.containerId() != null;
+            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.podName() != null;
+            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kEvent.containerId() != null;
             if (shouldUpdatePodName || shouldUpdateContainerId) {
                 Container.Builder builder = containerWithAddedEvent.toBuilder();
 
                 if (shouldUpdatePodName) {
                     log.debug("Container {} for job {}: setting taskId to pod name {}",
-                            container.databaseId(), container.jobName(), kInfo.podName()
+                            container.databaseId(), container.jobName(), kEvent.podName()
                     );
-                    builder.taskId(kInfo.podName());
+                    builder.taskId(kEvent.podName());
                 }
                 if (shouldUpdateContainerId) {
                     log.debug("Container {} for job {}: setting containerId to container id {}",
-                            container.databaseId(), container.jobName(), kInfo.containerId()
+                            container.databaseId(), container.jobName(), kEvent.containerId()
                     );
-                    builder.containerId(kInfo.containerId());
+                    builder.containerId(kEvent.containerId());
                 }
                 containerEntityService.update(fromPojo(builder.build()));
                 containerWithAddedEvent = retrieve(container.databaseId());

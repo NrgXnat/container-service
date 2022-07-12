@@ -3,6 +3,7 @@ package org.nrg.containers.utils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.container.auto.ServiceTask;
+import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
@@ -51,7 +52,7 @@ public class ContainerUtils {
             case SWARM:
                 return ServiceTask.isSuccessfulStatus(status);
             case KUBERNETES:
-                return status != null && !status.equals(KUBERNETES_FAILED_STATUS);  // todo make this == success
+                return KubernetesPodPhase.isSuccessful(status);
         }
         return false;
     }

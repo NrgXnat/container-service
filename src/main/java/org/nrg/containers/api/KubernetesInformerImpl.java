@@ -21,10 +21,12 @@ import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1PodStatus;
 import io.kubernetes.client.util.CallGeneratorParams;
 import lombok.extern.slf4j.Slf4j;
+import org.nrg.containers.events.model.KubernetesContainerState;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
-import org.nrg.containers.model.container.KubernetesJobInfo;
+import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.nrg.framework.services.NrgEventServiceI;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -170,11 +172,13 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             this.eventService = eventService;
         }
 
-        private void triggerEvent(V1Pod pod) {
+        private static KubernetesStatusChangeEvent createEvent(V1Pod pod) {
             final V1PodStatus podStatus = pod.getStatus();
 
             // Status phase
-            final String podPhase = podStatus == null ? null : podStatus.getPhase();
+            final String podPhaseString = podStatus == null ? null : podStatus.getPhase();
+            final KubernetesPodPhase podPhase = KubernetesPodPhase.fromString(podPhaseString);
+            final String podPhaseReason = podStatus == null ? null : podStatus.getReason();
 
             // Pull out container statuses
             // We only ever launch jobs with a single template, so we only expect one container
@@ -185,23 +189,54 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             final String containerId = containerStatus == null ? null : containerStatus.getContainerID();
 
             // Container state
-            final V1ContainerState containerState = containerStatus == null ? null : containerStatus.getState();
-            final V1ContainerStateTerminated terminated = containerState == null ? null : containerState.getTerminated();
-            final V1ContainerStateRunning running = containerState == null ? null : containerState.getRunning();
-            final V1ContainerStateWaiting waiting = containerState == null ? null : containerState.getWaiting();
-            final String containerPhase = terminated != null ? terminated.getReason() :
-                    waiting != null ? waiting.getReason() :
-                            running != null ? "Running" : null;
+            final V1ContainerState containerStateObj = containerStatus == null ? null : containerStatus.getState();
+            final V1ContainerStateTerminated terminated = containerStateObj == null ? null : containerStateObj.getTerminated();
+            final V1ContainerStateRunning running = containerStateObj == null ? null : containerStateObj.getRunning();
+            final V1ContainerStateWaiting waiting = containerStateObj == null ? null : containerStateObj.getWaiting();
+
+            final String containerStateReason;
+            final KubernetesContainerState containerState;
+            if (terminated != null) {
+                containerState = KubernetesContainerState.TERMINATED;
+                containerStateReason = terminated.getReason();
+            } else if (waiting != null) {
+                containerState = KubernetesContainerState.WAITING;
+                containerStateReason = waiting.getReason();
+            } else if (running != null) {
+                containerState = KubernetesContainerState.RUNNING;
+                containerStateReason = null;
+            } else {
+                containerState = null;
+                containerStateReason = null;
+            }
 
             // exit code
             final Integer exitCode = terminated == null ? null : terminated.getExitCode();
 
-            final KubernetesStatusChangeEvent event = new KubernetesStatusChangeEvent(
-                    new KubernetesJobInfo(jobNameFromPodLabels(pod), objName(pod), containerId),
+            // timestamp
+            final OffsetDateTime timestamp;
+            if (terminated != null) {
+                timestamp = terminated.getFinishedAt();
+            } else if (running != null) {
+                timestamp = running.getStartedAt();
+            } else {
+                timestamp = null;
+            }
+
+            return new KubernetesStatusChangeEvent(
+                    jobNameFromPodLabels(pod),
+                    objName(pod),
+                    containerId,
                     podPhase,
-                    containerPhase,
-                    exitCode
+                    podPhaseReason,
+                    containerState,
+                    containerStateReason,
+                    exitCode,
+                    timestamp
             );
+        }
+
+        private void triggerEvent(final KubernetesStatusChangeEvent event) {
             log.debug("Triggering event {}", event);
             eventService.triggerEvent(event);
         }
@@ -215,7 +250,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             }
 
             log.debug("Added pod {} produced by job {}", podName, jobName);
-            triggerEvent(obj);
+            triggerEvent(createEvent(obj));
         }
 
         @Override
@@ -233,17 +268,16 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                 log.trace("Pod {} recached", objName(newObj));
                 return;
             }
-            String podName = newObj.getMetadata().getName();
-            V1PodStatus oldStatus = oldObj.getStatus();
-            V1PodStatus newStatus = newObj.getStatus();
-            if (newStatus == null || newStatus.equals(oldStatus)) {
-                log.debug("Pod {} updated, no status change", objName(newObj));
+
+            final KubernetesStatusChangeEvent oldEvent = createEvent(oldObj);
+            final KubernetesStatusChangeEvent newEvent = createEvent(newObj);
+            if (newEvent.equals(oldEvent)) {
+                log.debug("Pod {} updated, but derived event has not changed. Not throwing repeat event.", objName(newObj));
                 return;
             }
 
-            log.debug("Updated Pod {} Status phase \"{}\"", podName, newStatus.getPhase());
-
-            triggerEvent(newObj);
+            log.debug("Pod {} updated", newEvent.podName());
+            triggerEvent(newEvent);
         }
 
         @Override

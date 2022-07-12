@@ -13,7 +13,7 @@ public abstract class DockerContainerEvent implements ContainerEvent {
     private static final Pattern exitStatusPattern = Pattern.compile("die");
 
     public abstract String status();
-    public abstract String containerId();
+    public abstract String backendId();
     public abstract String externalTimestamp();
     public abstract ImmutableMap<String, String> attributes();
 

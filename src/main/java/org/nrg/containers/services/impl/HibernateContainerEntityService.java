@@ -141,7 +141,7 @@ public class HibernateContainerEntityService
     @Override
     @Nullable
     public ContainerEntity addContainerEventToHistory(final ContainerEvent containerEvent, final UserI userI) {
-        final ContainerEntity containerEntity = retrieve(containerEvent.containerId());
+        final ContainerEntity containerEntity = retrieve(containerEvent.backendId());
         if (containerEntity == null) {
             log.debug("This event is not about a container we are interested in.");
             return null;
