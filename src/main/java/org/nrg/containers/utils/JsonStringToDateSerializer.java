@@ -1,33 +1,50 @@
 package org.nrg.containers.utils;
 
-import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
+import org.apache.commons.lang3.StringUtils;
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.regex.Pattern;
+
+import static org.nrg.containers.utils.JsonDateSerializer.DATE_FORMAT;
 
 /**
  * @author Mohana Ramaratnam
  *
  */
 public class JsonStringToDateSerializer extends JsonSerializer<String> {
-    private static final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+	private static final Pattern NUMERIC_TIMESTAMP = Pattern.compile("^\\d{12,}$");  // Twelve or more digits and that's all
+
+	private static final int NUM_DIGITS_IN_NANOSECOND_VALUE = 16;
+	private static final int NUM_DIGITS_TO_TRUNCATE_NANO_TO_MILLI = 6;
 
     @Override
     public void serialize(String value, JsonGenerator jgen, SerializerProvider provider) throws IOException,
             JsonProcessingException {
-    		if (value == null || value.equals(""))
-    			return;
+    		if (StringUtils.isBlank(value)) {
+				return;
+			}
+
+			if (!NUMERIC_TIMESTAMP.matcher(value).matches()) {
+				// Timestamp isn't numeric. Return as-is.
+				jgen.writeString(value);
+				return;
+			}
+
+			if (value.length() >= NUM_DIGITS_IN_NANOSECOND_VALUE) {
+				// This value is in nanoseconds - convert to milliseconds
+				value = value.substring(0, value.length() - NUM_DIGITS_TO_TRUNCATE_NANO_TO_MILLI);
+			}
+
     		long longVal = Long.parseLong(value);
 
-    		if (longVal > 10000000000000000L) // This value is in nanoseconds - convert to milliseconds
-    			longVal = longVal/1000000;
-
     		Date longAsDate = new Date(longVal);
-    		jgen.writeString(format.format(longAsDate));
+    		jgen.writeString(DATE_FORMAT.format(longAsDate));
     }
     
     public static void main(String[] args) {
