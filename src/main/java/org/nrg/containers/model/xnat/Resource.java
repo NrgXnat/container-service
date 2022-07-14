@@ -66,7 +66,6 @@ public class Resource extends XnatModelObject {
 
         if (parentUri == null) {
             this.uri = xnatResourcecatalog.getUri();
-            this.parentUri = UriParserUtils.getArchiveUri(xnatResourcecatalog.getParent());
         } else {
             this.uri = parentUri + "/resources/" + xnatResourcecatalog.getLabel();
         }
@@ -80,6 +79,9 @@ public class Resource extends XnatModelObject {
         this.label = xnatResourcecatalog.getLabel();
         this.xsiType = xnatResourcecatalog.getXSIType();
 
+        if (this.parentUri == null) {
+            this.parentUri = UriParserUtils.getArchiveUri(xnatResourcecatalog.getParent());
+        }
         String project = null;  // TODO pass in project
         this.directory = null;
         try {
