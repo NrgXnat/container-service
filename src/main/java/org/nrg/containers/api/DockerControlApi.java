@@ -328,8 +328,15 @@ public class DockerControlApi implements ContainerControlApi {
     @Nonnull
     public DockerImage getImageById(final String imageId)
         throws NotFoundException, DockerServerException, NoDockerServerException {
-        try (final DockerClient client = getClient()) {
-            return getImageById(imageId, client);
+        switch (getServer().backend()) {
+            case SWARM:
+            case DOCKER:
+                try (final DockerClient client = getClient()) {
+                    return getImageById(imageId, client);
+                }
+            case KUBERNETES:
+            default:
+                throw new NoDockerServerException("Docker server images not available in Kubernetes mode.");
         }
     }
 

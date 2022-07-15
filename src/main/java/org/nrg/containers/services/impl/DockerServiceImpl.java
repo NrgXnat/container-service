@@ -359,7 +359,7 @@ public class DockerServiceImpl implements DockerService {
                     DockerImage dockerImage = null;
                     try {
                         dockerImage = controlApi.getImageById(imageNameUsedByTheCommand);
-                    } catch (NotFoundException ignored) {
+                    } catch (NotFoundException | NoDockerServerException ignored) {
                         // ignored
                     }
 
