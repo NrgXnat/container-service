@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.schema.SchemaElement;
 import org.nrg.xdat.security.SecurityManager;
 import org.nrg.xdat.security.helpers.Permissions;
@@ -24,6 +25,17 @@ public class ContainerServicePermissionUtils {
     public final static String CONTEXT_PERMISSION_PLACEHOLDER = UUID.randomUUID().toString();
     public final static WrapperPermission READ_PERMISSION_PLACEHOLDER = WrapperPermission.read(CONTEXT_PERMISSION_PLACEHOLDER);
     public final static WrapperPermission EDIT_PERMISSION_PLACEHOLDER = WrapperPermission.edit(CONTEXT_PERMISSION_PLACEHOLDER);
+
+    // Equate "project read" permissions to "subject read" permissions.
+    // Neither Permissions.canReadProject nor
+    // Permissions.canRead(.., "xnat:projectData/ID", ...) give us exactly what we need:
+    // "can this user read the data contained in this project?"
+    // Checking if they can read a subject is a good proxy.
+    public static final String PROJECT_READ_XML_PATH = XnatSubjectdata.SCHEMA_ELEMENT_NAME + "/project";
+
+    // The only "project edit" operation that commands can do (at time of writing) is create project resources.
+    // This permission can be checked using the project's xml path.
+    public static final String PROJECT_EDIT_XML_PATH = XnatProjectdata.SCHEMA_ELEMENT_NAME + "/ID";
 
     // Cache the pairs of (specific, generic) xsiType relationships.
     // If specific is equal to or an instance of generic, return true. Else return false.
@@ -73,6 +85,9 @@ public class ContainerServicePermissionUtils {
         return canPerformActionOnXsiType(userI, project, WrapperPermission.edit(xsiTypeToEdit), false);
     }
 
+    public static boolean canReadProject(final UserI userI, final String project) {
+        return canPerformActionOnXsiType(userI, project, XnatProjectdata.SCHEMA_ELEMENT_NAME, WrapperPermissionAction.READ, false);
+    }
 
     private static String resolveXsiType(final String xsiType) {
         try {
@@ -106,24 +121,26 @@ public class ContainerServicePermissionUtils {
 
         boolean can = defaultValue;
         if (xsiType != null) {
+            // Default xml path for most data types
+            String xmlPathToCheck = xsiType + "/project";
+
+            // Have to do project checks a different way from everything else
             if (xsiType.equals(XnatProjectdata.SCHEMA_ELEMENT_NAME)) {
-                // Have to do project checks a different way from everything else
                 switch (action) {
                     case READ:
-                        can = Permissions.canReadProject(userI, project);
+                        xmlPathToCheck = PROJECT_READ_XML_PATH;
                         break;
                     case EDIT:
-                        can = Permissions.canEditProject(userI, project);
+                        xmlPathToCheck = PROJECT_EDIT_XML_PATH;
                         break;
                 }
-            } else {
-                try {
-                    can = Permissions.can(userI, xsiType + "/project", project, action.getXdatPermissionsAction());
-                } catch (Exception e) {
-                    log.debug("Could not check {} permissions for user \"{}\" project \"{}\" xsiType \"{}\"",
-                            action, userI.getUsername(), project, xsiType, e);
-                    // Carry on...
-                }
+            }
+            try {
+                can = Permissions.can(userI, xmlPathToCheck, project, action.getXdatPermissionsAction());
+            } catch (Exception e) {
+                log.debug("Could not check {} permissions for user \"{}\" project \"{}\" xsiType \"{}\"",
+                        action, userI.getUsername(), project, xsiType, e);
+                // Carry on...
             }
         }
         log.debug("User \"{}\" can{} {} type \"{}\" in project \"{}\"",

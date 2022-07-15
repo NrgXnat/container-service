@@ -20,7 +20,6 @@ import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
-import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -431,7 +430,7 @@ public class CommandServiceImpl implements CommandService {
         final boolean isSiteWide = StringUtils.isBlank(project);
 
         // Are they able to read the project at all?
-        if (!isSiteWide && !Permissions.canReadProject(userI, project)) {
+        if (!isSiteWide && !ContainerServicePermissionUtils.canReadProject(userI, project)) {
             log.debug("User \"{}\" cannot read project \"{}\"", userI.getUsername(), project);
             return Collections.emptyList();
         }

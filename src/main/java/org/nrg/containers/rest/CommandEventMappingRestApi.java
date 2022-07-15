@@ -8,13 +8,13 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.model.CommandEventMapping;
 import org.nrg.containers.services.CommandEventMappingService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
-import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
@@ -67,7 +67,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
             UserI userObj = getSessionUser();
             for(CommandEventMapping mapping: mappings){
                 String cProject = mapping.getProjectId();
-                if(Permissions.canReadProject(userObj, cProject)) {
+                if(ContainerServicePermissionUtils.canReadProject(userObj, cProject)) {
                     mappingsCanRead.add(mapping);
                 }
             }
@@ -105,7 +105,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
             CommandEventMapping mapping = commandEventMappingService.retrieve(id);
 
             String cProject = mapping.getProjectId();
-            if (Permissions.canReadProject(getSessionUser(), cProject)) {
+            if (ContainerServicePermissionUtils.canReadProject(getSessionUser(), cProject)) {
                 return commandEventMappingService.retrieve(id);
             }
         }

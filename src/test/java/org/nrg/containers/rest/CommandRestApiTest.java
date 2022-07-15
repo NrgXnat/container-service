@@ -3,38 +3,31 @@ package org.nrg.containers.rest;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.nrg.config.entities.Configuration;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.config.CommandRestApiTestConfig;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
-import org.nrg.containers.model.command.auto.CommandSummaryForContext;
-import org.nrg.containers.model.configuration.CommandConfigurationInternal;
 import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerConfigService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.framework.constants.Scope;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.UserGroupI;
 import org.nrg.xdat.security.UserGroupServiceI;
 import org.nrg.xdat.security.helpers.AccessLevel;
-import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.security.UserI;
-import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.TestingAuthenticationToken;
@@ -65,8 +58,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import static org.nrg.containers.services.ContainerConfigService.WRAPPER_CONFIG_PATH_TEMPLATE;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
@@ -77,9 +68,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({Permissions.class})
+@Slf4j
+@RunWith(SpringJUnit4ClassRunner.class)
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @WebAppConfiguration
 @Transactional
@@ -96,7 +86,6 @@ public class CommandRestApiTest {
     private final String NON_ADMIN_IS_OWNER_PROJECT = "projectowner";
     private final String NON_ADMIN_IS_MEMBER_PROJECT = "projectmember";
     private final String NON_ADMIN_IS_COLLABORATOR_PROJECT = "projectcollab";
-    private final String NON_ADMIN_NON_PROJECT = "projectnon";
 
     @Autowired private WebApplicationContext wac;
     @Autowired private ObjectMapper mapper;
@@ -110,6 +99,17 @@ public class CommandRestApiTest {
     @Autowired private UserGroupServiceI mockUserGroupService;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File("/tmp"));
+
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
+
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
 
     @Before
     public void setup() throws Exception {
@@ -176,21 +176,6 @@ public class CommandRestApiTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(folder.newFolder().getAbsolutePath()); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(folder.newFolder().getAbsolutePath()); // container logs get stored under archive
 
-        // Mock the permissions call
-        // This may render some of the above moot
-        // Added in 1.7.5 to avoid priming the cache
-        // As of 1.7.6, canEditProject refers to actually being able to edit project metadata and is not relevant to
-        // deciding whether a user can run a container. Project read permissions will do for now (though the strict
-        // collaborator role would actually be blocked from editing any data via a container, so while he can launch,
-        // he can't upload)
-        mockStatic(Permissions.class);
-        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canReadProject(nonAdmin, NON_ADMIN_NON_PROJECT)).thenReturn(false);
-        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_OWNER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_MEMBER_PROJECT)).thenReturn(true);
-        PowerMockito.when(Permissions.canReadProject(admin, NON_ADMIN_IS_COLLABORATOR_PROJECT)).thenReturn(true);
     }
 
     @Test
@@ -572,172 +557,5 @@ public class CommandRestApiTest {
                         .getContentAsString();
 
         assertThat(badInputTypeCommandResponse, is(""));
-    }
-
-    @Test
-    @DirtiesContext
-    @SuppressWarnings("unchecked")
-    public void testProjectCommandsAvailable() throws Exception {
-        final String path = "/commands/available";
-
-        final String externalInputName = "input";
-        final String xsiType = "xnat:imageScanData";
-        final Command command = commandService.create(Command.builder()
-                .name("toCreate")
-                .type("docker")
-                .image(FAKE_DOCKER_IMAGE)
-                .addCommandWrapper(CommandWrapper.builder()
-                        .name("a name")
-                        .contexts(Sets.newHashSet(xsiType))
-                        .addExternalInput(Command.CommandWrapperExternalInput.builder().name(externalInputName).type("string").build())
-                        .build())
-                .build()
-        );
-        TestTransaction.flagForCommit();
-        TestTransaction.end();
-        TestTransaction.start();
-
-
-        final CommandWrapper wrapper = command.xnatCommandWrappers().get(0);
-        final long wrapperId = wrapper.id();
-        final List<CommandSummaryForContext> available = Collections.singletonList(
-                CommandSummaryForContext.create(command, wrapper, true, externalInputName)
-        );
-
-        final CommandConfigurationInternal commandConfiguration = CommandConfigurationInternal.create(
-                Boolean.TRUE,
-                Collections.<String, CommandConfigurationInternal.CommandInputConfiguration>emptyMap(),
-                Collections.<String, CommandConfigurationInternal.CommandOutputConfiguration>emptyMap());
-        final String commandConfigurationJson = mapper.writeValueAsString(commandConfiguration);
-        final Configuration mockConfiguration = mock(Configuration.class);
-        when(mockConfiguration.getContents()).thenReturn(commandConfigurationJson);
-        final String configPath = String.format(WRAPPER_CONFIG_PATH_TEMPLATE, wrapperId);
-        when(mockConfigService.getConfig(ContainerConfigService.TOOL_ID, configPath, Scope.Project, NON_ADMIN_IS_OWNER_PROJECT))
-                .thenReturn(mockConfiguration);
-        when(mockConfigService.getConfig(ContainerConfigService.TOOL_ID, configPath, Scope.Project, NON_ADMIN_IS_MEMBER_PROJECT))
-                .thenReturn(mockConfiguration);
-        when(mockConfigService.getConfig(ContainerConfigService.TOOL_ID, configPath, Scope.Project, NON_ADMIN_IS_COLLABORATOR_PROJECT))
-                .thenReturn(mockConfiguration);
-        when(mockConfigService.getConfig(ContainerConfigService.TOOL_ID, configPath, Scope.Site, null))
-                .thenReturn(mockConfiguration);
-
-        // Admin should be able to read all projects
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_OWNER_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(ADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_MEMBER_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(ADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_COLLABORATOR_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(ADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        // Non-admin should be able to get available commands if they are member or owner
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_OWNER_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(NONADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_MEMBER_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(NONADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        {
-            final MockHttpServletRequestBuilder request =
-                    get(path).param("project", NON_ADMIN_IS_COLLABORATOR_PROJECT)
-                            .param("xsiType", xsiType)
-                            .with(authentication(NONADMIN_AUTH))
-                            .with(csrf())
-                            .with(testSecurityContext());
-
-            final String response =
-                    mockMvc.perform(request)
-                            .andExpect(status().isOk())
-                            .andReturn()
-                            .getResponse()
-                            .getContentAsString();
-
-            assertThat((List<CommandSummaryForContext>) mapper.readValue(response, new TypeReference<List<CommandSummaryForContext>>(){}), is(available));
-        }
-
-        // TODO: CS tests don't work with restrictTo annotation, although the XNAT site does, see CS-266.
-        //  Probably need to adjust the test config somehow
-        //{
-        //    final MockHttpServletRequestBuilder request =
-        //            get(path).param("project", NON_ADMIN_NON_PROJECT)
-        //                    .param("xsiType", xsiType)
-        //                    .with(authentication(NONADMIN_AUTH))
-        //                    .with(csrf())
-        //                    .with(testSecurityContext());
-        //
-        //    mockMvc.perform(request)
-        //            .andExpect(status().isForbidden());
-        //}
     }
 }
