@@ -22,6 +22,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
     private boolean statusEmailEnabled = true;
+    private String gpuVendor;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -40,6 +41,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.autoCleanup = dockerServer.autoCleanup();
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
         this.statusEmailEnabled = dockerServer.statusEmailEnabled();
+        this.gpuVendor = dockerServer.gpuVendor();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -211,6 +213,14 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.statusEmailEnabled = statusEmail == null || statusEmail;
     }
 
+    public String getGpuVendor() {
+        return gpuVendor;
+    }
+
+    public void setGpuVendor(String gpuVendor) {
+        this.gpuVendor = gpuVendor;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -252,6 +262,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.autoCleanup, that.autoCleanup) &&
                 Objects.equals(this.maxConcurrentFinalizingJobs, that.maxConcurrentFinalizingJobs) &&
                 Objects.equals(this.statusEmailEnabled, that.statusEmailEnabled) &&
+                Objects.equals(this.gpuVendor, that.gpuVendor) &&
                 constrEqual;
     }
 
@@ -259,7 +270,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     public int hashCode() {
         return Objects.hash(name, host, certPath, lastEventCheckTime, backend, pathTranslationXnatPrefix,
                 pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
-                maxConcurrentFinalizingJobs, statusEmailEnabled);
+                maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor);
     }
 
 }

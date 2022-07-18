@@ -75,6 +75,10 @@ public abstract class DockerServerBase {
     @JsonProperty("status-email-enabled")
     public abstract boolean statusEmailEnabled();
 
+    @JsonProperty("gpu-vendor")
+    @Nullable
+    public abstract String gpuVendor();
+
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
         public static final DockerServer DEFAULT_SOCKET = DockerServer.create("Local socket", "unix:///var/run/docker.sock");
@@ -93,13 +97,14 @@ public abstract class DockerServerBase {
                                           @JsonProperty("auto-cleanup") final boolean autoCleanup,
                                           @Nullable @JsonProperty("swarm-constraints") final List<DockerServerSwarmConstraint> swarmConstraints,
                                           @JsonProperty("max-concurrent-finalizing-jobs") final Integer maxConcurrentFinalizingJobs,
-                                          @JsonProperty("status-email-enabled") final boolean statusEmailEnabled) {
+                                          @JsonProperty("status-email-enabled") final boolean statusEmailEnabled,
+                                          @JsonProperty("gpu-vendor") final String gpuVendor) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
             }
             return create(id, name, host, certPath, backend, null, pathTranslationXnatPrefix,
                     pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
-                    maxConcurrentFinalizingJobs, statusEmailEnabled);
+                    maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor);
         }
 
         public static DockerServer create(final String name,
@@ -123,7 +128,8 @@ public abstract class DockerServerBase {
                                           final Boolean autoCleanup,
                                           final List<DockerServerSwarmConstraint> swarmConstraints,
                                           final Integer maxConcurrentFinalizingJobs,
-                                          final Boolean statusEmailEnabled) {
+                                          final Boolean statusEmailEnabled,
+                                          final String gpuVendor) {
             return builder()
                     .id(id == null ? 0L : id)
                     .name(StringUtils.isBlank(name) ? host : name)
@@ -139,6 +145,7 @@ public abstract class DockerServerBase {
                     .swarmConstraints(swarmConstraints)
                     .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .statusEmailEnabled(statusEmailEnabled == null || statusEmailEnabled)
+                    .gpuVendor(gpuVendor)
                     .build();
         }
 
@@ -161,7 +168,8 @@ public abstract class DockerServerBase {
                     dockerServerEntity.isAutoCleanup(),
                     swarmConstraints,
                     dockerServerEntity.getMaxConcurrentFinalizingJobs(),
-                    dockerServerEntity.isStatusEmailEnabled());
+                    dockerServerEntity.isStatusEmailEnabled(),
+                    dockerServerEntity.getGpuVendor());
         }
 
         public static DockerServer create(final DockerServerPrefsBean dockerServerPrefsBean) {
@@ -179,7 +187,8 @@ public abstract class DockerServerBase {
                     true,
                     null,
                     null,
-                    true);
+                    true,
+                    null);
         }
 
         public DockerServer updateEventCheckTime(final Date newLastEventCheckTime) {
@@ -199,7 +208,8 @@ public abstract class DockerServerBase {
                             this.autoCleanup(),
                             this.swarmConstraints(),
                             this.maxConcurrentFinalizingJobs(),
-                            this.statusEmailEnabled()
+                            this.statusEmailEnabled(),
+                            this.gpuVendor()
                     );
         }
 
@@ -218,7 +228,8 @@ public abstract class DockerServerBase {
                     .autoCleanup(true)
                     .swarmConstraints(Collections.emptyList())
                     .maxConcurrentFinalizingJobs(null)
-                    .statusEmailEnabled(false);
+                    .statusEmailEnabled(false)
+                    .gpuVendor(null);
         }
 
         public abstract Builder toBuilder();
@@ -239,7 +250,7 @@ public abstract class DockerServerBase {
             public abstract Builder swarmConstraints(List<DockerServerSwarmConstraint> swarmConstraints);
             public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
             public abstract Builder statusEmailEnabled(boolean statusEmailEnabled);
-
+            public abstract Builder gpuVendor(String gpuVendor);
             public abstract DockerServer build();
         }
     }
@@ -266,6 +277,7 @@ public abstract class DockerServerBase {
                                                   @JsonProperty("max-concurrent-finalizing-jobs")
                                                           final Integer maxConcurrentFinalizingJobs,
                                                   @JsonProperty("status-email-enabled") final boolean statusEmailEnabled,
+                                                  @JsonProperty("gpu-vendor") final String gpuVendor,
                                                   @JsonProperty("ping") final Boolean ping) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
@@ -273,7 +285,7 @@ public abstract class DockerServerBase {
 
             return create(id, name, host, certPath, backend, new Date(0),
                     pathTranslationXnatPrefix, pathTranslationDockerPrefix, pullImagesOnXnatInit,
-                    user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, statusEmailEnabled, ping);
+                    user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, ping);
         }
 
         public static DockerServerWithPing create(final Long id,
@@ -290,6 +302,7 @@ public abstract class DockerServerBase {
                                                   final List<DockerServerSwarmConstraint> swarmConstraints,
                                                   final Integer maxConcurrentFinalizingJobs,
                                                   final Boolean statusEmailEnabled,
+                                                  final String gpuVendor,
                                                   final Boolean ping) {
             return builder()
                     .id(id == null ? 0L : id)
@@ -306,6 +319,7 @@ public abstract class DockerServerBase {
                     .swarmConstraints(swarmConstraints)
                     .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .statusEmailEnabled(statusEmailEnabled == null || statusEmailEnabled)
+                    .gpuVendor(gpuVendor)
                     .ping(ping != null && ping)
                     .build();
         }
@@ -327,6 +341,7 @@ public abstract class DockerServerBase {
                     dockerServer.swarmConstraints(),
                     dockerServer.maxConcurrentFinalizingJobs(),
                     dockerServer.statusEmailEnabled(),
+                    dockerServer.gpuVendor(),
                     ping
             );
         }
@@ -347,7 +362,8 @@ public abstract class DockerServerBase {
                     .autoCleanup(true)
                     .swarmConstraints(Collections.emptyList())
                     .maxConcurrentFinalizingJobs(null)
-                    .statusEmailEnabled(false);
+                    .statusEmailEnabled(false)
+                    .gpuVendor(null);
         }
 
         public abstract Builder toBuilder();
@@ -368,6 +384,7 @@ public abstract class DockerServerBase {
             public abstract Builder swarmConstraints(List<DockerServerSwarmConstraint> swarmConstraints);
             public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
             public abstract Builder statusEmailEnabled(boolean statusEmailEnabled);
+            public abstract Builder gpuVendor(String gpuVendor);
             public abstract Builder ping(Boolean ping);
 
             public abstract DockerServerWithPing build();
@@ -457,14 +474,15 @@ public abstract class DockerServerBase {
                 Objects.equals(this.autoCleanup(), that.autoCleanup()) &&
                 Objects.equals(this.swarmConstraints(), that.swarmConstraints()) &&
                 Objects.equals(this.maxConcurrentFinalizingJobs(), that.maxConcurrentFinalizingJobs()) &&
-                Objects.equals(this.statusEmailEnabled(), that.statusEmailEnabled());
+                Objects.equals(this.statusEmailEnabled(), that.statusEmailEnabled()) &&
+                Objects.equals(this.gpuVendor(), that.gpuVendor());
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(name(), host(), certPath(), backend(),
                 pathTranslationXnatPrefix(), pathTranslationDockerPrefix(), pullImagesOnXnatInit(),
-                containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs(), statusEmailEnabled());
+                containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs(), statusEmailEnabled(), gpuVendor());
     }
 
 }

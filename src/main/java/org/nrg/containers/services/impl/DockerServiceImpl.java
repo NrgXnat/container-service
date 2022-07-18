@@ -74,12 +74,12 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerHubWithPing createHub(final DockerHub hub)  {
+    public DockerHubWithPing createHub(final DockerHub hub) {
         return ping(dockerHubService.create(hub));
     }
 
     @Override
-    public DockerHubWithPing createHubAndSetDefault(final DockerHub hub, final String username, final String reason)  {
+    public DockerHubWithPing createHubAndSetDefault(final DockerHub hub, final String username, final String reason) {
         return ping(dockerHubService.createAndSetDefault(hub, username, reason));
     }
 
@@ -241,6 +241,10 @@ public class DockerServiceImpl implements DockerService {
                             "kubernetes backend");
                 }
             }
+            final String gpuVendor = server.gpuVendor();
+            if (StringUtils.isNotEmpty(gpuVendor) && !(StringUtils.equalsIgnoreCase("nvidia", gpuVendor) || StringUtils.equalsIgnoreCase("amd", gpuVendor))) {
+                throw new InvalidDefinitionException("The value of the GPU Vendor can only be nvidia or amd");
+            }
         } else {
             // Docker + Swarm must have a host configured
             if (StringUtils.isBlank(server.host())) {
@@ -273,7 +277,7 @@ public class DockerServiceImpl implements DockerService {
 
         // Get set of unique image names referenced in all commands
         Set<String> cmdImageTags = commandService.getAll().stream()
-                .filter(command ->StringUtils.isNotBlank(command.image()))
+                .filter(command -> StringUtils.isNotBlank(command.image()))
                 .map(command -> command.image())
                 .collect(Collectors.toCollection(HashSet::new));
 
@@ -282,7 +286,7 @@ public class DockerServiceImpl implements DockerService {
                 .flatMap(List::stream).collect(Collectors.toList());
         for (final String cmdImageTag : cmdImageTags.stream()
                 .filter(tag -> !installedTags.contains(tag))
-                .collect(Collectors.toList())){
+                .collect(Collectors.toList())) {
             allImages.add(DockerImage.builder().addTag(cmdImageTag).build());
         }
         return allImages;
@@ -392,7 +396,7 @@ public class DockerServiceImpl implements DockerService {
 
                         imageSummaryBuildersByImageId.put(imageNameUsedByTheCommand,
                                 DockerImageAndCommandSummary.builder()
-                                .addImageName(imageNameUsedByTheCommand)
+                                        .addImageName(imageNameUsedByTheCommand)
                         );
                         commandListsByImageId.put(imageNameUsedByTheCommand,
                                 Lists.newArrayList(command)

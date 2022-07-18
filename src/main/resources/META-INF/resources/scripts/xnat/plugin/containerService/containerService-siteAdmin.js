@@ -289,6 +289,20 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 offText: 'NO',
                                 value: 'true'
                             })
+                        ]),
+
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>GPU Vendor</strong><br> Select GPU Vendor in the environment'),
+                            XNAT.ui.panel.select.single({
+                                name: 'gpu-vendor',
+                                label: 'GPU Vendor',
+                                options:
+                                    [
+                                        { label: 'Select GPU Vendor', value: '' },
+                                        { label: 'Nvidia', value: 'nvidia' },
+                                        { label: 'AMD', value: 'amd' },
+                                    ]
+                            })
                         ])
                     ])
                 );

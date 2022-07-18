@@ -503,7 +503,7 @@ public class DockerControlApiTest {
             toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
 
             when(kubernetesClient.createJob(
-                    toLaunch, DockerControlApi.NumReplicas.ZERO, null
+                    toLaunch, DockerControlApi.NumReplicas.ZERO, null, null
             )).thenReturn(BACKEND_ID);
         } else {
             toLaunchAndExpectedContainerBuilder.containerId(BACKEND_ID);
@@ -554,7 +554,7 @@ public class DockerControlApiTest {
             expectedCreatedBuilder.serviceId(BACKEND_ID);
         } else if (backend == Backend.KUBERNETES) {
             when(kubernetesClient.createJob(
-                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO), any(String.class)
+                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO), any(String.class), any(String.class)
             )).thenReturn(BACKEND_ID);
 
             expectedCreatedBuilder.serviceId(BACKEND_ID);

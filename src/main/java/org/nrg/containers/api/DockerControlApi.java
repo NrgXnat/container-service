@@ -428,7 +428,7 @@ public class DockerControlApi implements ContainerControlApi {
                 createdBuilder.containerId(containerId);
                 break;
             case KUBERNETES:
-                final String kubernetesJobId = getKubernetesClient().createJob(toCreate, NumReplicas.ZERO, server.containerUser());
+                final String kubernetesJobId = getKubernetesClient().createJob(toCreate, NumReplicas.ZERO, server.containerUser(), server.gpuVendor());
                 createdBuilder.serviceId(kubernetesJobId);
                 break;
             default:

@@ -198,7 +198,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser)
+    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser, final String gpuVendor)
             throws ContainerBackendException, ContainerException {
         log.debug("Creating kubernetes job");
 
@@ -312,7 +312,7 @@ public class KubernetesClientImpl implements KubernetesClient {
         // Work-around to support configurable shm-size
         // See https://stackoverflow.com/a/46434614
         final Long shmSize = toCreate.shmSize();
-        if (shmSize != null && shmSize > 0){
+        if (shmSize != null && shmSize > 0) {
             final String shmVolName = "shm";
             volumes.add(new V1VolumeBuilder()
                     .withName(shmVolName)
@@ -358,6 +358,15 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
         if (toCreate.limitCpu() != null) {
             resourceRequirementsBuilder.addToLimits("cpu", new Quantity(String.valueOf(toCreate.limitCpu())));
+        }
+        final String gpuNumber = toCreate.genericResources().get("gpu");
+        if (StringUtils.isNotEmpty(gpuNumber)) {
+            if (StringUtils.isNotEmpty(gpuVendor)) {
+                resourceRequirementsBuilder.addToLimits(gpuVendor.toLowerCase() + ".com/gpu", new Quantity(String.valueOf(gpuNumber)));
+            } else {
+                log.error("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
+                throw new ContainerException("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
+            }
         }
         final V1ResourceRequirements resources = resourceRequirementsBuilder.build();
 
@@ -460,7 +469,7 @@ public class KubernetesClientImpl implements KubernetesClient {
                     V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
                     batchApi.getApiClient()
             );
-        }  catch (ApiException e) {
+        } catch (ApiException e) {
             log.error("Could not start job {}: message \"{}\" code {} body {}", jobName, e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not start job " + jobName, e);
         }
