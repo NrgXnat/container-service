@@ -350,7 +350,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
                         if (errors.length) {
 
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
@@ -401,7 +401,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             method: 'POST',
             url: containerHostUrl(),
             success: function(){
+                // manually set hostType to accurately refresh the image list manager
+                containerHostManager.hostType = $(this[0]).find('select[name=backend]').find('option:selected').val();
                 containerHostManager.refreshTable();
+                imageListManager.refresh();
                 xmodal.closeAll();
                 XNAT.ui.banner.top(2000, 'Saved.', 'success')
             },
@@ -564,15 +567,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         containerHostManager.getAll().done(function(data){
             data = [].concat(data);
 
-            var hostType;
             if (Array.isArray(data)) {
-                hostType = data[0].backend;
+                containerHostManager.hostType = data[0].backend;
             } else {
-                hostType = data.backend;
-
+                containerHostManager.hostType = data.backend;
             }
-            if (hostType.toLowerCase() === 'kubernetes') {
-                // modify elements of the UI
+            if (containerHostManager.hostType.toLowerCase() === 'kubernetes') {
+                // catch the race condition, if the Image List manager table has already rendered
                 $(document).find('button.new-image').addClass('hidden');
             } else {
                 $(document).find('button.new-image').removeClass('hidden');
@@ -754,7 +755,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
                         var errors = csValidator([$url,$name]);
                         if (errors.length) {
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
@@ -1167,11 +1168,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         var errors = csValidator([$image,$tag]);
                         if (errors.length) {
 
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
-                            })
+                            });
                         } else {
                             // stitch together the image and tag definition, if a tag value was specified.
                             if ($tag.val().length > 0 && $tag.val().indexOf(':') < 0) {
@@ -1483,28 +1484,32 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     }
 
     imageFilterManager.init = imageFilterManager.refresh = function(){
+        let hostType = containerHostManager.hostType;
 
         var $header = $('#image-filter-bar').parents('.panel').find('.panel-heading');
         var $footer = $('#image-filter-bar').parents('.panel').find('.panel-footer');
 
         // add two 'add new' buttons to the panel header. The 'add new image' button is hidden in a Kubernetes environment
-        var newImage = spawn('button.new-image.btn.btn-sm.pad5', {
+        const newImage = spawn('button.new-image.btn.btn-sm.pad5', {
             html: 'New Image',
             onclick: function(){
                 addImage.dialog(null);
             }
         });
-        var newCommand = spawn('button.new-command.btn.btn-sm.pad5',{
+        const newCommand = spawn('button.new-command.btn.btn-sm.pad5',{
             html: 'New Command',
             onclick: function(){
                 commandDefinition.dialog(null,true)
             }
         });
 
+        let buttonSet = [ newImage, spacer(6), newCommand ];
+        if (hostType !== undefined && hostType === 'kubernetes') buttonSet = [ newCommand ];
+
         $header.empty().append(spawn('!',[
             spawn('h3.panel-title', [
                 'Installed Images and Commands',
-                spawn('span.pull-right', { style: { 'margin-top': '-4px' }}, [ newImage, spacer(6), newCommand ])
+                spawn('span.pull-right', { style: { 'margin-top': '-4px' }}, buttonSet)
             ])
         ]));
         var $hideableImages = $(document).find('.imageContainer.no-commands');
