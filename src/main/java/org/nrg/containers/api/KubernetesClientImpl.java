@@ -6,14 +6,16 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1Affinity;
+import io.kubernetes.client.openapi.models.V1AffinityBuilder;
 import io.kubernetes.client.openapi.models.V1ContainerPort;
 import io.kubernetes.client.openapi.models.V1ContainerPortBuilder;
 import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
 import io.kubernetes.client.openapi.models.V1Job;
 import io.kubernetes.client.openapi.models.V1JobBuilder;
-import io.kubernetes.client.openapi.models.V1LabelSelector;
-import io.kubernetes.client.openapi.models.V1LabelSelectorBuilder;
+import io.kubernetes.client.openapi.models.V1NodeSelectorRequirement;
+import io.kubernetes.client.openapi.models.V1NodeSelectorRequirementBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
 import io.kubernetes.client.openapi.models.V1ResourceRequirementsBuilder;
@@ -47,6 +49,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,7 +62,10 @@ import static org.nrg.containers.utils.ContainerUtils.SECONDS_PER_WEEK;
 public class KubernetesClientImpl implements KubernetesClient {
     // Format: (label)(comparator)(value)
     //  comparator can be != or ==
-    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(?<label>.+)(?<comparator>!=|==)(?<value>.+)");
+    private static final String LABEL_CAPTURE_GROUP = "label";
+    private static final String COMPARATOR_CAPTURE_GROUP = "comparator";
+    private static final String VALUE_CAPTURE_GROUP = "value";
+    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(node\\.label\\.)?(?<" + LABEL_CAPTURE_GROUP +">.+?)(?<" + COMPARATOR_CAPTURE_GROUP + ">!=|==)(?<" + VALUE_CAPTURE_GROUP +">.+?)");
 
     public static final int JOB_TIME_TO_LIVE_WEEKS = 1;  // Clean up lingering jobs + pods + logs after one week
     public static final int JOB_TIME_TO_LIVE_SECS = JOB_TIME_TO_LIVE_WEEKS * SECONDS_PER_WEEK;
@@ -223,48 +229,72 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
 
         // Constraints
+        V1Affinity affinity = null;
         final List<String> constraints = toCreate.swarmConstraints();
-        final V1LabelSelectorBuilder labelSelectorBuilder = new V1LabelSelectorBuilder();
         if (!(constraints == null || constraints.isEmpty())) {
             // Unfortunately these constraints have already been baked into strings with swarm's syntax.
             // We need to parse the string values.
 
-            // We will store the constraints in separate maps based on comparator
-            final Map<String, List<String>> equalConstraints = new HashMap<>();
-            final Map<String, List<String>> unequalConstraints = new HashMap<>();
+            // Temporarily store the parsed constraints in a map
+            // This effectively lets us group the values by the map key (label, comparator)
+            final List<ParsedConstraint> parsedConstraints = new ArrayList<>(constraints.size());
             for (final String constraint : constraints) {
                 final Matcher m = SWARM_CONSTRAINT_PATTERN.matcher(constraint);
+                final String label;
+                final String comparator;
+                final String value;
                 try {
-                    final String label = m.group("label");
-                    final String comparator = m.group("comparator");
-                    final String value = m.group("value");
-
-                    // Add to the appropriate map
-                    (comparator.equals("==") ? equalConstraints : unequalConstraints)
-                            .computeIfAbsent(label, k -> new ArrayList<>()).add(value);
-                } catch (Exception e) {
-                    throw new ContainerException("Improperly formatted constraint", e);
+                    label = m.group(LABEL_CAPTURE_GROUP);
+                    comparator = m.group(COMPARATOR_CAPTURE_GROUP);
+                    value = m.group(VALUE_CAPTURE_GROUP);
+                } catch (IllegalStateException e) {
+                    log.warn("Ignoring improperly formatted constraint: " + constraint, e);
+                    continue;
                 }
+
+                parsedConstraints.add(ParsedConstraint.fromComparator(label, comparator, value));
             }
 
-            // Now we translate the constraints into the kubernetes object format:
-            // https://kubernetes.io/docs/reference/kubernetes-api/common-definitions/label-selector/#LabelSelector
-            for (final Map.Entry<String, List<String>> entry : equalConstraints.entrySet()) {
-                labelSelectorBuilder.addNewMatchExpression()
-                        .withKey(entry.getKey())
-                        .withOperator("In")
-                        .addAllToValues(entry.getValue())
-                        .endMatchExpression();
-            }
-            for (final Map.Entry<String, List<String>> entry : unequalConstraints.entrySet()) {
-                labelSelectorBuilder.addNewMatchExpression()
-                        .withKey(entry.getKey())
-                        .withOperator("NotIn")
-                        .addAllToValues(entry.getValue())
-                        .endMatchExpression();
-            }
+            // Translate the constraints into the kubernetes object format.
+            // https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+            // In the pod spec (yaml format) our constraints will translate to node affinity like so:
+            //
+            // spec:
+            //  affinity:
+            //    nodeAffinity:
+            //      requiredDuringSchedulingIgnoredDuringExecution:
+            //        nodeSelectorTerms:
+            //        - matchExpressions:
+            //          - key: <key>
+            //            operator: <"In" if comparator is "==", "NotIn" if comparator is "!=">
+            //            values:
+            //            - <value>
+
+            // Group the constraints by unique key, operator pairs and collect the values into a list.
+            final Map<ConstraintKey, List<String>> constraintMap = parsedConstraints.stream()
+                    .collect(Collectors.groupingBy(ParsedConstraint::asKey,
+                            Collectors.mapping(ParsedConstraint::value, Collectors.toList())));
+
+            // Create a match expression for each grouped constraint
+            final List<V1NodeSelectorRequirement> matchExpressions = constraintMap.entrySet().stream()
+                    .map(entry -> new V1NodeSelectorRequirementBuilder()
+                            .withKey(entry.getKey().label)
+                            .withOperator(entry.getKey().operator)
+                            .withValues(entry.getValue())
+                            .build()
+                    ).collect(Collectors.toList());
+
+            // Build the rest of the affinity infrastructure around the match expressions
+            affinity = new V1AffinityBuilder()
+                    .withNewNodeAffinity()
+                    .withNewRequiredDuringSchedulingIgnoredDuringExecution()
+                    .addNewNodeSelectorTerm()
+                    .withMatchExpressions(matchExpressions)
+                    .endNodeSelectorTerm()
+                    .endRequiredDuringSchedulingIgnoredDuringExecution()
+                    .endNodeAffinity()
+                    .build();
         }
-        final V1LabelSelector selector = labelSelectorBuilder.build();
 
         // Environment variables
         final List<V1EnvVar> envVars = toCreate.environmentVariables().entrySet().stream().map(
@@ -393,12 +423,12 @@ public class KubernetesClientImpl implements KubernetesClient {
                 .withTtlSecondsAfterFinished(JOB_TIME_TO_LIVE_SECS)
                 .withBackoffLimit(JOB_BACKOFF_LIMIT)
                 .withSuspend(suspend)
-                .withSelector(selector)
                 .withNewTemplate()
                 .withNewMetadata()
                 .withLabels(labels)
                 .endMetadata()
                 .withNewSpec()
+                .withAffinity(affinity)
                 .withRestartPolicy(POD_RESTART_POLICY)
                 .withVolumes(volumes)
                 .addNewContainer()
@@ -446,6 +476,62 @@ public class KubernetesClientImpl implements KubernetesClient {
             log.error("Could not create job: message \"{}\" code {} body {}", e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not create job", e);
         }
+    }
+
+    private static class ParsedConstraint {
+        final String label;
+        final String operator;
+        final String value;
+
+        ParsedConstraint(String label, String operator, String value) {
+            this.label = label;
+            this.operator = operator;
+            this.value = value;
+        }
+
+        public static ParsedConstraint fromComparator(String label, String comparator, String value) {
+            return new ParsedConstraint(label, constraintComparatorToKubernetesOperator(comparator), value);
+        }
+
+        ConstraintKey asKey() {
+            return new ConstraintKey(label, operator);
+        }
+
+        String value() {
+            return value;
+        }
+    }
+
+    private static class ConstraintKey {
+        final String label;
+        final String operator;
+
+        ConstraintKey(String label, String operator) {
+            this.label = label;
+            this.operator = operator;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            ConstraintKey that = (ConstraintKey) o;
+            return Objects.equals(label, that.label) && Objects.equals(operator, that.operator);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(label, operator);
+        }
+    }
+
+    private static String constraintComparatorToKubernetesOperator(final String comparator) {
+        if (StringUtils.equals(comparator, "==")) {
+            return "In";
+        } else if (StringUtils.equals(comparator, "!=")) {
+            return "NotIn";
+        }
+        return null;
     }
 
     @Override
