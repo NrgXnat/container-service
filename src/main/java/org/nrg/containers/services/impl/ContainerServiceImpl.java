@@ -1075,8 +1075,7 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
 		if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
-            Integer limit = containerControlApi.getFinalizingThrottle();
-            if (canFinalize(limit, userI, containerOrService, request)) {
+            if (canFinalize(userI, containerOrService, request)) {
                 log.debug("Added to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
                         count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
                         containerOrService.status());
@@ -1095,16 +1094,22 @@ public class ContainerServiceImpl implements ContainerService {
 		}
 	}
 
-    private synchronized boolean canFinalize(Integer limit, UserI user, Container containerOrService,
-                                             ContainerFinalizingRequest request) {
-        List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
-        boolean canFinalize = limit == null || wfs == null || wfs.size() < limit;
-        if (canFinalize) {
-            addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
-                    request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
-                    user);
+    private boolean canFinalize(UserI user, Container containerOrService, ContainerFinalizingRequest request) {
+        Integer limit = containerControlApi.getFinalizingThrottle();
+        if (limit == null) {
+            return true;
         }
-        return canFinalize;
+
+        synchronized (this) {
+            List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
+            boolean canFinalize = wfs == null || wfs.size() < limit;
+            if (canFinalize) {
+                addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
+                        request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
+                        user);
+            }
+            return canFinalize;
+        }
     }
 
     private void recoverFromQueueingFailureFinalizing(Exception e,
