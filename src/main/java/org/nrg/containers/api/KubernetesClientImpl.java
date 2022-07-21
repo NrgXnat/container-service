@@ -325,13 +325,15 @@ public class KubernetesClientImpl implements KubernetesClient {
         if (toCreate.limitCpu() != null) {
             resourceRequirementsBuilder.addToLimits("cpu", new Quantity(String.valueOf(toCreate.limitCpu())));
         }
-        final String gpuNumber = toCreate.genericResources().get("gpu");
-        if (StringUtils.isNotEmpty(gpuNumber)) {
-            if (StringUtils.isNotEmpty(gpuVendor)) {
-                resourceRequirementsBuilder.addToLimits(gpuVendor.toLowerCase() + ".com/gpu", new Quantity(String.valueOf(gpuNumber)));
-            } else {
-                log.error("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
-                throw new ContainerException("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
+        if (toCreate.genericResources()!=null) {
+            final String gpuNumber = toCreate.genericResources().get("gpu");
+            if (StringUtils.isNotEmpty(gpuNumber)) {
+                if (StringUtils.isNotEmpty(gpuVendor)) {
+                    resourceRequirementsBuilder.addToLimits(gpuVendor.toLowerCase() + ".com/gpu", new Quantity(String.valueOf(gpuNumber)));
+                } else {
+                    log.error("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
+                    throw new ContainerException("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
+                }
             }
         }
         final V1ResourceRequirements resources = resourceRequirementsBuilder.build();
