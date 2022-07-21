@@ -1,5 +1,6 @@
 package org.nrg.containers.api;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
@@ -229,72 +230,7 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
 
         // Constraints
-        V1Affinity affinity = null;
-        final List<String> constraints = toCreate.swarmConstraints();
-        if (!(constraints == null || constraints.isEmpty())) {
-            // Unfortunately these constraints have already been baked into strings with swarm's syntax.
-            // We need to parse the string values.
-
-            // Temporarily store the parsed constraints in a map
-            // This effectively lets us group the values by the map key (label, comparator)
-            final List<ParsedConstraint> parsedConstraints = new ArrayList<>(constraints.size());
-            for (final String constraint : constraints) {
-                final Matcher m = SWARM_CONSTRAINT_PATTERN.matcher(constraint);
-                final String label;
-                final String comparator;
-                final String value;
-                try {
-                    label = m.group(LABEL_CAPTURE_GROUP);
-                    comparator = m.group(COMPARATOR_CAPTURE_GROUP);
-                    value = m.group(VALUE_CAPTURE_GROUP);
-                } catch (IllegalStateException e) {
-                    log.warn("Ignoring improperly formatted constraint: " + constraint, e);
-                    continue;
-                }
-
-                parsedConstraints.add(ParsedConstraint.fromComparator(label, comparator, value));
-            }
-
-            // Translate the constraints into the kubernetes object format.
-            // https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
-            // In the pod spec (yaml format) our constraints will translate to node affinity like so:
-            //
-            // spec:
-            //  affinity:
-            //    nodeAffinity:
-            //      requiredDuringSchedulingIgnoredDuringExecution:
-            //        nodeSelectorTerms:
-            //        - matchExpressions:
-            //          - key: <key>
-            //            operator: <"In" if comparator is "==", "NotIn" if comparator is "!=">
-            //            values:
-            //            - <value>
-
-            // Group the constraints by unique key, operator pairs and collect the values into a list.
-            final Map<ConstraintKey, List<String>> constraintMap = parsedConstraints.stream()
-                    .collect(Collectors.groupingBy(ParsedConstraint::asKey,
-                            Collectors.mapping(ParsedConstraint::value, Collectors.toList())));
-
-            // Create a match expression for each grouped constraint
-            final List<V1NodeSelectorRequirement> matchExpressions = constraintMap.entrySet().stream()
-                    .map(entry -> new V1NodeSelectorRequirementBuilder()
-                            .withKey(entry.getKey().label)
-                            .withOperator(entry.getKey().operator)
-                            .withValues(entry.getValue())
-                            .build()
-                    ).collect(Collectors.toList());
-
-            // Build the rest of the affinity infrastructure around the match expressions
-            affinity = new V1AffinityBuilder()
-                    .withNewNodeAffinity()
-                    .withNewRequiredDuringSchedulingIgnoredDuringExecution()
-                    .addNewNodeSelectorTerm()
-                    .withMatchExpressions(matchExpressions)
-                    .endNodeSelectorTerm()
-                    .endRequiredDuringSchedulingIgnoredDuringExecution()
-                    .endNodeAffinity()
-                    .build();
-        }
+        final V1Affinity affinity = parseSwarmConstraints(toCreate.swarmConstraints());
 
         // Environment variables
         final List<V1EnvVar> envVars = toCreate.environmentVariables().entrySet().stream().map(
@@ -478,7 +414,74 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
     }
 
-    private static class ParsedConstraint {
+    @VisibleForTesting
+    public static ParsedConstraint parseSwarmConstraint(String constraint) throws ContainerBackendException {
+        final Matcher m = SWARM_CONSTRAINT_PATTERN.matcher(constraint);
+        if (m.matches()) {
+            return ParsedConstraint.fromComparator(m.group(LABEL_CAPTURE_GROUP), m.group(COMPARATOR_CAPTURE_GROUP), m.group(VALUE_CAPTURE_GROUP));
+        } else {
+            throw new ContainerBackendException("Improperly formatted constraint: " + constraint);
+        }
+    }
+
+    @VisibleForTesting
+    public static V1Affinity parseSwarmConstraints(List<String> constraints) throws ContainerBackendException {
+        log.info("Constraints {}", constraints);
+        if (constraints == null || constraints.isEmpty()) {
+            return null;
+        }
+        // The constraints in the Container have already been baked into strings with swarm's syntax.
+        // We need to parse the string values.
+
+        // Can't use a stream.map because parseSwarmConstraints can throw
+        final List<ParsedConstraint> parsedConstraints = new ArrayList<>(constraints.size());
+        for (final String constraint : constraints) {
+            parsedConstraints.add(parseSwarmConstraint(constraint));
+        }
+
+        // Translate the constraints into the kubernetes object format.
+        // https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+        // In the pod spec (yaml format) our constraints will translate to node affinity like so:
+        //
+        // spec:
+        //  affinity:
+        //    nodeAffinity:
+        //      requiredDuringSchedulingIgnoredDuringExecution:
+        //        nodeSelectorTerms:
+        //        - matchExpressions:
+        //          - key: <key>
+        //            operator: <"In" if comparator is "==", "NotIn" if comparator is "!=">
+        //            values:
+        //            - <value>
+
+        // Group the constraints by unique key, operator pairs and collect the values into a list.
+        final Map<ConstraintKey, List<String>> constraintMap = parsedConstraints.stream()
+                .collect(Collectors.groupingBy(ParsedConstraint::asKey,
+                        Collectors.mapping(ParsedConstraint::value, Collectors.toList())));
+
+        // Create a match expression for each grouped constraint
+        final List<V1NodeSelectorRequirement> matchExpressions = constraintMap.entrySet().stream()
+                .map(entry -> new V1NodeSelectorRequirementBuilder()
+                        .withKey(entry.getKey().label)
+                        .withOperator(entry.getKey().operator)
+                        .withValues(entry.getValue())
+                        .build()
+                ).collect(Collectors.toList());
+
+        // Build the rest of the affinity infrastructure around the match expressions
+        return new V1AffinityBuilder()
+                .withNewNodeAffinity()
+                .withNewRequiredDuringSchedulingIgnoredDuringExecution()
+                .addNewNodeSelectorTerm()
+                .withMatchExpressions(matchExpressions)
+                .endNodeSelectorTerm()
+                .endRequiredDuringSchedulingIgnoredDuringExecution()
+                .endNodeAffinity()
+                .build();
+    }
+
+    @VisibleForTesting
+    public static class ParsedConstraint {
         final String label;
         final String operator;
         final String value;
@@ -489,7 +492,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             this.value = value;
         }
 
-        public static ParsedConstraint fromComparator(String label, String comparator, String value) {
+        static ParsedConstraint fromComparator(String label, String comparator, String value) {
             return new ParsedConstraint(label, constraintComparatorToKubernetesOperator(comparator), value);
         }
 
@@ -497,7 +500,15 @@ public class KubernetesClientImpl implements KubernetesClient {
             return new ConstraintKey(label, operator);
         }
 
-        String value() {
+        public String label() {
+            return label;
+        }
+
+        public String operator() {
+            return operator;
+        }
+
+        public String value() {
             return value;
         }
     }
