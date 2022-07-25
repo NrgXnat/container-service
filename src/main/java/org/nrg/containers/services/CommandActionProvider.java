@@ -158,7 +158,7 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         if (!SCHEDULED_EVENT_SUPPORTED_TYPES.contains(externalInputType)) {
-            final String msg = "External Input type:" + externalInputType + " is not supported by scheduled events.";
+            final String msg = "External Input type: " + externalInputType + " is not supported by scheduled events.";
             log.error(msg);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), msg);
             return;
@@ -233,7 +233,9 @@ public class CommandActionProvider extends MultiActionProvider {
 
         switch (inputType) {
             case PROJECT:
-                if (xsiTypesMatch(projectData.getXSIType(), contexts) && filterJsonForItem(projectData, subscription, user)) {
+                if (xsiTypesMatch(projectData.getXSIType(), contexts) &&
+                        filterJsonForItem(projectData, subscription, user) &&
+                        ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, projectData, wrapper)) {
                     inputUris.add(UriParserUtils.getArchiveUri(projectData));
                 }
                 break;
