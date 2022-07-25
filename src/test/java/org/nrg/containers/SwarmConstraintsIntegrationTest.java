@@ -29,6 +29,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
@@ -256,7 +257,7 @@ public class SwarmConstraintsIntegrationTest {
         // Permissions checks
         mockStatic(ContainerServicePermissionUtils.class);
         when(ContainerServicePermissionUtils.canCreateOutputObject(
-                eq(mockUser), any(String.class), any(String.class), any(Command.CommandWrapperOutput.class)
+                eq(mockUser), any(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)
         )).thenReturn(true);
 
         // Setup docker server

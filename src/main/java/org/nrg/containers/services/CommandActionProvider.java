@@ -4,16 +4,21 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
+import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.configuration.CommandConfiguration;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.model.XnatImagesessiondataI;
 import org.nrg.xdat.om.*;
 import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.xdat.om.base.auto.AutoXnatSubjectdata;
+import org.nrg.xft.ItemI;
 import org.nrg.xft.exception.ElementNotFoundException;
+import org.nrg.xft.exception.FieldNotFoundException;
+import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.eventservice.actions.MultiActionProvider;
 import org.nrg.xnat.eventservice.events.EventServiceEvent;
@@ -26,7 +31,6 @@ import org.nrg.xnat.eventservice.services.EventService;
 import org.nrg.xnat.eventservice.services.EventServiceComponentManager;
 import org.nrg.xnat.eventservice.services.SubscriptionDeliveryEntityService;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,13 +56,13 @@ public class CommandActionProvider extends MultiActionProvider {
     private final EventService eventService;
 
     private final static List<CommandWrapperInputType> SCHEDULED_EVENT_SUPPORTED_TYPES
-                                    = Arrays.asList(CommandWrapperInputType.PROJECT,
-                                                    CommandWrapperInputType.SUBJECT,
-                                                    CommandWrapperInputType.SESSION,
-                                                    CommandWrapperInputType.ASSESSOR,
-                                                    CommandWrapperInputType.SCAN,
-                                                    CommandWrapperInputType.PROJECT_ASSET,
-                                                    CommandWrapperInputType.SUBJECT_ASSESSOR);
+            = Arrays.asList(CommandWrapperInputType.PROJECT,
+            CommandWrapperInputType.SUBJECT,
+            CommandWrapperInputType.SESSION,
+            CommandWrapperInputType.ASSESSOR,
+            CommandWrapperInputType.SCAN,
+            CommandWrapperInputType.PROJECT_ASSET,
+            CommandWrapperInputType.SUBJECT_ASSESSOR);
 
     @Autowired
     public CommandActionProvider(final ContainerService containerService,
@@ -116,9 +120,11 @@ public class CommandActionProvider extends MultiActionProvider {
             final Command.CommandWrapperExternalInput externalInput = getExternalInput(wrapper);
             externalInputName = externalInput.name();
             externalInputType = CommandWrapperInputType.fromName(externalInput.type());
+            if (null == externalInputType) {
+                throw new Exception("External input type is null.");
+            }
         } catch (Exception e) {
-            log.error("Failed to determine external input type for command wrapper with id: {}", wrapperId);
-            log.error("Aborting subscription: {}", subscription.name());
+            log.error("Failed to determine external input type for command wrapper with id: {}. Aborting subscription: {}", wrapperId, subscription.name());
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_FAILED, new Date(), "Failed to determine external input type for command wrapper with id:" + wrapperId);
             return;
         }
@@ -172,26 +178,30 @@ public class CommandActionProvider extends MultiActionProvider {
         }
 
         final Map<String, String> inputValues = subscription.attributes() != null ? subscription.attributes() : new HashMap<>();
-        final Set<String> inputUris = projectIds.stream()
-                .map(pId -> getInputUrisForContainer(externalInputType, pId, wrapper.contexts(), user, deliveryId, subscription))
-                .flatMap(Set::stream).collect(Collectors.toSet());
+        for (String projectId : projectIds) {
+            final List<String> inputUris = getInputUrisForContainer(externalInputType, projectId, wrapper, user, deliveryId, subscription);
 
-        if (inputUris.isEmpty()) {
-            final String msg = String.format("No inputs of type: %s found. Nothing to do.", externalInputType);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), msg);
-            log.debug(msg);
-            return;
-        }
+            if (inputUris.isEmpty()) {
+                final String msg = "No inputs of type: " + externalInputType + " found in project: " + projectId + ". Nothing to do.";
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
+                log.debug(msg);
+                continue;
+            }
 
-        try {
-            final String inputStr = mapper.writeValueAsString(inputUris);
-            inputValues.put(externalInputName, inputStr);
-            containerService.bulkLaunch(projectIds.size() == 1 ? projectIds.get(0) : null, 0L, null, wrapperId, externalInputName, inputValues, user);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Containers queued for " + inputUris.size() + " " + externalInputType.getName().toLowerCase() + "(s).");
-        } catch (IOException e) {
-            log.error("Failed to execute Bulk Launch for wrapper: {}", wrapper.name(), e);
-            subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), "Failed to queue containers.");
+            try {
+                final String inputStr = mapper.writeValueAsString(inputUris);
+                inputValues.put(externalInputName, inputStr);
+                containerService.bulkLaunch(projectId, 0L, null, wrapperId, externalInputName, inputValues, user);
+                final String msg = "Containers queued for " + inputUris.size() + " "
+                        + externalInputType.getName().toLowerCase() + "(s) in project: " + projectId;
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
+            } catch (IOException e) {
+                final String msg = "Failed to queue containers for project: " + projectId;
+                log.error("{} - Command Wrapper: {}", msg, wrapper.id(), e);
+                subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), msg);
+            }
         }
+        subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_COMPLETE, new Date(), "Done");
     }
 
     /**
@@ -199,27 +209,31 @@ public class CommandActionProvider extends MultiActionProvider {
      *
      * @param inputType    - the external input type of the container
      * @param projectId    - the projectId
-     * @param contexts     - the wrapper contexts
+     * @param wrapper      - the command wrapper
      * @param user         - the user
      * @param deliveryId   - the subscription delivery id
      * @param subscription - the subscription
      * @return A set containing the input uris in the project for the given input type
      */
-    private Set<String> getInputUrisForContainer(CommandWrapperInputType inputType, String projectId, Set<String> contexts, UserI user, Long deliveryId, Subscription subscription) {
-        final Set<String> inputUris = new HashSet<>();
+    private List<String> getInputUrisForContainer(final CommandWrapperInputType inputType,
+                                                  final String projectId,
+                                                  final Command.CommandWrapper wrapper,
+                                                  final UserI user,
+                                                  final Long deliveryId, final Subscription subscription) {
+        final List<String> inputUris = new ArrayList<>();
+        final Set<String> contexts = wrapper.contexts();
         final XnatProjectdata projectData = AutoXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
 
         if (projectData == null) {
-            final String msg = String.format("Project %s not found. Skipping. ", projectId);
+            final String msg = "Project " + projectId + " not found. Skipping.";
             log.debug(msg);
             subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_ERROR, new Date(), msg);
-            return Collections.emptySet();
+            return Collections.emptyList();
         }
 
         switch (inputType) {
             case PROJECT:
-                if (xsiTypesMatch(projectData.getXSIType(), contexts)
-                        && filterJsonForItem(projectData, subscription, user)) {
+                if (xsiTypesMatch(projectData.getXSIType(), contexts) && filterJsonForItem(projectData, subscription, user)) {
                     inputUris.add(UriParserUtils.getArchiveUri(projectData));
                 }
                 break;
@@ -227,18 +241,22 @@ public class CommandActionProvider extends MultiActionProvider {
                 inputUris.addAll(projectData.getParticipants_participant()
                         .stream()
                         .filter(subj -> xsiTypesMatch(subj.getXSIType(), contexts))
-                        .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
                         .filter(subj -> filterJsonForItem(subj, subscription, user))
+                        .filter(subj -> isNotShared(subj, projectId)) // TODO Remove for CS-754
+                        .filter(subj -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, subj, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             case SUBJECT_ASSESSOR:
                 inputUris.addAll(projectData.getParticipants_participant()
                         .stream()
-                        .filter(subj -> canUserEditPrimaryProject(user, subj, deliveryId))
                         .map(AutoXnatSubjectdata::getExperiments_experiment)
                         .flatMap(List::stream)
+                        .filter(XnatSubjectassessordata.class::isInstance)
+                        .map(XnatSubjectassessordata.class::cast)
                         .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
                         .filter(exp -> filterJsonForItem(exp, subscription, user))
+                        .filter(exp -> exp instanceof XnatImagesessiondata || isNotShared(exp, projectId)) // TODO Remove for CS-754
+                        .filter(exp -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, exp, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             case SESSION:
@@ -246,38 +264,45 @@ public class CommandActionProvider extends MultiActionProvider {
                         .stream()
                         .filter(exp -> xsiTypesMatch(exp.getXSIType(), contexts))
                         .filter(XnatImagesessiondataI.class::isInstance)
-                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
                         .filter(exp -> filterJsonForItem(exp, subscription, user))
+                        .filter(exp -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, exp, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             case SCAN:
                 inputUris.addAll(projectData.getExperiments().stream()
                         .filter(XnatImagesessiondataI.class::isInstance)
-                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
                         .map(XnatImagesessiondataI.class::cast)
                         .map(XnatImagesessiondataI::getScans_scan)
                         .flatMap(List::stream)
                         .filter(scan -> xsiTypesMatch(scan.getXSIType(), contexts))
                         .filter(scan -> filterJsonForItem(scan, subscription, user))
+                        .filter(XnatImagescandata.class::isInstance)
+                        .map(XnatImagescandata.class::cast)
+                        .filter(scan -> isNotShared(scan, projectId)) // TODO Remove for CS-754
+                        .filter(scan -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, scan, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             case ASSESSOR:
                 inputUris.addAll(projectData.getExperiments()
                         .stream()
                         .filter(XnatImagesessiondataI.class::isInstance)
-                        .filter(exp -> canUserEditPrimaryProject(user, exp, deliveryId))
                         .map(XnatImagesessiondataI.class::cast)
                         .map(XnatImagesessiondataI::getAssessors_assessor)
                         .flatMap(List::stream)
+                        .filter(XnatImageassessordata.class::isInstance)
+                        .map(XnatImageassessordata.class::cast)
                         .filter(imgAsses -> xsiTypesMatch(imgAsses.getXSIType(), contexts))
                         .filter(imgAsses -> filterJsonForItem(imgAsses, subscription, user))
+                        .filter(imgAsses -> isNotShared(imgAsses, projectId)) // TODO Remove for CS-754
+                        .filter(imgAsses -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, imgAsses, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             case PROJECT_ASSET:
                 inputUris.addAll(getProjectAssets(user, projectId)
                         .stream().filter(asset -> xsiTypesMatch(asset.getXSIType(), contexts))
-                        .filter(asset -> canUserEditPrimaryProject(user, asset, deliveryId))
                         .filter(asset -> filterJsonForItem(asset, subscription, user))
+                        .filter(asset -> isNotShared(asset, projectId)) // TODO Remove for CS-754
+                        .filter(asset -> ContainerServicePermissionUtils.userHasRequiredPermissions(user, projectId, asset, wrapper))
                         .map(UriParserUtils::getArchiveUri).collect(Collectors.toSet()));
                 break;
             default:
@@ -331,26 +356,16 @@ public class CommandActionProvider extends MultiActionProvider {
         return false;
     }
 
-    private boolean canUserEditPrimaryProject(UserI user, ArchivableItem item, Long deliveryId) {
-        XnatProjectdata primaryProject = null;
-        if (item instanceof XnatExperimentdata) {
-            primaryProject = ((XnatExperimentdata) item).getPrimaryProject(false);
-        } else if (item instanceof XnatSubjectdata) {
-            primaryProject = ((XnatSubjectdata) item).getPrimaryProject(false);
-        }
+    private boolean isNotShared(final ItemI item, final String projectId) {
+        return StringUtils.equals(projectId, getPrimaryProjectId(item));
+    }
 
+    private String getPrimaryProjectId(ItemI item) {
         try {
-            if (primaryProject != null && primaryProject.canEdit(user)) {
-                return true;
-            }
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            return item.getStringProperty("project");
+        } catch (XFTInitException | ElementNotFoundException | FieldNotFoundException e) {
+            return null;
         }
-
-        final String msg = String.format("User: %s doesn't have permission to run containers on the primary project. Skipping item: %s.", user.getUsername(), item.getId());
-        subscriptionDeliveryEntityService.addStatus(deliveryId, ACTION_STEP, new Date(), msg);
-        log.debug(msg);
-        return false;
     }
 
     private boolean xsiTypesMatch(String xsiType, Set<String> types) {

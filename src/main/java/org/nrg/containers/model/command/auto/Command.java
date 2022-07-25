@@ -52,8 +52,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.nrg.containers.utils.ContainerServicePermissionUtils.CONTEXT_PERMISSION_PLACEHOLDER;
-import static org.nrg.containers.utils.ContainerServicePermissionUtils.EDIT_PERMISSION_PLACEHOLDER;
-import static org.nrg.containers.utils.ContainerServicePermissionUtils.READ_PERMISSION_PLACEHOLDER;
 
 @AutoValue
 public abstract class Command {
@@ -1193,11 +1191,11 @@ public abstract class Command {
             final Set<WrapperPermission> requiredPermissions = new HashSet<>(_requiredPermissionsCache);
 
             // Replace the placeholder with the specific context
-            if (requiredPermissions.remove(READ_PERMISSION_PLACEHOLDER)) {
-                requiredPermissions.add(WrapperPermission.read(contextXsiType));
+            if (requiredPermissions.remove(WrapperPermission.read(CONTEXT_PERMISSION_PLACEHOLDER))) {
+                requiredPermissions.add(WrapperPermission.read(contextXsiType, true));
             }
-            if (requiredPermissions.remove(EDIT_PERMISSION_PLACEHOLDER)) {
-                requiredPermissions.add(WrapperPermission.edit(contextXsiType));
+            if (requiredPermissions.remove(WrapperPermission.edit(CONTEXT_PERMISSION_PLACEHOLDER))) {
+                requiredPermissions.add(WrapperPermission.edit(contextXsiType, true));
             }
 
             return requiredPermissions;

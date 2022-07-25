@@ -8,11 +8,13 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.xdat.om.XnatImagescandata;
 import org.nrg.xdat.om.XnatImagesessiondata;
+import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.schema.SchemaElement;
 import org.nrg.xdat.security.SecurityManager;
 import org.nrg.xdat.security.helpers.Permissions;
+import org.nrg.xft.ItemI;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.schema.Wrappers.GenericWrapper.GenericWrapperElement;
@@ -87,7 +89,7 @@ public class ContainerServicePermissionUtils {
      * Verify the user has permission to read + edit everything the wrapper requires.
      * ...or at least put in our best effort to verify that.
      *
-     * @param userI The user who wants to run a container
+     * @param userI   The user who wants to run a container
      * @param project The project in which the data feeding the container lives
      * @param context The context for which the user is requesting available command wrappers.
      *                Likely the XSI type of the page they're loading in the UI.
@@ -108,11 +110,20 @@ public class ContainerServicePermissionUtils {
                 .allMatch(wp -> canPerformActionOnXsiType(userI, project, wp, true));
     }
 
+    public static boolean userHasRequiredPermissions(final UserI userI,
+                                                     final String project,
+                                                     final ItemI item,
+                                                     final Command.CommandWrapper wrapper) {
+        return wrapper.requiredPermissions(item.getXSIType()).stream().allMatch(wp -> wp.isRoot()
+                ? canPerformActionOnItem(userI, item, wp.action, false)
+                : canPerformActionOnXsiType(userI, project, wp, false));
+    }
+
     public static boolean canCreateOutputObject(final UserI userI,
                                                 final String project,
-                                                final String targetXsiType,
+                                                final XnatModelObject parentObject,
                                                 final Command.CommandWrapperOutput outputHandler) {
-        final String xsiTypeToEdit = outputHandler.requiredEditPermissionXsiType(targetXsiType);
+        final String xsiTypeToEdit = outputHandler.requiredEditPermissionXsiType(parentObject.getXsiType());
 
         if (StringUtils.isBlank(xsiTypeToEdit)) {
             // We can't check if they have permission.
@@ -122,6 +133,8 @@ public class ContainerServicePermissionUtils {
                     "We cannot check permissions beforehand without knowing the XSI type. " +
                     "This could fail after the container has finished running.", outputHandler.name());
             return true;
+        } else if (xsiTypeToEdit.equals(parentObject.getXsiType())) {
+            return canPerformActionOnItem(userI, parentObject.getXftItem(userI), WrapperPermissionAction.EDIT, false);
         }
 
         return canPerformActionOnXsiType(userI, project, WrapperPermission.edit(xsiTypeToEdit), false);
@@ -145,6 +158,17 @@ public class ContainerServicePermissionUtils {
             // Carry on...
         }
         return null;
+    }
+
+    private static boolean canPerformActionOnItem(final UserI userI,
+                                                  final ItemI item,
+                                                  final WrapperPermissionAction action,
+                                                  boolean defaultValue) {
+        try {
+            return Permissions.can(userI, item, action.getXdatPermissionsAction());
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 
     private static boolean canPerformActionOnXsiType(final UserI userI,
@@ -224,32 +248,31 @@ public class ContainerServicePermissionUtils {
     /**
      * Check if the xsiType that the user gave us is equal to *or* *descended* *from*
      * one of the xsiTypes in the wrapper's contexts set.
-     *
+     * <p>
      * Example
      * If a wrapper can run on {"xnat:mrSessionData", "xnat:petSessionData"}, and
      * the user asks 'what can I run on an "xnat:mrSessionData"?' we return true.
-     *
+     * <p>
      * If a wrapper can run on {"xnat:imageSessionData", "xnat:imageAssessorData"}, and
      * the user asks 'what can I run on an "xnat:mrSessionData"?' we return true.
-
+     * <p>
      * If a wrapper can run on {"xnat:mrSessionData"}, and
      * the user asks 'what can I run on an "xnat:imageSessionData"?' we return false.
-     *
+     * <p>
      * Check if an input specific XSI type is equal to *or* an instance of
      * another (potentially generic) XSI type.
-     *
+     * <p>
      * Examples
      * We return true if the XSI types are equal
      * xsiTypesMatch("xnat:mrSessionData", "xnat:mrSessionData") == true
-     *
+     * <p>
      * We return true if the first argument, specificXsiType, is an instance of the second argument
      * xsiTypesMatch("xnat:mrSessionData", "xnat:imageSessionData") == true
-     *
+     * <p>
      * However if the first argument is a generic type, we return false
      * xsiTypesMatch("xnat:imageSessionData", "xnat:mrSessionData") == false
-
      *
-     * @param concreteXsiType A concrete XSI type
+     * @param concreteXsiType            A concrete XSI type
      * @param potentiallyGenericXsiTypes A set of XSI types which are possibly a generic type or possibly a specific type
      * @return Can this wrapper run on this xsiType?
      */
@@ -265,18 +288,18 @@ public class ContainerServicePermissionUtils {
     /**
      * Check if an input specific XSI type is equal to *or* an instance of
      * another (potentially generic) XSI type.
-     *
+     * <p>
      * Examples
      * We return true if the XSI types are equal
      * xsiTypesMatch("xnat:mrSessionData", "xnat:mrSessionData") == true
-     *
+     * <p>
      * We return true if the first argument, specificXsiType, is an instance of the second argument
      * xsiTypesMatch("xnat:mrSessionData", "xnat:imageSessionData") == true
-     *
+     * <p>
      * However if the first argument is a generic type, we return false
      * xsiTypesMatch("xnat:imageSessionData", "xnat:mrSessionData") == false
      *
-     * @param concreteXsiType A concrete XSI type
+     * @param concreteXsiType           A concrete XSI type
      * @param potentiallyGenericXsiType An XSI type which is possibly a generic type or possibly a specific type
      * @return Is
      */
@@ -334,20 +357,29 @@ public class ContainerServicePermissionUtils {
 
     public final static class WrapperPermission {
         final WrapperPermissionAction action;
-
         final String xsiType;
+        final boolean isRoot;
 
-        WrapperPermission(WrapperPermissionAction action, String xsiType) {
+        WrapperPermission(WrapperPermissionAction action, String xsiType, boolean isRoot) {
             this.action = action;
             this.xsiType = xsiType;
+            this.isRoot = isRoot;
         }
 
         public static WrapperPermission read(final String xsiType) {
-            return new WrapperPermission(WrapperPermissionAction.READ, xsiType);
+            return read(xsiType, false);
         }
 
         public static WrapperPermission edit(final String xsiType) {
-            return new WrapperPermission(WrapperPermissionAction.EDIT, xsiType);
+            return edit(xsiType, false);
+        }
+
+        public static WrapperPermission read(final String xsiType, final boolean isRoot) {
+            return new WrapperPermission(WrapperPermissionAction.READ, xsiType, isRoot);
+        }
+
+        public static WrapperPermission edit(final String xsiType, final boolean isRoot) {
+            return new WrapperPermission(WrapperPermissionAction.EDIT, xsiType, isRoot);
         }
 
         public WrapperPermissionAction getAction() {
@@ -358,22 +390,26 @@ public class ContainerServicePermissionUtils {
             return xsiType;
         }
 
+        public boolean isRoot() {
+            return isRoot;
+        }
+
+        @Override
+        public String toString() {
+            return "WrapperPermission{\"" + action + "\", \"" + xsiType + "\", \"" + isRoot + "\"}";
+        }
+
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             WrapperPermission that = (WrapperPermission) o;
-            return Objects.equals(action, that.action) && Objects.equals(xsiType, that.xsiType);
+            return isRoot == that.isRoot && action == that.action && Objects.equals(xsiType, that.xsiType);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(action, xsiType);
-        }
-
-        @Override
-        public String toString() {
-            return "WrapperPermission{\"" + action + "\", \"" + xsiType + "\"}";
+            return Objects.hash(action, xsiType, isRoot);
         }
     }
 

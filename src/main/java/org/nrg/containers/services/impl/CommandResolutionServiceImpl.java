@@ -2174,7 +2174,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     }
 
                     // Next check that the user has edit permissions on the handler target input's XNAT object
-                    if (!ContainerServicePermissionUtils.canCreateOutputObject(userI, project, parentXnatObject.getXsiType(), commandOutputHandler)) {
+                    if (!ContainerServicePermissionUtils.canCreateOutputObject(userI, project, parentXnatObject, commandOutputHandler)) {
                         final String message = "User \"" + userI.getUsername() + "\" " +
                                 "does not have sufficient permissions to create the output " +
                                 commandOutputHandler.type() +
