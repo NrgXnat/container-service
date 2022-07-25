@@ -20,6 +20,9 @@ import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
+import org.nrg.xdat.model.XnatImagescandataI;
+import org.nrg.xdat.om.XnatImagescandata;
+import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -456,6 +459,13 @@ public class CommandServiceImpl implements CommandService {
                     externalInputName = "";
                 } else {
                     externalInputName = firstExternalInput.name();
+                }
+
+                if (isSiteWide) {
+                    available.add(CommandSummaryForContext.create(command, wrapper,
+                            containerConfigService.isEnabledForSite(wrapper.id()),
+                            externalInputName));
+                    continue;
                 }
 
                 // Can only launch if this user has permission

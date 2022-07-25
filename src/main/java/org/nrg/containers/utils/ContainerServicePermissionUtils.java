@@ -1,8 +1,13 @@
 package org.nrg.containers.utils;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.xdat.om.XnatImagescandata;
+import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.schema.SchemaElement;
@@ -14,17 +19,17 @@ import org.nrg.xft.schema.Wrappers.GenericWrapper.GenericWrapperElement;
 import org.nrg.xft.security.UserI;
 
 import javax.annotation.Nonnull;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class ContainerServicePermissionUtils {
     public final static String CONTEXT_PERMISSION_PLACEHOLDER = UUID.randomUUID().toString();
     public final static WrapperPermission READ_PERMISSION_PLACEHOLDER = WrapperPermission.read(CONTEXT_PERMISSION_PLACEHOLDER);
     public final static WrapperPermission EDIT_PERMISSION_PLACEHOLDER = WrapperPermission.edit(CONTEXT_PERMISSION_PLACEHOLDER);
+    private final static int SCAN_PERMISSIONS_CHECK_CACHE_TTL = 10; // seconds
 
     // Equate "project read" permissions to "subject read" permissions.
     // Neither Permissions.canReadProject nor
@@ -40,6 +45,43 @@ public class ContainerServicePermissionUtils {
     // Cache the pairs of (specific, generic) xsiType relationships.
     // If specific is equal to or an instance of generic, return true. Else return false.
     private static final Map<XsiTypePair, Boolean> xsiTypePairCache = new ConcurrentHashMap<>();
+
+    // Cache the actions a user can take on at least one image session type in a project to workaround scan perms
+    private static final LoadingCache<UserProjectAction, Boolean> userImageSessionPermissionsCache = CacheBuilder
+            .newBuilder()
+            .expireAfterWrite(SCAN_PERMISSIONS_CHECK_CACHE_TTL, TimeUnit.SECONDS)
+            .build(new CacheLoader<UserProjectAction, Boolean>() {
+                @Override
+                public Boolean load(@Nonnull UserProjectAction upa) throws ExecutionException {
+                    return projectExperimentCountCache.get(upa.project).stream().anyMatch(xsiType -> {
+                        try {
+                            return xsiTypeEqualToOrInstanceOf(xsiType, XnatImagesessiondata.SCHEMA_ELEMENT_NAME) &&
+                                    Permissions.can(upa.user, xsiType + "/project", upa.project, upa.action);
+                        } catch (Exception e) {
+                            log.error("Could not check {} permissions for user \"{}\" project \"{}\" xsiType \"{}\"",
+                                    upa.action, upa.user.getUsername(), upa.project, xsiType, e);
+                            return false;
+                        }
+                    });
+                }
+            });
+
+    // Cache the session types in a given project
+    private static final LoadingCache<String, Set<String>> projectExperimentCountCache = CacheBuilder
+            .newBuilder()
+            .expireAfterWrite(SCAN_PERMISSIONS_CHECK_CACHE_TTL, TimeUnit.SECONDS)
+            .build(new CacheLoader<String, Set<String>>() {
+                @Override
+                public Set<String> load(@Nonnull String project) {
+                    XnatProjectdata projectData = XnatProjectdata.getXnatProjectdatasById(project,
+                            null, false);
+                    if (projectData == null) {
+                        // This shouldn't happen
+                        return Collections.emptySet();
+                    }
+                    return projectData.getExperimentCountByXSIType().keySet();
+                }
+            });
 
     /**
      * Verify the user has permission to read + edit everything the wrapper requires.
@@ -123,6 +165,7 @@ public class ContainerServicePermissionUtils {
         if (xsiType != null) {
             // Default xml path for most data types
             String xmlPathToCheck = xsiType + "/project";
+            String xdatPermissionsAction = action.getXdatPermissionsAction();
 
             // Have to do project checks a different way from everything else
             if (xsiType.equals(XnatProjectdata.SCHEMA_ELEMENT_NAME)) {
@@ -134,11 +177,21 @@ public class ContainerServicePermissionUtils {
                         xmlPathToCheck = PROJECT_EDIT_XML_PATH;
                         break;
                 }
+            } else if (xsiTypeEqualToOrInstanceOf(xsiType, XnatImagescandata.SCHEMA_ELEMENT_NAME)) {
+                // CS-755 Handle scans differently until XXX-187
+                try {
+                    return scanPermissionCheckWorkaround(userI, project, xdatPermissionsAction);
+                } catch (ExecutionException e) {
+                    log.error("Could not perform scan permissions workaround checking {} permissions for user \"{}\" " +
+                                    "project \"{}\" xsiType \"{}\"", action, userI.getUsername(), project, xsiType, e);
+                    return defaultValue;
+                }
             }
+
             try {
-                can = Permissions.can(userI, xmlPathToCheck, project, action.getXdatPermissionsAction());
+                can = Permissions.can(userI, xmlPathToCheck, project, xdatPermissionsAction);
             } catch (Exception e) {
-                log.debug("Could not check {} permissions for user \"{}\" project \"{}\" xsiType \"{}\"",
+                log.error("Could not check {} permissions for user \"{}\" project \"{}\" xsiType \"{}\"",
                         action, userI.getUsername(), project, xsiType, e);
                 // Carry on...
             }
@@ -146,6 +199,26 @@ public class ContainerServicePermissionUtils {
         log.debug("User \"{}\" can{} {} type \"{}\" in project \"{}\"",
                 userI.getUsername(), can ? "" : "not", action, xsiType, project);
         return can;
+    }
+
+    /**
+     * Until XXX-187, we use the parent session when checking scan permissions. However, when we just have a scan
+     * xsi type, we don't have a means of determining the session (scans of any type can belong to sessions of any type).
+     *
+     * Workaround here checks if the user has permission to perform the required scan action on at least one session
+     * type in the project. This is not perfect, but it handles some critical common cases (collaborators, public projects)
+     * and also read-only custom user groups. It does NOT prevent false positives in cases where the user can
+     * read/edit <em>some</em> session type but not the particular session type that owns the scan.
+     *
+     * @param userI the user
+     * @param project the project
+     * @param xdatPermissionsAction the action
+     * @return whether user has permission to perform the action on at least one session type in the project
+     * @throws ExecutionException for caching issues
+     */
+    private static boolean scanPermissionCheckWorkaround(UserI userI, String project, String xdatPermissionsAction)
+            throws ExecutionException {
+        return userImageSessionPermissionsCache.get(new UserProjectAction(userI, project, xdatPermissionsAction));
     }
 
     /**
@@ -333,6 +406,33 @@ public class ContainerServicePermissionUtils {
         @Override
         public int hashCode() {
             return Objects.hash(concreteXsiType, potentiallyGenericXsiType);
+        }
+    }
+
+    private static class UserProjectAction {
+        final UserI user;
+        final String project;
+        final String action;
+
+        public UserProjectAction(UserI user, String project, String action) {
+            this.user = user;
+            this.project = project;
+            this.action = action;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            UserProjectAction that = (UserProjectAction) o;
+            return Objects.equals(user.getUsername(), that.user.getUsername()) &&
+                    Objects.equals(project, that.project) &&
+                    Objects.equals(action, that.action);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(user.getUsername(), project, action);
         }
     }
 }

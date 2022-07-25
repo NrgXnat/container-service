@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 
 import javax.annotation.Nullable;
 
@@ -21,6 +22,7 @@ public abstract class CommandSummaryForContext {
     @JsonProperty("wrapper-name") public abstract String wrapperName();
     @Nullable @JsonProperty("wrapper-label") public abstract String wrapperLabel();
     @Nullable @JsonProperty("wrapper-description") public abstract String wrapperDescription();
+    @JsonProperty("wrapper-contexts") public abstract ImmutableSet<String> wrapperContexts();
     @JsonProperty("image-name") public abstract String imageName();
     @JsonProperty("image-type") public abstract String imageType();
     @JsonProperty("enabled") public abstract boolean enabled();
@@ -36,6 +38,7 @@ public abstract class CommandSummaryForContext {
                                                   @JsonProperty("wrapper-name") final String wrapperName,
                                                   @JsonProperty("wrapper-label") final String wrapperLabel,
                                                   @JsonProperty("wrapper-description") final String wrapperDescription,
+                                                  @JsonProperty("wrapper-contexts") final ImmutableSet<String> wrapperContexts,
                                                   @JsonProperty("image-name") final String imageName,
                                                   @JsonProperty("image-type") final String imageType,
                                                   @JsonProperty("enabled") final boolean enabled,
@@ -49,6 +52,7 @@ public abstract class CommandSummaryForContext {
                 wrapperName,
                 wrapperLabel,
                 wrapperDescription,
+                wrapperContexts,
                 imageName,
                 imageType,
                 enabled,
@@ -69,6 +73,7 @@ public abstract class CommandSummaryForContext {
                 wrapper.name(),
                 wrapper.label(),
                 wrapper.description(),
+                wrapper.contexts(),
                 command.image(),
                 command.type(),
                 enabled,
