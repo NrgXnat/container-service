@@ -228,11 +228,25 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 value: 'false'
                             }),
                         ]),
-                        spawn('div.host-type-settings.swarm.kubernetes',[
+                        spawn('div.host-type-settings.swarm',[
                             spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
-                                '<br> Use these settings to add site-wide and user-settable processing node constraints. See ' +
-                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints" target="_blank">Docker Swarm documentation</a> ' +
-                                'for more information about constraints.'),
+                                '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
+                                'by requiring jobs to match (or not match) provided values. ' +
+                                'Properties that can be constrained include node metadata along with node and engine labels. ' +
+                                'See Docker Swarm documentation on ' +
+                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints" target="_blank">service placement constraints</a> and the ' +
+                                '<a href="https://docs.docker.com/engine/reference/commandline/service_create/#specify-service-constraints---constraint" target="_blank">docker service create command</a> ' +
+                                'for more information about allowed constraints.'),
+                        ]),
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
+                                '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
+                                'by requiring jobs to match (or not match) provided node label values. ' +
+                                'See Kubernetes documentation on ' +
+                                '<a href="https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/" target="_blank">Assign[ing] Pods to Nodes using Node Affinity</a> ' +
+                                'for more information about allowed constraints.'),
+                        ]),
+                        spawn('div.host-type-settings.swarm.kubernetes',[
                             spawn('button.new-swarm-constraint.btn.btn-sm', {
                                 html: 'Add Constraint',
                                 style: { 'margin-top': '0.75em' },
@@ -260,10 +274,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         ]),
 
                         spawn('div.host-type-settings.docker.swarm.kubernetes',[
-                            spawn('p.divider', '<strong>Automatically cleanup completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
+                            spawn('p.divider', '<strong>Automatically clean up completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
                             XNAT.ui.panel.input.switchbox({
                                 name: 'auto-cleanup',
-                                label: 'Automatically cleanup containers?',
+                                label: 'Automatically clean up containers?',
                                 onText: 'ON',
                                 offText: 'OFF',
                                 value: 'true'
@@ -477,7 +491,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             XNAT.ui.panel.input.text({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:attribute',
                 label: 'Node attribute',
-                description: 'Attribute you wish to constrain. E.g., node.role or engine.instance.spot'
+                description: 'Attribute you wish to constrain. E.g., node.labels.mylabel'
             }),
             XNAT.ui.panel.input.radioGroup({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:comparator',
