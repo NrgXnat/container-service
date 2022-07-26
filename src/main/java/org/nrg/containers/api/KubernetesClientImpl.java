@@ -66,7 +66,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     private static final String LABEL_CAPTURE_GROUP = "label";
     private static final String COMPARATOR_CAPTURE_GROUP = "comparator";
     private static final String VALUE_CAPTURE_GROUP = "value";
-    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(node\\.label\\.)?(?<" + LABEL_CAPTURE_GROUP +">.+?)(?<" + COMPARATOR_CAPTURE_GROUP + ">!=|==)(?<" + VALUE_CAPTURE_GROUP +">.+?)");
+    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(node\\.labels\\.)?(?<" + LABEL_CAPTURE_GROUP +">.+?)(?<" + COMPARATOR_CAPTURE_GROUP + ">!=|==)(?<" + VALUE_CAPTURE_GROUP +">.+?)");
 
     public static final int JOB_TIME_TO_LIVE_WEEKS = 1;  // Clean up lingering jobs + pods + logs after one week
     public static final int JOB_TIME_TO_LIVE_SECS = JOB_TIME_TO_LIVE_WEEKS * SECONDS_PER_WEEK;
