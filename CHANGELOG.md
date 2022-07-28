@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version TBD
+## 3.2.0
 
 Not yet released
 
