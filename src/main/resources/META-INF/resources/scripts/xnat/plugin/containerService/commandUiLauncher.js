@@ -1356,6 +1356,8 @@ var XNAT = getObject(XNAT || {});
                     launcher.createMenu(menuTarget, spawnedCommands);
                     $('.scan-actions-controls').show();
                     $('#scanTable-run-containers').removeClass('hidden');
+                    // If there are Bulk Run commands, then at least one scan has a command to run, hence, show the header
+                    $('#scan-data-table thead .run-menu').show();
                 }
 
                 // add action menu to each scan listing
