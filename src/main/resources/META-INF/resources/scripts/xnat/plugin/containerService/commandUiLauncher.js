@@ -1367,9 +1367,9 @@ var XNAT = getObject(XNAT || {});
                         launcher.addMenuItem(command, scanCommands);
                     });
                     if (scanCommands.length > 0) {
-                        const scanActionTarget = $('tr#scan-' + scan['id']).find('.single-scan-actions-menu');
-                        scanActionTarget.append(scanCommands);
-                        $('.run-menu').show();
+                        const $scanRow = $('tr#scan-' + scan['id']);
+                        $scanRow.find('.single-scan-actions-menu').append(scanCommands);
+                        $scanRow.find('.run-menu').show();
                     }
                 });
             }, errorHandler);
