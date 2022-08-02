@@ -3,32 +3,15 @@ package org.nrg.containers.services.impl;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
-import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
-
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.annotation.Nullable;
-
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.model.command.entity.CommandType;
@@ -53,14 +36,27 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xft.utils.FileUtils;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
-import org.nrg.xnat.restlet.util.XNATRestConstants;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
+import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 
 
 @Slf4j
@@ -172,8 +168,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         // private String exitCode;
         private boolean isFailed;
 
-        private Map<String, ContainerMount> outputMounts;
-
         private String prefix;
 
         private Map<String, Container> wrapupContainerMap;
@@ -187,8 +181,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             this.toFinalize = toFinalize;
             this.userI = userI;
             this.isFailed = isFailed;
-
-            outputMounts = Maps.newHashMap();
 
             prefix = "Container " + toFinalize.databaseId() + ": ";
 
@@ -240,14 +232,11 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             }
 
             String status = null;
-            String details = "";
+            String details = wrkFlow != null ? wrkFlow.getDetails() : "";
             boolean processingCompleted = !isFailed;
 
             if (processingCompleted) {
                 // Upload outputs if processing completed successfully
-                for (final ContainerMount mountOut : toFinalize.mounts()) {
-                    outputMounts.put(mountOut.name(), mountOut);
-                }
 
                 final OutputsAndExceptions outputsAndExceptions = uploadOutputs(eventId);
                 final List<Exception> failedRequiredOutputs = outputsAndExceptions.exceptions;
@@ -272,24 +261,38 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                         .statusTime(statusTime);
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
-                for (Container.ContainerHistory history : toFinalize.history()) {
+                String exitCode = null;
+
+                // We have a sorted history which is most recent first.
+                // It will be better to iterate from least recent (i.e. oldest) to most recent,
+                //  that way when we find a "failed" state we know it is the first.
+                final List<Container.ContainerHistory> historyEntries = toFinalize.getSortedHistory();
+                Collections.reverse(historyEntries);
+                for (final Container.ContainerHistory history : historyEntries) {
                     String containerStatus = history.status();
                     containerStatus = containerStatus != null ?
                             containerStatus.replaceAll("^" + ContainerRequest.inQueueStatusPrefix, "")
                                     .replaceFirst(ContainerServiceImpl.WAITING + " \\(([^)]*)\\)", "$1")
                             : "";
-                    if (containerStatus.startsWith(PersistentWorkflowUtils.FAILED)) {
-                        status = containerStatus;
-                    } else if ((containerStatus.equals(TaskStatus.TASK_STATE_FAILED) || containerStatus.equals("die")) &&
-                            StringUtils.isNotBlank(history.message())) {
+                    final boolean startsWithFailed = containerStatus.startsWith(PersistentWorkflowUtils.FAILED);
+                    if (startsWithFailed ||
+                            containerStatus.equals(TaskStatus.TASK_STATE_FAILED) ||
+                            containerStatus.equals("die")) {
+                        // This history entry should give us the details that we need
+                        if (startsWithFailed) {
+                            status = containerStatus;
+                        }
                         details = history.message();
+                        exitCode = history.exitCode();
+
+                        break;
                     }
                 }
                 if (status == null || !status.startsWith(PersistentWorkflowUtils.FAILED)) {
                     // If it's not an XNAT failure status, we need to make it so
                     status = PersistentWorkflowUtils.FAILED;
                 }
-                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details));
+                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details, exitCode));
                 finalizedContainerBuilder.status(status)
                         .statusTime(new Date());
 
@@ -312,22 +315,19 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             log.info(prefix + "Getting logs.");
             final List<String> logPaths = Lists.newArrayList();
 
-            final String stdoutLogStr = getStdoutLogStr();
-            final String stderrLogStr = getStderrLogStr();
+            final String stdoutLogStr = getLogStr(ContainerControlApi.LogType.STDOUT);
+            final String stderrLogStr = getLogStr(ContainerControlApi.LogType.STDERR);
 
             if (StringUtils.isNotBlank(stdoutLogStr) || StringUtils.isNotBlank(stderrLogStr)) {
 
                 final String archivePath = siteConfigPreferences.getArchivePath(); // TODO find a place to upload this thing. Root of the archive if sitewide, else under the archive path of the root object
                 if (StringUtils.isNotBlank(archivePath)) {
+                    final String containerExecSubdir = String.valueOf(toFinalize.databaseId());
                     final String subtype = StringUtils.defaultIfBlank(toFinalize.subtype(), "");
-                    final SimpleDateFormat formatter = new SimpleDateFormat(XNATRestConstants.PREARCHIVE_TIMESTAMP);
-                    final String datestamp = formatter.format(new Date());
-                    final String containerExecPath = FileUtils.AppendRootPath(archivePath, "CONTAINER_EXEC/");
-                    final String destinationPath = containerExecPath + datestamp + "/LOGS/" + subtype;
-                    final File destination = new File(destinationPath);
+                    final File destination = Paths.get(archivePath, "CONTAINER_EXEC", containerExecSubdir, "LOGS", subtype).toFile();
                     destination.mkdirs();
 
-                    log.info(prefix + "Saving logs to " + destinationPath);
+                    log.info(prefix + "Saving logs to " + destination.getAbsolutePath());
 
                     if (StringUtils.isNotBlank(stdoutLogStr)) {
                         log.debug("Saving stdout");
@@ -353,20 +353,11 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             return logPaths;
         }
 
-        private String getStderrLogStr() {
+        private String getLogStr(final ContainerControlApi.LogType logType) {
             try {
-                return containerControlApi.getStderrLog(toFinalize);
-            } catch (DockerServerException | NoDockerServerException e) {
+                return containerControlApi.getLog(toFinalize, logType);
+            } catch (ContainerBackendException | NoContainerServerException e) {
                 log.error(prefix + "Could not get stderr log.", e);
-            }
-            return null;
-        }
-
-        private String getStdoutLogStr() {
-            try {
-                return containerControlApi.getStdoutLog(toFinalize);
-            } catch (DockerServerException | NoDockerServerException e) {
-                log.error(prefix + "Could not get stdout log.", e);
             }
             return null;
         }
@@ -374,8 +365,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
         private OutputsAndExceptions uploadOutputs(@Nullable Integer uploadEventId) {
             log.info(prefix + "Uploading outputs.");
 
-            final List<ContainerOutput> outputs = Lists.newArrayList();
-            final List<Exception> exceptions = Lists.newArrayList();
+            final List<ContainerOutput> outputs = new ArrayList<>();
+            final List<Exception> exceptions = new ArrayList<>();
             for (final ContainerOutput nonUploadedOuput: toFinalize.getOrderedOutputs()) {
                 try {
                     outputs.add(uploadOutput(nonUploadedOuput, uploadEventId));
@@ -401,7 +392,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             final String viaWrapupContainer = output.viaWrapupContainer();
             if (StringUtils.isBlank(viaWrapupContainer)) {
                 final String mountName = output.mount();
-                final ContainerMount mount = getMount(mountName);
+
+                ContainerMount mount = null;
+                for (final ContainerMount outputMounts : toFinalize.mounts()) {
+                    if (mountName.equals(outputMounts.name())) {
+                        mount = outputMounts;
+                        break;
+                    }
+                }
                 if (mount == null) {
                     throw new ContainerException(String.format(prefix + "Mount \"%s\" does not exist.", mountName));
                 }
@@ -513,7 +511,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 try {
                     // Get item from xml
                     XFTItem item = catalogService.insertXmlObject(userI, itemXml,
-                            true, Collections.<String, Object>emptyMap(), uploadEventId);
+                            true, Collections.emptyMap(), uploadEventId);
 
                     if (item == null) {
                         throw new Exception();
@@ -549,22 +547,6 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             wrapperInputAndOutputValues.put(output.fromOutputHandler(), createdUri);
             
             return output.toBuilder().created(createdUri).build();
-        }
-
-        private ContainerMount getMount(final String mountName) throws ContainerException {
-
-            if(outputMounts == null || outputMounts.isEmpty()){
-                for (final ContainerMount mountOut : toFinalize.mounts()) {
-                    outputMounts.put(mountOut.name(), mountOut);
-                }
-            }
-            ContainerMount containerMount = outputMounts.get(mountName);
-            if(containerMount != null){
-                return containerMount;
-            }
-
-            // Mount does not exist
-            throw new ContainerException(String.format(prefix + "Mount \"%s\" does not exist.", mountName));
         }
 
         private String getUriByInputOrOutputHandlerName(final String name) {

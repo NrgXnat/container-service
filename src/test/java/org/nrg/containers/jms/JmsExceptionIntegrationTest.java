@@ -15,12 +15,11 @@ import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
-import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
-import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
@@ -52,6 +51,7 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.core.MessagePostProcessor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
@@ -62,6 +62,7 @@ import javax.jms.JMSRuntimeException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -83,7 +84,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
-public class JmsExceptionTest {
+public class JmsExceptionIntegrationTest {
     @Autowired private JmsTemplate mockJmsTemplate;
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
@@ -97,9 +98,7 @@ public class JmsExceptionTest {
     @Autowired private AliasTokenService mockAliasTokenService;
 
     @Autowired private Destination containerStagingRequest;
-    @Autowired private ContainerStagingRequestListener containerStagingRequestListener;
     @Autowired private Destination containerFinalizingRequest;
-    @Autowired private ContainerFinalizingRequestListener containerFinalizingRequestListener;
 
     private UserI mockUser;
     private FakeWorkflow fakeWorkflow;
@@ -220,7 +219,7 @@ public class JmsExceptionTest {
         // setup jmsTemplate to throw exception
         String exceptionMsg = "exception";
         Mockito.doThrow(new JMSRuntimeException(exceptionMsg)).when(mockJmsTemplate)
-                .convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class));
+                .convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow
         );
@@ -245,7 +244,7 @@ public class JmsExceptionTest {
         // setup jmsTemplate to throw exception
         String exceptionMsg = "exception";
         Mockito.doThrow(new JMSRuntimeException(exceptionMsg)).when(mockJmsTemplate)
-                .convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class));
+                .convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
 
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L,
                 null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
@@ -264,9 +263,7 @@ public class JmsExceptionTest {
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.FAILED + " (JMS)"));
         assertThat(fakeWorkflow.getDetails(), is(exceptionMsg));
 
-        Thread.sleep(1000L); // Pause a sec for email to be attempted
-
-        Mockito.verify(mockMailService, times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
+        Mockito.verify(mockMailService, timeout(1000).times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
                 aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), Matchers.<String[]>eq(null),
                 Mockito.matches(".*" + wrapper.name() + ".*Failed.*"),
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
@@ -305,9 +302,13 @@ public class JmsExceptionTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServerBase.DockerServer.create(0L, "Test server", containerHost, certPath,
-                false, null, null, null,
-                false, null, true, null, null, true));
+        dockerServerService.setServer(DockerServerBase.DockerServer.builder()
+                .name("Test server")
+                .host(containerHost)
+                .certPath(certPath)
+                .backend(Backend.DOCKER)
+                .lastEventCheckTime(new Date())
+                .build());
 
         String img = "busybox:latest";
         CLIENT = controlApi.getClient();
@@ -315,6 +316,6 @@ public class JmsExceptionTest {
         imagesToCleanUp.add(img);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+        TestingUtils.skipIfCannotConnectToDocker(CLIENT);
     }
 }

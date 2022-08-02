@@ -1,13 +1,12 @@
 package org.nrg.containers.model.container.entity;
 
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 
@@ -15,26 +14,23 @@ import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Slf4j
 public class ContainerEntity extends AbstractHibernateEntity {
     public static final String KILL_STATUS = "kill";
-    private static final Set<String> TERMINAL_STATI = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "Complete", "Failed", "Killed"
-    )));
 
     private long commandId;
     private long wrapperId;
@@ -45,12 +41,13 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private String commandLine;
     private Boolean overrideEntrypoint;
     private String workingDirectory;
-    private Map<String, String> environmentVariables = Maps.newHashMap();
-    private Map<String, String> ports = Maps.newHashMap();
-    private List<ContainerEntityMount> mounts = Lists.newArrayList();
+    private Map<String, String> environmentVariables = new HashMap<>();
+    private Map<String, String> ports = new HashMap<>();
+    private List<ContainerEntityMount> mounts = new ArrayList<>();
     private String containerId;
     private String workflowId;
     private String userId;
+    private Backend backend;
     private Boolean swarm;
     private String serviceId;
     private String taskId;
@@ -60,7 +57,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private String parentSourceObjectName;
     private List<ContainerEntityInput> inputs;
     private List<ContainerEntityOutput> outputs;
-    private List<ContainerEntityHistory> history = Lists.newArrayList();
+    private List<ContainerEntityHistory> history = new ArrayList<>();
     private List<String> logPaths;
     private Long reserveMemory;
     private Long limitMemory;
@@ -102,7 +99,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setServiceId(containerPojo.serviceId());
         this.setTaskId(containerPojo.taskId());
         this.setNodeId(containerPojo.nodeId());
-        this.setSwarm(containerPojo.swarm());
+        this.setBackend(containerPojo.backend());
         this.setDockerImage(containerPojo.dockerImage());
         this.setContainerName(containerPojo.containerName());
         this.setCommandLine(containerPojo.commandLine());
@@ -114,38 +111,10 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setEnvironmentVariables(containerPojo.environmentVariables());
         this.setPorts(containerPojo.ports());
         this.setLogPaths(containerPojo.logPaths());
-        this.setMounts(Lists.newArrayList(Lists.transform(
-                containerPojo.mounts(), new Function<Container.ContainerMount, ContainerEntityMount>() {
-                    @Override
-                    public ContainerEntityMount apply(final Container.ContainerMount input) {
-                        return ContainerEntityMount.fromPojo(input);
-                    }
-                }))
-        );
-        this.setInputs(Lists.newArrayList(Lists.transform(
-                containerPojo.inputs(), new Function<Container.ContainerInput, ContainerEntityInput>() {
-                    @Override
-                    public ContainerEntityInput apply(final Container.ContainerInput input) {
-                        return ContainerEntityInput.fromPojo(input);
-                    }
-                }))
-        );
-        this.setOutputs(Lists.newArrayList(Lists.transform(
-                containerPojo.outputs(), new Function<Container.ContainerOutput, ContainerEntityOutput>() {
-                    @Override
-                    public ContainerEntityOutput apply(final Container.ContainerOutput input) {
-                        return ContainerEntityOutput.fromPojo(input);
-                    }
-                }))
-        );
-        this.setHistory(Lists.newArrayList(Lists.transform(
-                containerPojo.history(), new Function<Container.ContainerHistory, ContainerEntityHistory>() {
-                    @Override
-                    public ContainerEntityHistory apply(final Container.ContainerHistory input) {
-                        return ContainerEntityHistory.fromPojo(input);
-                    }
-                }))
-        );
+        this.setMounts(containerPojo.mounts().stream().map(ContainerEntityMount::fromPojo).collect(Collectors.toList()));
+        this.setInputs(containerPojo.inputs().stream().map(ContainerEntityInput::fromPojo).collect(Collectors.toList()));
+        this.setOutputs(containerPojo.outputs().stream().map(ContainerEntityOutput::fromPojo).collect(Collectors.toList()));
+        this.setHistory(containerPojo.history().stream().map(ContainerEntityHistory::fromPojo).collect(Collectors.toList()));
         this.setReserveMemory(containerPojo.reserveMemory());
         this.setLimitMemory(containerPojo.limitMemory());
         this.setLimitCpu(containerPojo.limitCpu());
@@ -223,16 +192,13 @@ public class ContainerEntity extends AbstractHibernateEntity {
         return swarm ? ContainerServiceImpl.WAITING + " (" +inStatus+ ")" : inStatus;
     }
 
+    /**
+     * @deprecated Pass {@link ContainerEntity#getStatus()} to {@link ContainerUtils#statusIsTerminal(String)}
+     */
     @Transient
+    @Deprecated
     public boolean statusIsTerminal() {
-        if (status != null) {
-            for (final String terminalStatus : TERMINAL_STATI) {
-                if (status.startsWith(terminalStatus)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ContainerUtils.statusIsTerminal(this.status);
     }
 
     public Date getStatusTime() {
@@ -287,7 +253,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setEnvironmentVariables(final Map<String, String> environmentVariables) {
         this.environmentVariables = environmentVariables == null ?
-                Maps.<String, String>newHashMap() :
+                new HashMap<>() :
                 environmentVariables;
     }
 
@@ -298,7 +264,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setPorts(final Map<String, String> ports) {
         this.ports = ports == null ?
-                Maps.<String, String>newHashMap() :
+                new HashMap<>() :
                 ports;
     }
 
@@ -317,7 +283,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setMounts(final List<ContainerEntityMount> mounts) {
         this.mounts = mounts == null ?
-                Lists.<ContainerEntityMount>newArrayList() :
+                new ArrayList<>() :
                 mounts;
         for (final ContainerEntityMount mount : this.mounts) {
             mount.setContainerEntity(this);
@@ -348,12 +314,27 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.userId = user;
     }
 
-    public Boolean getSwarm() {
-        return swarm;
+    @Enumerated(EnumType.STRING)
+    public Backend getBackend() {
+        return backend;
     }
 
-    public void setSwarm(final Boolean swarm) {
-        this.swarm = swarm != null && swarm;
+    public void setBackend(Backend backend) {
+        if (backend == null) {
+            // Default for backwards compatibility
+            backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
+        }
+        this.backend = backend;
+    }
+
+    @Deprecated
+    public boolean getSwarm() {
+        return getBackend() == Backend.SWARM;
+    }
+
+    @Deprecated
+    public void setSwarm(final boolean swarmMode) {
+        this.swarm = swarmMode;
     }
 
     public String getServiceId() {
@@ -428,7 +409,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     public Map<String, String> getContainerLabels() { return containerLabels; }
 
     public void setContainerLabels(Map<String, String> containerLabels) {
-        this.containerLabels = containerLabels == null ? new HashMap<String, String>() : containerLabels;
+        this.containerLabels = containerLabels == null ? new HashMap<>() : containerLabels;
     }
 
     public String getGpus() { return gpus; }
@@ -439,7 +420,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     public Map<String, String> getGenericResources() { return genericResources; }
 
     public void setGenericResources(Map<String, String> genericResources) {
-        this.genericResources = genericResources  == null ? new HashMap<String, String>() : genericResources;
+        this.genericResources = genericResources  == null ? new HashMap<>() : genericResources;
     }
 
     @ElementCollection
@@ -447,7 +428,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setUlimits(Map<String, String> ulimits) {
         this.ulimits = ulimits == null ?
-        Maps.newHashMap() : ulimits;
+        new HashMap<>() : ulimits;
     }
 
 
@@ -475,7 +456,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setInputs(final List<ContainerEntityInput> inputs) {
         this.inputs = inputs == null ?
-                Lists.<ContainerEntityInput>newArrayList() :
+                new ArrayList<>() :
                 inputs;
         for (final ContainerEntityInput input : this.inputs) {
             input.setContainerEntity(this);
@@ -489,7 +470,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         input.setContainerEntity(this);
 
         if (this.inputs == null) {
-            this.inputs = Lists.newArrayList();
+            this.inputs = new ArrayList<>();
         }
         this.inputs.add(input);
     }
@@ -501,7 +482,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setOutputs(final List<ContainerEntityOutput> outputs) {
         this.outputs = outputs == null ?
-                Lists.<ContainerEntityOutput>newArrayList() :
+                new ArrayList<>() :
                 outputs;
         for (final ContainerEntityOutput output : this.outputs) {
             output.setContainerEntity(this);
@@ -515,7 +496,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
 
     public void setHistory(final List<ContainerEntityHistory> history) {
         this.history = history == null ?
-                Lists.<ContainerEntityHistory>newArrayList() :
+                new ArrayList<>() :
                 history;
         for (final ContainerEntityHistory historyItem : this.history) {
             historyItem.setContainerEntity(this);
@@ -529,7 +510,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         }
         historyItem.setContainerEntity(this);
         if (this.history == null) {
-            this.history = Lists.newArrayList();
+            this.history = new ArrayList<>();
         }
         this.history.add(historyItem);
     }

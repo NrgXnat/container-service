@@ -1,5 +1,94 @@
 # Changelog
 
+## 3.2.0
+
+[Released 2022-08-02](https://bitbucket.org/xnatdev/container-service/src/3.2.0/).
+
+With this release, the minimum supported XNAT version is 1.8.5.
+
+### Support for Kubernetes!
+
+[CS-688][] In addition to Docker and Docker Swarm, with Container Service 3.2.0 you can now run your container jobs on a
+Kubernetes cluster. We expect that this will be a welcome addition for site admins that deploy to the cloud,
+as all the cloud providers have native solutions for building a Kubernetes cluster.
+
+All the core Container Service operations are supported: launching containers, monitoring and reporting their
+states, mounting XNAT data files as container inputs, loading container outputs into XNAT as new objects,
+and reading container logs.
+
+However, some Container Service features that are supported for Docker or Docker Swarm backends are not (yet)
+supported for a Kubernetes backend, or are supported with some differences.
+
+* [CS-728][]: The Container Service settings for Compute Backend—like Host URI and Certificate Path—are not used to configure a connection to Kubernetes. Instead, when you set your Compute Backend to Kubernetes, the Container Service will configure the connection to Kubernetes by reading a kubeconfig file that you must prepare outside of XNAT. See [Setting up Container Service on Kubernetes][wiki-kubernetes-setup] on the XNAT Wiki for more information.
+* [CS-727][]: We do not support private images or private registries using the Image Hosts configuration in the Container Service admin settings.
+  However, you can configure registry authentication within Kubernetes itself; see the section on Configuring Registry Credentials in Kubernetes on the
+  [Configuring Image Registries][wiki-image-registries] page on the XNAT Wiki.
+* [CS-726][]: We do not support the Finalizing Throttle setting, which allows you to limit the number of containers that can finalize concurrently.
+* We support setting the user within the container who will run processes. In Kubernetes the user value must be an integer user id, unlike Docker and Docker Swarm which support both user id and user name.
+* [CS-747][]: We do not support setting user group within the container.
+* [CS-723][]: We do not support streaming live logs from a running container.
+* [CS-737][]: Logs from finalized containers can be viewed in the Container History. However, the logs contain both stdout and stderr merged together. This is a Kubernetes limitation that we cannot work around.
+* We support Placement Constraints, which allow you to control the placement of containers onto nodes of your cluster. However, Kubernetes only allows constraints on node labels unlike Docker Swarm which allows constraints on many node and engine properties. This is a Kubernetes limitation that we cannot work around.
+
+Container Service 3.2.0 also has many other changes.
+
+### Features
+
+* [XNAT-7003][]: Run containers as scheduled events. This increases the minimum XNAT version requirement to 1.8.5.
+* [CS-625][]: Enable adding Commands in the site configuration UI independently of adding Docker images
+* [CS-601][]: Improve checks for whether a user will be able to perform all actions required by a command
+    * Add `"xsi-type"` property to command wrapper output handler
+    * Command wrappers that create a session assessor no longer require the user to have edit permissions on the session.
+      If the output handler declares an `xsi-type` for the assessor, we can verify the user has permissions to create it before launch.
+    * Filter `Run Containers` menu to only those items that a user will have permission to run
+* [CS-715][]: Run containers on shared sessions
+
+### Bugfixes
+
+* [CS-682][]: Fix NullPointerError in Orchestration equals method
+* [CS-686][]: Fixed: Command with Project Asset type external input fails when launched with BLP
+* [CS-687][]: Repaired unit and integration tests that had not kept up with code changes.
+* [CS-693][]: Stop service updater from trying to update `null` node IDs forever if service cannot be started
+* [CS-695][]: Write container logs to a unique directory per container, not timestamped
+* [CS-699][]: Fix issue viewing logs in Container History UI with certain container IDs
+* [CS-706][]: When returning list of images, attempt to check local docker server only if host type is set to Docker
+* [CS-707][]: Fixed issue that blocked mounting Subject Assessor as an input
+
+### Updates
+
+* [CS-681][]: Bumped version of [mandas/docker-client]() to 5.2.2.
+* [CS-689][] [CS-692][]: Internal API refactors
+* [CS-701][]: Ensure a new Command's `image` property has a tag, defaulting to `latest`
+* [CS-704][]: Update host setup UI. `Type` is now the top-level option and must be provided first. Other options fill in based on `Type`.
+* [CS-714][]: Change name of admin setup UI from "Docker Server Setup" to "Compute Backend"
+
+[CS-601]: https://issues.xnat.org/browse/CS-601
+[CS-625]: https://issues.xnat.org/browse/CS-625
+[CS-681]: https://issues.xnat.org/browse/CS-681
+[CS-682]: https://issues.xnat.org/browse/CS-682
+[CS-686]: https://issues.xnat.org/browse/CS-686
+[CS-687]: https://issues.xnat.org/browse/CS-687
+[CS-688]: https://issues.xnat.org/browse/CS-688
+[CS-689]: https://issues.xnat.org/browse/CS-689
+[CS-692]: https://issues.xnat.org/browse/CS-692
+[CS-693]: https://issues.xnat.org/browse/CS-693
+[CS-695]: https://issues.xnat.org/browse/CS-695
+[CS-699]: https://issues.xnat.org/browse/CS-699
+[CS-701]: https://issues.xnat.org/browse/CS-701
+[CS-704]: https://issues.xnat.org/browse/CS-704
+[CS-706]: https://issues.xnat.org/browse/CS-706
+[CS-707]: https://issues.xnat.org/browse/CS-707
+[CS-714]: https://issues.xnat.org/browse/CS-714
+[CS-715]: https://issues.xnat.org/browse/CS-715
+[CS-723]: https://issues.xnat.org/browse/CS-723
+[CS-726]: https://issues.xnat.org/browse/CS-726
+[CS-727]: https://issues.xnat.org/browse/CS-727
+[CS-728]: https://issues.xnat.org/browse/CS-728
+[CS-737]: https://issues.xnat.org/browse/CS-737
+[CS-747]: https://issues.xnat.org/browse/CS-747
+[XNAT-7003]: https://issues.xnat.org/browse/XNAT-7003
+[wiki-kubernetes-setup]: https://wiki.xnat.org/display/CSDEV/Setting+up+Container+Service+on+Kubernetes
+[wiki-image-registries]: https://wiki.xnat.org/display/CSDEV/Configuring+Image+Registries
 
 ## 3.1.1
 

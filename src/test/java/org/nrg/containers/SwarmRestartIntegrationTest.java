@@ -1,24 +1,23 @@
 package org.nrg.containers;
 
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.messages.swarm.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hibernate.NonUniqueObjectException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.messages.swarm.ManagerStatus;
+import org.mandas.docker.client.messages.swarm.NodeInfo;
+import org.mandas.docker.client.messages.swarm.NodeSpec;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -26,8 +25,9 @@ import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
@@ -63,19 +63,27 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
@@ -86,6 +94,7 @@ import static org.powermock.api.mockito.PowerMockito.*;
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmRestartIntegrationTest {
+    private Backend backend = Backend.SWARM;
     private boolean swarmMode = true;
 
     private UserI mockUser;
@@ -118,29 +127,19 @@ public class SwarmRestartIntegrationTest {
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
 
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
+
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
+
     @Before
     public void setup() throws Exception {
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
-            }
-        });
-
         // Mock out the prefs bean
         // Mock the userI
         mockUser = mock(UserI.class);
@@ -218,15 +217,19 @@ public class SwarmRestartIntegrationTest {
                 containerHost = hostEnv;
             }
         }
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, true, null, null, true));
+        dockerServerService.setServer(DockerServer.builder()
+                .name("Test server")
+                .host(containerHost)
+                .certPath(certPath)
+                .backend(backend)
+                .lastEventCheckTime(new Date())
+                .build());
 
         CLIENT = controlApi.getClient();
-        TestingUtils.pullBusyBox(CLIENT);
 
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+        TestingUtils.skipIfCannotConnectToSwarm(CLIENT);
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        TestingUtils.pullBusyBox(CLIENT);
 
         final Command sleeper = commandService.create(Command.builder()
                 .name("long-running")
@@ -238,6 +241,7 @@ public class SwarmRestartIntegrationTest {
                         .build())
                 .build());
         sleeperWrapper = sleeper.xnatCommandWrappers().get(0);
+        TestingUtils.commitTransaction();
     }
 
     @After
@@ -272,12 +276,11 @@ public class SwarmRestartIntegrationTest {
     @DirtiesContext
     public void testRestartShutdown() throws Exception {
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         String serviceId = service.serviceId();
         containersToCleanUp.add(serviceId);
-
-        TestingUtils.commitTransaction();
 
         log.debug("Waiting until task has started");
         await().until(TestingUtils.getServiceNode(CLIENT, service), is(notNullValue()));
@@ -304,6 +307,7 @@ public class SwarmRestartIntegrationTest {
         }
 
         // ensure that container restarted & status updates, etc
+        TestingUtils.commitTransaction();
         final Container restartedService = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedService.serviceId());
         assertThat(restartedService.countRestarts(), is(1));
@@ -313,14 +317,14 @@ public class SwarmRestartIntegrationTest {
 
     @Test
     @DirtiesContext
+    @Ignore("Test does not reliably detect when service is running or not")
     public void testRestartClearedTask() throws Exception {
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         String serviceId = service.serviceId();
         containersToCleanUp.add(serviceId);
-
-        TestingUtils.commitTransaction();
 
         log.debug("Waiting until task has started");
         await().until(TestingUtils.serviceIsRunning(CLIENT, service));
@@ -328,33 +332,76 @@ public class SwarmRestartIntegrationTest {
         // Restart
         log.debug("Removing service to throw a restart event");
         CLIENT.removeService(serviceId);
-        Thread.sleep(500L); // Sleep long enough for status updater to run
+
+        // Ensure the restart request has gone through
+        await().until(TestingUtils.serviceHasTaskId(containerService, service.databaseId()), is(false));
+        // Ensure the restart request has been consumed and the new task id has been picked up
+        await().until(TestingUtils.serviceHasTaskId(containerService, service.databaseId()));
 
         // ensure that container restarted & status updates, etc
+        TestingUtils.commitTransaction();
         final Container restartedContainer = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedContainer.serviceId());
         assertThat(restartedContainer.countRestarts(), is(1));
-        await().atMost(90L, TimeUnit.SECONDS).until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running again = success!
+        await().until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running again = success!
     }
 
     @Test
     @DirtiesContext
     public void testRestartClearedBeforeRunTask() throws Exception {
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
-        TestingUtils.commitTransaction();
+
+        // Wait until we have "start"ed the service by setting its replicas to 1
+        log.debug("Waiting for container service to start container {} for service {}...",
+                service.databaseId(), service.serviceId());
+        await().atMost(1, TimeUnit.SECONDS)
+                .pollInterval(50, TimeUnit.MILLISECONDS)
+                .until(() -> {
+                    try {
+                        Long replicas = CLIENT.inspectService(service.serviceId()).spec().mode().replicated().replicas();
+                        log.debug("Service {} replicas {}", service.serviceId(), replicas);
+                        return replicas;
+                    } catch (Exception e) {
+                        return 0;
+                    }
+                }, is(equalTo(1L)));
 
         // Restart
-        log.debug("Removing service before it starts running to throw a restart event");
+        log.debug("Removing service {} before it starts running to throw a restart event", service.serviceId());
         CLIENT.removeService(service.serviceId());
-        Thread.sleep(500L); // Sleep long enough for status updater to run
 
         // ensure that container restarted & status updates, etc
+        log.debug("Waiting for container service to restart container {}...", service.databaseId());
+        await().atMost(2, TimeUnit.SECONDS)
+                .pollInterval(100, TimeUnit.MILLISECONDS)
+                .until(() -> {
+                    try {
+                        return containerService.get(service.databaseId()).countRestarts();
+                    } catch (Exception e) {
+                        return 0;
+                    }
+                }, is(1));
+        log.debug("Waiting for restarted container {} to get a new service id...", service.databaseId());
+        await().atMost(500, TimeUnit.MILLISECONDS)
+                .pollInterval(100, TimeUnit.MILLISECONDS)
+                .until(() -> {
+                    try {
+                        return containerService.get(service.databaseId()).serviceId();
+                    } catch (Exception e) {
+                        return null;
+                    }
+                }, is(notNullValue()));
+        TestingUtils.commitTransaction();
         final Container restartedContainer = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedContainer.serviceId());
         assertThat(restartedContainer.countRestarts(), is(1));
+
+        log.debug("Waiting until restarted container {} service {} is running...",
+                restartedContainer.databaseId(), restartedContainer.serviceId());
         await().until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running = success!
     }
 
@@ -363,7 +410,8 @@ public class SwarmRestartIntegrationTest {
     @DirtiesContext
     public void testRestartFailure() throws Exception {
         containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
 
         // Restart
@@ -399,11 +447,12 @@ public class SwarmRestartIntegrationTest {
     @Test
     @DirtiesContext
     public void testNoRestartOnAPIKill() throws Exception {
-        containerService.consumeResolveCommandAndLaunchContainer(null, sleeperWrapper.id(), 0L,
-                null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow.getWorkflowId().toString());
+        log.debug("Queueing command for launch");
+        containerService.queueResolveCommandAndLaunchContainer(null, sleeperWrapper.id(), 0L,
+                null, Collections.emptyMap(), mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         containersToCleanUp.add(service.serviceId());
-        TestingUtils.commitTransaction();
 
         log.debug("Kill service as if through API");
         try {

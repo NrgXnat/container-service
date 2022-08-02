@@ -45,6 +45,7 @@ public class XnatFile extends XnatModelObject {
         this.content = content;
         this.size = size;
         this.checksum = checksum;
+        this.directory = null;
     }
 
     public Project getProject(final UserI userI) {
@@ -109,23 +110,28 @@ public class XnatFile extends XnatModelObject {
     }
 
     @Override
+    public String getRootPath() {
+        return getPath();
+    }
+
+    @Override
     public XFTItem getXftItem(final UserI userI) {
         return null;
     }
 
     @Override
-    public boolean equals(final Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         final XnatFile that = (XnatFile) o;
-        return Objects.equals(this.name, that.name) &&
-                Objects.equals(this.path, that.path) &&
-                Objects.equals(this.tags, that.tags) &&
-                Objects.equals(this.format, that.format) &&
-                Objects.equals(this.content, that.content) &&
-                Objects.equals(this.size, that.size) &&
-                Objects.equals(this.checksum, that.checksum);
+        return Objects.equals(name, that.name) &&
+                Objects.equals(path, that.path) &&
+                Objects.equals(tags, that.tags) &&
+                Objects.equals(format, that.format) &&
+                Objects.equals(content, that.content) &&
+                Objects.equals(size, that.size) &&
+                Objects.equals(checksum, that.checksum);
     }
 
     @Override

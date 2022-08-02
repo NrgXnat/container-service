@@ -8,7 +8,7 @@ import javax.jms.JMSException;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.activemq.command.ActiveMQQueue;
-import org.nrg.containers.events.DockerStatusUpdater;
+import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.preferences.QueuePrefsBean;
 import org.nrg.containers.jms.tasks.QueueManager;
@@ -111,9 +111,9 @@ public class ContainersConfig {
     }
 
     @Bean
-    public TriggerTask dockerEventPullerTask(final DockerStatusUpdater dockerStatusUpdater) {
+    public TriggerTask containerStatusUpdateTask(final ContainerStatusUpdater containerStatusUpdater) {
         return new TriggerTask(
-                dockerStatusUpdater,
+                containerStatusUpdater,
                 new PeriodicTrigger(10L, TimeUnit.SECONDS)
         );
     }

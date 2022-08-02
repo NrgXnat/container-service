@@ -4,13 +4,18 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Function;
-import com.google.common.collect.*;
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Ordering;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ContainerEvent;
-import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.ResolvedCommandMount;
@@ -21,23 +26,38 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.model.server.docker.Backend;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.containers.utils.JsonDateSerializer;
 import org.nrg.containers.utils.JsonStringToDateSerializer;
-
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.utils.WorkflowUtils;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static org.nrg.containers.utils.ContainerUtils.MIB_TO_BYTES;
+import static org.nrg.containers.utils.ContainerUtils.NANO;
+import static org.nrg.containers.utils.ContainerUtils.instanceOrDefault;
 
 @Slf4j
 @AutoValue
 public abstract class Container {
-    @JsonIgnore private String exitCode;
-    @JsonIgnore private List<ContainerHistory> sortedHist = null;
+    @JsonIgnore private volatile List<String> _bindMountStrings = null;
+    @JsonIgnore private volatile List<String> _envStrings = null;
+    @JsonIgnore private volatile List<String> _portStrings = null;
+    @JsonIgnore private volatile String exitCode;
+    @JsonIgnore private volatile List<ContainerHistory> sortedHist = null;
 
     @JsonProperty("id") public abstract long databaseId();
     @JsonProperty("command-id") public abstract long commandId();
@@ -49,7 +69,7 @@ public abstract class Container {
     @Nullable @JsonProperty("workflow-id") public abstract String workflowId();
     @JsonProperty("user-id") public abstract String userId();
     @JsonProperty("project") @Nullable public abstract String project();
-    @Nullable @JsonProperty("swarm") public abstract Boolean swarm();
+    @JsonProperty("backend") public abstract Backend backend();
     @Nullable @JsonProperty("service-id") public abstract String serviceId();
     @Nullable @JsonProperty("task-id") public abstract String taskId();
     @Nullable @JsonProperty("node-id") public abstract String nodeId();
@@ -82,23 +102,110 @@ public abstract class Container {
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
 
+    /**
+     * @deprecated Use {@link Container#backend()} instead
+     */
+    @Deprecated
+    @JsonProperty("swarm")
+    public Boolean swarm() {
+        return backend() == Backend.SWARM;
+    }
+
+    @JsonIgnore
+    public String podName() {
+        return backend() == Backend.KUBERNETES ? taskId() : null;
+    }
+
+    @JsonIgnore
+    public String jobName() {
+        return backend() == Backend.KUBERNETES ? serviceId() : null;
+    }
+
+    @JsonIgnore
+    public String containerNameOrRandom() {
+        final String name = containerName();
+        return Strings.isNullOrEmpty(name) ? UUID.randomUUID().toString() : name;
+    }
+
+    @JsonIgnore
+    public boolean overrideEntrypointNonnull() {
+        final Boolean overrideEntrypoint = overrideEntrypoint();
+        return overrideEntrypoint != null && overrideEntrypoint;
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public Long reserveMemoryBytes() {
+        return MIB_TO_BYTES * instanceOrDefault(reserveMemory(), 0L);
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public Long limitMemoryBytes() {
+        return MIB_TO_BYTES * instanceOrDefault(limitMemory(), 0L);
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public Long nanoCpus() {
+        return (new Double(NANO * instanceOrDefault(limitCpu(), 0D))).longValue();
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public List<String> bindMountStrings() {
+        if (_bindMountStrings == null) {
+            _bindMountStrings = mounts().stream().map(ContainerMount::toBindMountString).collect(Collectors.toList());
+        }
+        return _bindMountStrings;
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public List<String> environmentVariableStrings() {
+        if (_envStrings == null) {
+            _envStrings = environmentVariables()
+                    .entrySet()
+                    .stream()
+                    .map(entry -> String.format("%s=%s", entry.getKey(), entry.getValue()))
+                    .collect(Collectors.toList());
+        }
+        return _envStrings;
+    }
+
+    @JsonIgnore
+    @Nonnull
+    public List<String> portStrings() {
+        if (_portStrings == null) {
+            _portStrings = ports()
+                    .entrySet()
+                    .stream()
+                    .map(entry -> String.format("host %s -> container %s", entry.getValue(), entry.getKey()))
+                    .collect(Collectors.toList());
+        }
+        return _portStrings;
+    }
+
+    /**
+     * @deprecated Use {@link Container#backend()} instead
+     */
+    @Deprecated
     @JsonIgnore
     public boolean isSwarmService() {
-        final Boolean swarm = swarm();
-        return swarm != null && swarm;
+        return backend() == Backend.SWARM;
     }
 
     @JsonIgnore
     public String containerOrServiceId() {
-        return isSwarmService() ? serviceId() : containerId();
+        return backend() == Backend.DOCKER ? containerId() : serviceId();
     }
 
     @JsonIgnore
-    private synchronized List<ContainerHistory> getSortedHistory() {
+    public synchronized List<ContainerHistory> getSortedHistory() {
         if (sortedHist == null) {
             sortedHist = Ordering.natural().reverse().sortedCopy(this.history()); //Descending order (most recent first)
         }
-        return sortedHist;
+        return new ArrayList<>(sortedHist);
     }
 
     @JsonIgnore
@@ -174,6 +281,12 @@ public abstract class Container {
         return workflow == null ? null : workflow.getStatus();
     }
 
+    @JsonIgnore
+    public boolean statusIsTerminal() {
+        return ContainerUtils.statusIsTerminal(status());
+    }
+
+
     /**
      * Get outputs in order such that an output that creates a data type (say an assessor or scan xml) will be earlier
      * in the list than an output that uploads to that data type. Put differently, an output with
@@ -184,10 +297,8 @@ public abstract class Container {
      */
     @JsonIgnore
     public List<ContainerOutput> getOrderedOutputs() {
-        Map<String, ContainerOutput> outputsByHandler = new HashMap<>();
-        for (ContainerOutput out : this.outputs()) {
-            outputsByHandler.put(out.fromOutputHandler(), out);
-        }
+        Map<String, ContainerOutput> outputsByHandler = outputs().stream()
+                .collect(Collectors.toMap(ContainerOutput::fromOutputHandler, java.util.function.Function.identity()));
 
         List<ContainerOutput> orderedOutputs = new ArrayList<>();
         for (ContainerOutput output : this.outputs()) {
@@ -228,6 +339,7 @@ public abstract class Container {
                                    @JsonProperty("workflow-id") final String workflowId,
                                    @JsonProperty("user-id") final String userId,
                                    @JsonProperty("project") final String project,
+                                   @JsonProperty("backend") Backend backend,
                                    @JsonProperty("swarm") final Boolean swarm,
                                    @JsonProperty("service-id") final String serviceId,
                                    @JsonProperty("task-id") final String taskId,
@@ -257,7 +369,9 @@ public abstract class Container {
                                    @JsonProperty("network") final String network,
                                    @JsonProperty("container-labels") final Map<String, String> containerLabels)
     {
-
+        if (backend == null) {
+            backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
+        }
         return builder()
                 .databaseId(databaseId)
                 .status(status)
@@ -268,7 +382,7 @@ public abstract class Container {
                 .workflowId(workflowId)
                 .userId(userId)
                 .project(project)
-                .swarm(swarm)
+                .backend(backend)
                 .serviceId(serviceId)
                 .taskId(taskId)
                 .nodeId(nodeId)
@@ -279,13 +393,13 @@ public abstract class Container {
                 .workingDirectory(workingDirectory)
                 .subtype(subtype)
                 .parentSourceObjectName(parentSourceObjectName)
-                .environmentVariables(environmentVariables == null ? Collections.<String, String>emptyMap() : environmentVariables)
-                .ports(ports == null ? Collections.<String, String>emptyMap() : ports)
-                .mounts(mounts == null ? Collections.<ContainerMount>emptyList() : mounts)
-                .inputs(inputs == null ? Collections.<ContainerInput>emptyList() : inputs)
-                .outputs(outputs == null ? Collections.<ContainerOutput>emptyList() : outputs)
-                .history(history == null ? Collections.<ContainerHistory>emptyList() : history)
-                .logPaths(logPaths == null ? Collections.<String>emptyList() : logPaths)
+                .environmentVariables(environmentVariables == null ? Collections.emptyMap() : environmentVariables)
+                .ports(ports == null ? Collections.emptyMap() : ports)
+                .mounts(mounts == null ? Collections.emptyList() : mounts)
+                .inputs(inputs == null ? Collections.emptyList() : inputs)
+                .outputs(outputs == null ? Collections.emptyList() : outputs)
+                .history(history == null ? Collections.emptyList() : history)
+                .logPaths(logPaths == null ? Collections.emptyList() : logPaths)
                 .reserveMemory(reserveMemory)
                 .limitMemory(limitMemory)
                 .limitCpu(limitCpu)
@@ -313,7 +427,7 @@ public abstract class Container {
                 .workflowId(containerEntity.getWorkflowId())
                 .userId(containerEntity.getUserId())
                 .project(containerEntity.getProject())
-                .swarm(containerEntity.getSwarm())
+                .backend(containerEntity.getBackend())
                 .serviceId(containerEntity.getServiceId())
                 .taskId(containerEntity.getTaskId())
                 .nodeId(containerEntity.getNodeId())
@@ -325,44 +439,27 @@ public abstract class Container {
                 .subtype(containerEntity.getSubtype())
                 .parent(create(containerEntity.getParentContainerEntity()))
                 .parentSourceObjectName(containerEntity.getParentSourceObjectName())
-                .environmentVariables(containerEntity.getEnvironmentVariables() == null ? Collections.<String, String>emptyMap() : containerEntity.getEnvironmentVariables())
-                .ports(containerEntity.getPorts() == null ? Collections.<String, String>emptyMap() : containerEntity.getPorts())
-                .logPaths(containerEntity.getLogPaths() == null ? Collections.<String>emptyList() : containerEntity.getLogPaths())
+                .environmentVariables(containerEntity.getEnvironmentVariables() == null ?
+                        Collections.emptyMap() :
+                        containerEntity.getEnvironmentVariables()
+                )
+                .ports(containerEntity.getPorts() == null ? Collections.emptyMap() : containerEntity.getPorts())
+                .logPaths(containerEntity.getLogPaths() == null ? Collections.emptyList() : containerEntity.getLogPaths())
                 .mounts(containerEntity.getMounts() == null ?
-                        Collections.<ContainerMount>emptyList() :
-                        Lists.transform(containerEntity.getMounts(), new Function<ContainerEntityMount, ContainerMount>() {
-                            @Override
-                            public ContainerMount apply(final ContainerEntityMount input) {
-                                return ContainerMount.create(input);
-                            }
-                        })
+                        Collections.emptyList() :
+                        containerEntity.getMounts().stream().map(ContainerMount::create).collect(Collectors.toList())
                 )
                 .inputs(containerEntity.getInputs() == null ?
-                        Collections.<ContainerInput>emptyList() :
-                        Lists.transform(containerEntity.getInputs(), new Function<ContainerEntityInput, ContainerInput>() {
-                            @Override
-                            public ContainerInput apply(final ContainerEntityInput input) {
-                                return ContainerInput.create(input);
-                            }
-                        })
+                        Collections.emptyList() :
+                        containerEntity.getInputs().stream().map(ContainerInput::create).collect(Collectors.toList())
                 )
                 .outputs(containerEntity.getOutputs() == null ?
-                        Collections.<ContainerOutput>emptyList() :
-                        Lists.transform(containerEntity.getOutputs(), new Function<ContainerEntityOutput, ContainerOutput>() {
-                            @Override
-                            public ContainerOutput apply(final ContainerEntityOutput input) {
-                                return ContainerOutput.create(input);
-                            }
-                        })
+                        Collections.emptyList() :
+                        containerEntity.getOutputs().stream().map(ContainerOutput::create).collect(Collectors.toList())
                 )
                 .history(containerEntity.getHistory() == null ?
-                        Collections.<ContainerHistory>emptyList() :
-                        Lists.transform(containerEntity.getHistory(), new Function<ContainerEntityHistory, ContainerHistory>() {
-                            @Override
-                            public ContainerHistory apply(final ContainerEntityHistory input) {
-                                return ContainerHistory.create(input);
-                            }
-                        })
+                        Collections.emptyList() :
+                        containerEntity.getHistory().stream().map(ContainerHistory::create).collect(Collectors.toList())
                 )
                 .reserveMemory(containerEntity.getReserveMemory())
                 .limitMemory(containerEntity.getLimitMemory())
@@ -377,29 +474,8 @@ public abstract class Container {
                 .build();
     }
 
-    public static Container containerFromResolvedCommand(final ResolvedCommand resolvedCommand,
-                                                         final String containerId,
-                                                         final String userId) {
-        return buildFromResolvedCommand(resolvedCommand)
-                .userId(userId)
-                .containerId(containerId)
-                .build();
-    }
-
-    public static Container serviceFromResolvedCommand(final ResolvedCommand resolvedCommand,
-                                                       final String serviceId,
-                                                       final String userId) {
-        return buildFromResolvedCommand(resolvedCommand)
-                .userId(userId)
-                .serviceId(serviceId)
-                .swarm(true)
-                .build();
-    }
-
-    private static Container.Builder buildFromResolvedCommand(final ResolvedCommand resolvedCommand) {
-
+    public static Container.Builder builderFromResolvedCommand(final ResolvedCommand resolvedCommand) {
         return builder()
-                .databaseId(0L)
                 .commandId(resolvedCommand.commandId())
                 .wrapperId(resolvedCommand.wrapperId())
                 .project(resolvedCommand.project())
@@ -433,7 +509,9 @@ public abstract class Container {
     }
 
     public static Builder builder() {
-        return new AutoValue_Container.Builder();
+        return new AutoValue_Container.Builder()
+                .databaseId(0L)
+                .backend(Backend.DOCKER);
     }
 
     public abstract Builder toBuilder();
@@ -559,7 +637,7 @@ public abstract class Container {
         public abstract Builder commandLine(String commandLine);
         public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
         public abstract Builder workingDirectory(String workingDirectory);
-        public abstract Builder swarm(Boolean swarm);
+        public abstract Builder backend(Backend backend);
         public abstract Builder serviceId(String serviceId);
         public abstract Builder taskId(String taskId);
         public abstract Builder nodeId(String nodeId);
@@ -1025,7 +1103,7 @@ public abstract class Container {
                     .entityType("event")
                     .entityId(null)
                     .timeRecorded(new Date())
-                    .externalTimestamp(containerEvent instanceof DockerContainerEvent ? String.valueOf(((DockerContainerEvent)containerEvent).timeNano()) : null)
+                    .externalTimestamp(containerEvent.externalTimestamp())
                     .message(null)
                     .exitCode(containerEvent.exitCode())
                     .build();

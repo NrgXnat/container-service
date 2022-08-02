@@ -1,15 +1,15 @@
 package org.nrg.containers.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerServerEntityTestConfig;
-import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.Backend;
+import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerSwarmConstraint;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -21,10 +21,16 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
-import java.util.regex.Pattern;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -36,126 +42,58 @@ public class DockerServerEntityTest {
     @Autowired private DockerServerService dockerServerService;
     @Autowired private DockerServerEntityService dockerServerEntityService;
 
-    private String containerHost;
-    private String certPath;
+    private static final String CONTAINER_HOST = "a host";
 
-    DockerServerBase.DockerServer dockerServerStandalone;
-    DockerServerBase.DockerServer dockerServerSwarmNoConstraints;
-    DockerServerBase.DockerServer dockerServerSwarmEmptyConstraints;
-    DockerServerBase.DockerServer dockerServerSwarmConstraints;
-    DockerServerEntity dockerServerStandaloneEntity;
-    DockerServerEntity dockerServerSwarmNoConstraintsEntity;
-    DockerServerEntity dockerServerSwarmEmptyConstraintsEntity;
-    DockerServerEntity dockerServerSwarmConstraintsEntity;
+    private final static DockerServer STANDALONE = DockerServer.builder()
+            .backend(Backend.DOCKER)
+            .host(CONTAINER_HOST)
+            .name("TestStandalone")
+            .build();
+    private final static DockerServerEntity STANDALONE_ENTITY = DockerServerEntity.create(STANDALONE);
 
-    DockerServerBase.DockerServerSwarmConstraint constraintNotSettable;
-    DockerServerBase.DockerServerSwarmConstraint constraintSettable;
+    private final static DockerServer K8S = DockerServer.builder()
+            .backend(Backend.KUBERNETES)
+            .host(CONTAINER_HOST)
+            .name("TestKubernetes")
+            .build();
+    private final static DockerServerEntity K8S_ENTITY = DockerServerEntity.create(K8S);
 
-    DockerServerEntitySwarmConstraint constraintNotSettableEntity;
-    DockerServerEntitySwarmConstraint constraintSettableEntity;
+    private final static DockerServer SWARM_NO_CONSTRAINTS = DockerServer.builder()
+            .backend(Backend.SWARM)
+            .host(CONTAINER_HOST)
+            .name("TestSwarmNoConstraints")
+            .build();
+    private final static DockerServerEntity SWARM_NO_CONSTRAINTS_ENTITY = DockerServerEntity.create(SWARM_NO_CONSTRAINTS);
 
-    @Before
-    public void setup() throws Exception {
-        // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
+    private final static DockerServer SWARM_EMPTY_CONSTRAINTS = DockerServer.builder()
+            .backend(Backend.SWARM)
+            .host(CONTAINER_HOST)
+            .name("TestSwarmEmptyConstraints")
+            .swarmConstraints(Collections.emptyList())
+            .build();
+    private final static DockerServerEntity SWARM_EMPTY_CONSTRAINTS_ENTITY = DockerServerEntity.create(SWARM_EMPTY_CONSTRAINTS);
 
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = null;
-        }
-
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
-
-        dockerServerStandalone = DockerServerBase.DockerServer.builder()
-                .id(0L)
-                .lastEventCheckTime(new Date())
-                .swarmMode(false)
-                .host(containerHost)
-                .certPath(certPath)
-                .name("TestStandalone")
-                .pullImagesOnXnatInit(false)
-                .autoCleanup(true)
-                .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
-                .build();
-        dockerServerStandaloneEntity = DockerServerEntity.create(dockerServerStandalone);
-
-        dockerServerSwarmNoConstraints = DockerServerBase.DockerServer.builder()
-                .id(0L)
-                .lastEventCheckTime(new Date())
-                .swarmMode(true)
-                .host(containerHost)
-                .certPath(certPath)
-                .name("TestSwarmNoConstraints")
-                .pullImagesOnXnatInit(false)
-                .autoCleanup(true)
-                .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
-                .build();
-        dockerServerSwarmNoConstraintsEntity = DockerServerEntity.create(dockerServerSwarmNoConstraints);
-
-        dockerServerSwarmEmptyConstraints = DockerServerBase.DockerServer.builder()
-                .id(0L)
-                .lastEventCheckTime(new Date())
-                .swarmMode(true)
-                .host(containerHost)
-                .certPath(certPath)
-                .name("TestSwarmEmptyConstraints")
-                .pullImagesOnXnatInit(false)
-                .autoCleanup(true)
-                .swarmConstraints(Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList())
-                .build();
-        dockerServerSwarmEmptyConstraintsEntity = DockerServerEntity.create(dockerServerSwarmEmptyConstraints);
-
-        constraintNotSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("node.role")
-                .comparator("==")
-                .values(Collections.singletonList("manager"))
-                .userSettable(false)
-                .build();
-        constraintNotSettableEntity = DockerServerEntitySwarmConstraint.fromPojo(constraintNotSettable);
-
-        constraintSettable = DockerServerBase.DockerServerSwarmConstraint.builder()
-                .id(0L)
-                .attribute("engine.labels.instance.spot")
-                .comparator("==")
-                .values(Arrays.asList("True","False"))
-                .userSettable(true)
-                .build();
-        constraintSettableEntity = DockerServerEntitySwarmConstraint.fromPojo(constraintSettable);
-
-        dockerServerSwarmConstraints = DockerServerBase.DockerServer.builder()
-                .id(0L)
-                .lastEventCheckTime(new Date())
-                .swarmMode(true)
-                .host(containerHost)
-                .certPath(certPath)
-                .name("TestSwarmConstraints")
-                .pullImagesOnXnatInit(false)
-                .autoCleanup(true)
-                .swarmConstraints(Arrays.asList(constraintNotSettable, constraintSettable))
-                .build();
-        dockerServerSwarmConstraintsEntity = DockerServerEntity.create(dockerServerSwarmConstraints);
-
-    }
+    private final static DockerServerSwarmConstraint NOT_SETTABLE = DockerServerSwarmConstraint.builder()
+            .id(0L)
+            .attribute("node.role")
+            .comparator("==")
+            .values(Collections.singletonList("manager"))
+            .userSettable(false)
+            .build();
+    private final static DockerServerSwarmConstraint SETTABLE = DockerServerSwarmConstraint.builder()
+            .id(0L)
+            .attribute("engine.labels.instance.spot")
+            .comparator("==")
+            .values(Arrays.asList("True","False"))
+            .userSettable(true)
+            .build();
+    private final static DockerServer SWARM_WITH_CONSTRAINTS = DockerServer.builder()
+            .backend(Backend.SWARM)
+            .host(CONTAINER_HOST)
+            .name("TestSwarmConstraints")
+            .swarmConstraints(Arrays.asList(NOT_SETTABLE, SETTABLE))
+            .build();
+    private final static DockerServerEntity SWARM_WITH_CONSTRAINTS_ENTITY = DockerServerEntity.create(SWARM_WITH_CONSTRAINTS);
 
     @Test
     public void testSpringConfiguration() {
@@ -164,33 +102,36 @@ public class DockerServerEntityTest {
 
     @Test
     public void testSerializeDeserialize() throws Exception {
-        assertThat(mapper.readValue(mapper.writeValueAsString(dockerServerStandalone),
-                DockerServerBase.DockerServer.class), is(dockerServerStandalone));
-        assertThat(mapper.readValue(mapper.writeValueAsString(dockerServerSwarmNoConstraints),
-                DockerServerBase.DockerServer.class), is(dockerServerSwarmNoConstraints));
-        assertThat(mapper.readValue(mapper.writeValueAsString(dockerServerSwarmEmptyConstraints),
-                DockerServerBase.DockerServer.class), is(dockerServerSwarmEmptyConstraints));
-        assertThat(mapper.readValue(mapper.writeValueAsString(dockerServerSwarmConstraints),
-                DockerServerBase.DockerServer.class), is(dockerServerSwarmConstraints));
-        assertThat(mapper.readValue(mapper.writeValueAsString(constraintNotSettable),
-                DockerServerBase.DockerServerSwarmConstraint.class), is(constraintNotSettable));
-        assertThat(mapper.readValue(mapper.writeValueAsString(constraintSettable),
-                DockerServerBase.DockerServerSwarmConstraint.class), is(constraintSettable));
+        assertThat(mapper.readValue(mapper.writeValueAsString(STANDALONE),
+                DockerServer.class), is(STANDALONE));
+        assertThat(mapper.readValue(mapper.writeValueAsString(K8S),
+                DockerServer.class), is(K8S));
+        assertThat(mapper.readValue(mapper.writeValueAsString(SWARM_NO_CONSTRAINTS),
+                DockerServer.class), is(SWARM_NO_CONSTRAINTS));
+        assertThat(mapper.readValue(mapper.writeValueAsString(SWARM_EMPTY_CONSTRAINTS),
+                DockerServer.class), is(SWARM_EMPTY_CONSTRAINTS));
+        assertThat(mapper.readValue(mapper.writeValueAsString(SWARM_WITH_CONSTRAINTS),
+                DockerServer.class), is(SWARM_WITH_CONSTRAINTS));
+        assertThat(mapper.readValue(mapper.writeValueAsString(NOT_SETTABLE),
+                DockerServerSwarmConstraint.class), is(NOT_SETTABLE));
+        assertThat(mapper.readValue(mapper.writeValueAsString(SETTABLE),
+                DockerServerSwarmConstraint.class), is(SETTABLE));
     }
 
     @Test
     @DirtiesContext
     public void testCreateUpdateHibernate() throws Exception {
         for (DockerServerEntity dockerServerEntity :
-                Arrays.asList(dockerServerStandaloneEntity,
-                        dockerServerSwarmNoConstraintsEntity,
-                        dockerServerSwarmEmptyConstraintsEntity)) {
+                Arrays.asList(STANDALONE_ENTITY,
+                        K8S_ENTITY,
+                        SWARM_NO_CONSTRAINTS_ENTITY,
+                        SWARM_EMPTY_CONSTRAINTS_ENTITY)) {
             DockerServerEntity createdEntity = dockerServerEntityService.create(dockerServerEntity);
             TestingUtils.commitTransaction();
             DockerServerEntity retrievedEntity = dockerServerEntityService.retrieve(createdEntity.getId());
             assertThat(retrievedEntity, is(createdEntity));
 
-            retrievedEntity.update(dockerServerSwarmConstraints);
+            retrievedEntity.update(SWARM_WITH_CONSTRAINTS);
             assertThat(retrievedEntity, is(not(createdEntity)));
             dockerServerEntityService.update(retrievedEntity);
             TestingUtils.commitTransaction();
@@ -198,17 +139,17 @@ public class DockerServerEntityTest {
             assertThat(retrievedEntity, is(retrievedUpdatedEntity));
         }
 
-        DockerServerEntity createdEntity = dockerServerEntityService.create(dockerServerSwarmConstraintsEntity);
+        DockerServerEntity createdEntity = dockerServerEntityService.create(SWARM_WITH_CONSTRAINTS_ENTITY);
         TestingUtils.commitTransaction();
         DockerServerEntity retrievedEntity = dockerServerEntityService.retrieve(createdEntity.getId());
         assertThat(retrievedEntity, is(createdEntity));
 
         List<DockerServerEntitySwarmConstraint> constraintList = retrievedEntity.getSwarmConstraints();
-        assertThat(constraintList, Matchers.<DockerServerEntitySwarmConstraint>hasSize(2));
+        assertThat(constraintList, Matchers.hasSize(2));
         assertThat(constraintList.get(0).getDockerServerEntity(), is(createdEntity));
         assertThat(constraintList.get(1).getDockerServerEntity(), is(createdEntity));
 
-        retrievedEntity.update(dockerServerStandalone);
+        retrievedEntity.update(STANDALONE);
         assertThat(retrievedEntity, is(not(createdEntity)));
         dockerServerEntityService.update(retrievedEntity);
         TestingUtils.commitTransaction();
@@ -219,58 +160,65 @@ public class DockerServerEntityTest {
     @Test
     @DirtiesContext
     public void testCreateUpdateServerService() throws Exception {
-        for (DockerServerBase.DockerServer dockerServer :
-                Arrays.asList(dockerServerStandalone,
-                        dockerServerSwarmNoConstraints,
-                        dockerServerSwarmEmptyConstraints)) {
-            DockerServerBase.DockerServer server = dockerServerService.setServer(dockerServer);
+        for (DockerServer dockerServer :
+                Arrays.asList(STANDALONE,
+                        K8S,
+                        SWARM_NO_CONSTRAINTS,
+                        SWARM_EMPTY_CONSTRAINTS)) {
+            DockerServer server = dockerServerService.setServer(dockerServer);
             TestingUtils.commitTransaction();
             assertThat(server, isIgnoreId(dockerServer));
             assertThat(dockerServerService.getServer(), is(server));
 
-            DockerServerBase.DockerServer updatedServer = dockerServerSwarmConstraints.toBuilder().id(server.id()).build();
+            DockerServer updatedServer = SWARM_WITH_CONSTRAINTS.toBuilder().id(server.id()).build();
             dockerServerService.update(updatedServer);
             TestingUtils.commitTransaction();
             server = dockerServerService.getServer();
             assertThat(server, isIgnoreId(updatedServer));
         }
 
-        DockerServerBase.DockerServer server = dockerServerService.setServer(dockerServerSwarmConstraints);
+        DockerServer server = dockerServerService.setServer(SWARM_WITH_CONSTRAINTS);
         TestingUtils.commitTransaction();
-        assertThat(server, isIgnoreId(dockerServerSwarmConstraints));
+        assertThat(server, isIgnoreId(SWARM_WITH_CONSTRAINTS));
         assertThat(dockerServerService.getServer(), is(server));
 
-        DockerServerBase.DockerServer updatedServer = dockerServerStandalone.toBuilder().id(server.id()).build();
+        DockerServer updatedServer = STANDALONE.toBuilder().id(server.id()).build();
         dockerServerService.update(updatedServer);
         TestingUtils.commitTransaction();
         server = dockerServerService.getServer();
         assertThat(server, isIgnoreId(updatedServer));
     }
 
-    private Matcher<DockerServerBase.DockerServer> isIgnoreId(final DockerServerBase.DockerServer server) {
+    private Matcher<DockerServer> isIgnoreId(final DockerServer server) {
         final String description = "a DockerServer equal to (other than the ID) one of " + server;
-        return new CustomTypeSafeMatcher<DockerServerBase.DockerServer>(description) {
+        return new CustomTypeSafeMatcher<DockerServer>(description) {
             @Override
-            protected boolean matchesSafely(final DockerServerBase.DockerServer actual) {
-                DockerServerBase.DockerServer actualWithSameId =
-                        actual.toBuilder().id(server.id()).build();
-                if (actualWithSameId.swarmConstraints() != null && server.swarmConstraints() != null) {
-                    Map<String, DockerServerBase.DockerServerSwarmConstraint> constrMap = new HashMap<>();
-                    for (final DockerServerBase.DockerServerSwarmConstraint constraint : server.swarmConstraints()) {
-                        constrMap.put(constraint.attribute(), constraint);
-                    }
-                    List<DockerServerBase.DockerServerSwarmConstraint> constrSharedId = new ArrayList<>();
-                    for (final DockerServerBase.DockerServerSwarmConstraint constraint : actualWithSameId.swarmConstraints()) {
-                        String attr = constraint.attribute();
-                        if (!constrMap.containsKey(attr)) {
-                            return false;
-                        }
-                        constrSharedId.add(constraint.toBuilder().id(constrMap.get(attr).id()).build());
-                    }
-                    actualWithSameId = actualWithSameId.toBuilder().swarmConstraints(constrSharedId).build();
+            protected boolean matchesSafely(final DockerServer actual) {
+                // Overwrite server id
+                DockerServer.Builder actualWithSameIdBuilder =
+                        actual.toBuilder().id(server.id());
+
+                // Overwrite swarm constraint IDs (matched between the two lists based on attributes)
+                List<DockerServerSwarmConstraint> serverConstraints = server.swarmConstraints();
+                List<DockerServerSwarmConstraint> actualConstraints = actual.swarmConstraints();
+                if (actualConstraints != null && serverConstraints != null) {
+                    // We will want to look up constraints by their attributes
+                    Map<String, DockerServerSwarmConstraint> serverConstraintsByAttr =
+                            serverConstraints.stream()
+                                    .collect(Collectors.toMap(
+                                            DockerServerSwarmConstraint::attribute,
+                                            Function.identity()));
+
+                    // For each actual constraint, replace its id by the id of the server constraint with the same attribute
+                    actualWithSameIdBuilder.swarmConstraints(actualConstraints.stream()
+                            .map(c -> {
+                                DockerServerSwarmConstraint serverConstraint = serverConstraintsByAttr.get(c.attribute());
+                                return serverConstraint == null ? null : c.toBuilder().id(serverConstraint.id()).build();
+                            })
+                            .collect(Collectors.toList()));
                 }
 
-                return server.equals(actualWithSameId);
+                return server.equals(actualWithSameIdBuilder.build());
             }
         };
     }

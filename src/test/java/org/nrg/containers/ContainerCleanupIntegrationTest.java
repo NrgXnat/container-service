@@ -1,38 +1,42 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.NotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.apis.BatchV1Api;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestRule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.ContainerNotFoundException;
+import org.mandas.docker.client.exceptions.ServiceNotFoundException;
+import org.mockito.Mock;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClient;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.config.SpringJUnit4ClassRunnerFactory;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -64,59 +68,75 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nullable;
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
+import java.util.function.Consumer;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.doNothing;
+import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 
 @Slf4j
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class})
+        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
 @Transactional
 public class ContainerCleanupIntegrationTest {
-    // Sadly, we can't have 2 parameters and use powermock/spring, so we have to double-up our tests
-    public boolean swarmMode;
-
-    @Parameterized.Parameters(name = "autoCleanup={0}")
-    public static Collection<Boolean> autoCleanups() {
-        return Arrays.asList(true, false);
+    @Parameterized.Parameters(name = "autoCleanup={0} backend={1}")
+    public static Collection<Object[]> params() {
+        return TestingUtils.combinations(
+                new Object[] {true, false},
+                EnumSet.allOf(Backend.class).toArray()
+        );
     }
     @Parameterized.Parameter
     public boolean autoCleanup;
+    @Parameterized.Parameter(1)
+    public Backend backend;
 
-    private UserI mockUser;
-    private String buildDir;
-    private String archiveDir;
+    @Mock private UserI mockUser;
 
-    private final String FAKE_USER = "mockUser";
-    private final String FAKE_ALIAS = "alias";
-    private final String FAKE_SECRET = "secret";
-    private final String FAKE_HOST = "mock://url";
-    private FakeWorkflow fakeWorkflow = new FakeWorkflow();
+    private FakeWorkflow fakeWorkflow;
 
-    private boolean testIsOnCircleCi;
+    private static final List<String> containersToCleanUp = new ArrayList<>();
+    private static final List<String> imagesToCleanUp = new ArrayList<>();
 
-    private final List<String> containersToCleanUp = new ArrayList<>();
-    private final List<String> imagesToCleanUp = new ArrayList<>();
+    private DockerClient dockerClient;
+    private static Consumer<String> containerCleanupFunction;
+    private KubernetesClient kubernetesClient;
+    private String kubernetesNamespace;
 
-    private static DockerClient CLIENT;
+    // Make sure we can distinguish our exit code from another common exit code
+    private final static int KUBERNETES_MOUNT_FAILURE_EXIT_CODE = 128;
+    private final static int failureExitCode = ThreadLocalRandom.current().nextInt(1, KUBERNETES_MOUNT_FAILURE_EXIT_CODE-1);
 
     @Autowired private ObjectMapper mapper;
     @Autowired private CommandService commandService;
@@ -128,45 +148,35 @@ public class ContainerCleanupIntegrationTest {
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;
     @Autowired private CatalogService mockCatalogService;
+    @Autowired private ExecutorService executorService;
+    @Autowired private KubernetesClientFactory kubernetesClientFactory;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
 
+    @Rule
+    public TestRule watcher = new TestWatcher() {
+        protected void starting(Description description) {
+            log.info("BEGINNING TEST " + description.getMethodName());
+        }
+
+        protected void finished(Description description) {
+            log.info("ENDING TEST " + description.getMethodName());
+        }
+    };
+
     @Before
     public void setup() throws Exception {
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
-            }
-        });
-
-        final String circleCiEnv = System.getenv("CIRCLECI");
-        testIsOnCircleCi = StringUtils.isNotBlank(circleCiEnv) && Boolean.parseBoolean(circleCiEnv);
-
         // Mock out the prefs bean
         // Mock the userI
-        mockUser = mock(UserI.class);
-        when(mockUser.getLogin()).thenReturn(FAKE_USER);
+        final String fakeUser = "mockUser";
+        when(mockUser.getLogin()).thenReturn(fakeUser);
+        when(mockUser.getUsername()).thenReturn(fakeUser);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
 
         // Mock the user management service
-        when(mockUserManagementServiceI.getUser(FAKE_USER)).thenReturn(mockUser);
+        when(mockUserManagementServiceI.getUser(fakeUser)).thenReturn(mockUser);
 
         // Mock UriParserUtils using PowerMock. This allows us to mock out
         // the responses to its static method parseURI().
@@ -174,16 +184,17 @@ public class ContainerCleanupIntegrationTest {
 
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
-        mockAliasToken.setAlias(FAKE_ALIAS);
-        mockAliasToken.setSecret(FAKE_SECRET);
+        mockAliasToken.setAlias("alias");
+        mockAliasToken.setSecret("secret");
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
 
         mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        when(Users.getUser(fakeUser)).thenReturn(mockUser);
 
         // Mock the site config preferences
-        buildDir = folder.newFolder().getAbsolutePath();
-        archiveDir = folder.newFolder().getAbsolutePath();
+        final String buildDir = folder.newFolder().getAbsolutePath();
+        final String archiveDir = folder.newFolder().getAbsolutePath();
+        String FAKE_HOST = "mock://url";
         when(mockSiteConfigPreferences.getSiteUrl()).thenReturn(FAKE_HOST);
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
@@ -196,6 +207,7 @@ public class ContainerCleanupIntegrationTest {
         when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
+        fakeWorkflow = new FakeWorkflow();
         mockStatic(WorkflowUtils.class);
         when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
@@ -206,164 +218,70 @@ public class ContainerCleanupIntegrationTest {
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
+
+        // We can't load the XFT item in the session, so don't try
+        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
+        mockStatic(Session.class);
+        when(Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+                .thenReturn(null);
+
+        // Permissions checks
+        mockStatic(ContainerServicePermissionUtils.class);
+        when(ContainerServicePermissionUtils.canCreateOutputObject(
+                eq(mockUser), any(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)
+        )).thenReturn(true);
+
+        // Setup docker server
+        DockerServer dockerServer = DockerServer.builder()
+                .name("Test server")
+                .host("unix:///var/run/docker.sock")
+                .backend(backend)
+                .autoCleanup(autoCleanup)
+                .lastEventCheckTime(new Date())  // Set last event check time = now to filter out old events
+                .build();
+        dockerServerService.setServer(dockerServer);
+
+        dockerClient = controlApi.getClient();
+        kubernetesClient = kubernetesClientFactory.getKubernetesClient();
+
+        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
+        TestingUtils.skipIfCannotConnect(backend, dockerClient, kubernetesClient.getBackendClient());
+        kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
+
+        kubernetesClient.start();
     }
 
     @After
-    public void cleanup() {
-        fakeWorkflow = new FakeWorkflow();
+    public void cleanup() throws Exception {
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, dockerClient, kubernetesClient.getBackendClient(), kubernetesNamespace);
+        assertThat(containerCleanupFunction, notNullValue());
         for (final String containerToCleanUp : containersToCleanUp) {
-            try {
-                if (swarmMode) {
-                    CLIENT.removeService(containerToCleanUp);
-                } else {
-                    CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
-                }
-            } catch (Exception e) {
-                // do nothing
+            if (containerToCleanUp == null) {
+                continue;
             }
+            containerCleanupFunction.accept(containerToCleanUp);
         }
         containersToCleanUp.clear();
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
+                dockerClient.removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
 
-        CLIENT.close();
+        dockerClient.close();
+
+        kubernetesClientFactory.shutdown();
+        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
+        executorService.shutdown();
     }
 
     @Test
     @DirtiesContext
-    public void testSuccessSwarm() throws Exception {
-        this.swarmMode = true;
-        testSuccess();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSuccessNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testSuccess();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testFailureSwarm() throws Exception {
-        this.swarmMode = true;
-        testFailed();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testFailureNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testFailed();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupSuccessSwarm() throws Exception {
-        this.swarmMode = true;
-        testSetupWrapup();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupSuccessNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testSetupWrapup();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureOnSetupSwarm() throws Exception {
-        this.swarmMode = true;
-        testSetupWrapupFailureOnSetup();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureOnSetupNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testSetupWrapupFailureOnSetup();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureSwarm() throws Exception {
-        this.swarmMode = true;
-        testSetupWrapupFailure();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testSetupWrapupFailure();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureOnWrapupSwarm() throws Exception {
-        this.swarmMode = true;
-        testSetupWrapupFailureOnWrapup();
-    }
-
-    @Test
-    @DirtiesContext
-    public void testSetupWrapupFailureOnWrapupNoSwarm() throws Exception {
-        this.swarmMode = false;
-        testSetupWrapupFailureOnWrapup();
-    }
-
-    private void setupServer() throws Exception {
-        // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
-        dockerServerService.setServer(DockerServer.create(0L, "Test server", containerHost, certPath,
-                swarmMode, null, null, null,
-                false, null, autoCleanup, null, null, true));
-
-        CLIENT = controlApi.getClient();
-        TestingUtils.pullBusyBox(CLIENT);
-
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        assumeThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
-    }
-
-    private void testSuccess() throws Exception {
-        setupServer();
+    public void testSuccess() throws Exception {
         final Command willSucceed = commandService.create(Command.builder()
                 .name("will-succeed")
                 .image(BUSYBOX)
@@ -374,23 +292,27 @@ public class ContainerCleanupIntegrationTest {
                         .build())
                 .build());
         final CommandWrapper willSucceedWrapper = willSucceed.xnatCommandWrappers().get(0);
-
+        log.debug("Saving command wrapper");
         TestingUtils.commitTransaction();
 
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, willSucceedWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
-        final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
-
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
+        final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        log.debug("Got container from workflow comments: {}", container);
+        containersToCleanUp.add(container.containerOrServiceId());
 
-        log.debug("Waiting until task has started");
-        await().until(TestingUtils.containerHasStarted(CLIENT, swarmMode, container), is(true));
-        log.debug("Waiting until task has finished");
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
-        log.debug("Waiting until container is finalized");
-        await().until(TestingUtils.containerIsFinalized(containerService, container), is(true));
-        final Container exited = containerService.get(container.databaseId());
+        log.debug("Waiting until container is finalized...");
+        final Container[] returnEnvelope = {null};
+        await().atMost(5, TimeUnit.SECONDS)
+                .pollInterval(250, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
+
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
         assertThat(exited.exitCode(), is("0"));
         assertThat(exited.status(), is(PersistentWorkflowUtils.COMPLETE));
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.COMPLETE));
@@ -398,181 +320,218 @@ public class ContainerCleanupIntegrationTest {
         checkContainerRemoval(exited);
     }
 
-    private void testFailed() throws Exception {
-        setupServer();
+    @Test
+    @DirtiesContext
+    public void testFailed() throws Exception {
         final Command willFail = commandService.create(Command.builder()
                 .name("will-fail")
                 .image(BUSYBOX)
                 .version("0")
-                .commandLine("/bin/sh -c \"echo hi; exit 1\"")
+                .commandLine("/bin/sh -c \"echo hi; exit " + failureExitCode + "\"")
                 .addCommandWrapper(CommandWrapper.builder()
                         .name("placeholder")
                         .build())
                 .build());
         final CommandWrapper willFailWrapper = willFail.xnatCommandWrappers().get(0);
-
+        log.debug("Saving command wrapper");
         TestingUtils.commitTransaction();
 
-
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, willFailWrapper.id(),
-                0L, null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
-        final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(swarmMode ? container.serviceId() : container.containerId());
-
+                0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
+        final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        log.debug("Got container from workflow comments: {}", container);
+        containersToCleanUp.add(container.containerOrServiceId());
 
-        log.debug("Waiting until task has started");
-        await().until(TestingUtils.containerHasStarted(CLIENT, swarmMode, container), is(true));
-        log.debug("Waiting until task has finished");
-        await().until(TestingUtils.containerIsRunning(CLIENT, swarmMode, container), is(false));
-        log.debug("Waiting until container is finalized");
-        await().until(TestingUtils.containerIsFinalized(containerService, container), is(true));
-        final Container exited = containerService.get(container.databaseId());
-        assertThat(exited.exitCode(), is("1"));
+        log.debug("Waiting until container is finalized...");
+        final Container[] returnEnvelope = {null};
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(250, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
+
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
+        assertThat(exited.exitCode(), is(String.valueOf(failureExitCode)));
         assertThat(exited.status(), is(PersistentWorkflowUtils.FAILED));
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.FAILED));
 
         checkContainerRemoval(exited);
     }
 
-    private void testSetupWrapup() throws Exception {
-        setupServer();
+    @Test
+    @DirtiesContext
+    public void testSetupWrapup_success() throws Exception {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(null);
 
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
         TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        log.debug("Got container from workflow comments: {}", container);
         TestingUtils.commitTransaction();
 
-        log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
-                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        log.debug("Waiting until container is finalized...");
+        final Container[] returnEnvelope = {null};
+        await().atMost(15, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
 
-        final long databaseId = container.databaseId();
-        final Container exited = containerService.get(databaseId);
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
         assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.COMPLETE));
 
         List<Container> toCleanup = new ArrayList<>();
         toCleanup.add(exited);
-        toCleanup.addAll(containerService.retrieveSetupContainersForParent(databaseId));
-        toCleanup.addAll(containerService.retrieveWrapupContainersForParent(databaseId));
+        toCleanup.addAll(containerService.retrieveSetupContainersForParent(exited.databaseId()));
+        toCleanup.addAll(containerService.retrieveWrapupContainersForParent(exited.databaseId()));
         for (Container ck : toCleanup) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+            containersToCleanUp.add(ck.containerOrServiceId());
             assertThat(ck.exitCode(), is("0"));
             assertThat(ck.status(), is(PersistentWorkflowUtils.COMPLETE));
             checkContainerRemoval(ck);
         }
     }
 
-    private void testSetupWrapupFailureOnSetup() throws Exception {
-        setupServer();
+    @Test
+    @DirtiesContext
+    public void testSetupWrapup_failureOnSetup() throws Exception {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_SETUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
         TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        log.debug("Got container from workflow comments: {}", container);
         TestingUtils.commitTransaction();
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
-                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        final Container[] returnEnvelope = {null};
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(250, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
 
-        final long databaseId = container.databaseId();
-        final Container exited = containerService.get(databaseId);
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
         assertThat(fakeWorkflow.getStatus(), startsWith(PersistentWorkflowUtils.FAILED));
 
         List<Container> toCleanup = new ArrayList<>();
         toCleanup.add(exited);
-        toCleanup.addAll(containerService.retrieveSetupContainersForParent(databaseId));
-        toCleanup.addAll(containerService.retrieveWrapupContainersForParent(databaseId));
+        toCleanup.addAll(containerService.retrieveSetupContainersForParent(exited.databaseId()));
+        toCleanup.addAll(containerService.retrieveWrapupContainersForParent(exited.databaseId()));
         for (Container ck : toCleanup) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+            containersToCleanUp.add(ck.containerOrServiceId());
             assertThat("Unexpected status for " + ck, ck.status(),
                     startsWith(PersistentWorkflowUtils.FAILED));
             checkContainerRemoval(ck, CommandType.DOCKER_WRAPUP.getName().equals(ck.subtype()));
         }
     }
 
-    private void testSetupWrapupFailure() throws Exception {
-        setupServer();
+    @Test
+    @DirtiesContext
+    public void testSetupWrapup_failure() throws Exception {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
         TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         TestingUtils.commitTransaction();
+        log.debug("Got container from workflow comments: {}", container);
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
-                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        final Container[] returnEnvelope = {null};
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
 
-        final long databaseId = container.databaseId();
-        final Container exited = containerService.get(databaseId);
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
         assertThat(fakeWorkflow.getStatus(), startsWith(PersistentWorkflowUtils.FAILED));
 
-        containersToCleanUp.add(swarmMode ? exited.serviceId() : exited.containerId());
+        containersToCleanUp.add(exited.containerOrServiceId());
         assertThat(exited.status(), startsWith(PersistentWorkflowUtils.FAILED));
         checkContainerRemoval(exited);
 
-        for (Container ck : containerService.retrieveSetupContainersForParent(databaseId)) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+        for (Container ck : containerService.retrieveSetupContainersForParent(exited.databaseId())) {
+            containersToCleanUp.add(ck.containerOrServiceId());
             checkContainerRemoval(ck);
         }
-        for (Container ck : containerService.retrieveWrapupContainersForParent(databaseId)) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+        for (Container ck : containerService.retrieveWrapupContainersForParent(exited.databaseId())) {
+            containersToCleanUp.add(ck.containerOrServiceId());
             assertThat(ck.status(), startsWith(PersistentWorkflowUtils.FAILED));
             checkContainerRemoval(ck, CommandType.DOCKER_WRAPUP.getName().equals(ck.subtype()));
         }
     }
 
-    private void testSetupWrapupFailureOnWrapup() throws Exception {
-        setupServer();
+    @Test
+    @DirtiesContext
+    public void testSetupWrapup_failureOnWrapup() throws Exception {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_WRAPUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
         TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
 
+        log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
                 0L, null, runtimeValues, mockUser, fakeWorkflow);
+        TestingUtils.commitTransaction();
+        log.debug("Getting container from workflow comments...");
         final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
         TestingUtils.commitTransaction();
+        log.debug("Got container from workflow comments: {}", container);
 
         log.debug("Waiting until container is finalized");
-        await().atMost(20L, TimeUnit.SECONDS)
-                .until(TestingUtils.containerIsFinalized(containerService, container), is(true));
+        final Container[] returnEnvelope = {null};
+        await().atMost(15, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(TestingUtils.containerIsFinalized(containerService, container, returnEnvelope), is(true));
+        log.debug("Container finalized. Asserting.");
 
-        final long databaseId = container.databaseId();
-        final Container exited = containerService.get(databaseId);
+        final Container exited = returnEnvelope[0];
+        assertThat(exited, is(notNullValue()));
         assertThat(fakeWorkflow.getStatus(), startsWith(PersistentWorkflowUtils.FAILED));
 
-        containersToCleanUp.add(swarmMode ? exited.serviceId() : exited.containerId());
+        containersToCleanUp.add(exited.containerOrServiceId());
         assertThat(exited.status(), startsWith(PersistentWorkflowUtils.FAILED));
         checkContainerRemoval(exited);
 
-        for (Container ck : containerService.retrieveSetupContainersForParent(databaseId)) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+        for (Container ck : containerService.retrieveSetupContainersForParent(exited.databaseId())) {
+            containersToCleanUp.add(ck.containerOrServiceId());
             checkContainerRemoval(ck);
         }
-        for (Container ck : containerService.retrieveWrapupContainersForParent(databaseId)) {
-            containersToCleanUp.add(swarmMode ? ck.serviceId() : ck.containerId());
+        for (Container ck : containerService.retrieveWrapupContainersForParent(exited.databaseId())) {
+            containersToCleanUp.add(ck.containerOrServiceId());
             assertThat(ck.status(), startsWith(PersistentWorkflowUtils.FAILED));
             checkContainerRemoval(ck);
         }
     }
 
     private CommandWrapper configureSetupWrapupCommands(@Nullable CommandType failureLevel) throws Exception {
+        log.debug("Configuring commands and wrappers...");
         String basecmd = "/bin/sh -c \"echo hi; exit 0\"";
-        String failurecmd = "/bin/sh -c \"echo hi; exit 1\"";
+        String failurecmd = "/bin/sh -c \"echo hi; exit " + failureExitCode + "\"";
 
         String setupCmd = basecmd;
         String cmd = basecmd;
@@ -595,8 +554,9 @@ public class ContainerCleanupIntegrationTest {
 
         }
 
-        final Command setup = commandService.create(Command.builder()
-                .name("setup")
+        final String setupName = "setup";
+        commandService.create(Command.builder()
+                .name(setupName)
                 .image(BUSYBOX)
                 .version("0")
                 .commandLine(setupCmd)
@@ -604,8 +564,9 @@ public class ContainerCleanupIntegrationTest {
                 .build());
         TestingUtils.commitTransaction();
 
-        final Command wrapup = commandService.create(Command.builder()
-                .name("wrapup")
+        final String wrapupName = "wrapup";
+        commandService.create(Command.builder()
+                .name(wrapupName)
                 .image(BUSYBOX)
                 .version("0")
                 .commandLine(wrapupCmd)
@@ -640,7 +601,7 @@ public class ContainerCleanupIntegrationTest {
                                 .name("resource")
                                 .type("Resource")
                                 .providesFilesForCommandMount("in")
-                                .viaSetupCommand("busybox:latest:setup")
+                                .viaSetupCommand("busybox:latest:" + setupName)
                                 .derivedFromWrapperInput("session")
                                 .build())
                         .outputHandlers(Command.CommandWrapperOutput.builder()
@@ -648,13 +609,14 @@ public class ContainerCleanupIntegrationTest {
                                 .commandOutputName("output")
                                 .targetName("session")
                                 .label("label")
-                                .viaWrapupCommand("busybox:latest:wrapup")
+                                .viaWrapupCommand("busybox:latest:" + wrapupName)
                                 .build()
                         )
                         .build())
                 .build());
 
         TestingUtils.commitTransaction();
+        log.debug("Done configuring commands and wrappers...");
         return main.xnatCommandWrappers().get(0);
     }
 
@@ -665,9 +627,9 @@ public class ContainerCleanupIntegrationTest {
     private void checkContainerRemoval(Container exited, boolean okIfMissing) throws Exception {
         // Sleep to give time to remove the service or container; no way to check if this has happened since
         // status stops changing
-        Thread.sleep(2000L);
+        // Thread.sleep(2000L);
 
-        String id = swarmMode ? exited.serviceId() : exited.containerId();
+        String id = exited.containerOrServiceId();
         if (id == null) {
             if (okIfMissing) {
                 return;
@@ -675,38 +637,54 @@ public class ContainerCleanupIntegrationTest {
             fail("No ID for " + exited);
         }
 
-        if (autoCleanup) {
-            if (swarmMode) {
-                try {
-                    CLIENT.inspectService(id);
-                } catch (ServiceNotFoundException e) {
-                    // This is what we expect
-                    return;
-                }
-                fail("Service " + exited + " was not removed");
-            } else {
-                try {
-                    CLIENT.inspectContainer(id);
-                } catch (NotFoundException e) {
-                    // This is what we expect
-                    return;
-                }
-                fail("Container " + exited + " was not removed");
-            }
-        } else {
-            if (swarmMode) {
-                try {
-                    CLIENT.inspectService(id);
-                } catch (ServiceNotFoundException e) {
-                    fail("Service " + exited + " was improperly removed");
-                }
-            } else {
-                try {
-                    CLIENT.inspectContainer(id);
-                } catch (NotFoundException e) {
-                    fail("Container " + exited + " was improperly removed");
-                }
-            }
+        Callable<Boolean> checkFunc = null;
+        switch (backend) {
+            case DOCKER:
+                checkFunc = () -> {
+                    try {
+                        dockerClient.inspectContainer(id);
+                    } catch (ContainerNotFoundException e) {
+                        // This is what we expect
+                        return true;
+                    } catch (Exception ignored) {
+                        // ignore
+                    }
+                    return false;
+                };
+                break;
+            case SWARM:
+                checkFunc = () -> {
+                    try {
+                        dockerClient.inspectService(id);
+                    } catch (ServiceNotFoundException e) {
+                        // This is what we expect
+                        return true;
+                    } catch (Exception ignored) {
+                        // ignored
+                    }
+                    return false;
+                };
+                break;
+            case KUBERNETES:
+                final BatchV1Api batchApi = new BatchV1Api(kubernetesClient.getBackendClient());
+                checkFunc = () -> {
+                    try {
+                        return null == batchApi.readNamespacedJob(id, kubernetesNamespace, null);
+                    } catch (ApiException e) {
+                        return e.getCode() == 404;
+                    }
+                };
+                break;
         }
+        if (autoCleanup) {
+            // Check a few times. Container Service might take a bit to delete it.
+            await().atMost(2L, TimeUnit.SECONDS)
+                    .pollInterval(100, TimeUnit.MILLISECONDS)
+                    .until(checkFunc, is(true));
+        } else {
+            // Just check once
+            assertThat(checkFunc.call(), is(false));
+        }
+        log.debug("{} was correctly {}autoremoved", id, autoCleanup ? "" : "*not* ");
     }
 }

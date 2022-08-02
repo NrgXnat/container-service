@@ -43,7 +43,7 @@ public class HibernateContainerEntityService
         }
         try {
             // This will allow the higher-level API to request the container by database id or docker hash id
-            final Long containerDatabaseId = Long.parseLong(containerId);
+            final long containerDatabaseId = Long.parseLong(containerId);
             return retrieve(containerDatabaseId);
         } catch (NumberFormatException e) {
             final ContainerEntity containerEntity = getDao().retrieveByContainerOrServiceId(containerId);
@@ -117,12 +117,11 @@ public class HibernateContainerEntityService
     }
     
     @Override
-    @Nonnull
     public int howManyContainersAreBeingFinalized() {
         return getDao().howManyContainersAreBeingFinalized();
     }
+
     @Override
-    @Nonnull
     public int howManyContainersAreWaiting() {
         return getDao().howManyContainersAreWaiting();
     }
@@ -142,7 +141,7 @@ public class HibernateContainerEntityService
     @Override
     @Nullable
     public ContainerEntity addContainerEventToHistory(final ContainerEvent containerEvent, final UserI userI) {
-        final ContainerEntity containerEntity = retrieve(containerEvent.containerId());
+        final ContainerEntity containerEntity = retrieve(containerEvent.backendId());
         if (containerEntity == null) {
             log.debug("This event is not about a container we are interested in.");
             return null;
@@ -164,8 +163,28 @@ public class HibernateContainerEntityService
         }
 
         log.info("Adding new history item to container entity {}", containerEntity.getId());
-        log.debug("Adding new history item to container entity {}: {}", containerEntity.getId(), history);
         getDao().addHistoryItem(containerEntity, history);
+
+        final boolean historyEntryIsMoreRecentThanContainerStatus =
+                history.getTimeRecorded() != null &&
+                        (containerEntity.getStatusTime() == null ||
+                                history.getTimeRecorded().getTime() > containerEntity.getStatusTime().getTime());
+
+        if (historyEntryIsMoreRecentThanContainerStatus &&
+                (!ContainerUtils.statusIsTerminal(containerEntity.getStatus()) ||  // Don't overwrite a terminal status
+                        ContainerUtils.statusIsTerminal(history.getStatus()))  // ...except with a newer terminal status (i.e. Complete -> Failed)
+        ) {
+            containerEntity.setStatusTime(history.getTimeRecorded());
+            containerEntity.setStatus(history.getStatus());
+            log.debug("Setting container entity {} status to \"{}\", based on history entry status \"{}\".",
+                    containerEntity.getId(),
+                    containerEntity.getStatus(),
+                    history.getStatus());
+        }
+
+        update(containerEntity);
+
+        log.debug("{}", history);
 
         ContainerUtils.updateWorkflowStatus(containerEntity.getWorkflowId(), containerEntity.getStatus(),
                 userI, history.getMessage());

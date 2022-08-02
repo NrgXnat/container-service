@@ -15,6 +15,7 @@ import org.nrg.xft.security.UserI;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface CommandService {
     Command create(Command command) throws CommandValidationException;
@@ -47,6 +48,7 @@ public interface CommandService {
     CommandConfiguration getSiteConfiguration(long commandId, String wrapperName) throws NotFoundException;
     CommandConfiguration getProjectConfiguration(String project, long wrapperId) throws NotFoundException;
     CommandConfiguration getProjectConfiguration(String project, long commandId, String wrapperName) throws NotFoundException;
+    CommandConfiguration getConfiguration(String project, long commandId, String wrapperName, long wrapperId) throws NotFoundException;
     ConfiguredCommand getAndConfigure(long wrapperId) throws NotFoundException;
     ConfiguredCommand getAndConfigure(long commandId, String wrapperName) throws NotFoundException;
     ConfiguredCommand getAndConfigure(String project, long wrapperId) throws NotFoundException;
@@ -83,4 +85,6 @@ public interface CommandService {
                                              UserI userI) throws ElementNotFoundException;
 
     void throwExceptionIfCommandExists(Command command) throws NrgRuntimeException;
+
+    boolean xsiTypesMatch(final String xsiType, final Set<String> wrapperXsiTypes) throws ElementNotFoundException;
 }

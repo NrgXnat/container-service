@@ -2,15 +2,6 @@ package org.nrg.containers.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import org.hamcrest.CoreMatchers;
-import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -26,7 +17,11 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
-import org.nrg.containers.services.*;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.RoleServiceI;
@@ -47,26 +42,30 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import static org.hamcrest.Matchers.hasEntry;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyMapOf;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
-import static org.nrg.containers.model.server.docker.DockerServerBase.*;
+import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -119,27 +118,6 @@ public class LaunchRestApiTest {
     @Before
     public void setup() throws Exception {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).apply(springSecurity()).build();
-
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return Sets.newHashSet(Option.DEFAULT_PATH_LEAF_TO_NULL);
-            }
-        });
 
         // Mock out the prefs bean
         final String containerServerName = "testy test";
@@ -197,8 +175,11 @@ public class LaunchRestApiTest {
                 .commandLine("echo hello world")
                 .addRawInputValue(INPUT_NAME, INPUT_VALUE)
                 .build();
-        CONTAINER = Container.containerFromResolvedCommand(RESOLVED_COMMAND, FAKE_CONTAINER_ID, username)
-                .toBuilder().workflowId(FAKE_WORKFLOW_ID).build();
+        CONTAINER = Container.builderFromResolvedCommand(RESOLVED_COMMAND)
+                .userId(username)
+                .containerId(FAKE_CONTAINER_ID)
+                .workflowId(FAKE_WORKFLOW_ID)
+                .build();
         final ContainerEntity containerEntity = ContainerEntity.fromPojo(CONTAINER);
         when(mockContainerEntityService.save(containerEntity, mockAdmin)).thenReturn(containerEntity);
 
@@ -208,8 +189,8 @@ public class LaunchRestApiTest {
                 .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.
-        when(mockDockerControlApi.createContainerOrSwarmService(any(ResolvedCommand.class), eq(mockAdmin))).thenReturn(CONTAINER);
-        doNothing().when(mockDockerControlApi).startContainer(any(Container.class));
+        when(mockDockerControlApi.create(any(ResolvedCommand.class), eq(mockAdmin))).thenReturn(CONTAINER);
+        doNothing().when(mockDockerControlApi).start(any(Container.class));
         // when(mockContainerEntityService.save(any(ResolvedCommand.class), eq(FAKE_CONTAINER_ID), any(String.class), eq(mockAdmin)))
         //         .thenReturn(CONTAINER_ENTITY);
     }
@@ -218,6 +199,15 @@ public class LaunchRestApiTest {
     public void testLaunchWithQueryParams() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
+        final LaunchReport report = LaunchReport.Success.create(
+                QUEUED_WF_MSG, Collections.singletonMap(INPUT_NAME, INPUT_VALUE), 0L, 0L, WRAPPER_ID
+        );
+
+        when(mockContainerService.launchContainer(
+                anyString(), any(Long.class), anyString(), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class))
+        ).thenReturn(report);
+
         final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
                 post(path).param(INPUT_NAME, INPUT_VALUE).param(FAKE_ROOT, FAKE_XNAT_ID)
@@ -225,48 +215,69 @@ public class LaunchRestApiTest {
                         .with(csrf())
                         .with(testSecurityContext());
 
-        final String response = mockMvc.perform(request)
+        mockMvc.perform(request)
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        final String id = (new JSONObject(response)).get("workflow-id").toString();
-
-        //Have a root element, so can make a workflow
-        assertThat(id, is(QUEUED_WF_MSG));
+                .andExpect(jsonPath("$.workflow-id", is(QUEUED_WF_MSG)));
     }
 
     @Test
     public void testLaunchWithParamsInBody() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/launch";
 
-        final String path = String.format(pathTemplate, WRAPPER_ID, null);
+        final Map<String, String> launchParams = new HashMap<>();
+        launchParams.put(INPUT_NAME, INPUT_VALUE);
+        final LaunchReport report = LaunchReport.Success.create(
+                QUEUED_MSG, launchParams, 0L, 0L, WRAPPER_ID
+        );
+
+        when(mockContainerService.launchContainer(
+                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class))
+        ).thenReturn(report);
+
+        final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
         final MockHttpServletRequestBuilder request =
                 post(path).content(INPUT_JSON).contentType(JSON)
                         .with(authentication(authentication))
                         .with(csrf())
                         .with(testSecurityContext());
 
-        final String response = mockMvc.perform(request)
+        mockMvc.perform(request)
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        final String id = (new JSONObject(response)).get("workflow-id").toString();
-
-        // No root element, no workflow
-        assertThat(id, is(QUEUED_MSG));
+                .andExpect(jsonPath("$.workflow-id", is(QUEUED_MSG)));
     }
 
     @Test
     public void testBulkLaunch() throws Exception {
         final String pathTemplate = "/wrappers/%d/root/%s/bulklaunch";
         final String badId = "BAD";
+        final List<String> targets = Arrays.asList(FAKE_XNAT_ID, badId);
 
         final Map<String, String> input = Maps.newHashMap();
         input.put(INPUT_NAME, INPUT_VALUE);
-        input.put(FAKE_ROOT, mapper.writeValueAsString(Arrays.asList(FAKE_XNAT_ID, badId)));
+        input.put(FAKE_ROOT, mapper.writeValueAsString(targets));
         final String bulkInputJson = mapper.writeValueAsString(input);
+
+        // Construct expected launch report
+        final Map<String, String> commonParams = new HashMap<>();
+        commonParams.put(INPUT_NAME, INPUT_VALUE);
+        final List<LaunchReport.Success> successes = new ArrayList<>();
+        for (final String target : targets) {
+            final Map<String, String> params = new HashMap<>(commonParams);
+            params.put(FAKE_ROOT, target);
+
+            successes.add(LaunchReport.Success.create(QUEUED_MSG, params, 0L, 0L, WRAPPER_ID));
+        }
+        final LaunchReport.BulkLaunchReport report = LaunchReport.BulkLaunchReport.builder()
+                .pipelineName(WRAPPER_NAME)
+                .bulkLaunchId("not really important")
+                .successes(successes)
+                .build();
+
+        when(mockContainerService.bulkLaunch(
+                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                anyMapOf(String.class, String.class), any(UserI.class)
+        )).thenReturn(report);
 
         //final String exceptionMessage = "Unable to queue container launch";
         // Can go back to using the below when we allow different inputs for different targets
@@ -289,21 +300,7 @@ public class LaunchRestApiTest {
                 .getContentAsString();
 
         final LaunchReport.BulkLaunchReport bulkLaunchReport = mapper.readValue(response, LaunchReport.BulkLaunchReport.class);
-        assertThat(bulkLaunchReport.pipelineName(), is(WRAPPER_NAME));
-        assertThat(bulkLaunchReport.bulkLaunchId(), CoreMatchers.not(isEmptyOrNullString()));
-        assertThat(bulkLaunchReport.successes(), hasSize(2));
-        // We are needing to return from bulk UI ASAP so that we don't get a proxy replay of the request. This means we don't get status info (success/failures) in the launch report.
-        //assertThat(bulkLaunchReport.successes(), hasSize(1));
-        //assertThat(bulkLaunchReport.failures(), hasSize(1));
-        //final LaunchReport.Failure failure = bulkLaunchReport.failures().get(0);
-        //assertThat(failure.launchParams(), hasEntry(FAKE_ROOT, badId));
-        //assertThat(failure.message(), is(exceptionMessage));
-
-        final LaunchReport.Success success = bulkLaunchReport.successes().get(0);
-        assertThat(success.launchParams(), hasEntry(FAKE_ROOT, FAKE_XNAT_ID));
-        assertThat(success.launchParams(), hasEntry(INPUT_NAME, INPUT_VALUE));
-        assertThat(success, instanceOf(LaunchReport.Success.class));
-        assertThat(success.workflowId(), is(QUEUED_MSG));
+        assertThat(bulkLaunchReport, is(report));
     }
 
     @Test
@@ -319,7 +316,7 @@ public class LaunchRestApiTest {
                                 .build()
                 )
                 .build();
-        when(mockCommandService.getProjectConfiguration(project, WRAPPER_ID)).thenReturn(mockCommandConfiguration);
+        when(mockCommandService.getConfiguration(project, 0, null, WRAPPER_ID)).thenReturn(mockCommandConfiguration);
 
         // Mock out command resolution service
         final ResolvedCommand.PartiallyResolvedCommand partiallyResolvedCommand = ResolvedCommand.PartiallyResolvedCommand.builder()
@@ -329,7 +326,7 @@ public class LaunchRestApiTest {
                 .commandName(COMMAND_NAME)
                 .image(IMAGE)
                 .build();
-        when(mockCommandResolutionService.preResolve(eq(project), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
+        when(mockCommandResolutionService.preResolve(eq(project), any(long.class), any(String.class), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
                 .thenReturn(partiallyResolvedCommand);
 
         final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,

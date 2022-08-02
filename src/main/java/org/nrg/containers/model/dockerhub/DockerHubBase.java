@@ -26,6 +26,14 @@ public abstract class DockerHubBase {
         public static final DockerHub DEFAULT = DockerHub.create(0L, DEFAULT_NAME, DEFAULT_URL, false,
                 null, null, null, null);
 
+        public static DockerHub create(final Long id,
+                                       final String name,
+                                       final String url,
+                                       final Boolean isDefault) {
+            return create(id == null ? 0L : id, name, url, isDefault,
+                    null, null, null, null);
+        }
+
         @JsonCreator
         public static DockerHub create(@JsonProperty("id") final Long id,
                                        @JsonProperty("name") final String name,
@@ -35,15 +43,50 @@ public abstract class DockerHubBase {
                                        @Nullable @JsonProperty("password") final String password,
                                        @Nullable @JsonProperty("email") final String email,
                                        @Nullable @JsonProperty("token") final String token) {
-            return new AutoValue_DockerHubBase_DockerHub(id == null ? 0L : id, name, url, isDefault == null ? false : isDefault,
+            return new AutoValue_DockerHubBase_DockerHub(id == null ? 0L : id, name, url, isDefault != null && isDefault,
                     username, password, email, token);
         }
     }
 
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
+    public abstract static class DockerHubStatus {
+        @JsonProperty("ping") public abstract Boolean ping();
+        @JsonProperty("response") public abstract String response();
+        @JsonProperty("message") public abstract String message();
+
+        @JsonCreator
+        public static DockerHubStatus create(@JsonProperty("ping") final Boolean ping,
+                                             @Nullable @JsonProperty("response") final String response,
+                                             @Nullable @JsonProperty("message") final String message) {
+            return builder()
+                    .ping(ping)
+                    .response(response == null ? "" : response)
+                    .message(message == null ? "" : message)
+                    .build();
+        }
+
+        public static DockerHubStatus create(@JsonProperty("ping") final Boolean ping) {
+            return create(ping, null, null);
+        }
+
+        public static Builder builder() {return new AutoValue_DockerHubBase_DockerHubStatus.Builder();}
+
+        public abstract Builder toBuilder();
+
+        @AutoValue.Builder
+        public static abstract class Builder {
+            public abstract Builder ping(Boolean ping);
+            public abstract Builder response(String response);
+            public abstract Builder message(String message);
+            public abstract DockerHubStatus build();
+        }
+    }
+
+    @AutoValue
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public abstract static class DockerHubWithPing extends DockerHubBase {
-        @Nullable @JsonProperty("ping") public abstract Boolean ping();
+        @Nullable @JsonProperty("status") public abstract DockerHubStatus status();
 
         @JsonCreator
         public static DockerHubWithPing create(@JsonProperty("id") final Long id,
@@ -54,13 +97,13 @@ public abstract class DockerHubBase {
                                                @Nullable @JsonProperty("password") final String password,
                                                @Nullable @JsonProperty("email") final String email,
                                                @Nullable @JsonProperty("token") final String token,
-                                               @JsonProperty("ping") final Boolean ping) {
+                                               @JsonProperty("status") final DockerHubStatus status) {
             return new AutoValue_DockerHubBase_DockerHubWithPing(id == null ? 0L : id, name, url, isDefault == null ? false : isDefault,
-                    username, password, email, token, ping);
+                    username, password, email, token, status);
         }
 
         public static DockerHubWithPing create(final DockerHub dockerHub,
-                                               final Boolean ping) {
+                                               final DockerHubStatus status) {
             return create(
                     dockerHub.id(),
                     dockerHub.name(),
@@ -70,7 +113,24 @@ public abstract class DockerHubBase {
                     dockerHub.password(),
                     dockerHub.email(),
                     dockerHub.token(),
-                    ping
+                    status
+            );
+        }
+
+        public static DockerHubWithPing create(final DockerHub dockerHub,
+                                               final Boolean ping,
+                                               final String status,
+                                               final String message) {
+            return create(
+                    dockerHub.id(),
+                    dockerHub.name(),
+                    dockerHub.url(),
+                    dockerHub.isDefault(),
+                    dockerHub.username(),
+                    dockerHub.password(),
+                    dockerHub.email(),
+                    dockerHub.token(),
+                    DockerHubStatus.create(ping, status, message)
             );
         }
     }

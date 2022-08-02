@@ -2,15 +2,16 @@ package org.nrg.containers.model.container.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.MoreObjects;
-
 import lombok.extern.slf4j.Slf4j;
-
-import org.hibernate.envers.Audited;
 import org.nrg.containers.events.model.ContainerEvent;
-import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.model.container.auto.Container;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
 import java.util.Date;
 import java.util.Objects;
 
@@ -33,13 +34,12 @@ public class ContainerEntityHistory {
                                                             final ContainerEntity parent) {
         final ContainerEntityHistory history = new ContainerEntityHistory();
         history.status = containerEvent.status();
+        history.message = containerEvent.details();
         history.entityType = "event";
         history.entityId = null;
         history.timeRecorded = new Date();
         history.exitCode = containerEvent.exitCode();
-        if (containerEvent instanceof DockerContainerEvent) {
-            history.externalTimestamp = String.valueOf(((DockerContainerEvent)containerEvent).timeNano());
-        }
+        history.externalTimestamp = containerEvent.externalTimestamp();
         history.containerEntity = parent;
         return history;
     }

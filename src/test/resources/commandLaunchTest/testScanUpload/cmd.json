@@ -14,7 +14,7 @@
       "path": "/input"
     },
     {
-      "name": "scan_out",
+      "name": "scan-out",
       "writable": true,
       "path": "/scan"
     }
@@ -45,7 +45,7 @@
       "name": "scan_xml",
       "description": "scan XML file",
       "required": true,
-      "mount": "scan_out",
+      "mount": "scan-out",
       "path": "scan.xml",
       "glob": null
     },
@@ -53,7 +53,7 @@
       "name": "scan_output",
       "description": "Scan output",
       "required": true,
-      "mount": "scan_out",
+      "mount": "scan-out",
       "path": "DICOM",
       "glob": null
     }

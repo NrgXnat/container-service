@@ -4,9 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.model.XnatAbstractresourceI;
@@ -24,10 +22,12 @@ import org.nrg.xnat.helpers.uri.archive.AssessedURII;
 import org.nrg.xnat.helpers.uri.archive.ExperimentURII;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @JsonInclude(Include.NON_NULL)
 public class SubjectAssessor extends XnatModelObject {
@@ -38,8 +38,10 @@ public class SubjectAssessor extends XnatModelObject {
     private String projectId;
     @JsonProperty("subject-id")
     private String subjectId;
-    private String directory;
     @JsonProperty("datatype-string") private String datatypeString;
+
+    @JsonIgnore private Project project = null;
+    @JsonIgnore private Subject subject = null;
 
     public SubjectAssessor() {}
 
@@ -85,6 +87,7 @@ public class SubjectAssessor extends XnatModelObject {
         this.projectId = xnatSubjectassessordataI.getProject();
         this.subjectId = xnatSubjectassessordataI.getSubjectId();
 
+        this.directory = null;
         try {
             if (XnatExperimentdata.class.isAssignableFrom(xnatSubjectassessordataI.getClass()))
                 this.directory = ((XnatExperimentdata) xnatSubjectassessordataI).getCurrentSessionFolder(true);
@@ -92,7 +95,7 @@ public class SubjectAssessor extends XnatModelObject {
             // ignored, I guess?
         }
 
-        this.resources = Lists.newArrayList();
+        this.resources = new ArrayList<>();
         if (loadFiles || loadTypes.contains(((CommandWrapperInputType.RESOURCE.getName())))) {
             for (final XnatAbstractresourceI xnatAbstractresourceI : xnatSubjectassessordataI.getResources_resource()) {
                 if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
@@ -102,7 +105,7 @@ public class SubjectAssessor extends XnatModelObject {
         }
 
         datatypeString = null;
-        if(loadTypes != null && loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatSubjectassessordataI != null){
+        if(loadTypes.contains(CommandWrapperInputType.STRING.getName()) && xnatSubjectassessordataI != null){
             try {
                 datatypeString = xnatSubjectassessordataI.toString();
             } catch (Throwable e){ }
@@ -112,64 +115,62 @@ public class SubjectAssessor extends XnatModelObject {
 
     public static Function<URIManager.ArchiveItemURI, SubjectAssessor> uriToModelObject(final boolean loadFiles,
                                                                                         @Nonnull final Set<String> loadTypes) {
-        return new Function<URIManager.ArchiveItemURI, SubjectAssessor>() {
-            @Nullable
-            @Override
-            public SubjectAssessor apply(@Nullable URIManager.ArchiveItemURI uri) {
-                XnatSubjectassessordata imageSession;
-                if (uri != null &&
-                        AssessedURII.class.isAssignableFrom(uri.getClass())) {
-                    imageSession = ((AssessedURII) uri).getSession();
+        return uri -> {
+            if (uri != null &&
+                    AssessedURII.class.isAssignableFrom(uri.getClass())) {
+                final XnatSubjectassessordata imageSession = ((AssessedURII) uri).getSession();
 
-                    if (imageSession != null &&
-                            XnatSubjectassessordata.class.isAssignableFrom(imageSession.getClass())) {
-                        return new SubjectAssessor((AssessedURII) uri, loadFiles, loadTypes);
-                    }
-                } else if (uri != null &&
-                        ExperimentURII.class.isAssignableFrom(uri.getClass())) {
-                    final XnatExperimentdata experimentdata = ((ExperimentURII) uri).getExperiment();
-                    if (experimentdata != null &&
-                            XnatSubjectassessordataI.class.isAssignableFrom(experimentdata.getClass())) {
-                        return new SubjectAssessor((XnatSubjectassessordataI) experimentdata, loadFiles, loadTypes);
-                    }
+                if (imageSession != null) {
+                    return new SubjectAssessor((AssessedURII) uri, loadFiles, loadTypes);
                 }
-
-                return null;
+            } else if (uri != null &&
+                    ExperimentURII.class.isAssignableFrom(uri.getClass())) {
+                final XnatExperimentdata experimentdata = ((ExperimentURII) uri).getExperiment();
+                if (experimentdata != null &&
+                        XnatSubjectassessordataI.class.isAssignableFrom(experimentdata.getClass())) {
+                    return new SubjectAssessor((XnatSubjectassessordataI) experimentdata, loadFiles, loadTypes);
+                }
             }
+
+            return null;
         };
     }
 
     public static Function<String, SubjectAssessor> idToModelObject(final UserI userI, final boolean loadFiles,
                                                                     @Nonnull final Set<String> loadTypes) {
-        return new Function<String, SubjectAssessor>() {
-            @Nullable
-            @Override
-            public SubjectAssessor apply(@Nullable String s) {
-                if (StringUtils.isBlank(s)) {
-                    return null;
-                }
-                final XnatSubjectassessordata subjectAssessorData = XnatSubjectassessordata.getXnatSubjectassessordatasById(s, userI, true);
-                if (subjectAssessorData != null) {
-                    return new SubjectAssessor(subjectAssessorData, loadFiles, loadTypes);
-                }
+        return s -> {
+            if (StringUtils.isBlank(s)) {
                 return null;
             }
+            final XnatSubjectassessordata subjectAssessorData = XnatSubjectassessordata.getXnatSubjectassessordatasById(s, userI, true);
+            if (subjectAssessorData != null) {
+                return new SubjectAssessor(subjectAssessorData, loadFiles, loadTypes);
+            }
+            return null;
         };
     }
 
     public Project getProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
-        loadXnatSubjectAssessordata(userI);
-        return new Project(xnatSubjectassessordataI.getProject(), userI, loadFiles, loadTypes);
+        loadProject(userI, loadFiles, loadTypes);
+        return project;
+    }
+
+    private void loadProject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (project == null) {
+            loadProjectId(userI);
+            project = new Project(projectId, userI, loadFiles, loadTypes);
+        }
     }
 
     public Subject getSubject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
-        loadXnatSubjectAssessordata(userI);
-        return new Subject(xnatSubjectassessordataI.getSubjectId(), userI, loadFiles, loadTypes);
+        loadSubject(userI, loadFiles, loadTypes);
+        return subject;
     }
 
-    public void loadXnatSubjectAssessordata(final UserI userI) {
-        if (xnatSubjectassessordataI == null) {
-            xnatSubjectassessordataI = XnatSubjectassessordata.getXnatSubjectassessordatasById(id, userI, false);
+    private void loadSubject(final UserI userI, final boolean loadFiles, @Nonnull final Set<String> loadTypes) {
+        if (subject == null) {
+            loadSubjectId(userI);
+            subject = new Subject(subjectId, userI, loadFiles, loadTypes);
         }
     }
 
@@ -179,6 +180,12 @@ public class SubjectAssessor extends XnatModelObject {
 
     public void setXnatSubjectassessordataI(final XnatSubjectassessordataI xnatSubjectassessordataI) {
         this.xnatSubjectassessordataI = xnatSubjectassessordataI;
+    }
+
+    private void loadXnatSubjectAssessordata(final UserI userI) {
+        if (xnatSubjectassessordataI == null) {
+            xnatSubjectassessordataI = XnatSubjectassessordata.getXnatSubjectassessordatasById(id, userI, false);
+        }
     }
 
     public List<Resource> getResources() {
@@ -197,6 +204,13 @@ public class SubjectAssessor extends XnatModelObject {
         this.projectId = projectId;
     }
 
+    private void loadProjectId(UserI userI) {
+        if (projectId == null) {
+            loadXnatSubjectAssessordata(userI);
+            projectId = xnatSubjectassessordataI.getProject();
+        }
+    }
+
     public String getSubjectId() {
         return subjectId;
     }
@@ -205,12 +219,19 @@ public class SubjectAssessor extends XnatModelObject {
         this.subjectId = subjectId;
     }
 
-    public String getDirectory() {
-        return directory;
+    private void loadSubjectId(UserI userI) {
+        if (subjectId == null) {
+            loadXnatSubjectAssessordata(userI);
+            subjectId = xnatSubjectassessordataI.getSubjectId();
+        }
     }
 
-    public void setDirectory(final String directory) {
-        this.directory = directory;
+    public String getDatatypeString() {
+        return datatypeString;
+    }
+
+    public void setDatatypeString(String datatypeString) {
+        this.datatypeString = datatypeString;
     }
 
     @Override
@@ -222,28 +243,26 @@ public class SubjectAssessor extends XnatModelObject {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SubjectAssessor)) return false;
+        if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
-        SubjectAssessor that = (SubjectAssessor) o;
-        return Objects.equals(xnatSubjectassessordataI, that.xnatSubjectassessordataI) &&
-                Objects.equals(resources, that.resources) &&
+        final SubjectAssessor that = (SubjectAssessor) o;
+        return Objects.equals(resources, that.resources) &&
                 Objects.equals(projectId, that.projectId) &&
                 Objects.equals(subjectId, that.subjectId) &&
-                Objects.equals(directory, that.directory);
+                Objects.equals(datatypeString, that.datatypeString);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), xnatSubjectassessordataI, resources, projectId, subjectId, directory);
+        return Objects.hash(super.hashCode(), resources, projectId, subjectId, datatypeString);
     }
 
     @Override
     public String toString() {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
-                .add("resources", resources)
                 .add("projectId", projectId)
                 .add("subjectId", subjectId)
-                .add("directory", directory)
+                .add("resources", resources.stream().map(XnatModelObject::getLabel).distinct().collect(Collectors.toList()))
                 .toString();
 
     }

@@ -130,7 +130,7 @@ public class DockerServiceIntegrationTest {
     public void testSaveCommandFromImageLabels() throws Exception {
         assumeThat(canConnectToDocker(), is(true));
 
-        final String imageName = "xnat/testy-test";
+        final String imageName = "xnat/testy-test:tag";
         final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
 
         CLIENT.build(Paths.get(dir), imageName);
@@ -153,7 +153,7 @@ public class DockerServiceIntegrationTest {
     public void testDeleteCommandWhenDeleteImage() throws Exception {
         assumeThat(canConnectToDocker(), is(true));
 
-        final String imageName = "xnat/testy-test";
+        final String imageName = "xnat/testy-test:tag";
         final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
 
         final String imageId = CLIENT.build(Paths.get(dir), imageName);

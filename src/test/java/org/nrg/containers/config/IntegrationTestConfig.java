@@ -6,9 +6,11 @@ import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.api.KubernetesClientFactoryImpl;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
-import org.nrg.containers.events.listeners.DockerContainerEventListener;
+import org.nrg.containers.events.listeners.ContainerEventListener;
 import org.nrg.containers.events.listeners.DockerServiceEventListener;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
@@ -32,10 +34,28 @@ import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
-import org.nrg.containers.services.*;
-import org.nrg.containers.services.impl.*;
+import org.nrg.containers.services.CommandLabelService;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerHubService;
+import org.nrg.containers.services.DockerServerEntityService;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.DockerService;
+import org.nrg.containers.services.OrchestrationService;
+import org.nrg.containers.services.impl.CommandLabelServiceImpl;
+import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
+import org.nrg.containers.services.impl.ContainerFinalizeServiceImpl;
+import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.impl.DockerServerServiceImpl;
+import org.nrg.containers.services.impl.DockerServiceImpl;
+import org.nrg.containers.services.impl.HibernateContainerEntityService;
+import org.nrg.containers.services.impl.HibernateDockerServerEntityService;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -61,6 +81,7 @@ import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
 
 @Configuration
 @EnableTransactionManagement
@@ -73,13 +94,15 @@ public class IntegrationTestConfig {
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
                                              final CommandLabelService commandLabelService,
                                              final DockerHubService dockerHubService,
-                                             final NrgEventService eventService) {
-        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService);
+                                             final NrgEventServiceI eventService,
+                                             final KubernetesClientFactory kubernetesClientFactory) {
+        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory);
     }
 
     @Bean
-    public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService) {
-        return new DockerServerServiceImpl(dockerServerEntityService);
+    public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService,
+                                                   final KubernetesClientFactory kubernetesClientFactory) {
+        return new DockerServerServiceImpl(dockerServerEntityService, kubernetesClientFactory);
     }
 
     @Bean
@@ -108,13 +131,13 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public NrgEventService nrgEventService(final EventBus eventBus) {
+    public NrgEventServiceI nrgEventService(final EventBus eventBus) {
         return new NrgEventService(eventBus);
     }
 
     @Bean
-    public DockerContainerEventListener containerEventListener(final EventBus eventBus) {
-        return new DockerContainerEventListener(eventBus);
+    public ContainerEventListener containerEventListener(final EventBus eventBus) {
+        return new ContainerEventListener(eventBus);
     }
 
     @Bean
@@ -125,6 +148,11 @@ public class IntegrationTestConfig {
     @Bean
     public CommandLabelService commandLabelService(final ObjectMapper objectMapper) {
         return new CommandLabelServiceImpl(objectMapper);
+    }
+
+    @Bean
+    public KubernetesClientFactory kubernetesClientFactory(ExecutorService executorService, NrgEventServiceI eventService) {
+        return new KubernetesClientFactoryImpl(executorService, eventService);
     }
 
     /*
@@ -155,7 +183,7 @@ public class IntegrationTestConfig {
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
-                                             final NrgEventService mockNrgEventService,
+                                             final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
@@ -166,14 +194,13 @@ public class IntegrationTestConfig {
 
     @Bean
     public CommandResolutionService commandResolutionService(final CommandService commandService,
-                                                             final ConfigService configService,
                                                              final DockerServerService serverService,
                                                              final SiteConfigPreferences siteConfigPreferences,
                                                              final ObjectMapper objectMapper,
                                                              final DockerService dockerService,
                                                              final CatalogService mockCatalogService,
                                                              final UserDataCache mockUserDataCache) {
-        return new CommandResolutionServiceImpl(commandService, configService, serverService,
+        return new CommandResolutionServiceImpl(commandService, serverService,
                 siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache);
     }
 

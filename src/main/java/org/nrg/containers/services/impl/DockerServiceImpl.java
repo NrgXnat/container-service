@@ -6,13 +6,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.image.docker.DockerImageAndCommandSummary;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
 import org.nrg.containers.services.CommandLabelService;
@@ -27,8 +30,11 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -69,12 +75,12 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerHubWithPing createHub(final DockerHub hub)  {
+    public DockerHubWithPing createHub(final DockerHub hub) {
         return ping(dockerHubService.create(hub));
     }
 
     @Override
-    public DockerHubWithPing createHubAndSetDefault(final DockerHub hub, final String username, final String reason)  {
+    public DockerHubWithPing createHubAndSetDefault(final DockerHub hub, final String username, final String reason) {
         return ping(dockerHubService.createAndSetDefault(hub, username, reason));
     }
 
@@ -104,55 +110,43 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public String pingHub(final long hubId) throws DockerServerException, NoDockerServerException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final long hubId) throws DockerServerException, NoDockerServerException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
         return pingHub(hub);
     }
 
     @Override
-    public String pingHub(final long hubId, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final long hubId, final String username, final String password, final String token, final String email)
+            throws NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
         return pingHub(hub, username, password, token, email);
     }
 
     @Override
-    public String pingHub(final String hubName)
-            throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final String hubName)
+            throws NotUniqueException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubName);
         return pingHub(hub);
     }
 
     @Override
-    public String pingHub(final String hubName, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException, NotUniqueException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final String hubName, final String username, final String password, final String token, final String email)
+            throws NotUniqueException, NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubName);
         return pingHub(hub, username, password, token, email);
     }
 
-    private String pingHub(final DockerHub hub) throws DockerServerException, NoDockerServerException {
+    private DockerHubBase.DockerHubStatus pingHub(final DockerHub hub) {
         return pingHub(hub, null, null, null, null);
     }
 
-    private String pingHub(final DockerHub hub, final String username, final String password, final String token, final String email)
-            throws DockerServerException, NoDockerServerException {
+    private DockerHubBase.DockerHubStatus pingHub(final DockerHub hub, final String username, final String password, final String token, final String email) {
         return controlApi.pingHub(hub, username, password, token, email);
-    }
-
-    @Nullable
-    private Boolean canConnectToHub(final DockerHub hub) {
-        try {
-            return "OK".equals(pingHub(hub));
-        } catch (DockerServerException | NoDockerServerException e) {
-            // ignored
-        }
-        return null;
     }
 
     @Nonnull
     private DockerHubWithPing ping(final DockerHub hubBeforePing) {
-        final Boolean ping = canConnectToHub(hubBeforePing);
-        return DockerHubWithPing.create(hubBeforePing, ping);
+        return DockerHubWithPing.create(hubBeforePing, pingHub(hubBeforePing));
     }
 
     @Nonnull
@@ -224,7 +218,29 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerServerWithPing setServer(final DockerServer server) {
+    public DockerServerWithPing setServer(final DockerServer server) throws InvalidDefinitionException {
+        if (server.backend() == Backend.KUBERNETES) {
+            // Check that container user is parsable as a long
+            final String containerUser = server.containerUser();
+            if (StringUtils.isNotBlank(containerUser)) {
+                try {
+                    Long.parseLong(containerUser);
+                } catch (NumberFormatException e) {
+                    throw new InvalidDefinitionException("If set, container user must be a string with integer value with " +
+                            "kubernetes backend");
+                }
+            }
+            final String gpuVendor = server.gpuVendor();
+            if (StringUtils.isNotEmpty(gpuVendor) && !(StringUtils.equalsIgnoreCase("nvidia", gpuVendor) || StringUtils.equalsIgnoreCase("amd", gpuVendor))) {
+                throw new InvalidDefinitionException("The value of the GPU Vendor can only be nvidia or amd");
+            }
+        } else {
+            // Docker + Swarm must have a host configured
+            if (StringUtils.isBlank(server.host())) {
+                throw new InvalidDefinitionException("Host cannot be empty for " + server.backend() + " server setting");
+            }
+        }
+
         final DockerServer dockerServer = dockerServerService.setServer(server);
         final boolean ping = controlApi.canConnect();
         return DockerServerWithPing.create(dockerServer, ping);
@@ -236,9 +252,33 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public List<DockerImage> getImages()
+    public List<DockerImage> getInstalledImages()
             throws NoDockerServerException, DockerServerException {
         return controlApi.getAllImages();
+
+    }
+
+    @Override
+    public List<DockerImage> getAllImages()
+            throws NoDockerServerException, DockerServerException {
+        // Pre-populate list from Docker-installed images
+        List<DockerImage> allImages = getInstalledImages();
+
+        // Get set of unique image names referenced in all commands
+        Set<String> cmdImageTags = commandService.getAll().stream()
+                .filter(command -> StringUtils.isNotBlank(command.image()))
+                .map(command -> command.image())
+                .collect(Collectors.toCollection(HashSet::new));
+
+        // Create Image objects for command images not already installed
+        List<String> installedTags = allImages.stream().map(DockerImage::tags)
+                .flatMap(List::stream).collect(Collectors.toList());
+        for (final String cmdImageTag : cmdImageTags.stream()
+                .filter(tag -> !installedTags.contains(tag))
+                .collect(Collectors.toList())) {
+            allImages.add(DockerImage.builder().addTag(cmdImageTag).build());
+        }
+        return allImages;
     }
 
     @Override
@@ -319,7 +359,7 @@ public class DockerServiceImpl implements DockerService {
                     DockerImage dockerImage = null;
                     try {
                         dockerImage = controlApi.getImageById(imageNameUsedByTheCommand);
-                    } catch (NotFoundException ignored) {
+                    } catch (NotFoundException | NoDockerServerException ignored) {
                         // ignored
                     }
 
@@ -345,7 +385,7 @@ public class DockerServiceImpl implements DockerService {
 
                         imageSummaryBuildersByImageId.put(imageNameUsedByTheCommand,
                                 DockerImageAndCommandSummary.builder()
-                                .addImageName(imageNameUsedByTheCommand)
+                                        .addImageName(imageNameUsedByTheCommand)
                         );
                         commandListsByImageId.put(imageNameUsedByTheCommand,
                                 Lists.newArrayList(command)

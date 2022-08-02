@@ -1,7 +1,6 @@
 package org.nrg.containers.services.impl;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -12,21 +11,28 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class DockerServerServiceImpl implements DockerServerService {
     private final DockerServerEntityService dockerServerEntityService;
+    private final KubernetesClientFactory kubernetesClientFactory;
 
     @Autowired
-    public DockerServerServiceImpl(final DockerServerEntityService dockerServerEntityService) {
+    public DockerServerServiceImpl(final DockerServerEntityService dockerServerEntityService,
+                                   final KubernetesClientFactory kubernetesClientFactory) {
         this.dockerServerEntityService = dockerServerEntityService;
+        this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
     @Override
     @Nonnull
     public List<DockerServer> getServers() {
-        return toPojo(dockerServerEntityService.getAllWithDisabled());
+        final List<DockerServerEntity> dockerServerEntities = dockerServerEntityService.getAllWithDisabled();
+        return dockerServerEntities == null ? Collections.emptyList() :
+                dockerServerEntities.stream().map(this::toPojo).collect(Collectors.toList());
     }
 
     @Override
@@ -47,31 +53,19 @@ public class DockerServerServiceImpl implements DockerServerService {
 
     @Override
     public DockerServer setServer(final DockerServer dockerServer) {
+        kubernetesClientFactory.shutdown();
         return toPojo(dockerServerEntityService.create(fromPojo(dockerServer)));
     }
 
     @Override
     public void update(final DockerServer dockerServer) {
+        kubernetesClientFactory.shutdown();
         dockerServerEntityService.update(fromPojo(dockerServer));
     }
 
     @Nullable
     public DockerServer toPojo(final DockerServerEntity dockerServerEntity) {
         return dockerServerEntity == null ? null : DockerServer.create(dockerServerEntity);
-    }
-
-    @Nonnull
-    public List<DockerServer> toPojo(final List<DockerServerEntity> dockerServerEntities) {
-        final List<DockerServer> returnList = Lists.newArrayList();
-        if (dockerServerEntities != null) {
-            returnList.addAll(Lists.transform(dockerServerEntities, new Function<DockerServerEntity, DockerServer>() {
-                @Override
-                public DockerServer apply(final DockerServerEntity input) {
-                    return toPojo(input);
-                }
-            }));
-        }
-        return returnList;
     }
 
     @Nonnull

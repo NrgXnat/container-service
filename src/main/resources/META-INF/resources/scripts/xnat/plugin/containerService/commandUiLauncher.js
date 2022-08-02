@@ -1274,6 +1274,20 @@ var XNAT = getObject(XNAT || {});
         }
     };
 
+    function availableCommandsForTypePromise(project, type) {
+        return new Promise((resolve, reject) => {
+            XNAT.xhr.getJSON({
+                url: rootUrl('/xapi/commands/available?project=' + projectId + '&xsiType=' + type),
+                success: function (data) {
+                    resolve({[type]: data});
+                },
+                error: function (error) {
+                    reject(error);
+                },
+            })
+        });
+    }
+
     launcher.init = function() {
         // populate or hide the command launcher based on what's in context
         if (!projectId || !xsiType) {
@@ -1304,58 +1318,64 @@ var XNAT = getObject(XNAT || {});
         // Special case: If this is a session, run a second context check for scans
         // only support scan-level actions if the new scan table is found.
         if (XNAT.data.context.isImageSession && document.getElementById('selectable-table-scans')) {
-            var xsiScanType = xsiType.replace('Session','Scan');
-
             // CSS hack: remove scrolling restrictions to allow display of inline run menu
             $('#selectable-table-scans').find('.data-table-wrapper').css('overflow-x','inherit');
 
-            XNAT.xhr.getJSON({
-                url: rootUrl('/xapi/commands/available?project=' + projectId + '&xsiType=' + xsiScanType),
-                success: function (data) {
-                    var availableCommands = data;
-                    if (!availableCommands.length) {
-                        return false;
-                    } else {
-                        // build menu of commands
-                        var spawnedCommands = [];
-                        availableCommands.forEach(function (command) {
-                            command.launcher = 'multiple-scans';
-                            command.uri = '';
-                            launcher.addMenuItem(command,spawnedCommands);
-                        });
-
-                        // add action menu to each scan listing
-                        launcher.scanList = XNAT.data.context.scans || [];
-                        launcher.scanList.forEach(function(scan){
-                            var scanCommands = [];
-                            availableCommands.forEach(function (command) {
-                                command.launcher = 'single-scan';
-                                command.uri = fullScanPath(scan['id']);
-                                launcher.addMenuItem(command,scanCommands);
-                            });
-
-                            if (scanCommands.length > 0){
-                                var scanActionTarget = $('tr#scan-'+scan['id']).find('.single-scan-actions-menu');
-                                scanActionTarget.append(scanCommands)
-                                $('.run-menu').show();
-                            }
-                        });
-
-                        if (spawnedCommands.length > 0) {
-                            // add commands to Bulk Run action menu at the top of the scan table
-                            var menuTarget = $('#scanActionsMenu');
-                            launcher.createMenu(menuTarget,spawnedCommands);
-                            $('.scan-actions-controls').show();
-                            $('#scanTable-run-containers').removeClass('hidden');
-                        }
-                    }
-                },
-                fail: function(e) {
-                    errorHandler(e);
+            launcher.scanList = XNAT.data.context.scans || [];
+            const scanTypes = [...new Set(launcher.scanList.map(s => s.xsitype))];
+            const promises = scanTypes.map(type => availableCommandsForTypePromise(projectId, type));
+            Promise.all(promises).then(results => {
+                const typeCommandMap = results.reduce((typeCommandMap, item) => Object.assign(typeCommandMap, item, {}));
+                if (!Object.keys(typeCommandMap).length) {
+                    return;
                 }
-            });
-        }
 
+                // get unique commands
+                const availableCommands = [];
+                Object.values(typeCommandMap).flat().forEach(command => {
+                    if (availableCommands.some(e => e['wrapper-id'] === command['wrapper-id'])) {
+                        return;
+                    }
+                    availableCommands.push(command);
+                });
+
+                if (!availableCommands.length) {
+                    return;
+                }
+
+                // build menu of all commands
+                const spawnedCommands = [];
+                availableCommands.forEach(function(command) {
+                    command.launcher = 'multiple-scans';
+                    command.uri = '';
+                    launcher.addMenuItem(command, spawnedCommands);
+                });
+                if (spawnedCommands.length > 0) {
+                    // add commands to Bulk Run action menu at the top of the scan table
+                    const menuTarget = $('#scanActionsMenu');
+                    launcher.createMenu(menuTarget, spawnedCommands);
+                    $('.scan-actions-controls').show();
+                    $('#scanTable-run-containers').removeClass('hidden');
+                    // If there are Bulk Run commands, then at least one scan has a command to run, hence, show the header
+                    $('#scan-data-table thead .run-menu').show();
+                }
+
+                // add action menu to each scan listing
+                launcher.scanList.forEach(function(scan){
+                    const scanCommands = [];
+                    typeCommandMap[scan.xsitype].forEach(function(command) {
+                        command.launcher = 'single-scan';
+                        command.uri = fullScanPath(scan.id);
+                        launcher.addMenuItem(command, scanCommands);
+                    });
+                    if (scanCommands.length > 0) {
+                        const $scanRow = $('tr#scan-' + scan['id']);
+                        $scanRow.find('.single-scan-actions-menu').append(scanCommands);
+                        $scanRow.find('.run-menu').show();
+                    }
+                });
+            }, errorHandler);
+        }
     };
 
     launcher.open = window.openCommandLauncher = function(obj){

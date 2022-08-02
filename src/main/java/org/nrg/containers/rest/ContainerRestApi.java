@@ -11,11 +11,14 @@ import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
+import org.nrg.containers.security.ContainerControlUserAuthorization;
+import org.nrg.containers.security.ContainerId;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
+import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.security.helpers.Groups;
@@ -57,6 +60,7 @@ import java.util.zip.ZipOutputStream;
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -228,10 +232,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
                         .build();
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logs", method = GET, restrictTo = Authenticated)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = "/containers/{containerId}/logs", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs",
             notes = "Return stdout and stderr logs as a zip")
-    public void getLogs(final @PathVariable String containerId,
+    public void getLogs(final @PathVariable @ContainerId String containerId,
                         final HttpServletResponse response)
             throws IOException, InsufficientPrivilegesException, NoDockerServerException, DockerServerException, NotFoundException {
         final Map<String, InputStream> logStreams = containerService.getLogStreams(containerId);
@@ -258,10 +263,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
         response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logs/{file}", method = GET, restrictTo = Authenticated)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = "/containers/{containerId}/logs/{file}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
-    public ResponseEntity<String> getLog(final @PathVariable String containerId,
+    public ResponseEntity<String> getLog(final @PathVariable @ContainerId String containerId,
                                          final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file)
             throws NoDockerServerException, DockerServerException, NotFoundException, IOException {
         return ResponseEntity.ok()
@@ -270,10 +276,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
                 .body(doGetLog(containerId, file));
     }
 
-    @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET, restrictTo = Authenticated)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> pollLog(final @PathVariable String containerId,
+    public ResponseEntity<Map<String, Object>> pollLog(final @PathVariable @ContainerId String containerId,
                                        final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file,
                                        final @RequestParam(required = false) Long since,
                                        final @RequestParam(required = false) Long bytesRead,
@@ -401,13 +408,12 @@ public class ContainerRestApi extends AbstractXapiRestController {
 
     @ResponseStatus(value = HttpStatus.FAILED_DEPENDENCY)
     @ExceptionHandler(value = {NoDockerServerException.class})
-    public String handleFailedDependency() {
-        return "Set up Docker server before using this REST endpoint.";
-    }
+    public String handleFailedDependency() { return "Set up Docker server before using this REST endpoint."; }
 
     @ResponseStatus(value = HttpStatus.INTERNAL_SERVER_ERROR)
     @ExceptionHandler(value = {DockerServerException.class, ContainerException.class})
     public String handleDockerServerException(final Exception e) {
         return e.getMessage();
     }
+
 }

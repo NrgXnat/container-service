@@ -37,18 +37,27 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
     @Override
     public void accept(final Event<ServiceTaskEvent> serviceTaskEvent) {
         final ServiceTaskEvent event = serviceTaskEvent.getData();
-        Long serviceDbId = event.service().databaseId();
+        long serviceDbId = event.service().databaseId();
+        final ServiceTaskEvent.EventType eventType = event.eventType();
+        if (log.isTraceEnabled()) {
+            log.trace("Processing service task event {}", event);
+        } else {
+            log.debug("Processing service task event type \"{}\" for service {} \"{}\"",
+                    eventType, event.service().databaseId(), event.service().serviceId()
+            );
+        }
+        if (eventType == null) {
+            log.error("Skipping event with null type for service {}", serviceDbId);
+            return;
+        }
         if (!addToQueue(serviceDbId)) {
-            log.debug("Skipping event {} because service still being processed from last event", event);
+            log.debug("Skipping event because service {} still being processed from last event", serviceDbId);
             return;
         }
         try {
-            ServiceTaskEvent.EventType eventType = event.eventType();
-            if (eventType == null) {
-                throw new Exception("Null type on service task event");
-            }
             switch(eventType) {
                 case Waiting:
+                    log.debug("Finalizing service");
                     Container service = event.service();
                     ServiceTask task = event.task();
                     String status;

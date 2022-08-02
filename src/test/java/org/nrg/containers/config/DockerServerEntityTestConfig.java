@@ -1,6 +1,8 @@
 package org.nrg.containers.config;
 
 import org.hibernate.SessionFactory;
+import org.mockito.Mockito;
+import org.nrg.containers.api.KubernetesClientFactoryImpl;
 import org.nrg.containers.daos.DockerServerEntityRepository;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
@@ -29,7 +31,7 @@ public class DockerServerEntityTestConfig {
 
     @Bean
     public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService) {
-        return new DockerServerServiceImpl(dockerServerEntityService);
+        return new DockerServerServiceImpl(dockerServerEntityService, Mockito.mock(KubernetesClientFactoryImpl.class));
     }
 
     @Bean

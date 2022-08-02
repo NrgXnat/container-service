@@ -35,15 +35,30 @@ public interface CommandResolutionService {
                                         String wrapperName,
                                         Map<String, String> inputValues,
                                         final UserI userI)
+    throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
+    PartiallyResolvedCommand preResolve(String project,
+                                        long commandId,
+                                        String wrapperName,
+                                        long wrapperId,
+                                        Map<String, String> inputValues,
+                                        final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
 
     PartiallyResolvedCommand preResolve(ConfiguredCommand configuredCommand,
                                         Map<String, String> inputValues,
+                                        String project,
                                         UserI userI)
             throws CommandResolutionException, UnauthorizedException;
 
     ResolvedCommand resolve(ConfiguredCommand configuredCommand,
                             Map<String, String> inputValues,
+                            UserI userI)
+            throws NotFoundException, CommandResolutionException, UnauthorizedException;
+
+    ResolvedCommand resolve(ConfiguredCommand configuredCommand,
+                            Map<String, String> inputValues,
+                            String project,
                             UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
 }

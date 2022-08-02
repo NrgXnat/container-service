@@ -3,10 +3,10 @@
 #### Container Setup Group
 ####
 
-dockerSetupPanel:
+serverSetupPanel:
     kind: panel
-    name: dockerSetupPanel
-    label: Docker Server Setup
+    name: serverSetupPanel
+    label: Compute Backend Configuration
     contents:
         containerHostTable:
             tag: "div#container-host-manager"
@@ -296,11 +296,11 @@ siteSettings:
         containerServicesTab:
             kind: tab
             name: containerSetupTab
-            label: Container Server Setup
+            label: Compute Backend
             group: containerServiceTabGroup
             active: true
             contents:
-                ${dockerSetupPanel}
+                ${serverSetupPanel}
                 ${imageHostsPanel}
         imageCommandTab:
             kind: tab

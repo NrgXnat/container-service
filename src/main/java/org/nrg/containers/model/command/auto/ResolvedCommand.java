@@ -295,20 +295,8 @@ public abstract class ResolvedCommand {
                 .genericResources(command.genericResources())
                 .ulimits(command.ulimits())
                 .parentSourceObjectName(parentSourceObjectName)
-                .addMount(ResolvedCommandMount.builder()
-                        .name("input")
-                        .containerPath("/input")
-                        .xnatHostPath(inputMountXnatHostPath)
-                        .containerHostPath(inputMountContainerHostPath)
-                        .writable(false)
-                        .build())
-                .addMount(ResolvedCommandMount.builder()
-                        .name("output")
-                        .containerPath("/output")
-                        .xnatHostPath(outputMountXnatHostPath)
-                        .containerHostPath(outputMountContainerHostPath)
-                        .writable(true)
-                        .build())
+                .addMount(ResolvedCommandMount.specialInput(inputMountXnatHostPath, inputMountContainerHostPath))
+                .addMount(ResolvedCommandMount.specialOutput(outputMountXnatHostPath, outputMountContainerHostPath))
                 .build();
     }
 
@@ -472,53 +460,12 @@ public abstract class ResolvedCommand {
     }
 
     @AutoValue
-    public abstract static class PartiallyResolvedCommandMount {
-        public abstract String name();
-        public abstract Boolean writable();
-        public abstract String containerPath();
-        @Nullable public abstract String fromWrapperInput();
-        @Nullable public abstract String viaSetupCommand();
-        @Nullable public abstract String fromUri();
-        @Nullable public abstract String fromRootDirectory();
-        @Nullable public abstract String fromFilePath();
-
-        public static Builder builder() {
-            return new AutoValue_ResolvedCommand_PartiallyResolvedCommandMount.Builder();
-        }
-
-        public ResolvedCommandMount.Builder toResolvedCommandMountBuilder() {
-            return ResolvedCommandMount.builder()
-                    .name(this.name())
-                    .writable(this.writable())
-                    .containerPath(this.containerPath())
-                    .fromWrapperInput(this.fromWrapperInput())
-                    .viaSetupCommand(this.viaSetupCommand())
-                    .fromUri(this.fromUri())
-                    .fromRootDirectory(this.fromRootDirectory())
-                    .fromFilePath(this.fromFilePath());
-        }
-
-        @AutoValue.Builder
-        public abstract static class Builder {
-            public abstract Builder name(String name);
-            public abstract Builder writable(Boolean writable);
-            public abstract Builder containerPath(String containerPath);
-            public abstract Builder fromWrapperInput(String fromWrapperInput);
-            public abstract Builder viaSetupCommand(String viaSetupCommand);
-            public abstract Builder fromUri(String fromUri);
-            public abstract Builder fromRootDirectory(String fromRootDirectory);
-            public abstract Builder fromFilePath(String fromFilePath);
-
-            public abstract PartiallyResolvedCommandMount build();
-        }
-    }
-
-    @AutoValue
     public abstract static class ResolvedCommandOutput {
         @JsonProperty("name") public abstract String name();
         @JsonProperty("from-command-output") public abstract String fromCommandOutput();
         @JsonProperty("from-output-handler") public abstract String fromOutputHandler();
         @JsonProperty("type") public abstract String type();
+        @Nullable @JsonProperty("xsi-type") public abstract String xsiType();
         @JsonProperty("required") public abstract Boolean required();
         @JsonProperty("mount") public abstract String mount();
         @JsonProperty("path") @Nullable public abstract String path();
@@ -541,6 +488,7 @@ public abstract class ResolvedCommand {
             public abstract Builder fromCommandOutput(String fromCommandOutput);
             public abstract Builder fromOutputHandler(String fromOutputHandler);
             public abstract Builder type(String type);
+            public abstract Builder xsiType(String type);
             public abstract Builder required(Boolean required);
             public abstract Builder mount(String mount);
             public abstract Builder path(String path);

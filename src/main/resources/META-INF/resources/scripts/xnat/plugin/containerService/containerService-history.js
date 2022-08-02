@@ -398,7 +398,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
             },
             error: function (e) {
-                errorHandler(e, 'Cannot retrieve ' + logFile + '; container may have restarted.', true);
+                if (e.status === 403) {
+                    errorHandler(e, 'Insufficient permissions to retrieve ' + logFile , true);
+                } else {
+                    errorHandler(e, 'Cannot retrieve ' + logFile + '; container may have restarted.', true);
+                }
             }
         });
     };
@@ -525,30 +529,34 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
 
             // check logs and populate buttons at bottom of modal
-            if (key === 'log-paths' && (('container-id' in historyEntry) || ('service-id' in historyEntry))) {
-                historyDialogButtons.push({
-                    label: 'View StdOut.log',
-                    close: false,
-                    action: function(){
-                        var jobid = historyEntry['container-id'];
-                        if (!jobid || jobid === "") {
-                            jobid = historyEntry['service-id'];
+            if (key === 'log-paths') {
+                if (historyEntry.backend.toLowerCase() !== 'kubernetes') {
+                    historyDialogButtons.push({
+                        label: 'View StdOut.log',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stdout')
                         }
-                        historyTable.viewLog(jobid,'stdout')
-                    }
-                });
+                    });
 
-                historyDialogButtons.push({
-                    label: 'View StdErr.log',
-                    close: false,
-                    action: function(){
-                        var jobid = historyEntry['container-id'];
-                        if (!jobid || jobid === "") {
-                            jobid = historyEntry['service-id'];
+                    historyDialogButtons.push({
+                        label: 'View StdErr.log',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stderr')
                         }
-                        historyTable.viewLog(jobid,'stderr')
-                    }
-                })
+                    });
+                }
+                else {
+                    // Container executions in Kubernetes do not publish a StdErr log
+                    historyDialogButtons.push({
+                        label: 'View Logs',
+                        close: false,
+                        action: function(){
+                            historyTable.viewLog(historyEntry.id, 'stdout')
+                        }
+                    });
+                }
             }
             if (key === 'setup-container-id') {
                 historyDialogButtons.push({

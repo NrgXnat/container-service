@@ -26,6 +26,7 @@ public class CommandWrapperOutputEntity {
     private String wrapperInputName;
     private String viaWrapupCommand;
     private Type type;
+    private String xsiType;
     private String label;
     private String format;
     private String description;
@@ -50,6 +51,7 @@ public class CommandWrapperOutputEntity {
         this.setDescription(commandWrapperOutput.description());
         this.setContent(commandWrapperOutput.content());
         this.setTags(commandWrapperOutput.tags());
+        this.setXsiType(commandWrapperOutput.xsiType());
 
         switch (commandWrapperOutput.type()) {
             case "Resource":
@@ -101,6 +103,14 @@ public class CommandWrapperOutputEntity {
 
     public void setType(final Type type) {
         this.type = type;
+    }
+
+    public String getXsiType() {
+        return xsiType;
+    }
+
+    public void setXsiType(String xsiType) {
+        this.xsiType = xsiType;
     }
 
     public String getCommandOutputName() {
@@ -204,6 +214,15 @@ public class CommandWrapperOutputEntity {
 
         public String getName() {
             return name;
+        }
+
+        public static Type fromName(String name) {
+            for (Type t : values()) {
+                if (t.name.equalsIgnoreCase(name)) {
+                    return t;
+                }
+            }
+            return null;
         }
 
         public static List<String> names() {

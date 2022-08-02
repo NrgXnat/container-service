@@ -13,6 +13,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private String certPath;
     private Date lastEventCheckTime;
     private boolean swarmMode;
+    private Backend backend;
     private String pathTranslationXnatPrefix;
     private String pathTranslationDockerPrefix;
     private Boolean pullImagesOnXnatInit;
@@ -21,6 +22,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
     private boolean statusEmailEnabled = true;
+    private String gpuVendor;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -30,7 +32,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.host = dockerServer.host();
         this.name = dockerServer.name();
         this.certPath = dockerServer.certPath();
-        this.swarmMode = dockerServer.swarmMode();
+        this.backend = dockerServer.backend();
         this.lastEventCheckTime = dockerServer.lastEventCheckTime();
         this.pathTranslationXnatPrefix = dockerServer.pathTranslationXnatPrefix();
         this.pathTranslationDockerPrefix = dockerServer.pathTranslationDockerPrefix();
@@ -39,10 +41,11 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.autoCleanup = dockerServer.autoCleanup();
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
         this.statusEmailEnabled = dockerServer.statusEmailEnabled();
+        this.gpuVendor = dockerServer.gpuVendor();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
-        pojoConstraints = pojoConstraints == null ? Collections.<DockerServerBase.DockerServerSwarmConstraint>emptyList()
+        pojoConstraints = pojoConstraints == null ? Collections.emptyList()
                 : pojoConstraints;
         for (final DockerServerBase.DockerServerSwarmConstraint constraint : pojoConstraints) {
             pojoConstraintsToAdd.put(constraint.attribute(), constraint);
@@ -100,12 +103,27 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.lastEventCheckTime = lastEventCheckTime;
     }
 
+    @Deprecated
     public boolean getSwarmMode() {
-        return swarmMode;
+        return getBackend() == Backend.SWARM;
     }
 
+    @Deprecated
     public void setSwarmMode(final boolean swarmMode) {
         this.swarmMode = swarmMode;
+    }
+
+    @Enumerated(EnumType.STRING)
+    public Backend getBackend() {
+        return backend;
+    }
+
+    public void setBackend(Backend backend) {
+        if (backend == null) {
+            // Default for backwards compatibility
+            backend = swarmMode ? Backend.SWARM : Backend.DOCKER;
+        }
+        this.backend = backend;
     }
 
     public String getPathTranslationXnatPrefix() {
@@ -147,7 +165,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setSwarmConstraints(final List<DockerServerEntitySwarmConstraint> swarmConstraints) {
         this.swarmConstraints = swarmConstraints == null ?
-                Collections.<DockerServerEntitySwarmConstraint>emptyList() : swarmConstraints;
+                Collections.emptyList() : swarmConstraints;
         for (final DockerServerEntitySwarmConstraint constraint : this.swarmConstraints) {
             constraint.setDockerServerEntity(this);
         }
@@ -195,6 +213,14 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.statusEmailEnabled = statusEmail == null || statusEmail;
     }
 
+    public String getGpuVendor() {
+        return gpuVendor;
+    }
+
+    public void setGpuVendor(String gpuVendor) {
+        this.gpuVendor = gpuVendor;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -225,7 +251,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
             }
         }
 
-        return swarmMode == that.swarmMode &&
+        return backend == that.backend &&
                 Objects.equals(this.name, that.name) &&
                 Objects.equals(this.host, that.host) &&
                 Objects.equals(this.certPath, that.certPath) &&
@@ -236,14 +262,15 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.autoCleanup, that.autoCleanup) &&
                 Objects.equals(this.maxConcurrentFinalizingJobs, that.maxConcurrentFinalizingJobs) &&
                 Objects.equals(this.statusEmailEnabled, that.statusEmailEnabled) &&
+                Objects.equals(this.gpuVendor, that.gpuVendor) &&
                 constrEqual;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, host, certPath, lastEventCheckTime, swarmMode, pathTranslationXnatPrefix,
+        return Objects.hash(name, host, certPath, lastEventCheckTime, backend, pathTranslationXnatPrefix,
                 pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
-                maxConcurrentFinalizingJobs, statusEmailEnabled);
+                maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor);
     }
 
 }

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Function;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -28,13 +29,29 @@ import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandInputConfiguration;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandOutputConfiguration;
+import org.nrg.containers.utils.ContainerServicePermissionUtils.WrapperPermission;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.XnatSubjectdata;
+import org.nrg.xft.security.UserI;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.nrg.containers.utils.ContainerServicePermissionUtils.CONTEXT_PERMISSION_PLACEHOLDER;
 
 @AutoValue
 public abstract class Command {
@@ -73,6 +90,8 @@ public abstract class Command {
     @Nullable @JsonProperty("ulimits") public abstract ImmutableMap<String, String> ulimits();
     @JsonIgnore private static Pattern regCharPattern = Pattern.compile("[^A-Za-z0-9_-]");
     @JsonIgnore private static ObjectMapper mapper = new ObjectMapper();
+    @JsonIgnore protected final static String DEFAULT_IMAGE_TAG = "latest";
+    @JsonIgnore protected final static Pattern HAS_TAG = Pattern.compile(".+:[a-zA-Z0-9_.-]+$");
 
     @JsonCreator
     static Command create(@JsonProperty("id") final long id,
@@ -242,7 +261,7 @@ public abstract class Command {
                 .version(creation.version())
                 .schemaVersion(creation.schemaVersion())
                 .infoUrl(creation.infoUrl())
-                .image(creation.image())
+                .image(setDefaultTag(creation.image()))
                 .containerName(creation.containerName())
                 .type(creation.type() == null ? CommandEntity.DEFAULT_TYPE.getName() : creation.type())
                 .index(creation.index())
@@ -288,9 +307,17 @@ public abstract class Command {
     public static Command create(final CommandCreation commandCreation, final String image) {
         final Command command = Command.create(commandCreation);
         if (StringUtils.isNotBlank(image)) {
-            return command.toBuilder().image(image).build();
+            return command.toBuilder().image(setDefaultTag(image)).build();
         }
         return command;
+    }
+
+    private static String setDefaultTag(String image){
+        return imageNeedsTag(image) ? String.join(":", image, DEFAULT_IMAGE_TAG) : image;
+    }
+
+    private static boolean imageNeedsTag(String image) {
+        return !(Strings.isNullOrEmpty(image) || HAS_TAG.matcher(image).matches());
     }
 
     public abstract Builder toBuilder();
@@ -314,6 +341,9 @@ public abstract class Command {
 
         if (StringUtils.isBlank(image())) {
             errors.add(commandName + "image name cannot be blank.");
+        }
+        if (imageNeedsTag(image())) {
+            errors.add(commandName + "image name must include version tag. e.g. image_name:tag");
         }
 
         if (type().equals(CommandType.DOCKER.getName())) {
@@ -694,14 +724,14 @@ public abstract class Command {
         public static CommandMount create(@JsonProperty("name") final String name,
                                           @JsonProperty("writable") final Boolean writable,
                                           @JsonProperty("path") final String path) {
-            return create(0L, name == null ? "" : name, writable == null ? false : writable, path);
+            return create(0L, name, writable, path);
         }
 
         public static CommandMount create(final long id,
                                           final String name,
                                           final Boolean writable,
                                           final String path) {
-            return new AutoValue_Command_CommandMount(id, name == null ? "" : name, writable == null ? false : writable, path);
+            return new AutoValue_Command_CommandMount(id, name == null ? "" : name, writable != null && writable, path);
         }
 
         public static CommandMount create(final CommandMountEntity mount) {
@@ -1018,6 +1048,213 @@ public abstract class Command {
         @JsonProperty("derived-inputs") public abstract ImmutableList<CommandWrapperDerivedInput> derivedInputs();
         @JsonProperty("output-handlers") public abstract ImmutableList<CommandWrapperOutput> outputHandlers();
 
+        @JsonIgnore private Set<WrapperPermission> _requiredPermissionsCache = null;
+
+        @JsonIgnore
+        @Nonnull
+        public List<CommandWrapperDerivedInput> topologicallySortedDerivedInputs() {
+            final List<CommandWrapperDerivedInput> derivedInputs = new ArrayList<>(derivedInputs());
+            if (derivedInputs.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // Find the names of the "derived from" inputs, and map that to the set of inputs derived from it
+            final Map<String, Set<CommandWrapperDerivedInput>> targets = derivedInputs.stream()
+                    .collect(Collectors.groupingBy(CommandWrapperDerivedInput::derivedFromWrapperInput,
+                            Collectors.mapping(java.util.function.Function.identity(), Collectors.toSet())));
+
+            // Collect the derived inputs in reverse order
+            // We want a list where each derived input appears before any that are derived from it.
+            // But the easier thing to do is find inputs that no other inputs are derived from.
+            // So we build the list in reverse order.
+            final CommandWrapperDerivedInput[] orderedDerivedInputs = new CommandWrapperDerivedInput[derivedInputs.size()];
+            for (int outputIdx = derivedInputs.size() - 1; outputIdx >= 0; outputIdx--) {   // backwards because of the algo
+                for (int inputIdx = derivedInputs.size() - 1; inputIdx >= 0; inputIdx--) {  // backwards so it isn't slow if they're already ordered
+                    final CommandWrapperDerivedInput derivedInput = derivedInputs.get(inputIdx);
+                    // Are any inputs derived from this one?
+                    final Set<CommandWrapperDerivedInput> derivedFromThis = targets.get(derivedInput.name());
+                    if (derivedFromThis == null || derivedFromThis.isEmpty()) {
+                        // No, this handler is not a target of any others.
+                        // Set it to the output array
+                        orderedDerivedInputs[outputIdx] = derivedInput;
+
+                        // Remove it from the in-progress list
+                        derivedInputs.remove(derivedInput);
+
+                        // Remove it from its target's set (if we have one; we won't if this handler targets an input)
+                        final Set<CommandWrapperDerivedInput> derivedFromSameInputAsThis = targets.get(derivedInput.derivedFromWrapperInput());
+                        if (derivedFromSameInputAsThis != null) {
+                            derivedFromSameInputAsThis.remove(derivedInput);
+                        }
+
+                        // Break out of this loop, which continues the outer loop
+                        break;
+                    }
+                }
+            }
+
+            return Arrays.asList(orderedDerivedInputs);
+        }
+
+        @JsonIgnore
+        @Nonnull
+        public List<CommandWrapperOutput> topologicallySortedOutputHandlers() {
+            final List<CommandWrapperOutput> outputHandlers = new ArrayList<>(outputHandlers());
+            if (outputHandlers.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // Find the names of the targets of all output handlers, and map that to the handled output handlers
+            final Map<String, Set<CommandWrapperOutput>> targets = outputHandlers.stream()
+                    .collect(Collectors.groupingBy(CommandWrapperOutput::targetName,
+                            Collectors.mapping(java.util.function.Function.identity(), Collectors.toSet())));
+
+            // Collect the handlers in reverse order
+            // We want a list where each handler that is a target appears before any that are targeting it.
+            // But the easier thing to do is find handlers that are not targeted by anyone and put them at the end.
+            // So if we have handler A which targets handler B, then targets starts as {B: {A}, A: {}}.
+            // We go through the output handlers, find that A's set is empty. We add it to the end of the outputs
+            //  and remove it from B's targeters. Then targets = {B: {}, A: {}}.
+            // On the next pass through the output handlers we notice that B's set of targeters is empty, so we can add it too.
+            final CommandWrapperOutput[] orderedHandlers = new CommandWrapperOutput[outputHandlers.size()];
+            for (int outputIdx = outputHandlers.size() - 1; outputIdx >= 0; outputIdx--) {   // backwards because of the algo
+                for (int inputIdx = outputHandlers.size() - 1; inputIdx >= 0; inputIdx--) {  // backwards so it isn't slow if they're already ordered
+                    final CommandWrapperOutput outputHandler = outputHandlers.get(inputIdx);
+                    // Is this handler the target of any others?
+                    final Set<CommandWrapperOutput> handlersTargetingThisHandler = targets.get(outputHandler.name());
+                    if (handlersTargetingThisHandler == null || handlersTargetingThisHandler.isEmpty()) {
+                        // No, this handler is not a target of any others.
+                        // Set it to the output array
+                        orderedHandlers[outputIdx] = outputHandler;
+
+                        // Remove it from the in-progress list
+                        outputHandlers.remove(outputHandler);
+
+                        // Remove it from its target's set (if we have one; we won't if this handler targets an input)
+                        final Set<CommandWrapperOutput> handlersTargetingThisHandlersTarget = targets.get(outputHandler.targetName());
+                        if (handlersTargetingThisHandlersTarget != null) {
+                            handlersTargetingThisHandlersTarget.remove(outputHandler);
+                        }
+
+                        // Break out of this loop, which continues the outer loop
+                        break;
+                    }
+                }
+            }
+
+            return Arrays.asList(orderedHandlers);
+        }
+
+        /**
+         * @return The first external input, if any are defined, else null.
+         */
+        @JsonIgnore
+        public CommandWrapperExternalInput firstExternalInput() {
+            final List<CommandWrapperExternalInput> externalInputs = externalInputs();
+            if (externalInputs == null || externalInputs.isEmpty()) {
+                return null;
+            }
+            return externalInputs.get(0);
+        }
+
+        /**
+         * The set of permissions a user needs to have to execute this wrapper.
+         * The intent is to use this when a user requests
+         * {@link org.nrg.containers.services.CommandService#available(String, String, UserI)}
+         * to filter the list of wrappers to only those where the user has all the
+         * required permissions.
+         * <p>
+         * Example:
+         * If a wrapper has a session input and creates an assessor output
+         * (and that assessor output handler has "xsi-type": "xnat:qcManualAssessorData")
+         * then it needs to read the session type and edit the assessor type.
+         * The permissions map will be:
+         * <p>
+         * requiredPermissions("xnat:mrSessionData") ==
+         * {WrapperPermission{"read", "xnat:mrSessionData"}, WrapperPermission{"edit", "xnat:qcManualAssessorData"}}
+         * <p>
+         * If a wrapper runs on a session and creates a scan resource, the permissions will be
+         * requiredPermissions("xnat:mrSessionData") ==
+         * {WrapperPermission{"read", "xnat:mrSessionData"}, WrapperPermission{"edit", "xnat:mrSessionData"}}
+         * (this is because scan permissions are identified with the parent session permissions).
+         *
+         * @param contextXsiType The XSI type for the "context", i.e. the type of the
+         *                       external input that the wrapper is to be run on.
+         * @return The set of permissions a user needs to have to execute this wrapper
+         */
+        @JsonIgnore
+        public Set<WrapperPermission> requiredPermissions(final String contextXsiType) {
+            // Replace the context placeholder with this specific context
+            if (_requiredPermissionsCache == null) {
+                _requiredPermissionsCache = findRequiredPermissions();
+            }
+            final Set<WrapperPermission> requiredPermissions = new HashSet<>(_requiredPermissionsCache);
+
+            // Replace the placeholder with the specific context
+            if (requiredPermissions.remove(WrapperPermission.read(CONTEXT_PERMISSION_PLACEHOLDER))) {
+                requiredPermissions.add(WrapperPermission.read(contextXsiType, true));
+            }
+            if (requiredPermissions.remove(WrapperPermission.edit(CONTEXT_PERMISSION_PLACEHOLDER))) {
+                requiredPermissions.add(WrapperPermission.edit(contextXsiType, true));
+            }
+
+            return requiredPermissions;
+        }
+
+        /**
+         * Find the permissions a user needs to run this wrapper
+         * They're stored as a set of {@link WrapperPermission}s,
+         * i.e. an action (read or edit) and an xsi type.
+         * <p>
+         * First find all the types for the inputs
+         * <p>
+         * If the wrapper has an external input, we use a "context placeholder" for that.
+         * Any instances of the
+         */
+        private Set<WrapperPermission> findRequiredPermissions() {
+            final Map<String, String> requiredPermissionsByInput = new HashMap<>();
+
+            final CommandWrapperExternalInput firstExternalInput = firstExternalInput();
+            if (firstExternalInput != null) {
+                // External input will need permission for whatever type is given by the context
+                requiredPermissionsByInput.put(firstExternalInput.name(), CONTEXT_PERMISSION_PLACEHOLDER);
+            }
+
+            // Check derived inputs
+            // They may need permissions on the parent type, or a different type, or maybe we can't tell right now
+            for (final CommandWrapperDerivedInput derivedInput : topologicallySortedDerivedInputs()) {
+                final String parentXsiType = requiredPermissionsByInput.get(derivedInput.derivedFromWrapperInput());
+                requiredPermissionsByInput.put(derivedInput.name(), derivedInput.xsiTypeForPermissions(parentXsiType));
+            }
+
+            // Check output handlers
+            final List<Command.CommandWrapperOutput> outputHandlers = topologicallySortedOutputHandlers();
+            final Map<String, String> requiredPermissionsByOutputHandler = new HashMap<>(outputHandlers.size());
+            for (final Command.CommandWrapperOutput outputHandler : outputHandlers) {
+
+                final String targetName = outputHandler.targetName();
+                if (targetName == null) {
+                    // This should have been caught during validation
+                    // But we will do nothing right now
+                    continue;
+                }
+
+                final String potentialParentInputXsiType = requiredPermissionsByInput.get(targetName);
+                final String potentialParentOutputHandlerXsiType = requiredPermissionsByOutputHandler.get(targetName);
+                final String parentXsiType = potentialParentInputXsiType != null ?
+                        potentialParentInputXsiType :
+                        potentialParentOutputHandlerXsiType;
+
+                final String requiredXsiType = outputHandler.requiredEditPermissionXsiType(parentXsiType);
+                requiredPermissionsByOutputHandler.put(outputHandler.name(), requiredXsiType);
+            }
+
+            return Stream.concat(
+                    requiredPermissionsByInput.values().stream().filter(Objects::nonNull).map(WrapperPermission::read),
+                    requiredPermissionsByOutputHandler.values().stream().filter(Objects::nonNull).map(WrapperPermission::edit)
+            ).collect(Collectors.toSet());
+        }
+
         @JsonCreator
         static CommandWrapper create(@JsonProperty("id") final long id,
                                      @JsonProperty("name") final String name,
@@ -1204,15 +1441,15 @@ public abstract class Command {
 
         @Nonnull
         List<String> validate() {
-            final List<String> errors = Lists.newArrayList();
+            final List<String> errors = new ArrayList<>();
             if (StringUtils.isBlank(name())) {
                 errors.add("Command wrapper input name cannot be blank.");
             }
 
-            final List<String> types = CommandWrapperInputType.names();
-            if (!types.contains(type())) {
+            final CommandWrapperInputType enumType = CommandWrapperInputType.fromName(type());
+            if (enumType == null) {
                 errors.add("Command wrapper input \"" + name() + "\" - Unknown type \"" + type() + "\". Known types: " +
-                        StringUtils.join(types, ", "));
+                        StringUtils.join(CommandWrapperInputType.names(), ", "));
             }
 
             if (StringUtils.isNotBlank(viaSetupCommand()) && StringUtils.isBlank(providesFilesForCommandMount())) {
@@ -1354,6 +1591,52 @@ public abstract class Command {
         @JsonProperty("multiple") public abstract boolean multiple();
         @Nullable @JsonProperty("parser") public abstract String parser();
 
+        /**
+         * What XSI type must the user have permissions on for this input to work?
+         * If we can determine a concrete XSI type, the user must have read permissions on objects of that type.
+         * If this input is the target of an output handler they may need edit permissions as well.
+         *
+         * If we cannot determine a concrete type then we return null.
+         * Without a concrete type, we cannot check permissions. (The {@link org.nrg.xdat.security.helpers.Permissions}
+         * methods do not work with abstract types.)
+         * Example:
+         * A wrapper has a subject input and a session input gets derived from that.
+         * We do not know what type that session will have without going through the full resolution process.
+         *
+         * How do we determine the XSI types of inputs when we don't have
+         * any input values and don't have that information in the wrapper inputs themselves?
+         *
+         * If the input is a project or subject, we return the concrete XSI types
+         * xnat:projectData and xnat:subjectData respectively.
+         *
+         * If the input is a scan or a resource, return the parent input's XSI type.
+         * There are no permissions for these objects separate from their parent.
+         *
+         * @param parentXsiType The XSI type of the parent input (if known)
+         * @return The XSI type needed to read (+ maybe also edit) the object that will be held by this input at resolution time
+         */
+        @JsonIgnore
+        @Nullable
+        public String xsiTypeForPermissions(final String parentXsiType) {
+            final CommandWrapperInputType enumType = enumType();
+            if (enumType == null) {
+                return null;
+            }
+            switch (enumType) {
+                case PROJECT:
+                    return XnatProjectdata.SCHEMA_ELEMENT_NAME;
+                case SUBJECT:
+                    return XnatSubjectdata.SCHEMA_ELEMENT_NAME;
+                case SCAN:
+                case RESOURCE:
+                    return parentXsiType;
+                default:
+                    // All other input types can't be determined solely from their type or parent.
+                    // And generic types like xnat:imageSessionData can't be used for permissions checks.
+                    return null;
+            }
+        }
+
         @JsonCreator
         static CommandWrapperDerivedInput create(@JsonProperty("name") final String name,
                                                  @JsonProperty("label") final String label,
@@ -1480,6 +1763,23 @@ public abstract class Command {
             return errors;
         }
 
+        /**
+         * Test if parent input is above in XNAT hierarchy.
+         *
+         * Examples
+         * If parent input is "Session" and this input is "Scan", return true.
+         * If parent input is "Session" and this input is "Project", return false.
+         *
+         * @param parent the parent
+         * @return true if parent is above input in XNAT hierarchy
+         */
+        public boolean parentIsAboveInHierarchy(final CommandWrapperInput parent) {
+            CommandWrapperInputType type = CommandWrapperInputType.fromName(type());
+            CommandWrapperInputType parentType = CommandWrapperInputType.fromName(parent.type());
+
+            return type != null && type.aboveInXnatHierarchy().contains(parentType);
+        }
+
         @AutoValue.Builder
         public abstract static class Builder {
             public abstract Builder id(final long id);
@@ -1515,11 +1815,43 @@ public abstract class Command {
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
         @Nullable @JsonProperty("as-a-child-of") public abstract String targetName();
         @JsonProperty("type") public abstract String type();
+        @Nullable @JsonProperty("xsi-type") public abstract String xsiType();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
         @Nullable @JsonProperty("description") public abstract String description();
         @Nullable @JsonProperty("content") public abstract String content();
         @Nullable @JsonProperty("tags") public abstract ImmutableList<String> tags();
+
+        @JsonIgnore
+        public CommandWrapperOutputEntity.Type enumType() {
+            final CommandWrapperOutputEntity.Type outputType = CommandWrapperOutputEntity.Type.fromName(type());
+            return outputType == null ? CommandWrapperOutputEntity.DEFAULT_TYPE : outputType;
+        }
+
+        /**
+         * The XSI type that the user must have permission to edit in order to create
+         * the object from this output handler.
+         *
+         * If the handler creates an assessor, the input parentXsiType is ignored.
+         * We must have permissions on whatever XSI type is listed in the output handler itself.
+         * (This can be null, meaning we don't know in advance if the user can create the output or not.)
+         *
+         * For other output handler types, the user must have permission to edit the parentXsiType.
+         * @param parentXsiType The XSI type of the "parent" object, under which the output object will be created.
+         * @return The XSI type for which the user must have edit permissions. (Or null if we don't know.)
+         */
+        @JsonIgnore
+        public String requiredEditPermissionXsiType(final String parentXsiType) {
+            if (enumType() == CommandWrapperOutputEntity.Type.ASSESSOR) {
+                // To create an assessor, user must be able to edit whatever type the assessor will be.
+                // They don't need edit permissions on the parent.
+                return xsiType();
+            }
+
+            // For both scan and resource output types,
+            // user needs to be able to edit the parent
+            return parentXsiType;
+        }
 
         @JsonCreator
         public static CommandWrapperOutput create(@JsonProperty("name") final String name,
@@ -1527,6 +1859,7 @@ public abstract class Command {
                                                   @JsonProperty("as-a-child-of") final String targetName,
                                                   @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                   @JsonProperty("type") final String type,
+                                                  @JsonProperty("xsi-type") final String xsiType,
                                                   @JsonProperty("label") final String label,
                                                   @JsonProperty("format") final String format,
                                                   @JsonProperty("description") final String description,
@@ -1538,6 +1871,7 @@ public abstract class Command {
                     .targetName(targetName)
                     .viaWrapupCommand(viaWrapupCommand)
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
+                    .xsiType(xsiType)
                     .label(label)
                     .format(format)
                     .description(description)
@@ -1557,6 +1891,7 @@ public abstract class Command {
                     .targetName(wrapperOutput.getWrapperInputName())
                     .viaWrapupCommand(wrapperOutput.getViaWrapupCommand())
                     .type(wrapperOutput.getType().getName())
+                    .xsiType(wrapperOutput.getXsiType())
                     .label(wrapperOutput.getLabel())
                     .format(wrapperOutput.getFormat())
                     .description(wrapperOutput.getDescription())
@@ -1572,6 +1907,7 @@ public abstract class Command {
                     .targetName(commandWrapperOutputCreation.targetName())
                     .viaWrapupCommand(commandWrapperOutputCreation.viaWrapupCommand())
                     .type(commandWrapperOutputCreation.type())
+                    .xsiType(commandWrapperOutputCreation.xsiType())
                     .label(commandWrapperOutputCreation.label())
                     .format(commandWrapperOutputCreation.format())
                     .description(commandWrapperOutputCreation.description())
@@ -1637,6 +1973,7 @@ public abstract class Command {
             public abstract Builder targetName(final String targetName);
 
             public abstract Builder type(final String type);
+            public abstract Builder xsiType(final String xsiType);
 
             public abstract Builder label(final String label);
 
@@ -1745,6 +2082,7 @@ public abstract class Command {
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
         @Nullable @JsonProperty("as-a-child-of") public abstract String targetName();
         @JsonProperty("type") public abstract String type();
+        @Nullable @JsonProperty("xsi-type") public abstract String xsiType();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("format") public abstract String format();
         @Nullable @JsonProperty("description") public abstract String description();
@@ -1758,6 +2096,7 @@ public abstract class Command {
                                                           @JsonProperty("as-a-child-of-wrapper-input") final String oldStyleTargetName,
                                                           @JsonProperty("via-wrapup-command") final String viaWrapupCommand,
                                                           @JsonProperty("type") final String type,
+                                                          @JsonProperty("xsi-type") final String xsiType,
                                                           @JsonProperty("label") final String label,
                                                           @JsonProperty("format") final String format,
                                                           @JsonProperty("description") final String description,
@@ -1769,6 +2108,7 @@ public abstract class Command {
                     .targetName(targetName != null ? targetName : oldStyleTargetName)
                     .viaWrapupCommand(viaWrapupCommand)
                     .type(type == null ? CommandWrapperOutputEntity.DEFAULT_TYPE.getName() : type)
+                    .xsiType(xsiType)
                     .label(label)
                     .format(format)
                     .description(description)
@@ -1791,6 +2131,7 @@ public abstract class Command {
             public abstract Builder viaWrapupCommand(final String viaWrapupCommand);
             public abstract Builder targetName(final String targetName);
             public abstract Builder type(final String type);
+            public abstract Builder xsiType(final String xsiType);
             public abstract Builder label(final String label);
             public abstract Builder format(final String format);
             public abstract Builder description(String description);
@@ -1968,6 +2309,11 @@ public abstract class Command {
         @JsonProperty("required") public abstract boolean required();
         @Nullable @JsonProperty("replacement-key") public abstract String rawReplacementKey();
         @Nullable @JsonProperty("sensitive") public abstract Boolean sensitive();
+
+        @JsonIgnore
+        public CommandWrapperInputType enumType() {
+            return CommandWrapperInputType.fromName(type());
+        }
 
         public String replacementKey() {
             return StringUtils.isNotBlank(rawReplacementKey()) ? rawReplacementKey() : "#" + name() + "#";

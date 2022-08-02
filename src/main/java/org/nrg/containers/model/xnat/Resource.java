@@ -4,11 +4,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.action.ServerException;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.xdat.bean.CatCatalogBean;
 import org.nrg.xdat.model.XnatAbstractresourceI;
@@ -23,12 +22,14 @@ import org.nrg.xnat.helpers.uri.archive.ResourceURII;
 import org.nrg.xnat.utils.CatalogUtils;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Slf4j
 @JsonInclude(Include.NON_NULL)
@@ -36,7 +37,6 @@ public class Resource extends XnatModelObject {
 
     @JsonIgnore private XnatResourcecatalog xnatResourcecatalog;
     @JsonProperty("integer-id") private Integer integerId;
-    private String directory;
     private List<XnatFile> files;
     @JsonProperty("datatype-string") private String datatypeString;
     @JsonProperty("parent-uri") private String parentUri;
@@ -66,7 +66,6 @@ public class Resource extends XnatModelObject {
 
         if (parentUri == null) {
             this.uri = xnatResourcecatalog.getUri();
-            this.parentUri = UriParserUtils.getArchiveUri(xnatResourcecatalog.getParent());
         } else {
             this.uri = parentUri + "/resources/" + xnatResourcecatalog.getLabel();
         }
@@ -79,13 +78,24 @@ public class Resource extends XnatModelObject {
         this.id = xnatResourcecatalog.getLabel();
         this.label = xnatResourcecatalog.getLabel();
         this.xsiType = xnatResourcecatalog.getXSIType();
-        this.directory = xnatResourcecatalog.getCatalogFile(rootArchivePath).getParent();
-        this.files = Lists.newArrayList();
+
+        if (this.parentUri == null) {
+            this.parentUri = UriParserUtils.getArchiveUri(xnatResourcecatalog.getParent());
+        }
+        String project = null;  // TODO pass in project
+        this.directory = null;
+        try {
+            File catalogFile = CatalogUtils.getOrCreateCatalogFile(rootArchivePath, xnatResourcecatalog, project);
+            this.directory = catalogFile.getParent();
+        } catch (ServerException e) {
+            log.error("Could not get catalog file: {}", e.getMessage(), e);
+        }
+        this.files = new ArrayList<>();
 
         // Only get catalog entry details if we need them
         if (loadFiles || loadTypes.contains(CommandWrapperInputType.FILE.getName()) ||
                 loadTypes.contains(CommandWrapperInputType.FILES.getName())) {
-            final CatCatalogBean cat = xnatResourcecatalog.getCatalog(rootArchivePath);
+            final CatCatalogBean cat = CatalogUtils.getCatalog(rootArchivePath, xnatResourcecatalog, project);
             if (cat == null) {
                 // would prefer to throw CommandResolutionException, but Functions, below, can't throw checked exceptions
                 throw new RuntimeException("Unable to load catalog for resource " + xnatResourcecatalog
@@ -123,41 +133,31 @@ public class Resource extends XnatModelObject {
 
     public static Function<URIManager.ArchiveItemURI, Resource> uriToModelObject(final boolean loadFiles,
                                                                                  @Nonnull final Set<String> loadTypes) {
-        return new Function<URIManager.ArchiveItemURI, Resource>() {
-            @Nullable
-            @Override
-            public Resource apply(@Nullable URIManager.ArchiveItemURI uri) {
-                XnatAbstractresourceI resource;
-                if (uri != null &&
-                        ResourceURII.class.isAssignableFrom(uri.getClass())) {
-                    resource = ((ResourceURII) uri).getXnatResource();
-
-                    if (resource != null) {
-                        return new Resource((ResourceURII) uri, loadFiles, loadTypes);
-                    }
+        return uri -> {
+            if (uri != null &&
+                    ResourceURII.class.isAssignableFrom(uri.getClass())) {
+                final XnatAbstractresourceI resource = ((ResourceURII) uri).getXnatResource();
+                if (resource != null) {
+                    return new Resource((ResourceURII) uri, loadFiles, loadTypes);
                 }
-
-                return null;
             }
+
+            return null;
         };
     }
 
     public static Function<String, Resource> idToModelObject(final UserI userI, final boolean loadFiles,
                                                              @Nonnull final Set<String> loadTypes) {
-        return new Function<String, Resource>() {
-            @Nullable
-            @Override
-            public Resource apply(@Nullable String s) {
-                if (StringUtils.isBlank(s)) {
-                    return null;
-                }
-                final XnatAbstractresourceI xnatAbstractresourceI =
-                        XnatAbstractresource.getXnatAbstractresourcesByXnatAbstractresourceId(s, userI, true);
-                if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
-                    return new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles, loadTypes);
-                }
+        return s -> {
+            if (StringUtils.isBlank(s)) {
                 return null;
             }
+            final XnatAbstractresourceI xnatAbstractresourceI =
+                    XnatAbstractresource.getXnatAbstractresourcesByXnatAbstractresourceId(s, userI, true);
+            if (xnatAbstractresourceI instanceof XnatResourcecatalog) {
+                return new Resource((XnatResourcecatalog) xnatAbstractresourceI, loadFiles, loadTypes);
+            }
+            return null;
         };
     }
 
@@ -168,13 +168,6 @@ public class Resource extends XnatModelObject {
         return null;
     }
 
-    public void loadXnatResourcecatalog(final UserI userI) {
-        if (xnatResourcecatalog == null) {
-            xnatResourcecatalog = XnatResourcecatalog.getXnatResourcecatalogsByXnatAbstractresourceId(integerId,
-                    userI, false);
-        }
-    }
-
     public XnatResourcecatalogI getXnatResourcecatalog() {
         return xnatResourcecatalog;
     }
@@ -183,12 +176,11 @@ public class Resource extends XnatModelObject {
         this.xnatResourcecatalog = xnatResourcecatalog;
     }
 
-    public String getDirectory() {
-        return directory;
-    }
-
-    public void setDirectory(final String directory) {
-        this.directory = directory;
+    private void loadXnatResourcecatalog(final UserI userI) {
+        if (xnatResourcecatalog == null) {
+            xnatResourcecatalog = XnatResourcecatalog.getXnatResourcecatalogsByXnatAbstractresourceId(integerId,
+                    userI, false);
+        }
     }
 
     public List<XnatFile> getFiles() {
@@ -218,24 +210,25 @@ public class Resource extends XnatModelObject {
     }
 
     @Override
-    public boolean equals(final Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         final Resource that = (Resource) o;
-        return Objects.equals(this.directory, that.directory) &&
-                Objects.equals(this.files, that.files);
+        return Objects.equals(integerId, that.integerId) &&
+                Objects.equals(files, that.files) &&
+                Objects.equals(datatypeString, that.datatypeString) &&
+                Objects.equals(parentUri, that.parentUri);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), directory, files);
+        return Objects.hash(super.hashCode(), integerId, files, datatypeString, parentUri);
     }
 
     @Override
     public String toString() {
         return addParentPropertiesToString(MoreObjects.toStringHelper(this))
-                .add("directory", directory)
                 .add("files", files)
                 .toString();
     }

@@ -2,12 +2,18 @@ package org.nrg.containers.model.command.entity;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public enum CommandWrapperInputType {
     STRING("string"),
@@ -29,6 +35,19 @@ public enum CommandWrapperInputType {
 
     private final String name;
 
+    private static final Map<String, CommandWrapperInputType> ENUM_MAP;
+    static {
+        Map<String, CommandWrapperInputType> map = new ConcurrentHashMap<>(CommandWrapperInputType.values().length);
+        for (CommandWrapperInputType instance : CommandWrapperInputType.values()) {
+            map.put(instance.getName(), instance);
+        }
+        ENUM_MAP = Collections.unmodifiableMap(map);
+    }
+
+    public static final Set<CommandWrapperInputType> MOUNTABLE_TYPES = Stream.of(
+            PROJECT, PROJECT_ASSET, SUBJECT_ASSESSOR, SESSION, SCAN, ASSESSOR, RESOURCE, FILE
+    ).collect(Collectors.toSet());
+
     @JsonCreator
     CommandWrapperInputType(final String name) {
         this.name = name;
@@ -39,29 +58,45 @@ public enum CommandWrapperInputType {
         return name;
     }
 
-    public static List<String> names() {
-        return Lists.transform(Arrays.asList(CommandWrapperInputType.values()), new Function<CommandWrapperInputType, String>() {
-            @Nullable
-            @Override
-            public String apply(@Nullable final CommandWrapperInputType type) {
-                return type != null ? type.getName() : "";
-            }
-        });
+    public static Collection<String> names() {
+        return ENUM_MAP.keySet();
     }
 
     @Nullable
-    public static CommandWrapperInputType fromName(String text) {
-        for (CommandWrapperInputType e : CommandWrapperInputType.values()) {
-            if (e.name.equals(text)) {
-                return e;
-            }
-        }
-        return null;
+    public static CommandWrapperInputType fromName(String name) {
+        return ENUM_MAP.get(name);
     }
 
     public static List<String> xnatTypeNames() {
-        return Arrays.asList(DIRECTORY.getName(), FILE.getName(), FILES.getName(), PROJECT.getName(),
-                PROJECT_ASSET.getName(),SUBJECT.getName(), SESSION.getName(), SCAN.getName(), ASSESSOR.getName(),
-                RESOURCE.getName(), CONFIG.getName());
+        return Stream.of(
+                DIRECTORY, FILE, FILES, PROJECT, PROJECT_ASSET, SUBJECT, SESSION, SCAN, ASSESSOR, RESOURCE, CONFIG
+        ).map(CommandWrapperInputType::getName).collect(Collectors.toList());
+    }
+
+    public Set<CommandWrapperInputType> aboveInXnatHierarchy() {
+        switch (this) {
+            case PROJECT_ASSET:
+            case SUBJECT:
+                return Collections.singleton(PROJECT);
+            case SUBJECT_ASSESSOR:
+            case SESSION:
+                return new HashSet<>(Arrays.asList(PROJECT, SUBJECT));
+            case ASSESSOR:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION));
+            case SCAN:
+                return new HashSet<>(Arrays.asList(PROJECT, SUBJECT, SESSION));
+            case RESOURCE:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN));
+            case FILE:
+            case FILE_INPUT:
+            case FILES:
+            case DIRECTORY:
+            case STRING:
+            case BOOLEAN:
+            case NUMBER:
+                return new HashSet<>(Arrays.asList(PROJECT, PROJECT_ASSET, SUBJECT, SESSION, ASSESSOR, SCAN, RESOURCE));
+            default:
+                return Collections.emptySet();
+        }
     }
 }

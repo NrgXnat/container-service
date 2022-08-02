@@ -69,22 +69,6 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
                                final @Nonnull ContainerEntityHistory containerEntityHistory) {
         containerEntity.addToHistory(containerEntityHistory);
         getSession().persist(containerEntityHistory);
-
-        final boolean historyEntryIsMoreRecentThanContainerStatus =
-                containerEntityHistory.getTimeRecorded() != null &&
-                        (containerEntity.getStatusTime() == null ||
-                                containerEntityHistory.getTimeRecorded().getTime() > containerEntity.getStatusTime().getTime());
-
-        if (historyEntryIsMoreRecentThanContainerStatus && !containerEntity.statusIsTerminal()) {
-            containerEntity.setStatusTime(containerEntityHistory.getTimeRecorded());
-            containerEntity.setStatus(containerEntityHistory.getStatus());
-            log.debug("Setting container entity {} status to \"{}\", based on history entry status \"{}\".",
-                    containerEntity.getId(),
-                    containerEntity.getStatus(),
-                    containerEntityHistory.getStatus());
-        }
-
-        update(containerEntity);
     }
 
     @Nonnull
@@ -112,8 +96,7 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
         }
         return ces;
     }
-    
-    @Nonnull
+
     public int howManyContainersAreWaiting() {
         int countOfContainersBeingWaiting = 0;
         List<ContainerEntity> ces = retrieveServicesInWaitingState();

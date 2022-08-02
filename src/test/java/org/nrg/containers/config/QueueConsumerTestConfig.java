@@ -6,21 +6,54 @@ import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
+import org.nrg.containers.api.KubernetesClientFactoryImpl;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
-import org.nrg.containers.events.listeners.DockerContainerEventListener;
+import org.nrg.containers.events.listeners.ContainerEventListener;
 import org.nrg.containers.events.listeners.DockerServiceEventListener;
-import org.nrg.containers.model.command.entity.*;
-import org.nrg.containers.model.container.entity.*;
+import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.entity.CommandInputEntity;
+import org.nrg.containers.model.command.entity.CommandMountEntity;
+import org.nrg.containers.model.command.entity.CommandOutputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperDerivedInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.command.entity.DockerCommandEntity;
+import org.nrg.containers.model.command.entity.DockerSetupCommandEntity;
+import org.nrg.containers.model.command.entity.DockerWrapupCommandEntity;
+import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.model.container.entity.ContainerEntityHistory;
+import org.nrg.containers.model.container.entity.ContainerEntityInput;
+import org.nrg.containers.model.container.entity.ContainerEntityMount;
+import org.nrg.containers.model.container.entity.ContainerEntityOutput;
+import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
-import org.nrg.containers.services.*;
-import org.nrg.containers.services.impl.*;
+import org.nrg.containers.services.CommandLabelService;
+import org.nrg.containers.services.CommandResolutionService;
+import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerEntityService;
+import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerHubService;
+import org.nrg.containers.services.DockerServerEntityService;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.services.DockerService;
+import org.nrg.containers.services.OrchestrationService;
+import org.nrg.containers.services.impl.CommandLabelServiceImpl;
+import org.nrg.containers.services.impl.ContainerFinalizeServiceImpl;
+import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.impl.DockerServerServiceImpl;
+import org.nrg.containers.services.impl.DockerServiceImpl;
+import org.nrg.containers.services.impl.HibernateContainerEntityService;
+import org.nrg.containers.services.impl.HibernateDockerServerEntityService;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
 import org.nrg.mail.services.impl.SpringBasedMailServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -55,7 +88,7 @@ public class QueueConsumerTestConfig {
      */
     @Bean
     public DockerServerService dockerServerService(final DockerServerEntityService dockerServerEntityService) {
-        return new DockerServerServiceImpl(dockerServerEntityService);
+        return new DockerServerServiceImpl(dockerServerEntityService, Mockito.mock(KubernetesClientFactoryImpl.class));
     }
 
     @Bean
@@ -84,13 +117,13 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
-    public NrgEventService nrgEventService(final EventBus eventBus) {
+    public NrgEventServiceI nrgEventService(final EventBus eventBus) {
         return new NrgEventService(eventBus);
     }
 
     @Bean
-    public DockerContainerEventListener containerEventListener(final EventBus eventBus) {
-        return new DockerContainerEventListener(eventBus);
+    public ContainerEventListener containerEventListener(final EventBus eventBus) {
+        return new ContainerEventListener(eventBus);
     }
 
     @Bean

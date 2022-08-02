@@ -77,23 +77,30 @@ public class CommandEntityTest {
                 .falseValue("")
                 .build();
 
-        final String commandOutputName = "the_output";
-        final CommandOutput commandOutput = CommandOutput.builder()
-                .name(commandOutputName)
+        final String commandOutputXmlName = "an_xml";
+        final CommandOutput commandOutputXml = CommandOutput.builder()
+                .name(commandOutputXmlName)
+                .description("I make an assessor")
+                .mount(outputMountName)
+                .path("thing.xml")
+                .build();
+        final String commandOutputFilesName = "the_output";
+        final CommandOutput commandOutputFiles = CommandOutput.builder()
+                .name(commandOutputFilesName)
                 .description("It's the output")
                 .mount(outputMountName)
                 .path("relative/path/to/dir")
                 .build();
 
         final String externalInputName = "session";
-        final CommandWrapperExternalInput externalInput = CommandWrapperExternalInput.builder()
+        final CommandWrapperExternalInput sessionExternalInput = CommandWrapperExternalInput.builder()
                 .name(externalInputName)
                 .type("Session")
                 .build();
 
         final String derivedInputName = "label";
         final String xnatObjectProperty = "label";
-        final CommandWrapperDerivedInput derivedInput = CommandWrapperDerivedInput.builder()
+        final CommandWrapperDerivedInput sessionLabelDerivedInput = CommandWrapperDerivedInput.builder()
                 .name(derivedInputName)
                 .type("string")
                 .derivedFromWrapperInput(externalInputName)
@@ -101,14 +108,22 @@ public class CommandEntityTest {
                 .providesValueForCommandInput(stringInputName)
                 .build();
 
-        final String outputHandlerName = "output-handler-name";
-        final String outputHandlerLabel = "a_label";
-        final CommandWrapperOutput outputHandler = CommandWrapperOutput.builder()
-                .name(outputHandlerName)
-                .commandOutputName(commandOutputName)
+        final String outputHandlerAssessorName = "assessor_maker";
+        final CommandWrapperOutput assessorOutputHandler = CommandWrapperOutput.builder()
+                .name(outputHandlerAssessorName)
+                .commandOutputName(commandOutputXmlName)
                 .targetName(externalInputName)
+                .type("Assessor")
+                .xsiType("my:coolDataType")
+                .build();
+        final String outputHandlerFilesName = "resource_maker";
+        final String outputHandlerFilesLabel = "a_label";
+        final CommandWrapperOutput resourceOutputHandler = CommandWrapperOutput.builder()
+                .name(outputHandlerFilesName)
+                .commandOutputName(commandOutputFilesName)
+                .targetName(outputHandlerAssessorName)
                 .type("Resource")
-                .label(outputHandlerLabel)
+                .label(outputHandlerFilesLabel)
                 .build();
 
         final String commandWrapperName = "wrappername";
@@ -116,15 +131,16 @@ public class CommandEntityTest {
         final CommandWrapper commandWrapper = CommandWrapper.builder()
                 .name(commandWrapperName)
                 .description(commandWrapperDesc)
-                .addExternalInput(externalInput)
-                .addDerivedInput(derivedInput)
-                .addOutputHandler(outputHandler)
+                .addExternalInput(sessionExternalInput)
+                .addDerivedInput(sessionLabelDerivedInput)
+                .addOutputHandler(assessorOutputHandler)
+                .addOutputHandler(resourceOutputHandler)
                 .build();
 
         COMMAND = Command.builder()
                 .name("docker_image_command")
                 .description("Docker Image command for the test")
-                .image("abc123")
+                .image("abc123:latest")
                 .type("docker")
                 .infoUrl("http://abc.xyz")
                 .addEnvironmentVariable("foo", "bar")
@@ -136,7 +152,8 @@ public class CommandEntityTest {
                 .addMount(mountOut)
                 .addInput(coolInput)
                 .addInput(stringInput)
-                .addOutput(commandOutput)
+                .addOutput(commandOutputXml)
+                .addOutput(commandOutputFiles)
                 .addPort("22", "2222")
                 .addCommandWrapper(commandWrapper)
                 .build();
@@ -780,7 +797,7 @@ public class CommandEntityTest {
         final Command setupCommand = Command.builder()
                 .name("setup")
                 .type("docker-setup")
-                .image("a-setup-image")
+                .image("a-setup-image:latest")
                 .build();
         final List<String> errors = setupCommand.validate();
         assertThat(errors, is(Matchers.<String>emptyIterable()));
@@ -793,7 +810,7 @@ public class CommandEntityTest {
         final Command wrapup = Command.builder()
                 .name("wrapup")
                 .type("docker-wrapup")
-                .image("a-wrapup-image")
+                .image("a-wrapup-image:latest")
                 .build();
         final List<String> errors = wrapup.validate();
         assertThat(errors, is(Matchers.<String>emptyIterable()));

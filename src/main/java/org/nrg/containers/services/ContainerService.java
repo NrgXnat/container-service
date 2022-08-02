@@ -127,6 +127,12 @@ public interface ContainerService {
     /**
      * Restart a service through swarm
      * @param service the service to restart
+     * @return true is successfully restarted, false otherwise
+     */
+    boolean restartService(Container service);
+    /**
+     * Restart a service through swarm
+     * @param service the service to restart
      * @param user the user
      * @return true is successfully restarted, false otherwise
      */

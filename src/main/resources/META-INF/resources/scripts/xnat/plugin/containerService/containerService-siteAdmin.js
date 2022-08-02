@@ -135,6 +135,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     XNAT.plugin.containerService.containerHostManager = containerHostManager =
         getObject(XNAT.plugin.containerService.containerHostManager || {});
 
+    let backends = [
+        { label: 'Select Backend Type', value: '' },
+        { label: 'Docker', value: 'docker' },
+        { label: 'Docker Swarm', value: 'swarm' },
+        { label: 'Kubernetes', value: 'kubernetes' }
+    ];
+
     function containerHostUrl(appended){
         appended = isDefined(appended) ? '/' + appended : '';
         return restUrl('/xapi/docker/server' + appended);
@@ -172,84 +179,145 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             name: 'name',
                             label: 'Host Name'
                         }).element,
-                        XNAT.ui.panel.input.text({
-                            name: 'host',
-                            label: 'URL'
-                        }).element,
-                        XNAT.ui.panel.input.text({
-                            name: 'cert-path',
-                            label: 'Certificate Path'
-                        }).element,
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'swarm-mode',
-                            label: 'Swarm Mode',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'true'
+                        XNAT.ui.panel.select.single({
+                            id: 'backend',
+                            name: 'backend',
+                            label: 'Type',
+                            className: 'backend-selector',
+                            options: backends
                         }),
-                        spawn('div.swarm-constraints', [
-                            spawn('p.divider.swarm-constraints-divider', '<strong>Swarm Node Constraints (Optional, only relevant when Swarm mode = ON)</strong>' +
-                                '<br> Use these settings to add site-wide and user-settable swarm node constraints. See the ' +
-                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints">Swarm documentation</a> ' +
-                                'for more information about constraints.'),
-                            spawn('button.new-swarm-constraint.btn.btn-sm.submit', {
-                                html: 'Add Swarm node constraint',
+                        spawn('div.message.host-type-placeholder','Settings will populate based on selected host type'),
+
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider','<strong>Host Settings</strong>'),
+                            XNAT.ui.panel.input.text({
+                                name: 'host',
+                                className: 'docker swarm',
+                                label: 'Host Path'
+                            }).element,
+                            XNAT.ui.panel.input.text({
+                                name: 'cert-path',
+                                className: 'docker swarm',
+                                label: 'Certificate Path'
+                            }).element
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data.'),
+                            XNAT.ui.panel.input.text({
+                                name: 'path-translation-xnat-prefix',
+                                label: 'XNAT Path Prefix',
+                                addClass: 'path-prefix',
+                                description: 'Enter the XNAT_HOME server path, i.e. "/data/xnat"'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'path-translation-docker-prefix',
+                                label: 'Server Path Prefix',
+                                className: 'path-prefix',
+                                description: 'Enter the Server path to the XNAT_HOME mount, i.e. "/docker/my-data/XNAT"'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider', '<strong>Re-Pull Images on Init (Optional)</strong><br> Use this setting to force the Docker server to re-pull your images whenever the Apache Tomcat server is restarted. Images are only pulled if they are missing.'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'pull-images-on-xnat-init',
+                                label: 'Re-pull Images?',
+                                onText: 'ON',
+                                offText: 'OFF',
+                                value: 'false'
+                            }),
+                        ]),
+                        spawn('div.host-type-settings.swarm',[
+                            spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
+                                '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
+                                'by requiring jobs to match (or not match) provided values. ' +
+                                'Properties that can be constrained include node metadata along with node and engine labels. ' +
+                                'See Docker Swarm documentation on ' +
+                                '<a href="https://docs.docker.com/engine/swarm/services/#placement-constraints" target="_blank">service placement constraints</a> and the ' +
+                                '<a href="https://docs.docker.com/engine/reference/commandline/service_create/#specify-service-constraints---constraint" target="_blank">docker service create command</a> ' +
+                                'for more information about allowed constraints.'),
+                        ]),
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
+                                '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
+                                'by requiring jobs to match (or not match) provided node label values. ' +
+                                'See Kubernetes documentation on ' +
+                                '<a href="https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/" target="_blank">Assign[ing] Pods to Nodes using Node Affinity</a> ' +
+                                'for more information about allowed constraints.'),
+                        ]),
+                        spawn('div.host-type-settings.swarm.kubernetes',[
+                            spawn('button.new-swarm-constraint.btn.btn-sm', {
+                                html: 'Add Constraint',
+                                style: { 'margin-top': '0.75em' },
                                 onclick: function(){
                                     containerHostManager.addSwarmConstraint();
                                     return false;
                                 }
                             })
                         ]),
-                        spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Docker Server mount point for your XNAT data.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'path-translation-xnat-prefix',
-                            label: 'XNAT Path Prefix',
-                            addClass: 'path-prefix',
-                            description: 'Enter the XNAT_HOME server path, i.e. "/data/xnat"'
-                        }),
-                        XNAT.ui.panel.input.text({
-                            name: 'path-translation-docker-prefix',
-                            label: 'Docker Server Path Prefix',
-                            addClass: 'path-prefix',
-                            description: 'Enter the Docker Server path to the XNAT_HOME mount, i.e. "/docker/my-data/XNAT"'
-                        }),
-                        spawn('p.divider', '<strong>Re-Pull Images on Init (Optional)</strong><br> Use this setting to force the Docker server to re-pull your images whenever the Apache Tomcat server is restarted. Images are only pulled if they are missing.'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'pull-images-on-xnat-init',
-                            label: 'Re-pull Images?',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'false'
-                        }),
-                        spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
-                            'Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. ' +
-                            '<br>If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is root.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'container-user',
-                            label: 'Container User'
-                        }),
-                        spawn('p.divider', '<strong>Automatically cleanup completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'auto-cleanup',
-                            label: 'Automatically cleanup containers?',
-                            onText: 'ON',
-                            offText: 'OFF',
-                            value: 'true'
-                        }),
-                        spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time, only relevant for Swarm mode.'),
-                        XNAT.ui.panel.input.text({
-                            name: 'max-concurrent-finalizing-jobs',
-                            label: 'Max concurrent finalizing jobs',
-                            description: 'Leave blank for no throttling'
-                        }),
-                        spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
-                        XNAT.ui.panel.input.switchbox({
-                            name: 'status-email-enabled',
-                            label: 'Email on container completion/failure?',
-                            onText: 'YES',
-                            offText: 'NO',
-                            value: 'true'
-                        })
+                        spawn('div.host-type-settings.docker.swarm',[
+                            spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
+                                'If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is "root".' +
+                                '<br><br>Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. '),
+                        ]),
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
+                                '<br><br><strong>Note: In Kubernetes mode, value must be an integer uid.</strong>')
+                        ]),
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            XNAT.ui.panel.input.text({
+                                name: 'container-user',
+                                label: 'Container User',
+                                className: 'validate-container-user'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Automatically clean up completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'auto-cleanup',
+                                label: 'Automatically clean up containers?',
+                                onText: 'ON',
+                                offText: 'OFF',
+                                value: 'true'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.swarm',[
+                            spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time.'),
+                            XNAT.ui.panel.input.text({
+                                name: 'max-concurrent-finalizing-jobs',
+                                label: 'Max concurrent finalizing jobs',
+                                className: 'swarm',
+                                description: 'Leave blank for no throttling'
+                            }),
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                            spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'status-email-enabled',
+                                label: 'Email on container completion/failure?',
+                                onText: 'YES',
+                                offText: 'NO',
+                                value: 'true'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>GPU Vendor</strong><br> Select GPU Vendor in the environment'),
+                            XNAT.ui.panel.select.single({
+                                name: 'gpu-vendor',
+                                label: 'GPU Vendor',
+                                options:
+                                    [
+                                        { label: 'Select GPU Vendor', value: '' },
+                                        { label: 'Nvidia', value: 'nvidia' },
+                                        { label: 'AMD', value: 'amd' },
+                                    ]
+                            })
+                        ])
                     ])
                 );
 
@@ -261,7 +329,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     $formContainer.find('form').setValues(item);
                 }
 
-                $('input[name="swarm-mode"]').change();
+                containerHostManager.displaySettings(item.backend || false);
+
+                $('select[name=backend]').change();
             },
             buttons: [
                 {
@@ -269,19 +339,32 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     isDefault: true,
                     close: false,
                     action: function(obj){
-                        var $form = obj.$modal.find('form');
-                        var $host = $form.find('input[name=host]');
-                        var pathPrefixes = $form.find('input.path-prefix').toArray();
+                        let $form = obj.$modal.find('form');
+                        let pathPrefixes = $form.find('input.path-prefix').toArray();
 
                         $form.find(':input').removeClass('invalid');
 
-                        var errors = [];
-                        if (csValidator([$host]).length) errors = errors.concat(csValidator([$host]));
+                        let errors = [];
+                        // if (csValidator([$host]).length) errors = errors.concat(csValidator([$host]));
                         if (csMultiFieldValidator(pathPrefixes).length) errors = errors.concat(csMultiFieldValidator(pathPrefixes));
+
+                        // custom validation for container user field
+                        let containerUser = $form.find('input[name=container-user]').val();
+                        let hostType = $form.find('.backend-selector').find('option:selected').val();
+                        if (containerUser.length && hostType === 'kubernetes') {
+                            let acceptablePatterns = [
+                                /^[0-9]+$/
+                            ];
+                            let passK8sValidation = false;
+                            acceptablePatterns.forEach((pattern) => {
+                                if (pattern.test(containerUser)) passK8sValidation=true;
+                            });
+                            if (!passK8sValidation) errors = errors.concat('Validation error: Kubernetes mode expects an integer UID for the container user input')
+                        }
 
                         if (errors.length) {
 
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
@@ -328,30 +411,54 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     function submitHostEditor($form){
         // validate path prefix fields
 
-
         $form.submitJSON({
             method: 'POST',
             url: containerHostUrl(),
             success: function(){
+                // manually set hostType to accurately refresh the image list manager
+                containerHostManager.hostType = $(this[0]).find('select[name=backend]').find('option:selected').val();
                 containerHostManager.refreshTable();
+                imageListManager.refresh();
                 xmodal.closeAll();
                 XNAT.ui.banner.top(2000, 'Saved.', 'success')
+            },
+            fail: function(e){
+                console.warn(e);
+                XNAT.dialog.open({
+                    title: 'Form Submission Error',
+                    width: 300,
+                    content: displayErrors(e.responseText)
+                })
             }
         });
     }
 
-    $(document).on('change', 'input[name="swarm-mode"]', function(){
-        if ($(this).prop('checked')) {
-            $('.swarm-constraints').show();
-        } else {
-            $('.swarm-constraints').hide();
-        }
+    $(document).on('change','select.backend-selector',function(){
+        containerHostManager.displaySettings($(this).find(':selected').prop('value'))
     });
+
+    containerHostManager.displaySettings = function(selectedType) {
+        $(document).find('.host-type-settings').hide();
+        if (!selectedType) {
+            $(document).find('.host-type-placeholder').show();
+            return false;
+        }
+        else {
+            $(document).find('.host-type-placeholder').hide();
+            $(document).find('.host-type-settings').each(function(){
+                if ($(this).hasClass(selectedType)) $(this).slideDown(200);
+            });
+            // calculate innerheight
+            var dlg = XNAT.dialog.getDialog();
+            var bodyHeight = (dlg.windowHeight * 0.9) - dlg.footerHeight - 40 - 2;
+            $(document).find('.xnat-dialog.open .xnat-dialog-body').css('max-height',bodyHeight); // reset inner height of dialog
+        }
+    };
 
     containerHostManager.addSwarmConstraint = function() {
         var element = spawn('div#swarm-constraint-'+containerHostManager.nconstraints+'.swarm-constraint', [
             spawn('a#close-'+containerHostManager.nconstraints+'.close', {
-                html: '<i class="fa fa-close"/>',
+                html: '<i class="fa fa-close" title="Remove Constraint"/>',
                 onclick: function(){
                     var idx = parseInt($(this).prop('id').replace('close-',''));
                     // Remove all of this constraint, then relabel
@@ -384,7 +491,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             XNAT.ui.panel.input.text({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:attribute',
                 label: 'Node attribute',
-                description: 'Attribute you wish to constrain. E.g., node.role or engine.instance.spot'
+                description: 'Attribute you wish to constrain. E.g., node.labels.mylabel'
             }),
             XNAT.ui.panel.input.radioGroup({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:comparator',
@@ -421,9 +528,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         // add table header row
         chmTable.tr()
             .th({ addClass: 'left', html: '<b>Host Name</b>' })
-            .th('<b>Host Path</b>')
+            // .th({ addClass: 'hostPath', html: '<b>Host Path</b>'})
             .th('<b>Default</b>')
-            .th('<b>Swarm Mode</b>')
+            .th('<b>Type</b>')
             .th('<b>Status</b>')
             .th('<b>Actions</b>');
 
@@ -473,12 +580,25 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         containerHostManager.getAll().done(function(data){
             data = [].concat(data);
+
+            if (Array.isArray(data)) {
+                containerHostManager.hostType = data[0].backend;
+            } else {
+                containerHostManager.hostType = data.backend;
+            }
+            if (containerHostManager.hostType.toLowerCase() === 'kubernetes') {
+                // catch the race condition, if the Image List manager table has already rendered
+                $(document).find('button.new-image').addClass('hidden');
+            } else {
+                $(document).find('button.new-image').removeClass('hidden');
+            }
+
             data.forEach(function(item){
                 chmTable.tr({ title: item.name, data: { id: item.id, host: item.host, certPath: item.certPath}})
                     .td([editLink(item, item.name)]).addClass('host')
-                    .td([ spawn('div.center', [item.host]) ])
+                    // .td([ spawn('div.center', [item.host]) ]).addClass('hostPath')
                     .td([ spawn('div.center', [defaultToggle(item)]) ])
-                    .td([ spawn('div.center', item['swarm-mode'] ? 'ON' : 'OFF' )])
+                    .td([ spawn('div.center', [ backends.filter((backend) => { return backend.value === item.backend } )[0].label ]) ])
                     .td([ spawn('div.center', [hostPingStatus(item.ping)]) ])
                     .td([ spawn('div.center', [editButton(item)]) ])
             });
@@ -649,7 +769,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
                         var errors = csValidator([$url,$name]);
                         if (errors.length) {
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
@@ -754,12 +874,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             return (status) ? valIfTrue : valIfFalse;
         }
 
-        function hubPingStatus(ping) {
-            var status = {};
-            if (ping !== undefined) {
-                status = (ping) ? { label: 'OK', message: 'Ping Status: OK' } : { label: 'Down', message: 'Ping Status: False' };
-            } else {
-                status = { label: 'Error', message: 'No response to ping' };
+        function hubPingStatus(hubStatus) {
+            var status = { label: 'Error', message: 'Hub status not reported.'};
+            if (hubStatus) {
+                status = {label: hubStatus.response, message: hubStatus.message}
             }
             return spawn('span',{ title: status.message }, status.label);
         }
@@ -800,7 +918,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     .td([ editLink(item, item.name) ]).addClass('name')
                     .td( item.url )
                     .td([ defaultToggle(item)] ).addClass('status')
-                    .td([ spawn('div.center', [hubPingStatus(item.ping)]) ])
+                    .td([ spawn('div.center', [hubPingStatus(item.status)]) ])
                     .td([ spawn('div.center', [editButton(item), spacer(10), deleteButton(item)]) ]);
             });
 
@@ -872,7 +990,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     console.log('imageListManagement.js');
 
-    var imageListManager,
+    var imageList,
+        imageListManager,
         imageFilterManager,
         addImage,
         commandListManager,
@@ -897,6 +1016,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 label: 'On Scan Archive'
             }
         ];
+
+    XNAT.plugin.containerService.imageList = imageList =
+        getObject(XNAT.plugin.containerService.imageList || []);
 
     XNAT.plugin.containerService.imageListManager = imageListManager =
         getObject(XNAT.plugin.containerService.imageListManager || {});
@@ -926,7 +1048,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             "enabled": true
         }
     ];
-    imageListManager.images = {}; // populate this object via rest
+    imageListManager.images = []; // populate this object via rest
 
     function imageUrl(appended,force){
         appended = (appended) ? '/' + appended : '';
@@ -1058,11 +1180,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         var errors = csValidator([$image,$tag]);
                         if (errors.length) {
 
-                            XNAT.dialog.open({
+                            XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
                                 content: displayErrors(errors)
-                            })
+                            });
                         } else {
                             // stitch together the image and tag definition, if a tag value was specified.
                             if ($tag.val().length > 0 && $tag.val().indexOf(':') < 0) {
@@ -1119,7 +1241,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             success: function(){
                                 imageListManager.refreshTable();
                                 commandConfigManager.refreshTable();
-                                xmodal.closeAll();
+                                XNAT.ui.dialog.closeAll();
                                 XNAT.ui.banner.top(2000, 'Command definition updated.', 'success');
                             },
                             fail: function(e){
@@ -1160,6 +1282,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 buttons: dialogButtons,
                 height: 640,
                 before: spawn('!',[
+                    spawn('p', 'Image: '+commandDef['image']),
                     spawn('p', 'Command ID: '+sanitizedVars['id']),
                     spawn('p', 'Hash: '+sanitizedVars['hash']),
                     spawn('p', [
@@ -1176,15 +1299,26 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 language: 'json'
             });
 
+
             _editor.openEditor({
-                title: 'Add New Command to '+imageName,
+                title: 'Add New Command',
                 classes: 'plugin-json',
                 buttons: {
                     create: {
                         label: 'Save Command',
                         isDefault: true,
+                        close: false,
                         action: function(){
                             var editorContent = _editor.getValue().code;
+                            commandDef = JSON.parse(editorContent);
+
+                            if (commandDef.image === undefined || commandDef.image.length === 0) {
+                                XNAT.ui.dialog.message('Error: This command definition does not specify an image and cannot be saved.');
+                                return false;
+                            }
+                            else {
+                                imageName = editorContent.image;
+                            }
 
                             var url = (imageName) ? commandUrl('?image='+imageName) : commandUrl();
 
@@ -1195,7 +1329,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 success: function(obj){
                                     imageListManager.refreshTable();
                                     commandConfigManager.refreshTable();
-                                    xmodal.close(obj.$modal);
+                                    XNAT.ui.dialog.closeAll();
                                     XNAT.ui.banner.top(2000, 'Command definition created.', 'success');
                                 },
                                 fail: function(e){
@@ -1216,9 +1350,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     // create table for listing commands
     commandListManager.table = function(image){
 
-        var imageName = image.tags[0];
-        var imageId = image['imageSha'];
-        var $commandListContainer = $(document).find('#'+imageId+'-commandlist');
+        var imageName = image.imageName;
+        var imageId = image['imageSha'] || image.imageName;
+        var $commandListContainer = $(document.getElementById(imageId+'-commandlist'));
 
         // initialize the table - we'll add to it below
         var clmTable = XNAT.table({
@@ -1346,7 +1480,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
             if (data.length === 0) {
                 $commandListContainer.parents('.imageContainer').addClass('no-commands hidden');
-                imageListManager.images[imageId].hideable = true; // Store a parameter that tracks whether we have hidden this image in the list for use in toggling.
+                var k = imageListManager.images.findIndex(function(image) { return image.imageSha === imageId});
+                imageListManager.images[k].hideable = true; // Store a parameter that tracks whether we have hidden this image in the list for use in toggling.
 
                 imageFilterManager.refresh();
             }
@@ -1361,22 +1496,37 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     }
 
     imageFilterManager.init = imageFilterManager.refresh = function(){
+        let hostType = containerHostManager.hostType;
 
+        var $header = $('#image-filter-bar').parents('.panel').find('.panel-heading');
         var $footer = $('#image-filter-bar').parents('.panel').find('.panel-footer');
 
-        // add the 'add new' button to the panel footer
-        var newImage = spawn('button.new-image.btn.btn-sm.submit', {
-            html: 'Add New Image',
+        // add two 'add new' buttons to the panel header. The 'add new image' button is hidden in a Kubernetes environment
+        const newImage = spawn('button.new-image.btn.btn-sm.pad5', {
+            html: 'New Image',
             onclick: function(){
                 addImage.dialog(null);
             }
         });
-        $footer.empty().append(spawn('div.pull-right', [
-            newImage
+        const newCommand = spawn('button.new-command.btn.btn-sm.pad5',{
+            html: 'New Command',
+            onclick: function(){
+                commandDefinition.dialog(null,true)
+            }
+        });
+
+        let buttonSet = [ newImage, spacer(6), newCommand ];
+        if (hostType !== undefined && hostType === 'kubernetes') buttonSet = [ newCommand ];
+
+        $header.empty().append(spawn('!',[
+            spawn('h3.panel-title', [
+                'Installed Images and Commands',
+                spawn('span.pull-right', { style: { 'margin-top': '-4px' }}, buttonSet)
+            ])
         ]));
         var $hideableImages = $(document).find('.imageContainer.no-commands');
         if ($hideableImages.length) {
-            $footer.append(spawn('div.pull-right.pad5v',[
+            $footer.empty().append(spawn('div.pull-right.pad5v',[
                 spawn('a.show-hidden-images.pad20h', { href: '#!', data: { 'hidden': 'true' }},[
                     spawn('i.fa.fa-eye-slash.pad5h'),
                     spawn('span', hiddenImagesMessage($hideableImages.length, true))
@@ -1390,13 +1540,86 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     imageListManager.init = function(container){
         var $manager = $$(container||'div#image-list-container');
 
-        function newCommandButton(image) {
-            return spawn('button.btn.sm',{
-                html: 'Add New Command',
-                onclick: function(){
-                    commandDefinition.dialog(null,true,image.tags[0])
-                }
-            });
+        // function newCommandButton() {
+        //     return spawn('button.btn.sm',{
+        //         html: 'New Command',
+        //         onclick: function(){
+        //             commandDefinition.dialog(null,true)
+        //         }
+        //     });
+        // }
+
+        function deleteCommandList(image){
+            content = spawn('div',[
+                spawn('p','Are you sure you\'d like to remove the '+image.imageName+' image listing and its commands?'),
+                spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
+            ]);
+
+
+            XNAT.dialog.open({
+                width: 400,
+                content: content,
+                buttons: [
+                    {
+                        label: 'OK',
+                        isDefault: true,
+                        close: false,
+                        action: function (obj) {
+                            commandListManager.getAll(image.imageName).done((commands) => {
+                                if (!commands.length || !Array.isArray(commands)) return false;
+                                let itemTracker = [];
+
+                                commands.forEach((item) => {
+                                    console.log('delete id ' + item.id);
+                                    XNAT.xhr.delete({
+                                        url: commandUrl('/' + item.id),
+                                        async: false,
+                                        success: function () {
+                                            console.log('"' + item.name + '" command deleted');
+                                            itemTracker.push([item.name,true]);
+                                        },
+                                        failure: function(e) {
+                                            console.log(e);
+                                            itemTracker.push([item.name,false]);
+                                        }
+                                    });
+                                });
+                                
+                                let deletedCommands = [], errList = [];
+                                itemTracker.forEach((item) => { if (item[1]) { deletedCommands.push(item[0]) } else { errList.push(item[0]) }});
+
+                                if (deletedCommands.length == commands.length) {
+                                    XNAT.ui.banner.top(2000, '<b>Deleted commands: "' + deletedCommands.join(', ') + '"</b>.', 'success');
+                                }
+                                else if (deletedCommands.length) {
+                                    XNAT.ui.dialog.message(
+                                        'Command Deletion Error',
+                                        '<p>Could only delete some commands: <b>"' + deletedCommands.join(', ') + '"</b>.</p> <p>These commands could not be deleted: <b>' + errList.join(',') +'</b></p>',
+                                        'OK'
+                                    );
+                                }
+                                else {
+                                    XNAT.ui.dialog.message(
+                                        'Command Deletion Error',
+                                        '<b>Error: Could not delete commands</b>.',
+                                        'OK'
+                                    );
+                                }
+
+                                imageListManager.refreshTable();
+                                commandConfigManager.refreshTable();
+                                XNAT.plugin.containerService.historyTable.refresh();
+                                XNAT.ui.dialog.closeAll();
+                            });
+                        }
+                    },
+                    {
+                        label: 'Cancel',
+                        close: true
+                    }
+                ]
+            })
+
         }
 
         function deleteImage(image,force,retries) {
@@ -1406,11 +1629,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             force = force || false;
             if (!force) {
                 content = spawn('div',[
-                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.tags[0]+' image?'),
+                    spawn('p','Are you sure you\'d like to ' + retryStr + 'delete the '+image.imageName+' image and its commands?'),
                     spawn('p', [ spawn('strong', 'This action cannot be undone.' )])
                 ]);
             } else {
-                content = spawn('p','Containers may have been run using '+image.tags[0]+'. Please confirm that you want to delete this image.');
+                content = spawn('p','Containers may have been run using '+image.imageName+'. Please confirm that you want to delete this image.');
             }
             XNAT.dialog.open({
                 width: 400,
@@ -1424,14 +1647,19 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             XNAT.xhr.delete({
                                 url: imageUrl(image['image-id'],force),
                                 success: function(){
-                                    XNAT.ui.banner.top(1000, '<b>' + image.tags[0] + ' image deleted, along with its commands and configurations.', 'success');
+                                    XNAT.ui.banner.top(1000, '<b>' + image.imageName + ' image deleted, along with its commands and configurations.', 'success');
                                     imageListManager.refreshTable();
                                     commandConfigManager.refreshTable();
                                     XNAT.plugin.containerService.historyTable.refresh();
                                     XNAT.dialog.closeAll();
                                 },
                                 fail: function(e){
-                                    if (e.status === 500) {
+                                    if (e.status === 405) {
+                                        // error if user tries to delete a remote image using this command
+                                        XNAT.dialog.closeAll();
+                                        deleteCommandList(image,true);
+                                    }
+                                    else if (e.status === 500) {
                                         XNAT.dialog.closeAll();
                                         if (retries < 3) {
                                             deleteImage(image,true, ++retries);
@@ -1455,35 +1683,58 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
 
         function deleteImageButton(image) {
-            return spawn('button.btn.sm',{
-                onclick: function(){
-                    deleteImage(image);
-                }
-            }, 'Delete Image');
+            var remoteImage = (image['image-id'] === undefined);
+            if (remoteImage){
+                return spawn('button.btn.sm.remove-image',{
+                    onclick: function(){
+                        deleteCommandList(image)
+                    }
+                }, 'Delete Image');
+
+            }
+            else {
+                return spawn('button.btn.sm',{
+                    onclick: function(){
+                        deleteImage(image);
+                    }
+                }, 'Delete Image');
+            }
+
         }
 
         imageListManager.container = $manager;
 
         imageListManager.getAll().done(function(data){
             if (data.length > 0) {
-                data = data.sort(function(a,b){ if (a.tags.length && b.tags.length) return (a.tags[0] > b.tags[0]) ? 1 : -1; });
+                data = data.sort(function(a,b){ return (a.imageName > b.imageName) ? 1 : -1; });
 
                 data.forEach(function(imageInfo){
+                    // images can now be listed without pointing to a locally installed SHA.
+                    // these images exist remotely and will be pulled on demand.
+
                     if (imageInfo.tags.length && imageInfo.tags[0] !== "<none>:<none>") {
 
-                        imageInfo['imageSha'] = imageInfo['image-id'].substring(7); // cut out leading 'sha256:' from image ID for use as a HTML ID.
+                        // add image name to canonical object
+                        if (imageInfo.imageName === undefined) {
+                            imageInfo.imageName = imageInfo.tags[0];
+                        }
+
+                        if (imageInfo['image-id'] !== undefined) {
+                            imageInfo['imageSha'] = imageInfo['image-id'].substring(7); // cut out leading 'sha256:' from image ID for use as a HTML ID.
+                        }
+                        else {
+                            imageInfo['imageSha'] = imageInfo.imageName;
+                        }
 
                         // add image to canonical list of images
-                        imageListManager.images[imageInfo['imageSha']] = imageInfo;
+                        imageListManager.images.push(imageInfo);
+
 
                         $manager.append(spawn('div.imageContainer',[
                             spawn('h3.imageTitle',[
-                                imageInfo.tags[0],
+                                imageInfo.imageName,
                                 spawn( 'span.pull-right',[
                                     deleteImageButton(imageInfo)
-                                ]),
-                                spawn( 'span.pull-right.pad10h',[
-                                    newCommandButton(imageInfo)
                                 ])
                             ]),
                             spawn('div.clearfix.clear'),

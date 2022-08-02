@@ -6,13 +6,14 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
-import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
@@ -25,9 +26,9 @@ import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
+import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
-import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
@@ -92,17 +93,18 @@ public class DockerRestApi extends AbstractXapiRestController {
             notes = "Save new Docker server configuration values")
     @ApiResponses({
             @ApiResponse(code = 201, message = "The Docker server configuration was saved"),
-            @ApiResponse(code = 400, message = "Must set the \"host\" property in request body"),
+            @ApiResponse(code = 400, message = "Configuration was invalid"),
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/server", method = POST, restrictTo = Admin)
     public ResponseEntity<DockerServerWithPing> setServer(final @RequestBody DockerServer dockerServer)
             throws JsonProcessingException, UnauthorizedException, BadRequestException {
-        if (StringUtils.isBlank(dockerServer.host())) {
-            throw new BadRequestException("Must set the \"host\" property in request body.");
-        }
 
-        final DockerServerWithPing server = dockerService.setServer(dockerServer);
-        return new ResponseEntity<>(server, HttpStatus.CREATED);
+        try {
+            final DockerServerWithPing server = dockerService.setServer(dockerServer);
+            return new ResponseEntity<>(server, HttpStatus.CREATED);
+        } catch (InvalidDefinitionException e) {
+            throw new BadRequestException(e.getMessage());
+        }
     }
 
     @XapiRequestMapping(value = "/server/ping", method = GET)
@@ -191,19 +193,19 @@ public class DockerRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = "/hubs/{id:" + ID_REGEX + "}/ping", method = GET)
-    @ApiOperation(value = "Ping Docker Hub by ID", notes = "Returns \"OK\" on success.")
+    @ApiOperation(value = "Ping Docker Hub by ID", notes = "Returns status, \"OK\" response, and message on success.")
     @ResponseBody
-    public String pingHub(final @PathVariable long id,
-                          final @RequestParam(value = "username", required = false) String username,
-                          final @RequestParam(value = "password", required = false) String password)
+    public DockerHubBase.DockerHubStatus pingHub(final @PathVariable long id,
+                                                 final @RequestParam(value = "username", required = false) String username,
+                                                 final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException {
         return dockerService.pingHub(id, username, password, null, null);
     }
 
     @XapiRequestMapping(value = "/hubs/{name:" + NAME_REGEX + "}/ping", method = GET)
-    @ApiOperation(value = "Ping Docker Hub by Name", notes = "Returns \"OK\" on success.")
+    @ApiOperation(value = "Ping Docker Hub by Name", notes = "Returns status, \"OK\" response, and message on success.")
     @ResponseBody
-    public String pingHub(final @PathVariable String name,
+    public DockerHubBase.DockerHubStatus pingHub(final @PathVariable String name,
                           final @RequestParam(value = "username", required = false) String username,
                           final @RequestParam(value = "password", required = false) String password)
             throws NoDockerServerException, DockerServerException, NotFoundException, NotUniqueException {
@@ -271,8 +273,9 @@ public class DockerRestApi extends AbstractXapiRestController {
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/images", method = GET, produces = JSON)
     @ResponseBody
-    public List<DockerImage> getImages() throws NoDockerServerException, DockerServerException {
-        return dockerService.getImages();
+    public List<DockerImage> getImages(final @RequestParam(value = "installed", defaultValue = "false") Boolean installed)
+            throws NoDockerServerException, DockerServerException {
+        return installed == true ? dockerService.getInstalledImages() : dockerService.getAllImages();
     }
 
     @ApiOperation(value = "Get summary list of images and commands.")

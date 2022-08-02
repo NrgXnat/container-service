@@ -69,7 +69,7 @@ public class ContainerEntityTest {
                 .wrapperId(1L)
                 .wrapperName("another name")
                 .image("xnat/dcm2niix:1.0")
-                .resolvedInputTrees(Collections.<ResolvedInputTreeNode<? extends Command.Input>>singletonList(inputTreeNode))
+                .resolvedInputTrees(Collections.singletonList(inputTreeNode))
                 .commandLine("Anything I want")
                 .build();
 
@@ -77,8 +77,9 @@ public class ContainerEntityTest {
         final String workflowId = "workflow";
         final UserI mockAdmin = Mockito.mock(UserI.class);
         when(mockAdmin.getLogin()).thenReturn("admin");
-        final Container container = Container.containerFromResolvedCommand(resolvedCommand, containerId, mockAdmin.getLogin())
-                .toBuilder()
+        final Container container = Container.builderFromResolvedCommand(resolvedCommand)
+                .userId(mockAdmin.getLogin())
+                .containerId(containerId)
                 .workflowId(workflowId)
                 .build();
         final ContainerEntity toCreate = ContainerEntity.fromPojo(container);

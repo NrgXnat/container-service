@@ -1,9 +1,11 @@
 package org.nrg.containers.config;
 
-import org.nrg.containers.api.DockerControlApi;
-import org.nrg.containers.events.DockerStatusUpdater;
+import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -25,17 +27,21 @@ import java.util.concurrent.TimeUnit;
 @Import({IntegrationTestConfig.class, MockJmsConfig.class})
 public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
     @Bean
-    public DockerStatusUpdater dockerStatusUpdater(final DockerControlApi dockerControlApi,
-                                                   final DockerServerService dockerServerService,
-                                                   final ContainerService containerService,
-                                                   @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo) {
-        return new DockerStatusUpdater(dockerControlApi, dockerServerService, containerService, mockXnatAppInfo);
+    public ContainerStatusUpdater containerStatusUpdater(final ContainerControlApi containerControlApi,
+                                                         final ContainerService containerService,
+                                                         final DockerServerService dockerServerService,
+                                                         final NrgEventServiceI eventService,
+                                                         @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
+                                                         final KubernetesClientFactory kubernetesClientFactory) {
+        return new ContainerStatusUpdater(
+                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo, kubernetesClientFactory
+        );
     }
 
     @Bean
-    public TriggerTask dockerEventPullerTask(final DockerStatusUpdater dockerStatusUpdater) {
+    public TriggerTask containerStatusUpdateTask(final ContainerStatusUpdater containerStatusUpdater) {
         myTask = new TriggerTask(
-                dockerStatusUpdater,
+                containerStatusUpdater,
                 new PeriodicTrigger(250L, TimeUnit.MILLISECONDS)
         );
         return myTask;
