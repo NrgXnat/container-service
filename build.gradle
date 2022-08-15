@@ -42,7 +42,7 @@ dependencyManagement {
         }
     }
 }
-def vDockerClient = "5.2.2"
+def vDockerClient = "6.0.4"
 def vAutoValue = "1.3"
 def vKubernetesClient = "15.0.+"
 def vPowerMock = "1.7.0"
@@ -51,7 +51,7 @@ def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
 def vH2 = "1.4.197"
-def vJersey = "2.32"
+def vJersey = "3.0.6"
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
