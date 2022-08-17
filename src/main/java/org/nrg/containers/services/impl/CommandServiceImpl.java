@@ -323,7 +323,7 @@ public class CommandServiceImpl implements CommandService {
                                                      final String wrapperName,
                                                      long wrapperId) throws NotFoundException {
         final CommandConfiguration commandConfiguration = getConfiguration(project, commandId, wrapperName, wrapperId);
-        final Command command = getCommandWithOneWrapper(wrapperId);
+        final Command command = getCommandWithOneWrapper(wrapperId == 0L ? getWrapperId(commandId, wrapperName) : wrapperId);
         return commandConfiguration.apply(command);
     }
 
