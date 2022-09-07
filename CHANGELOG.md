@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.1
+[Released 2022-09-07](https://bitbucket.org/xnatdev/container-service/src/3.2.1/).
+
+### Bugfixes
+
+* [CS-767][]: Fixed issue with command automation which failed with the message "No command with wrapper with id 0" during command resolution.
+
+[CS-767]: https://issues.xnat.org/browse/CS-767
+
 ## 3.2.0
 
 [Released 2022-08-02](https://bitbucket.org/xnatdev/container-service/src/3.2.0/).
