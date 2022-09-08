@@ -144,8 +144,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Convert a Command-Event Automation item to an Event Service Subscription")
     @ResponseBody
     public ResponseEntity<Void> convert(final @PathVariable Long id) throws Exception {
-        UserI user = getSessionUser();
-        commandEventMappingService.convert(id, user);
+        commandEventMappingService.convert(id);
         return ResponseEntity.ok().build();
     }
 
