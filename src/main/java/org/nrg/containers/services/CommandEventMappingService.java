@@ -10,10 +10,10 @@ import java.util.List;
 
 public interface CommandEventMappingService extends BaseHibernateService<CommandEventMapping> {
     void convert(long id) throws Exception;
-    void enable(long id) throws NotFoundException;
-    void enable(CommandEventMapping commandEventMapping);
-    void disable(long id) throws NotFoundException;
-    void disable(CommandEventMapping commandEventMapping);
+    @Deprecated void enable(long id) throws NotFoundException;
+    @Deprecated void enable(CommandEventMapping commandEventMapping);
+    @Deprecated void disable(long id) throws NotFoundException;
+    @Deprecated void disable(CommandEventMapping commandEventMapping);
 
     List<CommandEventMapping> findByEventType(String eventType);
     List<CommandEventMapping> findByEventType(String eventType, boolean onlyEnabled);

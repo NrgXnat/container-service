@@ -122,22 +122,26 @@ public class HibernateCommandEventMappingService extends AbstractHibernateEntity
     }
 
     @Override
+    @Deprecated
     public void enable(final long id) throws NotFoundException {
         enable(get(id));
     }
 
     @Override
+    @Deprecated
     public void enable(final CommandEventMapping commandEventMapping) {
         commandEventMapping.setEnabled(true);
         update(commandEventMapping);
     }
 
     @Override
+    @Deprecated
     public void disable(final long id) throws NotFoundException {
         disable(get(id));
     }
 
     @Override
+    @Deprecated
     public void disable(final CommandEventMapping commandEventMapping) {
         commandEventMapping.setEnabled(false);
         commandEventMapping.setDisabled(new Date());

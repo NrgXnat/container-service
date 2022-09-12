@@ -20,7 +20,6 @@ import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,11 +42,7 @@ import static org.springframework.web.bind.annotation.RequestMethod.PUT;
 @RequestMapping("/commandeventmapping")
 @Api("Command Event Mapping API for XNAT Container Service")
 public class CommandEventMappingRestApi extends AbstractXapiRestController {
-    private static final String JSON = MediaType.APPLICATION_JSON_UTF8_VALUE;
-    private static final String TEXT = MediaType.TEXT_PLAIN_VALUE;
-    private static final String FORM = MediaType.APPLICATION_FORM_URLENCODED_VALUE;
-
-    private CommandEventMappingService commandEventMappingService;
+    private final CommandEventMappingService commandEventMappingService;
 
     @Autowired
     public CommandEventMappingRestApi(final CommandEventMappingService commandEventMappingService,
@@ -80,7 +75,9 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
 
 
     @XapiRequestMapping(method = POST, restrictTo = Admin)
-    @ApiOperation(value = "Create a Command-Event Mapping", code = 201)
+    @ApiOperation(value = "Create a Command-Event Mapping", code = 201,
+            notes = "Use the event service to trigger commands based on events")
+    @Deprecated
     public ResponseEntity<CommandEventMapping> create(final @RequestBody CommandEventMapping commandEventMapping)
             throws BadRequestException {
         try {
@@ -123,7 +120,9 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = {"/{id}/enable"}, method = PUT, restrictTo = Admin)
-    @ApiOperation(value = "Enable a Command-Event Mapping")
+    @ApiOperation(value = "Enable a Command-Event Mapping",
+            notes = "Use the event service to trigger commands based on events")
+    @Deprecated
     @ResponseBody
     public ResponseEntity<Void> enable(final @PathVariable Long id) throws NotFoundException {
         commandEventMappingService.enable(id);
@@ -132,7 +131,9 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = {"/{id}/disable"}, method = PUT, restrictTo = Admin)
-    @ApiOperation(value = "Disable a Command-Event Mapping")
+    @ApiOperation(value = "Disable a Command-Event Mapping",
+            notes = "Use the event service to trigger commands based on events")
+    @Deprecated
     @ResponseBody
     public ResponseEntity<Void> disable(final @PathVariable Long id) throws NotFoundException {
         commandEventMappingService.disable(id);

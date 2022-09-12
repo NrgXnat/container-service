@@ -1,4 +1,4 @@
-const XNAT = getObject(XNAT || {});
+XNAT = getObject(XNAT || {});
 
 (function(factory){
     if (typeof define === 'function' && define.amd) {
