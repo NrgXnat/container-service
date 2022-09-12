@@ -103,7 +103,7 @@ public class HibernateCommandEventMappingService extends AbstractHibernateEntity
 
 
         final SubscriptionCreator subscriptionCreator = SubscriptionCreator.builder()
-                                                       .name("Command Automation Conversion " + id)
+                                                       .name(String.format("%s %s (converted %d)", projectId, wrapperName, id))
                                                        .active(false)
                                                        .actAsEventUser(false)
                                                        .actionKey(action.actionKey())
