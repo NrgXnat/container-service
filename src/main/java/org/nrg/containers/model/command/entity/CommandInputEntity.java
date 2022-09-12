@@ -245,13 +245,42 @@ public class CommandInputEntity implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandInputEntity that = (CommandInputEntity) o;
-        return Objects.equals(this.commandEntity, that.commandEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(label, that.label) &&
+                Objects.equals(description, that.description) &&
+                type == that.type &&
+                Objects.equals(required, that.required) &&
+                Objects.equals(matcher, that.matcher) &&
+                Objects.equals(defaultValue, that.defaultValue) &&
+                Objects.equals(rawReplacementKey, that.rawReplacementKey) &&
+                Objects.equals(commandLineFlag, that.commandLineFlag) &&
+                Objects.equals(commandLineSeparator, that.commandLineSeparator) &&
+                Objects.equals(trueValue, that.trueValue) &&
+                Objects.equals(falseValue, that.falseValue) &&
+                Objects.equals(sensitive, that.sensitive) &&
+                Objects.equals(selectValues, that.selectValues) &&
+                multipleDelimiter == that.multipleDelimiter;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandEntity, name);
+        return Objects.hash(id,
+                name,
+                label,
+                description,
+                type,
+                required,
+                matcher,
+                defaultValue,
+                rawReplacementKey,
+                commandLineFlag,
+                commandLineSeparator,
+                trueValue,
+                falseValue,
+                sensitive,
+                selectValues,
+                multipleDelimiter);
     }
 
     @Override

@@ -323,19 +323,26 @@ public class CommandWrapperEntity implements Serializable {
         this.orchestrations.remove(orchestration);
         orchestration.setCommandWrapperEntity(null);
     }
-    
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandWrapperEntity that = (CommandWrapperEntity) o;
-        return Objects.equals(this.commandEntity, that.commandEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                Objects.equals(this.name, that.name) &&
+                Objects.equals(this.label, that.label) &&
+                Objects.equals(this.description, that.description) &&
+                Objects.equals(this.contexts, that.contexts) &&
+                Objects.equals(this.externalInputs, that.externalInputs) &&
+                Objects.equals(this.derivedInputs, that.derivedInputs) &&
+                Objects.equals(this.outputHandlers, that.outputHandlers) &&
+                Objects.equals(this.orchestrations, that.orchestrations);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandEntity, name);
+        return Objects.hash(id, name, label, description, contexts, externalInputs, derivedInputs, outputHandlers, orchestrations);
     }
 
     @Override

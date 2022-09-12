@@ -174,22 +174,24 @@ public class CommandEntityTest {
 
     @Test
     @DirtiesContext
-    public void testPersistCommandWithWrapper() throws Exception {
-        final CommandEntity created = commandEntityService.create(COMMAND_ENTITY);
+    public void testPersistCommandWithWrapper() {
+        final CommandEntity createdEntity = commandEntityService.create(COMMAND_ENTITY);
+        final Command created = Command.create(createdEntity);
 
         TestingUtils.commitTransaction();
 
-        final CommandEntity retrievedCommandEntity = commandEntityService.retrieve(created.getId());
+        final CommandEntity retrievedEntity = commandEntityService.retrieve(createdEntity.getId());
+        final Command retrieved = Command.create(retrievedEntity);
 
-        assertThat(retrievedCommandEntity, is(created));
-        assertThat(Command.create(created).validate(), is(Matchers.<String>emptyIterable()));
+        assertThat(retrieved, is(created));
+        assertThat(created.validate(), is(Matchers.emptyIterable()));
 
-        final List<CommandWrapperEntity> commandWrappers = retrievedCommandEntity.getCommandWrapperEntities();
+        final List<CommandWrapperEntity> commandWrappers = retrievedEntity.getCommandWrapperEntities();
         assertThat(commandWrappers, hasSize(1));
 
         final CommandWrapperEntity commandWrapperEntity = commandWrappers.get(0);
         assertThat(commandWrapperEntity.getId(), not(0L));
-        assertThat(commandWrapperEntity.getCommandEntity(), is(created));
+        assertThat(commandWrapperEntity.getCommandEntity(), is(retrievedEntity));
     }
 
     @Test
@@ -209,17 +211,18 @@ public class CommandEntityTest {
 
     @Test
     @DirtiesContext
-    public void testRetrieveCommandWrapper() throws Exception {
-
-        final CommandEntity created = commandEntityService.create(COMMAND_ENTITY);
+    public void testRetrieveCommandWrapper() {
+        final CommandEntity createdEntity = commandEntityService.create(COMMAND_ENTITY);
+        final CommandWrapperEntity createdWrapperEntity = createdEntity.getCommandWrapperEntities().get(0);
+        final CommandWrapper createdWrapper = CommandWrapper.create(createdWrapperEntity);
 
         TestingUtils.commitTransaction();
 
-        final CommandWrapperEntity createdWrapper = created.getCommandWrapperEntities().get(0);
-        final long wrapperId = createdWrapper.getId();
-        assertThat(commandEntityService.retrieveWrapper(wrapperId), is(createdWrapper));
+        final CommandWrapperEntity retrievedWrapperEntity = commandEntityService.retrieveWrapper(createdWrapper.id());
+        final CommandWrapper retrievedWrapper = CommandWrapper.create(retrievedWrapperEntity);
+        assertThat(retrievedWrapper, is(createdWrapper));
 
-        assertThat(Command.create(created).validate(), is(Matchers.<String>emptyIterable()));
+        assertThat(Command.create(createdEntity).validate(), is(Matchers.emptyIterable()));
     }
 
     @Test
@@ -238,9 +241,10 @@ public class CommandEntityTest {
         TestingUtils.commitTransaction();
 
         final CommandEntity retrieved = commandEntityService.get(COMMAND_ENTITY.getId());
-        assertThat(retrieved.getCommandWrapperEntities().get(0), is(added));
+        final CommandWrapperEntity retrievedWrapper = retrieved.getCommandWrapperEntities().get(0);
+        assertThat(CommandWrapper.create(retrievedWrapper), is(CommandWrapper.create(added)));
 
-        assertThat(Command.create(retrieved).validate(), is(Matchers.<String>emptyIterable()));
+        assertThat(Command.create(retrieved).validate(), is(Matchers.emptyIterable()));
     }
 
     @Test

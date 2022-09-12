@@ -54,8 +54,7 @@ public class CommandLabelServiceImpl implements CommandLabelService {
                         // The command as read from the image may not contain all the values we want to store
                         // So we add them now.
                         commandsToReturn.add(
-                                Command.create(commandCreation)
-                                        .toBuilder()
+                                Command.builderFromCreation(commandCreation)
                                         .image(imageName)
                                         .hash(dockerImage.imageId())
                                         .build()

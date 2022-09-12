@@ -535,14 +535,33 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     public boolean equals(final Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
+        if (!super.equals(o)) return false;
         final CommandEntity that = (CommandEntity) o;
         return Objects.equals(this.name, that.name) &&
+                Objects.equals(this.label, that.label) &&
+                Objects.equals(this.description, that.description) &&
                 Objects.equals(this.version, that.version) &&
+                Objects.equals(this.schemaVersion, that.schemaVersion) &&
+                Objects.equals(this.infoUrl, that.infoUrl) &&
+                Objects.equals(this.image, that.image) &&
+                Objects.equals(this.containerName, that.containerName) &&
+                Objects.equals(this.workingDirectory, that.workingDirectory) &&
+                Objects.equals(this.commandLine, that.commandLine) &&
+                Objects.equals(this.overrideEntrypoint, that.overrideEntrypoint) &&
+                Objects.equals(this.mounts, that.mounts) &&
+                Objects.equals(this.environmentVariables, that.environmentVariables) &&
+                Objects.equals(this.inputs, that.inputs) &&
+                Objects.equals(this.outputs, that.outputs) &&
+                Objects.equals(this.commandWrapperEntities, that.commandWrapperEntities) &&
+                Objects.equals(this.reserveMemory, that.reserveMemory) &&
+                Objects.equals(this.limitMemory, that.limitMemory) &&
+                Objects.equals(this.limitCpu, that.limitCpu) &&
+                Objects.equals(this.runtime, that.runtime) &&
+                Objects.equals(this.ipcMode, that.ipcMode) &&
                 Objects.equals(this.autoRemove, that.autoRemove) &&
                 Objects.equals(this.shmSize, that.shmSize) &&
                 Objects.equals(this.network, that.network) &&
                 Objects.equals(this.containerLabels, that.containerLabels) &&
-                Objects.equals(this.containerName, that.containerName) &&
                 Objects.equals(this.gpus, that.gpus) &&
                 Objects.equals(this.genericResources, that.genericResources) &&
                 Objects.equals(this.ulimits, that.ulimits);
@@ -550,7 +569,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, version);
+        return Objects.hash(super.hashCode(), name, label, description, version, schemaVersion, infoUrl, image, containerName, workingDirectory, commandLine, overrideEntrypoint, mounts, environmentVariables, inputs, outputs, commandWrapperEntities, reserveMemory, limitMemory, limitCpu, runtime, ipcMode, autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits);
     }
 
     @Override

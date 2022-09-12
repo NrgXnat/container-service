@@ -289,13 +289,48 @@ public class CommandWrapperDerivedInputEntity {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandWrapperDerivedInputEntity that = (CommandWrapperDerivedInputEntity) o;
-        return Objects.equals(this.commandWrapperEntity, that.commandWrapperEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                required == that.required &&
+                loadChildren == that.loadChildren &&
+                multiple == that.multiple &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(label, that.label) &&
+                Objects.equals(description, that.description) &&
+                type == that.type &&
+                Objects.equals(matcher, that.matcher) &&
+                Objects.equals(providesValueForCommandInput, that.providesValueForCommandInput) &&
+                Objects.equals(providesFilesForCommandMount, that.providesFilesForCommandMount) &&
+                Objects.equals(viaSetupCommand, that.viaSetupCommand) &&
+                Objects.equals(defaultValue, that.defaultValue) &&
+                Objects.equals(userSettable, that.userSettable) &&
+                Objects.equals(rawReplacementKey, that.rawReplacementKey) &&
+                Objects.equals(sensitive, that.sensitive) &&
+                Objects.equals(parser, that.parser) &&
+                Objects.equals(derivedFromWrapperInput, that.derivedFromWrapperInput) &&
+                Objects.equals(derivedFromXnatObjectProperty, that.derivedFromXnatObjectProperty);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandWrapperEntity, name);
+        return Objects.hash(id,
+                name,
+                label,
+                description,
+                type,
+                matcher,
+                providesValueForCommandInput,
+                providesFilesForCommandMount,
+                viaSetupCommand,
+                defaultValue,
+                userSettable,
+                rawReplacementKey,
+                required,
+                loadChildren,
+                sensitive,
+                multiple,
+                parser,
+                derivedFromWrapperInput,
+                derivedFromXnatObjectProperty);
     }
 
     @Override

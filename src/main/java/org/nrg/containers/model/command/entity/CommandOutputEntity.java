@@ -1,7 +1,6 @@
 package org.nrg.containers.model.command.entity;
 
 import com.google.common.base.MoreObjects;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 
 import javax.annotation.Nonnull;
@@ -123,14 +122,24 @@ public class CommandOutputEntity implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandOutputEntity that = (CommandOutputEntity) o;
-        return Objects.equals(this.commandEntity, that.commandEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(description, that.description) &&
+                Objects.equals(required, that.required) &&
+                Objects.equals(mount, that.mount) &&
+                Objects.equals(path, that.path) &&
+                Objects.equals(glob, that.glob);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandEntity, name);
-
+        return Objects.hash(id,
+                name,
+                description,
+                required,
+                mount,
+                path,
+                glob);
     }
 
     @Override

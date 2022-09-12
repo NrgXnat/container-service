@@ -305,10 +305,10 @@ public abstract class ResolvedCommand {
     @AutoValue.Builder
     public static abstract class Builder {
         public abstract Builder wrapperId(Long wrapperId);
-        public abstract Builder wrapperName(String wrapperDescription);
+        public abstract Builder wrapperName(String wrapperName);
         public abstract Builder wrapperDescription(String wrapperDescription);
         public abstract Builder commandId(Long commandId);
-        public abstract Builder commandName(String commandDescription);
+        public abstract Builder commandName(String commandName);
         public abstract Builder commandDescription(String commandDescription);
         public abstract Builder image(String image);
         public abstract Builder containerName(String containerName);
