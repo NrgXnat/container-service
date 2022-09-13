@@ -550,13 +550,12 @@ public abstract class Command {
             }
 
             // Check that all command outputs are handled by some output handler
-            outputNames.removeAll(handledOutputs);
-            if (!outputNames.isEmpty()) {
-                for (final String commandOutput : outputNames) {
-                    errors.add(wrapperName + "command output \"" + commandOutput +
-                            "\" is not handled by any output handler.");
-                }
-            }
+            final Set<String> outputNamesNotHandled = new HashSet<>(outputNames);
+            outputNamesNotHandled.removeAll(handledOutputs);
+            errors.addAll(outputNamesNotHandled.stream()
+                    .map(outputName -> wrapperName + "command output \"" + outputName +
+                            "\" is not handled by any output handler.")
+                    .collect(Collectors.toList()));
 
             if (!wrapperErrors.isEmpty()) {
                 errors.addAll(wrapperErrors);
