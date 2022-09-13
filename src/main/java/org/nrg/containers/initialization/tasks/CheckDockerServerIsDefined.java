@@ -2,6 +2,7 @@ package org.nrg.containers.initialization.tasks;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerPrefsBean;
 import org.nrg.containers.services.DockerServerService;
@@ -44,20 +45,25 @@ public class CheckDockerServerIsDefined extends AbstractInitializingTask {
        }
 
         // We don't have any servers in the database. Do we have one defined as an old-style prefs bean?
-        log.debug("Checking if a docker server exists as an old-style prefs bean.");
-        final boolean serverPrefsBeanDefined = dockerServerPrefsBean != null && StringUtils.isNotBlank(dockerServerPrefsBean.getHost());
-        if (serverPrefsBeanDefined) {
-            log.debug("A docker server prefs bean does exist. Saving it in the database.");
-            final DockerServer convertedPrefsBean = DockerServer.create(dockerServerPrefsBean);
-            dockerServerService.setServer(convertedPrefsBean);
-            log.debug("All done.");
-            return;
-        } else {
-            log.debug("A docker server prefs bean does not exist.");
-        }
+        try {
+            log.debug("Checking if a docker server exists as an old-style prefs bean.");
+            final boolean serverPrefsBeanDefined = dockerServerPrefsBean != null && StringUtils.isNotBlank(dockerServerPrefsBean.getHost());
+            if (serverPrefsBeanDefined) {
+                log.debug("A docker server prefs bean does exist. Saving it in the database.");
+                final DockerServer convertedPrefsBean = DockerServer.create(dockerServerPrefsBean);
+                dockerServerService.setServer(convertedPrefsBean);
+                log.debug("All done.");
+                return;
+            } else {
+                log.debug("A docker server prefs bean does not exist.");
+            }
 
-        // Nothing in DB and no prefs beans. Just make the default.
-        log.debug("Creating default docker server: default socket connection.");
-        dockerServerService.setServer(DockerServer.DEFAULT_SOCKET);
+            // Nothing in DB and no prefs beans. Just make the default.
+            log.debug("Creating default docker server: default socket connection.");
+                dockerServerService.setServer(DockerServer.DEFAULT_SOCKET);
+        } catch (InvalidDefinitionException e) {
+            throw new InitializingTaskException(InitializingTaskException.Level.Error,
+                    "Unable to set server", e);
+        }
     }
 }

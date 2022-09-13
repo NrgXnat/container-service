@@ -6,13 +6,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public abstract class DockerServerBase {
@@ -233,6 +231,50 @@ public abstract class DockerServerBase {
         }
 
         public abstract Builder toBuilder();
+
+        public void validate() throws InvalidDefinitionException {
+            // It is tempting to put validation in the AutoValue.Builder, but then the exception is thrown during
+            // serialization (as HttpMessageNotReadableException) rather than as a validation (a.k.a., "I understood
+            // your request, but I won't accept it")
+            List<String> errors = new ArrayList<>();
+            if (backend() == Backend.KUBERNETES) {
+                // Check that container user is parsable as a long
+                final String containerUser = containerUser();
+                if (StringUtils.isNotBlank(containerUser)) {
+                    try {
+                        Long.parseLong(containerUser);
+                    } catch (NumberFormatException e) {
+                        errors.add("If set, container user must be a string with integer value with " +
+                                "kubernetes backend");
+                    }
+                }
+                final String gpuVendor = gpuVendor();
+                if (StringUtils.isNotEmpty(gpuVendor) && !(StringUtils.equalsIgnoreCase("nvidia", gpuVendor) ||
+                        StringUtils.equalsIgnoreCase("amd", gpuVendor))) {
+                    errors.add("The value of the GPU Vendor can only be nvidia or amd");
+                }
+            } else {
+                // Docker + Swarm must have a host configured
+                if (StringUtils.isBlank(host())) {
+                    errors.add("Host cannot be empty for " + backend() + " server setting");
+                }
+            }
+
+            List<DockerServerSwarmConstraint> constraints = swarmConstraints();
+            if (constraints != null) {
+                if (constraints.stream().anyMatch(constraint -> StringUtils.isBlank(constraint.attribute()))) {
+                    errors.add("Constraint node attribute cannot be blank");
+                }
+                if (constraints.stream().anyMatch(constraint -> constraint.values().isEmpty() ||
+                            constraint.values().stream().anyMatch(StringUtils::isBlank))) {
+                    errors.add("Constraint values cannot be blank");
+                }
+            }
+
+            if (!errors.isEmpty()) {
+                throw new InvalidDefinitionException(String.join("\n", errors));
+            }
+        }
 
         @AutoValue.Builder
         public static abstract class Builder {

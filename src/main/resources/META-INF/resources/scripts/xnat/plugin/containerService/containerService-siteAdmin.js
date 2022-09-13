@@ -367,8 +367,16 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             if (!passK8sValidation) errors = errors.concat('Validation error: Kubernetes mode expects an integer UID for the container user input')
                         }
 
-                        if (errors.length) {
+                        function getLabel($element) {
+                            return $element.parents('.panel-element').children('.element-label').text();
+                        }
+                        $form.find('.required:not(div)').each(function(){
+                            if (!XNAT.validate(this).is('required').check()) {
+                                errors.push('Required input "' + getLabel($(this)) + '" is missing');
+                            }
+                        });
 
+                        if (errors.length) {
                             XNAT.dialog.message({
                                 title: 'Validation Error',
                                 width: 300,
@@ -429,10 +437,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             },
             fail: function(e){
                 console.warn(e);
-                XNAT.dialog.open({
+                XNAT.dialog.message({
                     title: 'Form Submission Error',
                     width: 300,
-                    content: displayErrors(e.responseText)
+                    content: displayErrors(e.responseText.split("\n"))
                 })
             }
         });
@@ -496,6 +504,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             XNAT.ui.panel.input.text({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:attribute',
                 label: 'Node attribute',
+                classes: 'required',
                 description: 'Attribute you wish to constrain. E.g., node.labels.mylabel'
             }),
             XNAT.ui.panel.input.radioGroup({
@@ -507,6 +516,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             XNAT.ui.panel.input.list({
                 name: 'swarm-constraints['+containerHostManager.nconstraints+']:values',
                 label: 'Possible values for constraint',
+                classes: 'required',
                 description: 'Comma-separated list of values on which user can constrain the attribute ' +
                     '(or a single value if not user-settable). E.g., "worker" or "spot,demand" (do not add quotes). ' +
                     'The first value listed will be the default.'
