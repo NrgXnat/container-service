@@ -25,9 +25,14 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public interface ContainerService {
-    String STDOUT_LOG_NAME = "stdout.log";
-    String STDERR_LOG_NAME = "stderr.log";
-    String[] LOG_NAMES = new String[] {STDOUT_LOG_NAME, STDERR_LOG_NAME};
+    String   XNAT_USER        = "XNAT_USER";
+    String   XNAT_PASS        = "XNAT_PASS";
+    String   XNAT_HOST        = "XNAT_HOST";
+    String   XNAT_WORKFLOW_ID = "XNAT_WORKFLOW_ID";
+    String   XNAT_EVENT_ID    = "XNAT_EVENT_ID";
+    String   STDOUT_LOG_NAME  = "stdout.log";
+    String   STDERR_LOG_NAME  = "stderr.log";
+    String[] LOG_NAMES        = new String[]{STDOUT_LOG_NAME, STDERR_LOG_NAME};
 
     PluginVersionCheck checkXnatVersion();
 

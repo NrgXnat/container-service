@@ -57,6 +57,7 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import static org.nrg.containers.services.ContainerService.XNAT_PASS;
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -201,7 +202,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         final Map<String, String> scrubbedEnvironmentVariables = new HashMap<>();
         for (final Map.Entry<String, String> env : container.environmentVariables().entrySet()) {
             scrubbedEnvironmentVariables.put(env.getKey(),
-                    env.getKey().equals("XNAT_PASS") ? "******" : env.getValue());
+                    env.getKey().equals(XNAT_PASS) ? "******" : env.getValue());
         }
         return container.toBuilder().environmentVariables(scrubbedEnvironmentVariables).build();
     }

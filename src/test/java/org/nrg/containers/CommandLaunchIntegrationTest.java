@@ -116,6 +116,7 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.services.ContainerService.*;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
 import static org.powermock.api.mockito.PowerMockito.doNothing;
 import static org.powermock.api.mockito.PowerMockito.doReturn;
@@ -376,11 +377,11 @@ public class CommandLaunchIntegrationTest {
 
         // Environment variables
         final Map<String, String> expectedEnvironmentVariables = Maps.newHashMap();
-        expectedEnvironmentVariables.put("XNAT_USER", FAKE_ALIAS);
-        expectedEnvironmentVariables.put("XNAT_PASS", FAKE_SECRET);
-        expectedEnvironmentVariables.put("XNAT_HOST", FAKE_HOST);
-        expectedEnvironmentVariables.put("XNAT_WORKFLOW_ID",  Integer.toString(fakeWorkflow.getWorkflowId()));
-        expectedEnvironmentVariables.put("XNAT_EVENT_ID",  fakeWorkflow.buildEvent().getEventId().toString());
+        expectedEnvironmentVariables.put(XNAT_USER, FAKE_ALIAS);
+        expectedEnvironmentVariables.put(XNAT_PASS, FAKE_SECRET);
+        expectedEnvironmentVariables.put(XNAT_HOST, FAKE_HOST);
+        expectedEnvironmentVariables.put(XNAT_WORKFLOW_ID,  Integer.toString(fakeWorkflow.getWorkflowId()));
+        expectedEnvironmentVariables.put(XNAT_EVENT_ID,  fakeWorkflow.buildEvent().getEventId().toString());
         assertThat(execution.environmentVariables(), is(expectedEnvironmentVariables));
 
 
@@ -485,11 +486,11 @@ public class CommandLaunchIntegrationTest {
 
         // Environment variables
         final Map<String, String> expectedEnvironmentVariables = Maps.newHashMap();
-        expectedEnvironmentVariables.put("XNAT_USER", FAKE_ALIAS);
-        expectedEnvironmentVariables.put("XNAT_PASS", FAKE_SECRET);
-        expectedEnvironmentVariables.put("XNAT_HOST", FAKE_HOST);
-        expectedEnvironmentVariables.put("XNAT_WORKFLOW_ID",  Integer.toString(fakeWorkflow.getWorkflowId()));
-        expectedEnvironmentVariables.put("XNAT_EVENT_ID",  fakeWorkflow.buildEvent().getEventId().toString());
+        expectedEnvironmentVariables.put(XNAT_USER, FAKE_ALIAS);
+        expectedEnvironmentVariables.put(XNAT_PASS, FAKE_SECRET);
+        expectedEnvironmentVariables.put(XNAT_HOST, FAKE_HOST);
+        expectedEnvironmentVariables.put(XNAT_WORKFLOW_ID,  Integer.toString(fakeWorkflow.getWorkflowId()));
+        expectedEnvironmentVariables.put(XNAT_EVENT_ID,  fakeWorkflow.buildEvent().getEventId().toString());
         assertThat(execution.environmentVariables(), is(expectedEnvironmentVariables));
 
         // mounts
