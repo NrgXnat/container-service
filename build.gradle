@@ -50,7 +50,6 @@ def vGson = dependencyManagement.importedProperties["gson.version"]
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
-def vH2 = "1.4.197"
 def vJersey = "3.0.6"
 
 // Use this configuration to put dependencies into the fat jar
@@ -194,7 +193,7 @@ dependencies {
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core"
     testImplementation "javax.servlet:javax.servlet-api"
-    testImplementation "com.h2database:h2:${vH2}"
+    testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
