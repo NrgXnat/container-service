@@ -4,7 +4,9 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.hibernate.annotations.Type;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.secrets.Secret;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
 import javax.annotation.Nonnull;
@@ -64,6 +66,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private String gpus;
     private Map<String, String> genericResources;
     private Map<String, String> ulimits;
+    private List<Secret> secrets;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -115,6 +118,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setGpus(command.gpus());
         this.setGenericResources(command.genericResources());
         this.setUlimits(command.ulimits());
+        setSecrets(command.secrets());
 
         final List<CommandMountEntity> toRemoveMount = new ArrayList<>();
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
@@ -531,6 +535,15 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         wrapper.setCommandEntity(null);
     }
 
+    @Type(type = "json")
+    public List<Secret> getSecrets() {
+        return secrets;
+    }
+
+    public void setSecrets(final List<Secret> secrets) {
+        this.secrets = secrets == null ? new ArrayList<>() : secrets;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -564,12 +577,13 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 Objects.equals(this.containerLabels, that.containerLabels) &&
                 Objects.equals(this.gpus, that.gpus) &&
                 Objects.equals(this.genericResources, that.genericResources) &&
-                Objects.equals(this.ulimits, that.ulimits);
+                Objects.equals(this.ulimits, that.ulimits) &&
+                Objects.equals(this.secrets, that.secrets);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), name, label, description, version, schemaVersion, infoUrl, image, containerName, workingDirectory, commandLine, overrideEntrypoint, mounts, environmentVariables, inputs, outputs, commandWrapperEntities, reserveMemory, limitMemory, limitCpu, runtime, ipcMode, autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits);
+        return Objects.hash(super.hashCode(), name, label, description, version, schemaVersion, infoUrl, image, containerName, workingDirectory, commandLine, overrideEntrypoint, mounts, environmentVariables, inputs, outputs, commandWrapperEntities, reserveMemory, limitMemory, limitCpu, runtime, ipcMode, autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits, secrets);
     }
 
     @Override
@@ -602,7 +616,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("containerLabels", containerLabels)
                 .add("gpus", gpus)
                 .add("generic-resources", genericResources)
-                .add("ulimits", ulimits);
+                .add("ulimits", ulimits)
+                .add("secrets", secrets);
     }
 
     @Override

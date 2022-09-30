@@ -23,6 +23,7 @@ import org.nrg.action.ServerException;
 import org.nrg.containers.exceptions.CommandInputResolutionException;
 import org.nrg.containers.exceptions.CommandMountResolutionException;
 import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.ContainerServiceSecretException;
 import org.nrg.containers.exceptions.IllegalInputException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.Command;
@@ -49,6 +50,8 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.secrets.ResolvedSecret;
+import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
@@ -63,6 +66,7 @@ import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerSecretService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
@@ -141,6 +145,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
     private final DockerService dockerService;
     private final CatalogService catalogService;
     private final UserDataCache userDataCache;
+    private final ContainerSecretService secretService;
 
     private final ObjectMapper mapper;
     private final ParseContext jsonpathContext;
@@ -155,13 +160,15 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                         final ObjectMapper mapper,
                                         final DockerService dockerService,
                                         final CatalogService catalogService,
-                                        final UserDataCache userDataCache) {
+                                        final UserDataCache userDataCache,
+                                        final ContainerSecretService secretService) {
         this.commandService = commandService;
         this.dockerServerService = dockerServerService;
         this.siteConfigPreferences = siteConfigPreferences;
         this.dockerService = dockerService;
         this.catalogService = catalogService;
         this.userDataCache = userDataCache;
+        this.secretService = secretService;
 
         this.mapper = mapper;
         final Configuration jsonpathJackson = Configuration.builder()
@@ -464,6 +471,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .gpus(command.gpus())
                     .genericResources(command.genericResources())
                     .ulimits(command.ulimits())
+                    .secrets(resolveSecrets(command.secrets()))
                     .build();
 
             log.info("Done resolving command.");
@@ -2906,6 +2914,22 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             return resolvedConstraints.isEmpty() ? null : resolvedConstraints;
+        }
+
+        private List<ResolvedSecret> resolveSecrets(final List<Secret> secrets) throws CommandResolutionException {
+            if (secrets.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            final List<ResolvedSecret> resolvedSecrets = new ArrayList<>();
+            try {
+                for (Secret secret : secrets) {
+                    resolvedSecrets.add(secretService.resolve(secret));
+                }
+            } catch (ContainerServiceSecretException e) {
+                throw new CommandResolutionException("Could not resolve secrets", e);
+            }
+            return resolvedSecrets;
         }
     }
 

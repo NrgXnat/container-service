@@ -26,6 +26,7 @@ import org.nrg.containers.model.container.entity.ContainerEntityInput;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
 import org.nrg.containers.model.container.entity.ContainerEntityOutput;
 import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
+import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.containers.utils.JsonDateSerializer;
@@ -101,6 +102,7 @@ public abstract class Container {
     @JsonProperty("gpus") @Nullable public abstract String gpus();
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
+    @JsonProperty("secrets") public abstract List<ResolvedSecret> secrets();
 
     /**
      * @deprecated Use {@link Container#backend()} instead
@@ -329,6 +331,15 @@ public abstract class Container {
         }
     }
 
+    /**
+     * Group secrets by their type, so they can be more easily used with the backend APIs
+     * @return Map from resolved secret classes to a list of secrets of that type
+     */
+    @JsonIgnore
+    public Map<Class<? extends ResolvedSecret>, List<ResolvedSecret>> secretsByType() {
+        return secrets().stream().collect(Collectors.groupingBy(ResolvedSecret::getClass));
+    }
+
     @JsonCreator
     public static Container create(@JsonProperty("id") final long databaseId,
                                    @JsonProperty("command-id") final long commandId,
@@ -367,7 +378,8 @@ public abstract class Container {
                                    @JsonProperty("auto-remove") final Boolean autoremove,
                                    @JsonProperty("shm-size") final Long shmSize,
                                    @JsonProperty("network") final String network,
-                                   @JsonProperty("container-labels") final Map<String, String> containerLabels)
+                                   @JsonProperty("container-labels") final Map<String, String> containerLabels,
+                                   @JsonProperty("secrets") final List<ResolvedSecret> secrets)
     {
         if (backend == null) {
             backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
@@ -410,6 +422,7 @@ public abstract class Container {
                 .shmSize(shmSize)
                 .network(network)
                 .containerLabels(containerLabels)
+                .secrets(secrets == null ? Collections.emptyList() : secrets)
                 .build();
     }
 
@@ -471,6 +484,10 @@ public abstract class Container {
                 .shmSize(containerEntity.getShmSize())
                 .network(containerEntity.getNetwork())
                 .containerLabels(containerEntity.getContainerLabels())
+                .secrets(containerEntity.getSecrets() == null ? Collections.emptyList() :
+                        containerEntity.getSecrets().stream()
+                                .map(ResolvedSecret::fromUnresolved)
+                                .collect(Collectors.toList()))
                 .build();
     }
 
@@ -505,13 +522,16 @@ public abstract class Container {
                 .containerLabels(resolvedCommand.containerLabels())
                 .gpus(resolvedCommand.gpus())
                 .genericResources(resolvedCommand.genericResources())
-                .ulimits(resolvedCommand.ulimits());
+                .ulimits(resolvedCommand.ulimits())
+                .secrets(resolvedCommand.secrets());
     }
 
     public static Builder builder() {
         return new AutoValue_Container.Builder()
                 .databaseId(0L)
-                .backend(Backend.DOCKER);
+                .backend(Backend.DOCKER)
+                .containerLabels(Collections.emptyMap())
+                .secrets(Collections.emptyList());
     }
 
     public abstract Builder toBuilder();
@@ -659,6 +679,7 @@ public abstract class Container {
         public abstract Builder gpus(String gpus);
         public abstract Builder genericResources(Map<String, String> genericResources);
         public abstract Builder ulimits(Map<String, String> ulimits);
+        public abstract Builder secrets(List<ResolvedSecret> secrets);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();

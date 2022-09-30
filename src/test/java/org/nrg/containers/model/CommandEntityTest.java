@@ -11,6 +11,9 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.CommandTestConfig;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandInput;
 import org.nrg.containers.model.command.auto.Command.CommandMount;
@@ -19,7 +22,15 @@ import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperDerivedInput;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperExternalInput;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperOutput;
-import org.nrg.containers.model.command.entity.*;
+import org.nrg.containers.model.command.entity.CommandEntity;
+import org.nrg.containers.model.command.entity.CommandInputEntity;
+import org.nrg.containers.model.command.entity.CommandMountEntity;
+import org.nrg.containers.model.command.entity.CommandOutputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperDerivedInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
+import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.containers.services.CommandEntityService;
 import org.nrg.containers.utils.TestingUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,10 +43,17 @@ import java.io.File;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -91,6 +109,11 @@ public class CommandEntityTest {
                 .mount(outputMountName)
                 .path("relative/path/to/dir")
                 .build();
+
+        final List<Secret> secrets = Collections.singletonList(
+                new Secret(new SystemPropertySecretSource("propname"),
+                        new EnvironmentVariableSecretDestination("ENVNAME"))
+        );
 
         final String externalInputName = "session";
         final CommandWrapperExternalInput sessionExternalInput = CommandWrapperExternalInput.builder()
@@ -155,6 +178,7 @@ public class CommandEntityTest {
                 .addOutput(commandOutputXml)
                 .addOutput(commandOutputFiles)
                 .addPort("22", "2222")
+                .secrets(secrets)
                 .addCommandWrapper(commandWrapper)
                 .build();
 
@@ -183,6 +207,7 @@ public class CommandEntityTest {
         final CommandEntity retrievedEntity = commandEntityService.retrieve(createdEntity.getId());
         final Command retrieved = Command.create(retrievedEntity);
 
+        assertThat(retrieved.secrets(), is(created.secrets()));
         assertThat(retrieved, is(created));
         assertThat(created.validate(), is(Matchers.emptyIterable()));
 

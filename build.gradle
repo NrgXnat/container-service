@@ -200,6 +200,7 @@ dependencies {
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
+    testImplementation "com.vladmihalcea:hibernate-types-43:${dependencyManagement.importedProperties["vladmihalcea-hibernate-types.version"]}"
 }
 
 task unitTest( type: Test ) {

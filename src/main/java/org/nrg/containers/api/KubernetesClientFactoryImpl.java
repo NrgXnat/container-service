@@ -14,7 +14,8 @@ public class KubernetesClientFactoryImpl implements KubernetesClientFactory {
 
     private volatile KubernetesClientImpl kubernetesClient = null;
 
-    public KubernetesClientFactoryImpl(ExecutorService executorService, NrgEventServiceI eventService) {
+    public KubernetesClientFactoryImpl(final ExecutorService executorService,
+                                       final NrgEventServiceI eventService) {
         this.executorService = executorService;
         this.eventService = eventService;
     }

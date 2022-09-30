@@ -34,11 +34,14 @@ import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
+import org.nrg.containers.secrets.SecretValueObtainer;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerFinalizeService;
+import org.nrg.containers.services.ContainerSecretService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -48,6 +51,7 @@ import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.services.impl.CommandLabelServiceImpl;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
 import org.nrg.containers.services.impl.ContainerFinalizeServiceImpl;
+import org.nrg.containers.services.impl.ContainerSecretServiceImpl;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.services.impl.DockerServerServiceImpl;
 import org.nrg.containers.services.impl.DockerServiceImpl;
@@ -80,6 +84,7 @@ import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 
@@ -151,7 +156,20 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public KubernetesClientFactory kubernetesClientFactory(ExecutorService executorService, NrgEventServiceI eventService) {
+    public SecretValueObtainer<SystemPropertySecretSource> systemPropertyObtainer() {
+        final SystemPropertySecretSource.ValueObtainer valueObtainer = Mockito.mock(SystemPropertySecretSource.ValueObtainer.class);
+        Mockito.when(valueObtainer.handledType()).thenReturn(SystemPropertySecretSource.class);
+        return valueObtainer;
+    }
+
+    @Bean
+    public ContainerSecretService containerSecretService(final List<SecretValueObtainer<?>> secretValueObtainers) {
+        return new ContainerSecretServiceImpl(secretValueObtainers);
+    }
+
+    @Bean
+    public KubernetesClientFactory kubernetesClientFactory(final ExecutorService executorService,
+                                                           final NrgEventServiceI eventService) {
         return new KubernetesClientFactoryImpl(executorService, eventService);
     }
 
@@ -200,9 +218,10 @@ public class IntegrationTestConfig {
                                                              final ObjectMapper objectMapper,
                                                              final DockerService dockerService,
                                                              final CatalogService mockCatalogService,
-                                                             final UserDataCache mockUserDataCache) {
+                                                             final UserDataCache mockUserDataCache,
+                                                             final ContainerSecretService secretService) {
         return new CommandResolutionServiceImpl(commandService, serverService,
-                siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache);
+                siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache, secretService);
     }
 
     @Bean

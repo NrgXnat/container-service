@@ -35,11 +35,14 @@ import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.model.xnat.XnatFile;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerSecretService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
+import org.nrg.containers.services.impl.ContainerSecretServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
@@ -103,6 +106,7 @@ public class CommandResolutionTest {
     @Mock private CatalogService catalogService;
     @Mock private UserDataCache userDataCache;
     @Mock private CommandService commandService;
+    @Mock private SystemPropertySecretSource.ValueObtainer systemPropertyObtainer;
 
     private ObjectMapper mapper;
 
@@ -158,8 +162,11 @@ public class CommandResolutionTest {
                 .autoCleanup(false)
                 .build());
 
+        when(systemPropertyObtainer.handledType()).thenReturn(SystemPropertySecretSource.class);
+        final ContainerSecretService secretService = new ContainerSecretServiceImpl(Collections.singletonList(systemPropertyObtainer));
+
         commandResolutionService = new CommandResolutionServiceImpl(commandService, dockerServerService,
-                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache);
+                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache, secretService);
     }
 
     private Command.ConfiguredCommand configure(Command command, CommandWrapper wrapper) {

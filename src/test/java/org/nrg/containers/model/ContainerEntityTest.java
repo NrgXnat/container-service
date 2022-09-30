@@ -15,6 +15,10 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.ResolvedSecret;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.security.UserI;
@@ -71,6 +75,10 @@ public class ContainerEntityTest {
                 .image("xnat/dcm2niix:1.0")
                 .resolvedInputTrees(Collections.singletonList(inputTreeNode))
                 .commandLine("Anything I want")
+                .secrets(Collections.singletonList(ResolvedSecret.fromUnresolved(new Secret(
+                        new SystemPropertySecretSource("system-prop"),
+                        new EnvironmentVariableSecretDestination("ENV_NAME")
+                ))))
                 .build();
 
         final String containerId = "abc123";

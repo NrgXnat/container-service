@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandMountEntity;
@@ -90,6 +91,7 @@ public abstract class Command {
     @Nullable @JsonProperty("gpus") public abstract String gpus();
     @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
     @Nullable @JsonProperty("ulimits") public abstract ImmutableMap<String, String> ulimits();
+    @JsonProperty("secrets") public abstract List<Secret> secrets();
 
     @JsonCreator
     static Command create(@JsonProperty("id") final long id,
@@ -124,7 +126,8 @@ public abstract class Command {
                           @JsonProperty("container-labels") Map<String, String> containerLabels,
                           @JsonProperty("gpus") final String gpus,
                           @JsonProperty("generic-resources") Map<String, String> genericResources,
-                          @JsonProperty("ulimits") final Map<String, String> ulimits) {
+                          @JsonProperty("ulimits") final Map<String, String> ulimits,
+                          @JsonProperty("secrets") final List<Secret> secrets) {
         return builder()
                 .id(id)
                 .name(name)
@@ -159,6 +162,7 @@ public abstract class Command {
                 .gpus(gpus)
                 .genericResources(genericResources)
                 .ulimits(ulimits)
+                .secrets(secrets == null ? Collections.emptyList() : secrets)
                 .build();
     }
 
@@ -211,7 +215,9 @@ public abstract class Command {
                         Collections.emptyList() :
                         commandEntity.getCommandWrapperEntities().stream()
                                 .map(CommandWrapper::create)
-                                .collect(Collectors.toList()));
+                                .collect(Collectors.toList()))
+                .secrets(commandEntity.getSecrets() == null ? Collections.emptyList() :
+                        new ArrayList<>(commandEntity.getSecrets()));
 
         if (commandEntity.getType() == CommandType.DOCKER) {
             builder = builder.index(((DockerCommandEntity) commandEntity).getIndex())
@@ -279,7 +285,8 @@ public abstract class Command {
                         creation.commandWrapperCreations().stream()
                                 .map(CommandWrapper::create)
                                 .collect(Collectors.toList())
-                );
+                )
+                .secrets(creation.secrets());
     }
 
     /**
@@ -311,6 +318,7 @@ public abstract class Command {
         return new AutoValue_Command.Builder()
                 .id(0L)
                 .name("")
+                .secrets(Collections.emptyList())
                 .type(CommandEntity.DEFAULT_TYPE.getName());
     }
 
@@ -683,6 +691,9 @@ public abstract class Command {
         public abstract Builder gpus(String gpus);
         public abstract Builder genericResources(Map<String, String> genericResources);
         public abstract Builder ulimits(Map<String, String> ulimits);
+
+        public abstract Builder secrets(List<Secret> secrets);
+
         public abstract Command build();
     }
 
@@ -1959,6 +1970,7 @@ public abstract class Command {
         @Nullable @JsonProperty("gpus") public abstract String gpus();
         @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
         @Nullable @JsonProperty("ulimits") public abstract Map<String, String> ulimits();
+        @JsonProperty("secrets") public abstract List<Secret> secrets();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -1992,7 +2004,8 @@ public abstract class Command {
                                       @JsonProperty("container-labels") final ImmutableMap<String, String> containerLabels,
                                       @JsonProperty("gpus") final String gpus,
                                       @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources,
-                                      @JsonProperty("ulimits") final Map<String, String> ulimits) {
+                                      @JsonProperty("ulimits") final Map<String, String> ulimits,
+                                      @JsonProperty("secrets") final List<Secret> secrets) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
                     containerName, type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
                     mounts == null ? ImmutableList.of() : ImmutableList.copyOf(mounts),
@@ -2002,7 +2015,8 @@ public abstract class Command {
                     outputs == null ? ImmutableList.of() : ImmutableList.copyOf(outputs),
                     commandWrapperCreations == null ? ImmutableList.of() : ImmutableList.copyOf(commandWrapperCreations),
                     reserveMemory, limitMemory, limitCpu, runtime, ipcMode,
-                    autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits);
+                    autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits,
+                    secrets == null ? Collections.emptyList() : secrets);
         }
     }
 
@@ -2112,6 +2126,7 @@ public abstract class Command {
         @Nullable public abstract String gpus();
         @Nullable public abstract ImmutableMap<String, String> genericResources();
         @Nullable public abstract ImmutableMap<String, String> ulimits();
+        public abstract List<Secret> secrets();
 
         public static Builder initialize(final Command command) {
             return builder()
@@ -2145,12 +2160,14 @@ public abstract class Command {
                     .containerLabels(command.containerLabels())
                     .gpus(command.gpus())
                     .genericResources(command.genericResources())
-                    .ulimits(command.ulimits());
+                    .ulimits(command.ulimits())
+                    .secrets(command.secrets());
 
         }
 
         static Builder builder() {
-            return new AutoValue_Command_ConfiguredCommand.Builder();
+            return new AutoValue_Command_ConfiguredCommand.Builder()
+                    .secrets(Collections.emptyList());
         }
 
         @AutoValue.Builder
@@ -2193,6 +2210,7 @@ public abstract class Command {
             public abstract Builder gpus(String gpus);
             public abstract Builder genericResources(Map<String, String> genericResources);
             public abstract Builder ulimits(Map<String, String> ulimits);
+            public abstract Builder secrets(List<Secret> secrets);
 
             public abstract ConfiguredCommand build();
         }

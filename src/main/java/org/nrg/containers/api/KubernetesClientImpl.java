@@ -36,6 +36,7 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -84,8 +85,8 @@ public class KubernetesClientImpl implements KubernetesClient {
 
 
     public KubernetesClientImpl(
-            ExecutorService executorService,
-            NrgEventServiceI eventService
+            final ExecutorService executorService,
+            final NrgEventServiceI eventService
     ) throws IOException, NoContainerServerException {
         this.executorService = executorService;
         this.eventService = eventService;
@@ -232,11 +233,6 @@ public class KubernetesClientImpl implements KubernetesClient {
         // Constraints
         final V1Affinity affinity = parseSwarmConstraints(toCreate.swarmConstraints());
 
-        // Environment variables
-        final List<V1EnvVar> envVars = toCreate.environmentVariables().entrySet().stream().map(
-                entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build()
-        ).collect(Collectors.toList());
-
         // Labels
         final Map<String, String> labels = toCreate.containerLabels() == null ?
                 new HashMap<>() :
@@ -350,6 +346,16 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Container name (also used to generate a job name)
         final String name = toCreate.containerNameOrRandom();
+
+        // Secrets
+        final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
+                ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+
+        // Environment variables
+        final List<V1EnvVar> envVars = containerPropertiesWithSecretValues.environmentVariables()
+                .entrySet().stream()
+                .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
+                .collect(Collectors.toList());
 
         // Build job
         V1Job job = new V1JobBuilder()
