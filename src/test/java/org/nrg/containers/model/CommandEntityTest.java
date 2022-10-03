@@ -11,9 +11,6 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.CommandTestConfig;
-import org.nrg.containers.secrets.Secret;
-import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
-import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandInput;
 import org.nrg.containers.model.command.auto.Command.CommandMount;
@@ -31,6 +28,9 @@ import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.command.entity.DockerCommandEntity;
+import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.CommandEntityService;
 import org.nrg.containers.utils.TestingUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,9 +43,10 @@ import java.io.File;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -110,10 +111,15 @@ public class CommandEntityTest {
                 .path("relative/path/to/dir")
                 .build();
 
-        final List<Secret> secrets = Collections.singletonList(
+        // Add a bunch of secrets to ensure we don't have a problem saving multiple
+        final List<Secret> secrets = Stream.of(
                 new Secret(new SystemPropertySecretSource("propname"),
-                        new EnvironmentVariableSecretDestination("ENVNAME"))
-        );
+                        new EnvironmentVariableSecretDestination("ENVNAME")),
+                new Secret(new SystemPropertySecretSource("propname"),
+                        new EnvironmentVariableSecretDestination("ENVNAME2")),
+                new Secret(new SystemPropertySecretSource("propname"),
+                        new EnvironmentVariableSecretDestination("ENVNAME3"))
+        ).collect(Collectors.toList());
 
         final String externalInputName = "session";
         final CommandWrapperExternalInput sessionExternalInput = CommandWrapperExternalInput.builder()

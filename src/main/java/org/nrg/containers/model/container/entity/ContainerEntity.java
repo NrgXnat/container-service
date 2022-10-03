@@ -560,7 +560,9 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.swarmConstraints = swarmConstraints;
     }
 
-    @Type(type = "json")
+    // Use fully-qualified name until we add a TypeDef to AbstractHibernateEntity - See XNAT-7172
+    @Type(type = "com.vladmihalcea.hibernate.type.json.JsonType")
+    @Column(columnDefinition = "json")
     public List<ResolvedSecret> getSecrets() {
         return secrets;
     }
