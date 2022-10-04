@@ -3,16 +3,17 @@ package org.nrg.containers.secrets;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import javax.annotation.Nonnull;
 import java.util.Objects;
 
 public class Secret {
-    @JsonProperty("source") private final SecretSource source;
-    @JsonProperty("destination") private final SecretDestination destination;
+    @Nonnull @JsonProperty("source") private final SecretSource source;
+    @Nonnull @JsonProperty("destination") private final SecretDestination destination;
 
     @JsonCreator
     public Secret(
-            @JsonProperty("source") final SecretSource source,
-            @JsonProperty("destination") final SecretDestination destination
+            @Nonnull @JsonProperty("source") final SecretSource source,
+            @Nonnull @JsonProperty("destination") final SecretDestination destination
     ) {
         this.source = source;
         this.destination = destination;

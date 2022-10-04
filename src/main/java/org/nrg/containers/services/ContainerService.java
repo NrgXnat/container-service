@@ -20,9 +20,13 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public interface ContainerService {
     String   XNAT_USER        = "XNAT_USER";
@@ -33,6 +37,8 @@ public interface ContainerService {
     String   STDOUT_LOG_NAME  = "stdout.log";
     String   STDERR_LOG_NAME  = "stderr.log";
     String[] LOG_NAMES        = new String[]{STDOUT_LOG_NAME, STDERR_LOG_NAME};
+    Set<String> RESERVED_ENV  = Stream.of(XNAT_USER, XNAT_PASS, XNAT_HOST)
+            .collect(Collectors.collectingAndThen(Collectors.toSet(), Collections::unmodifiableSet));
 
     PluginVersionCheck checkXnatVersion();
 

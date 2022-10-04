@@ -10,8 +10,8 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import org.apache.commons.collections4.SetUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandMountEntity;
@@ -25,6 +25,10 @@ import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandInputConfiguration;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandOutputConfiguration;
+import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.SecretDestination;
+import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.utils.ContainerServicePermissionUtils.WrapperPermission;
 import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
@@ -368,6 +372,24 @@ public abstract class Command {
             }
         }
 
+        final Set<String> envNames = environmentVariables().keySet();
+
+        final Map<Class<? extends SecretDestination>, List<Secret>> secretsByDestinationType =
+                secrets().stream().collect(Collectors.groupingBy(secret -> secret.destination().getClass()));
+
+        final Set<String> secretEnvNames = secretsByDestinationType
+                .getOrDefault(EnvironmentVariableSecretDestination.class, Collections.emptyList())
+                .stream()
+                .map(Secret::destination)
+                .map(SecretDestination::identifier)
+                .collect(Collectors.toSet());
+        for (final String envName : SetUtils.intersection(secretEnvNames, ContainerService.RESERVED_ENV)) {
+            errors.add(commandName + " Secrets use reserved environment variable name \"" + envName + "\"");
+        }
+        for (final String envName : SetUtils.intersection(secretEnvNames, envNames)) {
+            errors.add(commandName + " Secrets and environment variables both request name \"" + envName + "\"");
+        }
+
         final Set<String> mountNames = new HashSet<>(mounts().size());
         for (final CommandMount mount : mounts()) {
             final List<String> mountErrors = mount.validate().stream()
@@ -596,7 +618,9 @@ public abstract class Command {
         if (ports().size() > 0) {
             errors.add(commandName + " " + setupOrWrapup + " commands cannot declare any ports.");
         }
-
+        if (!secrets().isEmpty()) {
+            errors.add(commandName + " " + setupOrWrapup + " commands cannot declare any secrets.");
+        }
 
         return errors;
     }

@@ -1,6 +1,8 @@
 package org.nrg.containers.secrets;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1EnvVar;
@@ -56,10 +58,13 @@ import org.powermock.core.classloader.annotations.PrepareOnlyThisForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.File;
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.both;
@@ -68,6 +73,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasProperty;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
@@ -93,6 +99,8 @@ public class SecretsTest {
     @Mock private UserI user;
     private Backend backend = null;
     private String userId;
+
+    private static final ObjectMapper objectMapper = new ObjectMapperConfig().objectMapper();
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
 
@@ -155,7 +163,6 @@ public class SecretsTest {
                 .build();
 
         // Class under test
-        final ObjectMapper objectMapper = new ObjectMapperConfig().objectMapper();
         final ContainerSecretService containerSecretService = new ContainerSecretServiceImpl(Collections.singletonList(valueObtainer));
         final CommandResolutionService commandResolutionService = new CommandResolutionServiceImpl(
                 commandService,
@@ -414,5 +421,137 @@ public class SecretsTest {
 
         // Check for secret env value
         assertThat(containerConfig.env(), contains(secretEnvironmentVariableName + "=" + secretValue));
+    }
+
+    @Test
+    public void testSystemPropertySecretSourceJson() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{" +
+                "\"type\": \"" + SystemPropertySecretSource.JSON_TYPE_NAME + "\", " +
+                "\"identifier\": \"" + identifier + "\"" +
+                "}";
+        final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
+
+        assertThat(secretSource, instanceOf(SystemPropertySecretSource.class));
+        assertThat(secretSource.identifier(), is(identifier));
+    }
+
+    @Test
+    public void testEnvSecretDestJson() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{" +
+                "\"type\": \"" + EnvironmentVariableSecretDestination.JSON_TYPE_NAME + "\", " +
+                "\"identifier\": \"" + identifier + "\"" +
+                "}";
+        final SecretDestination secretDestination = objectMapper.readValue(json, SecretDestination.class);
+
+        assertThat(secretDestination, instanceOf(EnvironmentVariableSecretDestination.class));
+        assertThat(secretDestination.identifier(), is(identifier));
+    }
+
+
+    @Test(expected = InvalidTypeIdException.class)
+    public void testSecretSourceJsonInvalidType() throws Exception {
+        final String type = RandomStringUtils.randomAlphabetic(10);
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{" +
+                "\"type\": \"" + type + "\", " +
+                "\"identifier\": \"" + identifier + "\"" +
+                "}";
+
+        final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
+    }
+
+    @Test(expected = InvalidTypeIdException.class)
+    public void testSecretDestJsonInvalidType() throws Exception {
+        final String type = RandomStringUtils.randomAlphabetic(10);
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{" +
+                "\"type\": \"" + type + "\", " +
+                "\"identifier\": \"" + identifier + "\"" +
+                "}";
+
+
+        final SecretDestination secretDestination = objectMapper.readValue(json, SecretDestination.class);
+    }
+
+    @Test(expected = InvalidTypeIdException.class)
+    public void testSecretSourceJsonNoType() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{\"identifier\": \"" + identifier + "\"}";
+
+        final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
+    }
+
+    @Test(expected = InvalidTypeIdException.class)
+    public void testSecretDestJsonNoType() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{\"identifier\": \"" + identifier + "\"}";
+
+        final SecretDestination secretDestination = objectMapper.readValue(json, SecretDestination.class);
+    }
+
+    @Test
+    public void testSecretJson() throws Exception {
+        final String sourceIdentifier = RandomStringUtils.randomAlphabetic(10);
+        final String sourceJson = makeSystemPropertySourceJson(sourceIdentifier);
+        final String destIdentifier = RandomStringUtils.randomAlphabetic(10);
+        final String destJson = makeEnvironmentVariableDestJson(destIdentifier);
+
+        final String json = "{" +
+                "\"source\": " + sourceJson + ", " +
+                "\"destination\": " + destJson +
+                "}";
+
+        final Secret secret = objectMapper.readValue(json, Secret.class);
+        assertThat(secret.source(), instanceOf(SystemPropertySecretSource.class));
+        assertThat(secret.source().identifier(), is(sourceIdentifier));
+        assertThat(secret.destination(), instanceOf(EnvironmentVariableSecretDestination.class));
+        assertThat(secret.destination().identifier(), is(destIdentifier));
+    }
+
+    @Test(expected = JsonParseException.class)
+    public void testSecretJson_noSource() throws Exception {
+        final String destIdentifier = RandomStringUtils.randomAlphabetic(10);
+        final String destJson = makeEnvironmentVariableDestJson(destIdentifier);
+
+        final String json = "{" +
+                "\"destination\": " + destJson + ", " +
+                "}";
+
+        final Secret secret = objectMapper.readValue(json, Secret.class);
+    }
+
+    @Test(expected = JsonParseException.class)
+    public void testSecretJson_noDestination() throws Exception {
+        final String sourceIdentifier = RandomStringUtils.randomAlphabetic(10);
+        final String sourceJson = makeSystemPropertySourceJson(sourceIdentifier);
+
+        final String json = "{" +
+                "\"source\": " + sourceJson + ", " +
+                "}";
+
+        final Secret secret = objectMapper.readValue(json, Secret.class);
+    }
+
+    private static String makeSourceDestJson(final String identifier, final String type) throws Exception {
+        return makeSourceDestJson(identifier, type, Collections.emptyMap());
+    }
+
+    private static String makeSourceDestJson(final String identifier, final String type, final Map<String, String> otherProperties) throws Exception {
+        final Map<String, String> map = Stream.concat(
+                Stream.of(new AbstractMap.SimpleEntry<>("type", type),
+                        new AbstractMap.SimpleEntry<>("identifier", identifier)),
+                otherProperties.entrySet().stream()
+        ).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        return objectMapper.writeValueAsString(map);
+    }
+
+    private static String makeSystemPropertySourceJson(final String identifier) throws Exception {
+        return makeSourceDestJson(identifier, SystemPropertySecretSource.JSON_TYPE_NAME);
+    }
+
+    private static String makeEnvironmentVariableDestJson(final String identifier) throws Exception {
+        return makeSourceDestJson(identifier, EnvironmentVariableSecretDestination.JSON_TYPE_NAME);
     }
 }
