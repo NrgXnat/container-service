@@ -2922,12 +2922,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             final List<ResolvedSecret> resolvedSecrets = new ArrayList<>();
-            try {
-                for (Secret secret : secrets) {
+            for (Secret secret : secrets) {
+                try {
                     resolvedSecrets.add(secretService.resolve(secret));
+                } catch (ContainerServiceSecretException e) {
+                    throw new CommandResolutionException("Could not resolve secret " + secret, e);
                 }
-            } catch (ContainerServiceSecretException e) {
-                throw new CommandResolutionException("Could not resolve secrets", e);
             }
             return resolvedSecrets;
         }

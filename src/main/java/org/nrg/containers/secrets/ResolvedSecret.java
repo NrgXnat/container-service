@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import org.nrg.containers.exceptions.ContainerServiceSecretException;
 
 import javax.annotation.Nonnull;
 import java.io.IOException;
@@ -57,8 +58,8 @@ public class ResolvedSecret extends Secret {
 
         public WithValue(final Secret secret,
                          @SuppressWarnings("OptionalUsedAsFieldOrParameterType") final Optional<String> value)
-                throws Exception {
-            this(secret, value.orElseThrow(Exception::new));
+                throws ContainerServiceSecretException {
+            this(secret, value.orElseThrow(() -> new ContainerServiceSecretException("Did not obtain value for secret " + secret)));
         }
 
         public WithValue(final Secret secret, @Nonnull final String value) {

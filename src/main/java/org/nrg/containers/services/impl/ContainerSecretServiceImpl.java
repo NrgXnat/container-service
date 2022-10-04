@@ -70,10 +70,7 @@ public class ContainerSecretServiceImpl implements ContainerSecretService {
             final Constructor<? extends ResolvedSecret> c = resolvedSecretClass.getConstructor(Secret.class, Optional.class);
             return c.newInstance(secret, secretValue);
         } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
-            // Throw as a new exception, but do not include the cause.
-            // Some of the exceptions we might get indicate that we don't have a value when we should, or things like that.
-            // Including this fact in our exception could leak information about the secret value, i.e. its presence or absence.
-            throw new ContainerServiceSecretException("Could not create " + resolvedSecretClass.getSimpleName() + " from secret " + secret);
+            throw new ContainerServiceSecretException("Could not create " + resolvedSecretClass.getSimpleName(), e);
         }
     }
 
