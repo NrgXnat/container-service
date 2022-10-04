@@ -15,9 +15,12 @@ import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingException;
 import lombok.extern.slf4j.Slf4j;
+import org.ahocorasick.trie.Emit;
+import org.ahocorasick.trie.Trie;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.nrg.action.ClientException;
 import org.nrg.action.ServerException;
 import org.nrg.containers.exceptions.CommandInputResolutionException;
@@ -50,8 +53,6 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
-import org.nrg.containers.secrets.ResolvedSecret;
-import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Assessor;
@@ -64,6 +65,9 @@ import org.nrg.containers.model.xnat.Subject;
 import org.nrg.containers.model.xnat.SubjectAssessor;
 import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.model.xnat.XnatModelObject;
+import org.nrg.containers.secrets.ResolvedSecret;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.SecretDestination;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerSecretService;
@@ -399,6 +403,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                 StringUtils.join(missingRequiredInputs, ", "))
                 );
             }
+
+            // Resolve secrets
+            final List<ResolvedSecret> resolvedSecrets = resolveSecrets(command.secrets());
+            ensureInputsDoNotUseSecrets(resolvedInputTrees, resolvedSecrets);
+
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
             final String resolvedContainerName = resolveContainerName(resolvedInputValuesByReplacementKey, command.containerName());
             final Map<String, String> resolvedEnvironmentVariables = resolveEnvironmentVariables(resolvedInputValuesByReplacementKey);
@@ -471,7 +480,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .gpus(command.gpus())
                     .genericResources(command.genericResources())
                     .ulimits(command.ulimits())
-                    .secrets(resolveSecrets(command.secrets()))
+                    .secrets(resolvedSecrets)
                     .build();
 
             log.info("Done resolving command.");
@@ -2931,6 +2940,52 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
             return resolvedSecrets;
         }
+
+        private void ensureInputsDoNotUseSecrets(
+                final List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
+                final List<ResolvedSecret> resolvedSecrets
+        ) throws CommandResolutionException {
+            // Find all the destination identifiers
+            final List<String> secretDestinationIdentifiers = resolvedSecrets.stream()
+                    .map(Secret::destination)
+                    .map(SecretDestination::identifier)
+                    .collect(Collectors.toList());
+
+            // Will search resolved values for the secret identifiers using Aho–Corasick algorithm
+            final Trie trie = Trie.builder()
+                    .ignoreOverlaps()
+                    .stopOnHit()
+                    .addKeywords(secretDestinationIdentifiers)
+                    .build();
+
+            final List<Triple<String, String, String>> detectedSecrets = resolvedInputTrees.stream()
+                    .flatMap(resolvedInputTree -> findInputsWithResolvedValuesThatContainSecretDestinationIdentifiers(resolvedInputTree, trie))
+                    .collect(Collectors.toList());
+
+            if (!detectedSecrets.isEmpty()) {
+                final String message = detectedSecrets.stream()
+                        .map(triple -> "Input \"" + triple.getLeft() +
+                                "\" resolved value \"" + triple.getMiddle() +
+                                "\" refers to secret destination \"" + triple.getRight() + "\"")
+                        .collect(Collectors.joining(" | "));
+                throw new CommandResolutionException(message);
+            }
+        }
+
+        private Stream<Triple<String, String, String>> findInputsWithResolvedValuesThatContainSecretDestinationIdentifiers(
+                final ResolvedInputTreeNode<? extends Input> resolvedInputTree, final Trie trie) {
+            return resolvedInputTree.valuesAndChildren().stream()
+                    .flatMap(valueAndChildren -> {
+                        final Stream<Triple<String, String, String>> childResult = valueAndChildren.children().stream().flatMap(child -> findInputsWithResolvedValuesThatContainSecretDestinationIdentifiers(child, trie));
+
+                        final String resolvedValue = valueAndChildren.resolvedValue().value();
+                        final Emit valueMatch = resolvedValue == null ? null : trie.firstMatch(resolvedValue);
+                        return (valueMatch != null)
+                                ? Stream.concat(Stream.of(Triple.of(resolvedInputTree.input().name(), resolvedValue, valueMatch.getKeyword())), childResult)
+                                : childResult;
+                    });
+        }
+
     }
 
     @Nonnull

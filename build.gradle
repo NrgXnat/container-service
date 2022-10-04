@@ -106,6 +106,8 @@ dependencies {
         exclude group: "org.apache.commons", module: "commons-lang3"
     }
 
+    implementAndInclude "org.ahocorasick:ahocorasick:0.6.3"
+
     implementation ("org.nrg.xnat:web") {
         transitive = false
     }
