@@ -1260,10 +1260,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 XNAT.ui.banner.top(2000, 'Command definition updated.', 'success');
                             },
                             fail: function(e){
-                                errorHandler(e, 'Could Not Update', false);
+                                if (e.status == 400) {
+                                    XNAT.dialog.open({
+                                        width: 450,
+                                        title: "Error: Could Not Update Command Definition",
+                                        content: "<p><strong>HTTP 400 Error:</strong> The server could not process the request. This may be due to an error in the edited command definition.",
+                                        buttons: [
+                                            {
+                                                label: 'OK',
+                                                isDefault: true,
+                                                close: true,
+                                            }
+                                        ]
+                                    });
+                                } else {
+                                    errorHandler(e, 'Could Not Update', false);
+                                }
+
                             }
                         });
-                    }
+                    },
+                    close: false
                 },
                 close: { label: 'Cancel' }
             };
