@@ -319,6 +319,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         boolean fromFile = false;
         if (logStream == null) {
             logContent = "";
+            lastTime = since == null ? queryTime : since;
         } else {
             final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             if (logStream instanceof FileInputStream) {

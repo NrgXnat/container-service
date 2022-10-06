@@ -1145,7 +1145,8 @@ public class DockerControlApi implements ContainerControlApi {
     public InputStream getLogStream(final Container container, final LogType logType, boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
         // TODO Replace this with backend-specific implementations that attach to the underlying log streams
         //  rather than read the entire stream to a string then wrap an InputStream on top of that.
-        return new ByteArrayInputStream(getLog(container, logType, withTimestamps, since).getBytes());
+        final String log = getLog(container, logType, withTimestamps, since);
+        return log == null ? null : new ByteArrayInputStream(log.getBytes());
     }
 
     /**

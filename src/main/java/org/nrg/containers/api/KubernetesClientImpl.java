@@ -197,6 +197,14 @@ public class KubernetesClientImpl implements KubernetesClient {
         final long currentUnixTimestamp = Instant.now().getEpochSecond();
         final Integer sinceRelative = since == null ? null : Math.toIntExact(currentUnixTimestamp) - since;
 
+        if (sinceRelative != null && sinceRelative <= 0) {
+            // This can happen when the UI is streaming logs.
+            // It will get the logs and ask for more in less than a second.
+            // The API doesn't allow us to get logs with more precision than one second,
+            //  so we can treat this as if no logs were created in the interval.
+            return null;
+        }
+
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);
         } catch (ApiException e) {
