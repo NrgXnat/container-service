@@ -2951,7 +2951,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .map(SecretDestination::identifier)
                     .collect(Collectors.toList());
 
-            // Will search resolved values for the secret identifiers using Aho–Corasick algorithm
+            // Will search resolved values for the secret identifiers using Aho-Corasick algorithm
             final Trie trie = Trie.builder()
                     .ignoreOverlaps()
                     .stopOnHit()
