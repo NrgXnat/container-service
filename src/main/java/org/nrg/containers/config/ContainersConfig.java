@@ -59,7 +59,7 @@ public class ContainersConfig {
         return factory;
     }
 
-    @Bean(name = {"finalizingQueueListenerFactory", "jmsListenerContainerFactory"})
+    @Bean(name = "finalizingQueueListenerFactory")
     public DefaultJmsListenerContainerFactory finalizingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                              final MailService mailService,
                                                                              @Qualifier("springConnectionFactory")
