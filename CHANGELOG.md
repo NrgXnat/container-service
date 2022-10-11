@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.3.0
+[Released 2022-10-11](https://bitbucket.org/xnatdev/container-service/src/3.3.0/).
+
+* **New Feature** [CS-718][] Support for passing Secrets into containers. 
+  For more information see [Making Use of Container Service Secrets][wiki-cs-secrets] on the XNAT wiki.
+* **Deprecation** [CS-525][] Complete deprecation of old-style Command Automation (a.k.a. Command Event Mappings) in favor of [Event Service Subscriptions][wiki-event-service]
+    * Remove UI to create new Command Automations
+    * Enable migration / conversion of existing Command Automations into Event Service Subscriptions
+* **Improvement** [CS-710][] Invalidate container's XNAT alias token on finalization
+* **Improvement** [CS-722][] Improve UI when commands are added / edited but get rejected with errors
+* **Bugfix** [CS-627][] Fix error on blank/empty swarm constraints
+* **Bugfix** [CS-723][] Enable streaming logs from running containers on Kubernetes
+
+[CS-525]: https://issues.xnat.org/browse/CS-525
+[CS-627]: https://issues.xnat.org/browse/CS-627
+[CS-710]: https://issues.xnat.org/browse/CS-710
+[CS-718]: https://issues.xnat.org/browse/CS-718
+[CS-722]: https://issues.xnat.org/browse/CS-722
+[CS-723]: https://issues.xnat.org/browse/CS-723
+[wiki-cs-secrets]: https://wiki.xnat.org/display/CSDEV/Making+use+of+Container+Service+Secrets
+[wiki-event-service]: https://wiki.xnat.org/documentation/xnat-administration/enabling-the-xnat-event-service
+
 ## 3.2.1
 [Released 2022-09-07](https://bitbucket.org/xnatdev/container-service/src/3.2.1/).
 
