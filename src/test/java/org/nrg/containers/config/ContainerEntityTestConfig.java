@@ -13,6 +13,7 @@ import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.impl.HibernateContainerEntityService;
 import org.nrg.framework.services.NrgEventServiceI;
+import org.nrg.framework.services.SerializerService;
 import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -56,6 +57,11 @@ public class ContainerEntityTestConfig {
     @Bean
     public NrgPreferenceService nrgPreferenceService() {
         return Mockito.mock(NrgPreferenceService.class);
+    }
+
+    @Bean
+    public SerializerService serializerService() {
+        return Mockito.mock(SerializerService.class);
     }
 
     @Bean

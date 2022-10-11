@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.entity.CommandEntity;
 import org.nrg.containers.model.container.ContainerInputType;
+import org.nrg.containers.secrets.ResolvedSecret;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -61,6 +62,7 @@ public abstract class ResolvedCommand {
     @JsonProperty("gpus") @Nullable public abstract String gpus();
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
+    @JsonProperty("secrets") public abstract List<ResolvedSecret> secrets();
 
     @JsonProperty("external-wrapper-input-values")
     public ImmutableSet<ResolvedCommandInput> externalWrapperInputValues() {
@@ -251,7 +253,8 @@ public abstract class ResolvedCommand {
     public static Builder builder() {
         return new AutoValue_ResolvedCommand.Builder()
                 .type(CommandEntity.DEFAULT_TYPE.getName())
-                .overrideEntrypoint(Boolean.FALSE);
+                .overrideEntrypoint(Boolean.FALSE)
+                .secrets(Collections.emptyList());
     }
 
     /**
@@ -295,6 +298,7 @@ public abstract class ResolvedCommand {
                 .genericResources(command.genericResources())
                 .ulimits(command.ulimits())
                 .parentSourceObjectName(parentSourceObjectName)
+                .secrets(command.secrets().stream().map(ResolvedSecret::fromUnresolved).collect(Collectors.toList()))
                 .addMount(ResolvedCommandMount.specialInput(inputMountXnatHostPath, inputMountContainerHostPath))
                 .addMount(ResolvedCommandMount.specialOutput(outputMountXnatHostPath, outputMountContainerHostPath))
                 .build();
@@ -305,10 +309,10 @@ public abstract class ResolvedCommand {
     @AutoValue.Builder
     public static abstract class Builder {
         public abstract Builder wrapperId(Long wrapperId);
-        public abstract Builder wrapperName(String wrapperDescription);
+        public abstract Builder wrapperName(String wrapperName);
         public abstract Builder wrapperDescription(String wrapperDescription);
         public abstract Builder commandId(Long commandId);
-        public abstract Builder commandName(String commandDescription);
+        public abstract Builder commandName(String commandName);
         public abstract Builder commandDescription(String commandDescription);
         public abstract Builder image(String image);
         public abstract Builder containerName(String containerName);
@@ -396,6 +400,7 @@ public abstract class ResolvedCommand {
         public abstract Builder ulimits(Map<String, String> ulimits);
 
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
+        public abstract Builder secrets(List<ResolvedSecret> secrets);
 
         public abstract ResolvedCommand build();
     }

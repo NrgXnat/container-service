@@ -6,6 +6,7 @@ import org.nrg.containers.model.xnat.FakePrefsService;
 import org.nrg.containers.jms.rest.QueueSettingsRestApi;
 import org.nrg.containers.rest.QueueSettingsRestApiTest;
 import org.nrg.framework.services.ContextService;
+import org.nrg.framework.services.SerializerService;
 import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -42,6 +43,11 @@ public class QueueSettingsRestApiTestConfig extends WebSecurityConfigurerAdapter
                                          final DefaultJmsListenerContainerFactory finalizingQueueListenerFactory,
                                          final DefaultJmsListenerContainerFactory stagingQueueListenerFactory) {
         return new QueuePrefsBean(fakePrefsService, finalizingQueueListenerFactory, stagingQueueListenerFactory);
+    }
+
+    @Bean
+    public SerializerService serializerService() {
+        return Mockito.mock(SerializerService.class);
     }
 
     @Bean

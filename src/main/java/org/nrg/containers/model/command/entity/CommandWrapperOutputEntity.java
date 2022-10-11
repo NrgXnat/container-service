@@ -8,7 +8,13 @@ import org.nrg.xft.security.UserI;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.persistence.*;
+import javax.persistence.ElementCollection;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
@@ -165,18 +171,40 @@ public class CommandWrapperOutputEntity {
     public List<String> getTags() { return tags; }
 
     public void setTags(List<String> tags) { this.tags = tags; }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandWrapperOutputEntity that = (CommandWrapperOutputEntity) o;
-        return Objects.equals(this.commandWrapperEntity, that.commandWrapperEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(commandOutputName, that.commandOutputName) &&
+                Objects.equals(wrapperInputName, that.wrapperInputName) &&
+                Objects.equals(viaWrapupCommand, that.viaWrapupCommand) &&
+                type == that.type &&
+                Objects.equals(xsiType, that.xsiType) &&
+                Objects.equals(label, that.label) &&
+                Objects.equals(format, that.format) &&
+                Objects.equals(description, that.description) &&
+                Objects.equals(content, that.content) &&
+                Objects.equals(tags, that.tags);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandWrapperEntity, name);
+        return Objects.hash(id,
+                name,
+                commandOutputName,
+                wrapperInputName,
+                viaWrapupCommand,
+                type,
+                xsiType,
+                label,
+                format,
+                description,
+                content,
+                tags);
     }
 
     @Override

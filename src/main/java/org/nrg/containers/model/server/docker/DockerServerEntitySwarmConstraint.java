@@ -76,6 +76,7 @@ public class DockerServerEntitySwarmConstraint implements Serializable {
     }
 
     @ElementCollection
+    @Column(name="`values`")
     public List<String> getValues() {
         return values;
     }

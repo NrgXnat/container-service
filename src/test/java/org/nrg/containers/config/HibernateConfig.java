@@ -14,7 +14,14 @@ public class HibernateConfig {
     @Bean
     public Properties hibernateProperties() throws IOException {
         Properties properties = new Properties();
-        properties.put("hibernate.dialect", "org.hibernate.dialect.H2Dialect");
+
+        // Use HSQLDialect instead of H2Dialect to work around issue
+        //  with h2 version 1.4.200 in hibernate < 5.4 (or so)
+        //  where the generated statements to drop tables between tests can't be executed
+        //  as they do not cascade.
+        // See https://hibernate.atlassian.net/browse/HHH-13711
+        // Solution from https://github.com/hibernate/hibernate-orm/pull/3093#issuecomment-562752874
+        properties.put("hibernate.dialect", "org.hibernate.dialect.HSQLDialect");
         properties.put("hibernate.hbm2ddl.auto", "create");
         properties.put("hibernate.cache.use_second_level_cache", false);
         properties.put("hibernate.cache.use_query_cache", false);

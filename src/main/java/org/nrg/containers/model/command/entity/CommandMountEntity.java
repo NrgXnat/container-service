@@ -1,7 +1,6 @@
 package org.nrg.containers.model.command.entity;
 
 import com.google.common.base.MoreObjects;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandMount;
 
@@ -87,13 +86,18 @@ public class CommandMountEntity implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandMountEntity that = (CommandMountEntity) o;
-        return Objects.equals(this.commandEntity, that.commandEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(writable, that.writable) &&
+                Objects.equals(containerPath, that.containerPath);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandEntity, name);
+        return Objects.hash(id,
+                name,
+                writable,
+                containerPath);
     }
 
     @Override

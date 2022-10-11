@@ -36,6 +36,7 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -84,8 +85,8 @@ public class KubernetesClientImpl implements KubernetesClient {
 
 
     public KubernetesClientImpl(
-            ExecutorService executorService,
-            NrgEventServiceI eventService
+            final ExecutorService executorService,
+            final NrgEventServiceI eventService
     ) throws IOException, NoContainerServerException {
         this.executorService = executorService;
         this.eventService = eventService;
@@ -196,6 +197,14 @@ public class KubernetesClientImpl implements KubernetesClient {
         final long currentUnixTimestamp = Instant.now().getEpochSecond();
         final Integer sinceRelative = since == null ? null : Math.toIntExact(currentUnixTimestamp) - since;
 
+        if (sinceRelative != null && sinceRelative <= 0) {
+            // This can happen when the UI is streaming logs.
+            // It will get the logs and ask for more in less than a second.
+            // The API doesn't allow us to get logs with more precision than one second,
+            //  so we can treat this as if no logs were created in the interval.
+            return null;
+        }
+
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);
         } catch (ApiException e) {
@@ -231,11 +240,6 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Constraints
         final V1Affinity affinity = parseSwarmConstraints(toCreate.swarmConstraints());
-
-        // Environment variables
-        final List<V1EnvVar> envVars = toCreate.environmentVariables().entrySet().stream().map(
-                entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build()
-        ).collect(Collectors.toList());
 
         // Labels
         final Map<String, String> labels = toCreate.containerLabels() == null ?
@@ -350,6 +354,16 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Container name (also used to generate a job name)
         final String name = toCreate.containerNameOrRandom();
+
+        // Secrets
+        final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
+                ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+
+        // Environment variables
+        final List<V1EnvVar> envVars = containerPropertiesWithSecretValues.environmentVariables()
+                .entrySet().stream()
+                .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
+                .collect(Collectors.toList());
 
         // Build job
         V1Job job = new V1JobBuilder()

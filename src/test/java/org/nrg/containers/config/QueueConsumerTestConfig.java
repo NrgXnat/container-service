@@ -158,8 +158,8 @@ public class QueueConsumerTestConfig {
     public ContainerFinalizeService containerFinalizeService(final ContainerControlApi containerControlApi,
                                                              final SiteConfigPreferences siteConfigPreferences,
                                                              final CatalogService catalogService,
-                                                             final MailService mailService) {
-        return new ContainerFinalizeServiceImpl(containerControlApi, siteConfigPreferences, catalogService,mailService);
+                                                             final MailService mailService, final AliasTokenService aliasTokenService) {
+        return new ContainerFinalizeServiceImpl(containerControlApi, siteConfigPreferences, catalogService, mailService, aliasTokenService);
     }
 
     @Bean

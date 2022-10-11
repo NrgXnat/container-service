@@ -1,7 +1,6 @@
 package org.nrg.containers.model.command.entity;
 
 import com.google.common.base.MoreObjects;
-import org.hibernate.envers.Audited;
 import org.nrg.containers.model.command.auto.Command;
 
 import javax.annotation.Nonnull;
@@ -251,13 +250,40 @@ public class CommandWrapperExternalInputEntity {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final CommandWrapperExternalInputEntity that = (CommandWrapperExternalInputEntity) o;
-        return Objects.equals(this.commandWrapperEntity, that.commandWrapperEntity) &&
-                Objects.equals(this.name, that.name);
+        return id == that.id &&
+                required == that.required &&
+                loadChildren == that.loadChildren &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(label, that.label) &&
+                Objects.equals(description, that.description) &&
+                type == that.type &&
+                Objects.equals(matcher, that.matcher) &&
+                Objects.equals(providesValueForCommandInput, that.providesValueForCommandInput) &&
+                Objects.equals(providesFilesForCommandMount, that.providesFilesForCommandMount) &&
+                Objects.equals(viaSetupCommand, that.viaSetupCommand) &&
+                Objects.equals(defaultValue, that.defaultValue) &&
+                Objects.equals(userSettable, that.userSettable) &&
+                Objects.equals(rawReplacementKey, that.rawReplacementKey) &&
+                Objects.equals(sensitive, that.sensitive);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandWrapperEntity, name);
+        return Objects.hash(id,
+                name,
+                label,
+                description,
+                type,
+                matcher,
+                providesValueForCommandInput,
+                providesFilesForCommandMount,
+                viaSetupCommand,
+                defaultValue,
+                userSettable,
+                rawReplacementKey,
+                required,
+                loadChildren,
+                sensitive);
     }
 
     @Override

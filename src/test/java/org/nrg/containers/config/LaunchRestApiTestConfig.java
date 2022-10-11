@@ -10,6 +10,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventServiceI;
+import org.nrg.framework.services.SerializerService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -80,6 +81,11 @@ public class LaunchRestApiTestConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public SiteConfigPreferences siteConfigPreferences() {
         return Mockito.mock(SiteConfigPreferences.class);
+    }
+
+    @Bean
+    public SerializerService serializerService() {
+        return Mockito.mock(SerializerService.class);
     }
 
     @Bean

@@ -29,6 +29,7 @@ import org.nrg.xdat.om.XnatResourcecatalog;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Permissions;
+import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
@@ -57,6 +58,7 @@ import java.util.regex.Pattern;
 
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
+import static org.nrg.containers.services.ContainerService.XNAT_USER;
 
 
 @Slf4j
@@ -67,6 +69,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     private final SiteConfigPreferences siteConfigPreferences;
     private final CatalogService catalogService;
     private final MailService mailService;
+    private final AliasTokenService aliasTokenService;
 
     private final Pattern experimentUri = Pattern.compile("^(/archive)?/experiments/([^/]+)$");
 
@@ -74,11 +77,13 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     public ContainerFinalizeServiceImpl(final ContainerControlApi containerControlApi,
                                         final SiteConfigPreferences siteConfigPreferences,
                                         final CatalogService catalogService,
-                                        final MailService mailService) {
+                                        final MailService mailService,
+                                        final AliasTokenService aliasTokenService) {
         this.containerControlApi = containerControlApi;
         this.siteConfigPreferences = siteConfigPreferences;
         this.catalogService = catalogService;
         this.mailService = mailService;
+        this.aliasTokenService = aliasTokenService;
     }
 
     @Override
@@ -299,6 +304,10 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 if (StringUtils.isBlank(details)) {
                     details = "Non-zero exit code and/or failure status from container";
                 }
+            }
+
+            if (toFinalize.environmentVariables().containsKey(XNAT_USER)) {
+                aliasTokenService.invalidateToken(toFinalize.environmentVariables().get(XNAT_USER));
             }
 
             ContainerUtils.updateWorkflowStatus(toFinalize.workflowId(), status, userI, details);

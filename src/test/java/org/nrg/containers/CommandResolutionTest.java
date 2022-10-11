@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
@@ -35,11 +38,16 @@ import org.nrg.containers.model.xnat.Resource;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.model.xnat.XnatFile;
+import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.Secret;
+import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
+import org.nrg.containers.services.ContainerSecretService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
+import org.nrg.containers.services.impl.ContainerSecretServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
@@ -57,9 +65,12 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
@@ -103,6 +114,7 @@ public class CommandResolutionTest {
     @Mock private CatalogService catalogService;
     @Mock private UserDataCache userDataCache;
     @Mock private CommandService commandService;
+    @Mock private SystemPropertySecretSource.ValueObtainer systemPropertyObtainer;
 
     private ObjectMapper mapper;
 
@@ -119,6 +131,8 @@ public class CommandResolutionTest {
             log.info("ENDING TEST " + description.getMethodName());
         }
     };
+
+    @Rule public ExpectedException expectedException = ExpectedException.none();
 
     @Before
     public void setup() throws Exception {
@@ -158,8 +172,11 @@ public class CommandResolutionTest {
                 .autoCleanup(false)
                 .build());
 
+        when(systemPropertyObtainer.handledType()).thenReturn(SystemPropertySecretSource.class);
+        final ContainerSecretService secretService = new ContainerSecretServiceImpl(Collections.singletonList(systemPropertyObtainer));
+
         commandResolutionService = new CommandResolutionServiceImpl(commandService, dockerServerService,
-                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache);
+                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache, secretService);
     }
 
     private Command.ConfiguredCommand configure(Command command, CommandWrapper wrapper) {
@@ -733,5 +750,56 @@ public class CommandResolutionTest {
 
         final File hello2File = Paths.get(mountedDir).resolve(HELLO_2_RELATIVE).toFile();
         assertThat("File " + HELLO_2_RELATIVE + " does not exist in build dir", hello2File.exists(), is(true));
+    }
+
+    /**
+     * Test that when an input value contains a secret destination identifier
+     * (for example, the input value contains the name of an environment variable where we intend to write a secret value)
+     * we detect this and throw an error.
+     */
+    @Test
+    public void testInputContainsSecretDestinationIdentifier() throws Exception {
+
+        // Mock out secret value obtainer
+        final String systemPropertyName = RandomStringUtils.randomAlphabetic(5);
+        final SystemPropertySecretSource source = new SystemPropertySecretSource(systemPropertyName);
+        final String secretValue = RandomStringUtils.random(10);
+        when(systemPropertyObtainer.obtainValue(source)).thenReturn(Optional.of(secretValue));
+
+        // Secret destination identifier. We will hide this within input value.
+        final String secretDestinationIdentifier = "ENV_" + RandomStringUtils.randomAlphabetic(5).toUpperCase(Locale.ROOT);
+
+        // Input name
+        final String inputName = RandomStringUtils.randomAlphabetic(5);
+
+        // Command - has a secret and an input, but that's about it
+        final CommandWrapper wrapper = CommandWrapper.builder().build();
+        final Command.CommandInput input = Command.CommandInput.builder()
+                .name(inputName)
+                .build();
+        final Command command = Command.builder()
+                .image("busybox:latest")
+                .commandLine("")
+                .name(RandomStringUtils.randomAlphabetic(5))
+                .inputs(input)
+                .secrets(Collections.singletonList(new Secret(source, new EnvironmentVariableSecretDestination(secretDestinationIdentifier))))
+                .addCommandWrapper(wrapper)
+                .build();
+        final Command.ConfiguredCommand configuredCommand = Command.ConfiguredCommand.initialize(command)
+                .wrapper(wrapper)
+                .addInput(input)
+                .build();
+
+        // Hide the secret destination identifier inside the input value
+        final String inputValue = RandomStringUtils.randomAlphanumeric(0, 100) + secretDestinationIdentifier + RandomStringUtils.randomAlphanumeric(0, 100);
+        final Map<String, String> runtimeValues = Stream.of(Pair.of(inputName, inputValue))
+                .collect(Collectors.toMap(Pair::getLeft, Pair::getRight));
+
+        // We should get an error when we resolve the command
+        expectedException.expect(CommandResolutionException.class);
+        expectedException.expectMessage(inputName);
+        expectedException.expectMessage(inputValue);
+        expectedException.expectMessage(secretDestinationIdentifier);
+        final ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, runtimeValues, userI);
     }
 }

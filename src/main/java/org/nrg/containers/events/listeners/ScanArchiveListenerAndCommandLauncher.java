@@ -31,7 +31,7 @@ import static reactor.bus.selector.Selectors.type;
 @Slf4j
 @Service
 public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<ScanArchiveEventToLaunchCommands>> {
-    private static final String EVENT_ID = "ScanArchived";
+    public static final String SCAN_ARCHIVED_EVENT = "ScanArchived";
 
     private ObjectMapper mapper;
     private ContainerService containerService;
@@ -57,7 +57,7 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
         final ScanArchiveEventToLaunchCommands scanArchiveEventToLaunchCommands = event.getData();
 
         // Find commands defined for this event type
-        final List<CommandEventMapping> commandEventMappings = commandEventMappingService.findByEventType(EVENT_ID);
+        final List<CommandEventMapping> commandEventMappings = commandEventMappingService.findByEventType(SCAN_ARCHIVED_EVENT);
 
         if (commandEventMappings != null && !commandEventMappings.isEmpty()) {
             final Scan scan = scanArchiveEventToLaunchCommands.scan();

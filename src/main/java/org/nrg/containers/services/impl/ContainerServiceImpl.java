@@ -791,11 +791,11 @@ public class ContainerServiceImpl implements ContainerService {
         final String eventId = workflow != null ? workflow.buildEvent().getEventId().toString() : "";
 
         final Map<String, String> defaultEnvironmentVariables = new HashMap<>();
-        defaultEnvironmentVariables.put("XNAT_USER", token.getAlias());
-        defaultEnvironmentVariables.put("XNAT_PASS", token.getSecret());
-        defaultEnvironmentVariables.put("XNAT_HOST", xnatHostUrl);
-        defaultEnvironmentVariables.put("XNAT_WORKFLOW_ID", workflowId);
-        defaultEnvironmentVariables.put("XNAT_EVENT_ID", eventId);
+        defaultEnvironmentVariables.put(XNAT_USER, token.getAlias());
+        defaultEnvironmentVariables.put(XNAT_PASS, token.getSecret());
+        defaultEnvironmentVariables.put(XNAT_HOST, xnatHostUrl);
+        defaultEnvironmentVariables.put(XNAT_WORKFLOW_ID, workflowId);
+        defaultEnvironmentVariables.put(XNAT_EVENT_ID, eventId);
 
         return defaultEnvironmentVariables;
     }

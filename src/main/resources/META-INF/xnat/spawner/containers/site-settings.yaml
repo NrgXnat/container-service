@@ -16,6 +16,8 @@ serverSetupPanel:
             tag: link|rel="stylesheet"|type="text/css"|href="~/scripts/xnat/app/scanTable/scanTable.css"
         csHistoryScript:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
+        commandAutomationScript:
+            tag: script|src="~/scripts/xnat/plugin/containerService/commandAutomation.js"
         csSiteAdminScripts:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
         jqueryUi:
@@ -190,12 +192,12 @@ siteCommandAutomationPanel:
     name: siteCommandAutomationPanel
     label: Command Automation
     contents:
-        siteCommandAutomationNote:
-            tag: div.message
+        commandAutomationNote:
+            tag: div.warning
             contents:
-                "With this panel, you can set up an automated command execution that will be triggered by an XNAT event, such as an image session being archived."
-        siteCommandAutomationTable:
-            tag: div#command-automation-admin-list
+                "Command Event Mappings are deprecated in favor of Event Service Subscriptions, which may be configured from the project actions box or Event Service administration."
+        commandAutomationTable:
+            tag: div#command-automation-list
             contents: No commands defined
 
 siteCommandOrchestrationPanel:

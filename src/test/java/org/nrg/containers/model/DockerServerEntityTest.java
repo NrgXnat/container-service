@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.DockerServerEntityTestConfig;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerSwarmConstraint;
@@ -41,6 +44,8 @@ public class DockerServerEntityTest {
     @Autowired private ObjectMapper mapper;
     @Autowired private DockerServerService dockerServerService;
     @Autowired private DockerServerEntityService dockerServerEntityService;
+
+    @Rule public ExpectedException expectedException = ExpectedException.none();
 
     private static final String CONTAINER_HOST = "a host";
 
@@ -187,6 +192,24 @@ public class DockerServerEntityTest {
         TestingUtils.commitTransaction();
         server = dockerServerService.getServer();
         assertThat(server, isIgnoreId(updatedServer));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testConstraintValidationAttributeAndValues() throws Exception {
+        DockerServer test = SWARM_NO_CONSTRAINTS.toBuilder()
+                .swarmConstraints(Collections.singletonList(DockerServerSwarmConstraint.builder()
+                        .id(0L)
+                        .userSettable(false)
+                        .comparator("=")
+                        .attribute("")
+                        .values(Collections.emptyList())
+                        .build()))
+                .build();
+        expectedException.expect(InvalidDefinitionException.class);
+        expectedException.expectMessage("Constraint node attribute cannot be blank\n" +
+                "Constraint values cannot be blank");
+        dockerServerService.setServer(test);
     }
 
     private Matcher<DockerServer> isIgnoreId(final DockerServer server) {

@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.8.5"
+        vXnat = "1.8.6-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -16,7 +16,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.2.1"
+version "3.3.0-RC-SNAPSHOT"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -41,7 +41,7 @@ dependencyManagement {
         }
     }
 }
-def vDockerClient = "5.2.2"
+def vDockerClient = "6.0.4"
 def vAutoValue = "1.3"
 def vKubernetesClient = "15.0.+"
 def vPowerMock = "1.7.0"
@@ -49,8 +49,7 @@ def vGson = dependencyManagement.importedProperties["gson.version"]
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
-def vH2 = "1.4.197"
-def vJersey = "2.32"
+def vJersey = "3.0.6"
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -105,6 +104,8 @@ dependencies {
         exclude group: "com.google.code.findbugs", module: "jsr305"
         exclude group: "org.apache.commons", module: "commons-lang3"
     }
+
+    implementAndInclude "org.ahocorasick:ahocorasick:0.6.3"
 
     implementation ("org.nrg.xnat:web") {
         transitive = false
@@ -193,13 +194,14 @@ dependencies {
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core"
     testImplementation "javax.servlet:javax.servlet-api"
-    testImplementation "com.h2database:h2:${vH2}"
+    testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
+    testImplementation "com.vladmihalcea:hibernate-types-43:${dependencyManagement.importedProperties["vladmihalcea-hibernate-types.version"]}"
 }
 
 task unitTest( type: Test ) {

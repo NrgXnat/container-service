@@ -3,8 +3,10 @@ package org.nrg.containers.model.container.entity;
 import com.google.common.base.MoreObjects;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.hibernate.annotations.Type;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.Backend;
+import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
@@ -73,6 +75,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
     private String gpus;
     private Map<String, String> genericResources = new HashMap<>();
     private Map<String, String> ulimits;
+    private List<ResolvedSecret> secrets = new ArrayList<>();
 
 
     public ContainerEntity() {}
@@ -128,6 +131,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.setGpus(containerPojo.gpus());
         this.setGenericResources(containerPojo.genericResources());
         this.setUlimits(containerPojo.ulimits());
+        this.setSecrets(containerPojo.secrets());
 
         return this;
     }
@@ -556,6 +560,17 @@ public class ContainerEntity extends AbstractHibernateEntity {
         this.swarmConstraints = swarmConstraints;
     }
 
+    // Use fully-qualified name until we add a TypeDef to AbstractHibernateEntity - See XNAT-7172
+    @Type(type = "com.vladmihalcea.hibernate.type.json.JsonType")
+    @Column(columnDefinition = "json")
+    public List<ResolvedSecret> getSecrets() {
+        return secrets;
+    }
+
+    public void setSecrets(final List<ResolvedSecret> secrets) {
+        this.secrets = secrets == null ? new ArrayList<>() : secrets;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -595,6 +610,7 @@ public class ContainerEntity extends AbstractHibernateEntity {
                 .add("overrideEntrypoint", overrideEntrypoint)
                 .add("workingDirectory", workingDirectory)
                 .add("environmentVariables", environmentVariables)
+                .add("secrets", secrets)
                 .add("ports", ports)
                 .add("mounts", mounts)
                 .add("inputs", inputs)

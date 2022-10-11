@@ -8,6 +8,7 @@ import org.nrg.containers.daos.OrchestrationEntityDao;
 import org.nrg.containers.daos.OrchestrationProjectEntityDao;
 import org.nrg.containers.services.*;
 import org.nrg.containers.services.impl.*;
+import org.nrg.framework.services.SerializerService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -62,5 +63,10 @@ public class CommandConfig {
     @Bean
     public ConfigService configService() {
         return Mockito.mock(ConfigService.class);
+    }
+
+    @Bean
+    public SerializerService serializerService() {
+        return Mockito.mock(SerializerService.class);
     }
 }

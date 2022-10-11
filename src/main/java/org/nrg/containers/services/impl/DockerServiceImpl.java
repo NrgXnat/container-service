@@ -219,28 +219,6 @@ public class DockerServiceImpl implements DockerService {
 
     @Override
     public DockerServerWithPing setServer(final DockerServer server) throws InvalidDefinitionException {
-        if (server.backend() == Backend.KUBERNETES) {
-            // Check that container user is parsable as a long
-            final String containerUser = server.containerUser();
-            if (StringUtils.isNotBlank(containerUser)) {
-                try {
-                    Long.parseLong(containerUser);
-                } catch (NumberFormatException e) {
-                    throw new InvalidDefinitionException("If set, container user must be a string with integer value with " +
-                            "kubernetes backend");
-                }
-            }
-            final String gpuVendor = server.gpuVendor();
-            if (StringUtils.isNotEmpty(gpuVendor) && !(StringUtils.equalsIgnoreCase("nvidia", gpuVendor) || StringUtils.equalsIgnoreCase("amd", gpuVendor))) {
-                throw new InvalidDefinitionException("The value of the GPU Vendor can only be nvidia or amd");
-            }
-        } else {
-            // Docker + Swarm must have a host configured
-            if (StringUtils.isBlank(server.host())) {
-                throw new InvalidDefinitionException("Host cannot be empty for " + server.backend() + " server setting");
-            }
-        }
-
         final DockerServer dockerServer = dockerServerService.setServer(server);
         final boolean ping = controlApi.canConnect();
         return DockerServerWithPing.create(dockerServer, ping);

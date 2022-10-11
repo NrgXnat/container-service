@@ -8,10 +8,7 @@ import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
-import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoContainerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -201,6 +198,9 @@ public class ContainerStatusUpdater implements Runnable {
             log.info("Cannot search for Docker container events. No Docker server defined.");
         } catch (DockerServerException e) {
             log.error("Cannot find Docker container events.", e);
+        } catch (InvalidDefinitionException e) {
+            // This shouldn't happen
+            log.error("Invalid server configuration found on timestamp update", e);
         }
         return UpdateReport.singleton(UpdateReportEntry.failure());
     }

@@ -65,6 +65,7 @@ import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
@@ -563,6 +564,13 @@ public class DockerControlApi implements ContainerControlApi {
             }
         }
 
+        // Secrets
+        final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
+                ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+
+        // Environment variables
+        final Map<String, String> environmentVariables = containerPropertiesWithSecretValues.environmentVariables();
+
         final HostConfig.Builder hostConfigBuilder =
                 HostConfig.builder()
                         .autoRemove(toCreate.autoRemove())
@@ -611,7 +619,10 @@ public class DockerControlApi implements ContainerControlApi {
                                 Lists.newArrayList("/bin/sh", "-c", toCreate.commandLine()) :
                                 ShellSplitter.shellSplit(toCreate.commandLine()))
                         .entrypoint(overrideEntrypoint ? Collections.singletonList("") : null)
-                        .env(toCreate.environmentVariableStrings())
+                        .env(environmentVariables.entrySet()
+                                .stream()
+                                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                                .collect(Collectors.toList()))
                         .workingDir(toCreate.workingDirectory())
                         .user(server.containerUser())
                         .labels(toCreate.containerLabels())
@@ -751,9 +762,19 @@ public class DockerControlApi implements ContainerControlApi {
                 toCreate.workingDirectory() :
                 null;
 
+        // Secrets
+        final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
+                ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+
+        // Environment variables
+        final Map<String, String> environmentVariables = containerPropertiesWithSecretValues.environmentVariables();
+
         final ContainerSpec.Builder containerSpecBuilder = ContainerSpec.builder()
                 .image(toCreate.dockerImage())
-                .env(toCreate.environmentVariableStrings())
+                .env(environmentVariables.entrySet()
+                        .stream()
+                        .map(entry -> entry.getKey() + "=" + entry.getValue())
+                        .collect(Collectors.toList()))
                 .dir(workingDirectory)
                 .mounts(mounts)
                 .user(server.containerUser())
@@ -1124,7 +1145,8 @@ public class DockerControlApi implements ContainerControlApi {
     public InputStream getLogStream(final Container container, final LogType logType, boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
         // TODO Replace this with backend-specific implementations that attach to the underlying log streams
         //  rather than read the entire stream to a string then wrap an InputStream on top of that.
-        return new ByteArrayInputStream(getLog(container, logType, withTimestamps, since).getBytes());
+        final String log = getLog(container, logType, withTimestamps, since);
+        return log == null ? null : new ByteArrayInputStream(log.getBytes());
     }
 
     /**

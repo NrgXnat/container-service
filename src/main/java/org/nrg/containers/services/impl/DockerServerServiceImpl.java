@@ -1,6 +1,7 @@
 package org.nrg.containers.services.impl;
 
 import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.services.DockerServerEntityService;
@@ -52,13 +53,13 @@ public class DockerServerServiceImpl implements DockerServerService {
     }
 
     @Override
-    public DockerServer setServer(final DockerServer dockerServer) {
+    public DockerServer setServer(final DockerServer dockerServer) throws InvalidDefinitionException {
         kubernetesClientFactory.shutdown();
         return toPojo(dockerServerEntityService.create(fromPojo(dockerServer)));
     }
 
     @Override
-    public void update(final DockerServer dockerServer) {
+    public void update(final DockerServer dockerServer) throws InvalidDefinitionException {
         kubernetesClientFactory.shutdown();
         dockerServerEntityService.update(fromPojo(dockerServer));
     }
@@ -69,7 +70,8 @@ public class DockerServerServiceImpl implements DockerServerService {
     }
 
     @Nonnull
-    public DockerServerEntity fromPojo(final DockerServer dockerServer) {
+    public DockerServerEntity fromPojo(final DockerServer dockerServer) throws InvalidDefinitionException {
+        dockerServer.validate();
         final DockerServerEntity template = dockerServerEntityService.retrieve(dockerServer.id());
         return template == null ? DockerServerEntity.create(dockerServer) : template.update(dockerServer);
     }
