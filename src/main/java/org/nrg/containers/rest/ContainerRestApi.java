@@ -48,6 +48,9 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -347,8 +350,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                                 StringUtils.isBlank(lastLine = lines[lines.length - 1].replaceAll(" .*", ""))) {
                             throw new ParseException(null, 0);
                         }
-                        lastTime = Instant.parse(StringUtils.substringBefore(lastLine, "\r"))
-                                          .plus(1L, ChronoUnit.SECONDS).getEpochSecond();
+                        lastTime = getTimestampInEpochSecondsFromLogLine(lastLine);
                     } catch (ParseException e) {
                         lastTime = since == null ? queryTime : since;
                     }
@@ -364,6 +366,18 @@ public class ContainerRestApi extends AbstractXapiRestController {
         jsonContent.put("bytesRead", currentBytesRead);
         jsonContent.put("fromFile", fromFile);
         return jsonContent;
+    }
+
+    private long getTimestampInEpochSecondsFromLogLine(final String line) {
+        final String dateTimeString = StringUtils.substringBefore(line, "\r");
+        Instant instant;
+        try {
+            instant = Instant.parse(dateTimeString);
+        } catch (DateTimeParseException e) {
+            // If dateTimeString is not in DateTimeFormatter.ISO_INSTANT format, try DateTimeFormatter.ISO_DATE_TIME
+            instant = OffsetDateTime.parse(dateTimeString, DateTimeFormatter.ISO_DATE_TIME).toInstant();
+        }
+        return instant.plus(1L, ChronoUnit.SECONDS).getEpochSecond();
     }
 
     private void writeToOuputStream(InputStream inputStream, OutputStream outputStream) throws IOException {
