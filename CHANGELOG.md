@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.1
+[Released 2023-03-30](https://bitbucket.org/xnatdev/container-service/src/3.3.1/).
+
+* **Bugfix** [CS-834][] Handle `ISO_DATE_TIME`s in addition to `ISO_INSTANT`s in container log timestamps
+
+[CS-834]: https://radiologics.atlassian.net/browse/CS-834
+
 ## 3.3.0
 [Released 2022-10-11](https://bitbucket.org/xnatdev/container-service/src/3.3.0/).
 
