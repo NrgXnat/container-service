@@ -1,5 +1,6 @@
 package org.nrg.containers.services;
 
+import org.nrg.containers.api.LogType;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
@@ -12,6 +13,7 @@ import org.nrg.containers.model.configuration.PluginVersionCheck;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
+import org.nrg.containers.rest.ContainerLogPollResponse;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
@@ -19,7 +21,7 @@ import org.nrg.xft.security.UserI;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +38,6 @@ public interface ContainerService {
     String   XNAT_EVENT_ID    = "XNAT_EVENT_ID";
     String   STDOUT_LOG_NAME  = "stdout.log";
     String   STDERR_LOG_NAME  = "stderr.log";
-    String[] LOG_NAMES        = new String[]{STDOUT_LOG_NAME, STDERR_LOG_NAME};
     Set<String> RESERVED_ENV  = Stream.of(XNAT_USER, XNAT_PASS, XNAT_HOST)
             .collect(Collectors.collectingAndThen(Collectors.toSet(), Collections::unmodifiableSet));
 
@@ -113,11 +114,10 @@ public interface ContainerService {
     String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
-    Map<String, InputStream> getLogStreams(long id) throws NotFoundException, NoDockerServerException, DockerServerException;
-    Map<String, InputStream> getLogStreams(String containerId) throws NotFoundException, NoDockerServerException, DockerServerException;
-    InputStream getLogStream(long id, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
-    InputStream getLogStream(String containerId, String logFileName) throws NotFoundException, NoDockerServerException, DockerServerException;
-    InputStream getLogStream(String containerId, String logFileName, boolean withTimestamps, Integer since) throws NotFoundException;
+    void writeLogsToZipStream(String containerId, OutputStream outputStream) throws NotFoundException, IOException;
+    ContainerLogPollResponse getLog(String containerId, LogType logType, Long since)
+            throws NotFoundException, IOException;
+
 	boolean isWaiting(Container containerOrService);
 	boolean isFinalizing(Container containerOrService);
     boolean containerStatusIsTerminal(Container containerOrService);

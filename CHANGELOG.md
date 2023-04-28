@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.2
+Not yet released.
+
+* **Improvement** [CS-835][] Refactor internals for fetching live logs to make them easier to understand and maintain
+
+[CS-835]: https://radiologics.atlassian.net/browse/CS-835
+
 ## 3.3.1
 [Released 2023-03-30](https://bitbucket.org/xnatdev/container-service/src/3.3.1/).
 

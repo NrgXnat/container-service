@@ -78,9 +78,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -1130,23 +1128,6 @@ public class DockerControlApi implements ContainerControlApi {
             default:
                 throw new NoContainerServerException("Not implemented");
         }
-    }
-
-    /**
-     * Get log from backend
-     *
-     * @param container Container object whose logs you wish to read
-     * @param logType Stdout or Stderr
-     * @param withTimestamps Whether timestamps should be added to the log records on the backend
-     * @param since Read logs produced after this Unix timestamp
-     * @return Container log stream
-     */
-    @Override
-    public InputStream getLogStream(final Container container, final LogType logType, boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
-        // TODO Replace this with backend-specific implementations that attach to the underlying log streams
-        //  rather than read the entire stream to a string then wrap an InputStream on top of that.
-        final String log = getLog(container, logType, withTimestamps, since);
-        return log == null ? null : new ByteArrayInputStream(log.getBytes());
     }
 
     /**

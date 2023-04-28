@@ -183,7 +183,7 @@ public class DockerControlApiTest {
 
     @Test
     public void testGetLog_stdout() throws Exception {
-        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDOUT;
+        final LogType logType = LogType.STDOUT;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
 
         // Set up test-specific mocks
@@ -213,7 +213,7 @@ public class DockerControlApiTest {
     public void testGetLog_stderr() throws Exception {
         assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
 
-        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
+        final LogType logType = LogType.STDERR;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
         // Set up test-specific mocks
@@ -241,7 +241,7 @@ public class DockerControlApiTest {
         // No need to mock anything
 
         // Run the test
-        final String log = dockerControlApi.getLog(container, ContainerControlApi.LogType.STDERR);
+        final String log = dockerControlApi.getLog(container, LogType.STDERR);
 
         // Check results
         assertThat(log, is(nullValue()));
@@ -250,7 +250,7 @@ public class DockerControlApiTest {
     @Test
     public void testGetLog_stdout_params() throws Exception {
 
-        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDOUT;
+        final LogType logType = LogType.STDOUT;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
 
         final boolean withTimestamp = false;
@@ -287,7 +287,7 @@ public class DockerControlApiTest {
     public void testGetLog_stderr_params() throws Exception {
         assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
 
-        final ContainerControlApi.LogType logType = ContainerControlApi.LogType.STDERR;
+        final LogType logType = LogType.STDERR;
         final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
 
         final boolean withTimestamp = false;
@@ -329,7 +329,7 @@ public class DockerControlApiTest {
         } else if (backend == Backend.KUBERNETES) {
             when(container.podName()).thenReturn(BACKEND_ID);
             when(kubernetesClient.getLog(
-                    BACKEND_ID, ContainerControlApi.LogType.STDOUT, null, null
+                    BACKEND_ID, LogType.STDOUT, null, null
             )).thenReturn(LOG_CONTENTS);
         } else {
             when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);

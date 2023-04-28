@@ -31,6 +31,7 @@ import io.kubernetes.client.util.KubeConfig;
 import io.kubernetes.client.util.Namespaces;
 import io.kubernetes.client.util.PatchUtils;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.logging.HttpLoggingInterceptor;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
@@ -58,6 +59,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static io.kubernetes.client.util.Config.SERVICEACCOUNT_CA_PATH;
+import static org.apache.commons.httpclient.HttpStatus.SC_BAD_REQUEST;
 import static org.nrg.containers.utils.ContainerUtils.SECONDS_PER_WEEK;
 
 @Slf4j
@@ -73,6 +75,8 @@ public class KubernetesClientImpl implements KubernetesClient {
     public static final int JOB_TIME_TO_LIVE_SECS = JOB_TIME_TO_LIVE_WEEKS * SECONDS_PER_WEEK;
     public static final int JOB_BACKOFF_LIMIT = 0;  // No retries
     public static final String POD_RESTART_POLICY = "Never";
+
+    public static final String CONTAINER_CREATING = "ContainerCreating";
 
     private final ExecutorService executorService;
     private final NrgEventServiceI eventService;
@@ -112,6 +116,19 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         if (apiClient == null) {
             throw new NoContainerServerException("Could not read kubernetes configuration");
+        }
+
+        // Turn on debug logging within the HTTP client if we are debugging out here
+        if (log.isDebugEnabled()) {
+            // This creates a logging interceptor in okhttp's style that hands messages to our class's logger instance
+            final HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(log::debug);
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+            apiClient.setHttpClient(
+                    apiClient.getHttpClient()
+                            .newBuilder()
+                            .addInterceptor(loggingInterceptor)
+                            .build()
+            );
         }
 
         setBackendClient(apiClient);
@@ -185,9 +202,9 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String getLog(final String podName, final ContainerControlApi.LogType logType, final Boolean withTimestamp, final Integer since)
+    public String getLog(final String podName, final LogType logType, final Boolean withTimestamp, final Integer since)
             throws ContainerBackendException {
-        if (logType == ContainerControlApi.LogType.STDERR) {
+        if (logType == LogType.STDERR) {
             // Kubernetes does not split stdout and stderr logs.
             log.debug("Skipping stderr log request for pod {}", podName);
             return null;
@@ -208,6 +225,12 @@ public class KubernetesClientImpl implements KubernetesClient {
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);
         } catch (ApiException e) {
+            if (e.getCode() == SC_BAD_REQUEST && e.getResponseBody() != null && e.getResponseBody().contains(CONTAINER_CREATING)) {
+                // Kubernetes returns an error when we try to read logs for a container that is being created,
+                //  but we don't need to consider that an error
+                log.info("Could not read log for pod \"{}\". Container is creating. message \"{}\" code {} body {}", podName, e.getMessage(), e.getCode(), e.getResponseBody());
+                return null;
+            }
             log.error("Could not read log for pod {}: message \"{}\" code {} body {}", podName, e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not read log", e);
         }

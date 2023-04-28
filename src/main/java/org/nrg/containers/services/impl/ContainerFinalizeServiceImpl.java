@@ -9,6 +9,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.LogType;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
@@ -324,8 +325,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             log.info(prefix + "Getting logs.");
             final List<String> logPaths = Lists.newArrayList();
 
-            final String stdoutLogStr = getLogStr(ContainerControlApi.LogType.STDOUT);
-            final String stderrLogStr = getLogStr(ContainerControlApi.LogType.STDERR);
+            final String stdoutLogStr = getLogStr(LogType.STDOUT);
+            final String stderrLogStr = getLogStr(LogType.STDERR);
 
             if (StringUtils.isNotBlank(stdoutLogStr) || StringUtils.isNotBlank(stderrLogStr)) {
 
@@ -362,7 +363,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             return logPaths;
         }
 
-        private String getLogStr(final ContainerControlApi.LogType logType) {
+        private String getLogStr(final LogType logType) {
             try {
                 return containerControlApi.getLog(toFinalize, logType);
             } catch (ContainerBackendException | NoContainerServerException e) {
