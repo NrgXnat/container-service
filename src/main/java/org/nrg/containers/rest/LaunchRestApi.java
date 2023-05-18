@@ -5,13 +5,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.exceptions.BadRequestException;
-import org.nrg.containers.exceptions.CommandResolutionException;
-import org.nrg.containers.exceptions.CommandValidationException;
-import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
@@ -623,6 +617,14 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @ExceptionHandler(value = {CommandResolutionException.class})
     public String handleCommandResolutionException(final CommandResolutionException e) {
         final String message = "The command could not be resolved.\n" + e.getMessage();
+        log.debug(message);
+        return message;
+    }
+
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(value = {CommandPreResolutionException.class})
+    public String handleCommandPreResolutionException(final CommandPreResolutionException e) {
+        final String message = "The command has failed in the pre-resolution step.\n" + e.getMessage();
         log.debug(message);
         return message;
     }

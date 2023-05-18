@@ -23,12 +23,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.nrg.action.ClientException;
 import org.nrg.action.ServerException;
-import org.nrg.containers.exceptions.CommandInputResolutionException;
-import org.nrg.containers.exceptions.CommandMountResolutionException;
-import org.nrg.containers.exceptions.CommandResolutionException;
-import org.nrg.containers.exceptions.ContainerServiceSecretException;
-import org.nrg.containers.exceptions.IllegalInputException;
-import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandInput;
 import org.nrg.containers.model.command.auto.Command.CommandMount;
@@ -1662,7 +1657,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 if (resolveFully && node.input().required()) {
                     // we're resolving for real, throw exception
                     throw new CommandResolutionException(message);
-                } else {
+                } else if (node.input() instanceof CommandWrapperDerivedInput && node.input().required()) {
+                    //we're in pre-resolve, but we will never find matching data for this input
+                    throw new CommandPreResolutionException("The following required fields cannot be resolved using the provided data: " + node.input().name());
+                }else {
                     // we're preresolving
                     log.debug(message);
                 }

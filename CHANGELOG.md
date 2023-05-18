@@ -4,8 +4,10 @@
 Not yet released.
 
 * **Improvement** [CS-835][] Refactor internals for fetching live logs to make them easier to understand and maintain
+* **BugFix** [CS-605][] Fix silent container failures that were happening in container launch process
 
 [CS-835]: https://radiologics.atlassian.net/browse/CS-835
+[CS-605]: https://radiologics.atlassian.net/browse/CS-605
 
 ## 3.3.1
 [Released 2023-03-30](https://bitbucket.org/xnatdev/container-service/src/3.3.1/).
