@@ -3,6 +3,7 @@ package org.nrg.containers.services;
 import org.nrg.containers.api.LogType;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
@@ -22,6 +23,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -115,7 +117,9 @@ public interface ContainerService {
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
     void writeLogsToZipStream(String containerId, OutputStream outputStream) throws NotFoundException, IOException;
-    ContainerLogPollResponse getLog(String containerId, LogType logType, Long since)
+    ContainerLogPollResponse getLog(String containerId, LogType logType, String sinceTimestamp)
+            throws NotFoundException, IOException, BadRequestException;
+    ContainerLogPollResponse getLog(String containerId, LogType logType, OffsetDateTime since)
             throws NotFoundException, IOException;
 
 	boolean isWaiting(Container containerOrService);

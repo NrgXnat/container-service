@@ -82,6 +82,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -1056,20 +1057,6 @@ public class DockerControlApi implements ContainerControlApi {
     /**
      * Get log from backend
      *
-     * @param backendId Identifier for backend entity: docker container ID or swarm service ID.
-     * @param logType Stdout or Stderr
-     * @return Container log string
-     * @deprecated Use {@link ContainerControlApi#getLog(Container, LogType)} instead
-     */
-    @Override
-    @Deprecated
-    public String getLog(final String backendId, final LogType logType) throws NoContainerServerException, ContainerBackendException {
-        return getLog(backendId, logType, null, null);
-    }
-
-    /**
-     * Get log from backend
-     *
      * @param container Container object whose logs you wish to read
      * @param logType Stdout or Stderr
      * @return Container log string
@@ -1082,41 +1069,13 @@ public class DockerControlApi implements ContainerControlApi {
     /**
      * Get log from backend
      *
-     * @param backendId Identifier for backend entity: docker container ID or swarm service ID
-     * @param logType Stdout or Stderr
-     * @param withTimestamps Whether timestamps should be added to the log records on the backend
-     * @param since Read logs produced after this Unix timestamp
-     * @return Container log string
-     * @deprecated Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead
-     */
-    @Override
-    @Deprecated
-    public String getLog(final String backendId, final LogType logType, final Boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
-        final DockerServer server = getServer();
-        switch (server.backend()) {
-            case DOCKER:
-                return getDockerContainerLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
-            case SWARM:
-                return getSwarmServiceLog(backendId, assembleDockerClientLogsParams(logType, withTimestamps, since));
-            case KUBERNETES:
-                log.debug("Assuming backend id {} is a pod name", backendId);
-                return getKubernetesClient().getLog(backendId, logType, withTimestamps, since);
-            default:
-                throw new NoContainerServerException("Not implemented");
-        }
-    }
-
-    /**
-     * Get log from backend
-     *
      * @param container Container object whose logs you wish to read
      * @param logType Stdout or Stderr
      * @param withTimestamps Whether timestamps should be added to the log records on the backend
-     * @param since Read logs produced after this Unix timestamp
+     * @param since Read logs produced after this timestamp
      * @return Container log string
      */
-    @Override
-    public String getLog(final Container container, final LogType logType, final Boolean withTimestamps, final Integer since) throws ContainerBackendException, NoContainerServerException {
+    public String getLog(final Container container, final LogType logType, final Boolean withTimestamps, final OffsetDateTime since) throws ContainerBackendException, NoContainerServerException {
         final DockerServer server = getServer();
         switch (server.backend()) {
             case SWARM:
@@ -1166,7 +1125,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, OffsetDateTime)} instead.
      */
     @Deprecated
     @Override
@@ -1181,7 +1140,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, OffsetDateTime)} instead.
      */
     @Deprecated
     @Override
@@ -1196,7 +1155,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, OffsetDateTime)} instead.
      */
     @Deprecated
     @Override
@@ -1211,7 +1170,7 @@ public class DockerControlApi implements ContainerControlApi {
      * @param logParams Docker client API parameters
      * @return Container log string
      * @deprecated This method is tied to a specific container backend.
-     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, Integer)} instead.
+     * Use {@link ContainerControlApi#getLog(Container, LogType, Boolean, OffsetDateTime)} instead.
      */
     @Deprecated
     @Override
@@ -1241,18 +1200,19 @@ public class DockerControlApi implements ContainerControlApi {
         }
     }
 
-    private DockerClient.LogsParam[] assembleDockerClientLogsParams(final LogType logType, final Boolean withTimestamp, final Integer since) {
+    private DockerClient.LogsParam[] assembleDockerClientLogsParams(final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) {
 
         final DockerClient.LogsParam dockerClientLogType = logType == LogType.STDOUT ?
                 DockerClient.LogsParam.stdout() :
                 DockerClient.LogsParam.stderr();
 
-        if (withTimestamp == null && since == null) {
+        final Integer sinceInt = since == null ? null : Math.toIntExact(since.toEpochSecond());
+        if (withTimestamp == null && sinceInt == null) {
             return new DockerClient.LogsParam[] {dockerClientLogType};
         } else if (withTimestamp == null) {
             return new DockerClient.LogsParam[] {
                     dockerClientLogType,
-                    DockerClient.LogsParam.since(since)
+                    DockerClient.LogsParam.since(sinceInt)
             };
         } else if (since == null) {
             return new DockerClient.LogsParam[] {
@@ -1263,7 +1223,7 @@ public class DockerControlApi implements ContainerControlApi {
             return new DockerClient.LogsParam[] {
                     dockerClientLogType,
                     DockerClient.LogsParam.timestamps(withTimestamp),
-                    DockerClient.LogsParam.since(since)
+                    DockerClient.LogsParam.since(sinceInt)
             };
         }
     }

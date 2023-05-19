@@ -3,6 +3,8 @@ package org.nrg.containers.services;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.hamcrest.TypeSafeMatcher;
+import org.junit.AssumptionViolatedException;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
@@ -37,7 +39,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import java.io.File;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -117,7 +119,7 @@ public class ContainerLogTest {
             final byte[] logContentsBytes = logContents.getBytes(Charset.defaultCharset());
             Files.write(logFile.toPath(), logContentsBytes);
 
-            final ContainerLogPollResponse expected = new ContainerLogPollResponse(logContents, true, -1, -1);
+            final ContainerLogPollResponse expected = ContainerLogPollResponse.fromFile(logContents);
 
             // Mock container
             final String containerId = RandomStringUtils.randomAlphanumeric(10);
@@ -135,7 +137,7 @@ public class ContainerLogTest {
             when(containerEntityService.get(containerId)).thenReturn(containerEntity);
 
             // call method under test
-            final ContainerLogPollResponse response = containerService.getLog(containerId, logType, null);
+            final ContainerLogPollResponse response = containerService.getLog(containerId, logType, (OffsetDateTime) null);
 
             // make assertions
             assertThat(response, is(expected));
@@ -175,32 +177,57 @@ public class ContainerLogTest {
             // Fake container log messages and timestamps
             final int logLineNumChars = 80;
             final int logInterval = 50;
-            final Instant instant1 = Instant.now();
-            final Instant instant2 = instant1.plus(logInterval, ChronoUnit.SECONDS);
-            final Instant instant3 = instant2.plus(logInterval, ChronoUnit.SECONDS);
-            final String timestamp1 = formatter.format(instant1);
-            final String timestamp2 = formatter.format(instant2);
-            final String timestamp3 = formatter.format(instant3);
-            final long since2 = instant2.getEpochSecond();
-            final long since3 = instant3.getEpochSecond();
-            final String message1 = RandomStringUtils.randomAscii(logLineNumChars);
-            final String message2 = RandomStringUtils.randomAscii(logLineNumChars);
-            final String message3 = RandomStringUtils.randomAscii(logLineNumChars);
+            final OffsetDateTime dt1 = OffsetDateTime.now();
+            final OffsetDateTime dt2 = dt1.plus(logInterval, ChronoUnit.SECONDS);
+            final OffsetDateTime dt3 = dt2.plus(logInterval, ChronoUnit.SECONDS);
+            final String timestamp1 = formatter.format(dt1);
+            final String timestamp2 = formatter.format(dt2);
+            final String timestamp3 = formatter.format(dt3);
+            final OffsetDateTime shifted2 = dt2.plus(1L, ChronoUnit.SECONDS);
+            final OffsetDateTime shifted3 = dt3.plus(1L, ChronoUnit.SECONDS);
+            final String expectedTimestamp2 = ContainerServiceImpl.formatTimestamp(shifted2);
+            final String expectedTimestamp3 = ContainerServiceImpl.formatTimestamp(shifted3);
+            final String message1 = "Message " + RandomStringUtils.randomAscii(logLineNumChars);
+            final String message2 = "It's a log message " + RandomStringUtils.randomAscii(logLineNumChars);
+            final String message3 = "Here comes your log message " + RandomStringUtils.randomAscii(logLineNumChars);
 
             when(containerControlApi.getLog(eq(container), eq(logType), eq(appendTimestamps), any()))
                     .thenReturn(timestamp1 + " " + message1 + "\n" + timestamp2 + " " + message2)  // First response has two lines
                     .thenReturn(timestamp3 + " " + message3);  // Second response has one line
 
-            final ContainerLogPollResponse expected1 = new ContainerLogPollResponse(message1 + "\n" + message2, false, since2 + 1, -1);
-            final ContainerLogPollResponse expected2 = new ContainerLogPollResponse(message3, false, since3 + 1, -1);
+            final ContainerLogPollResponse expected1 = ContainerLogPollResponse.fromLive(message1 + "\n" + message2, expectedTimestamp2);
+            final ContainerLogPollResponse expected2 = ContainerLogPollResponse.fromLive(message3, expectedTimestamp3);
 
             // Call method under test multiple times over a little while to collect "actual" logs
-            final ContainerLogPollResponse actual1 = containerService.getLog(containerId, logType, 0L);
-            final ContainerLogPollResponse actual2 = containerService.getLog(containerId, logType, actual1.getTimestamp());
-
-            // make assertions
+            final ContainerLogPollResponse actual1 = containerService.getLog(containerId, logType, (String) null);
             assertThat(actual1, is(expected1));
+
+            final ContainerLogPollResponse actual2 = containerService.getLog(containerId, logType, actual1.getTimestamp());
             assertThat(actual2, is(expected2));
         }
+
+        @Test
+        public void testParseTimestamp() {
+            final OffsetDateTime now = OffsetDateTime.now();
+            log.info("Now: {}", now);
+
+            final String timestamp = formatter.format(now);
+            log.info("Now timestamp: {}", timestamp);
+
+            final OffsetDateTime actual = ContainerServiceImpl.parseTimestamp(timestamp)
+                    .orElseThrow(() -> new AssumptionViolatedException("Should be able to parse timestamp"));
+            log.info("Actual: {}", actual);
+
+            assertThat(actual, new TypeSafeMatcher<OffsetDateTime>() {
+                @Override
+                protected boolean matchesSafely(final OffsetDateTime item) {
+                    return item.isEqual(now);
+                }
+
+                @Override
+                public void describeTo(final org.hamcrest.Description description) {}
+            });
+        }
+
     }
 }

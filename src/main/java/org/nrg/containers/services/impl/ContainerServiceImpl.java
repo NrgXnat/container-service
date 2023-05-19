@@ -3,6 +3,7 @@ package org.nrg.containers.services.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -18,6 +19,7 @@ import org.nrg.containers.api.LogType;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
@@ -112,7 +114,8 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Paths;
 import java.text.ParseException;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -164,7 +167,9 @@ public class ContainerServiceImpl implements ContainerService {
 
     private static final String DATETIME_GROUP_NAME = "datetime";
     public static final Pattern DATETIME_AT_LINE_START = Pattern.compile("(?<=^|\\n)(?<" + DATETIME_GROUP_NAME + ">\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\S*) ");
-    public static final DateTimeFormatter[] DATETIME_FORMATTERS = {DateTimeFormatter.ISO_INSTANT, DateTimeFormatter.ISO_DATE_TIME};
+    public static final DateTimeFormatter[] DATETIME_PARSING_FORMATTERS = {DateTimeFormatter.ISO_OFFSET_DATE_TIME, DateTimeFormatter.ISO_DATE_TIME};
+    public static final DateTimeFormatter DATETIME_OUTPUT_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+    public static final ZoneId UTC = ZoneId.of("UTC");
 
     private final ContainerControlApi containerControlApi;
     private final ContainerEntityService containerEntityService;
@@ -1566,7 +1571,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         try (final ZipOutputStream zipStream = (outputStream instanceof ZipOutputStream ? (ZipOutputStream) outputStream : new ZipOutputStream(outputStream))) {
             for (final LogType logType : EnumSet.allOf(LogType.class)){
-                final InputStream inputStream = getLogStream(container, logType, false, null);
+                final InputStream inputStream = getLogStream(container, logType);
                 if (inputStream == null) {
                     continue;
                 }
@@ -1587,14 +1592,13 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Nullable
-    private InputStream getLogStream(final Container container, final LogType logType,
-                                     boolean withTimestamps, final Integer since) {
+    private InputStream getLogStream(final Container container, final LogType logType) {
         final boolean containerDone = containerStatusIsTerminal(container);
         final String logPath = container.getLogPath(logType.logName());
         if (!containerDone) {
             try {
                 // If log path is blank, that means we have not yet saved the logs from docker. Go fetch them now.
-                final String log = containerControlApi.getLog(container, logType, withTimestamps, since);
+                final String log = containerControlApi.getLog(container, logType);
                 return log == null ? null : new ByteArrayInputStream(log.getBytes());
             } catch (NoContainerServerException | ContainerBackendException e) {
                 log.debug("No {} log for {}", logType, container.databaseId());
@@ -1611,82 +1615,108 @@ public class ContainerServiceImpl implements ContainerService {
         return null;
     }
 
-    @Override
-    public ContainerLogPollResponse getLog(String containerId, LogType logType, Long since)
-            throws NotFoundException, IOException {
-        Integer sinceInt = null;
-        try {
-            sinceInt = since == null ? null : Math.toIntExact(since);
-        } catch (ArithmeticException e) {
-            log.error("Unable to convert since parameter to integer", e);
-        }
 
-        long queryTime = System.currentTimeMillis() / 1000L;
+    @Override
+    public ContainerLogPollResponse getLog(String containerId, LogType logType, String sinceTimestamp)
+            throws NotFoundException, IOException, BadRequestException {
+        OffsetDateTime since;
+        if (StringUtils.isBlank(sinceTimestamp)) {
+            since = null;
+        } else {
+            since = parseTimestamp(sinceTimestamp).orElseThrow(() -> new BadRequestException("Could not parse timestamp " + sinceTimestamp));
+        }
+        return getLog(containerId, logType, since);
+    }
+    @Override
+    public ContainerLogPollResponse getLog(String containerId, LogType logType, OffsetDateTime since)
+            throws NotFoundException, IOException {
+
+        final OffsetDateTime queryTime = OffsetDateTime.now(UTC);
+
         final Container container = get(containerId);
         boolean containerDone = container.statusIsTerminal();
         final String logPath = container.getLogPath(logType.logName());
 
         if (containerDone && StringUtils.isNotBlank(logPath)) {
             // We have saved the logs to a file. Read it now.
-            return new ContainerLogPollResponse(FileUtils.readFileToString(Paths.get(logPath).toFile(), Charset.defaultCharset()), true, ContainerLogPollResponse.LOG_COMPLETE_TIMESTAMP, -1);
+            return ContainerLogPollResponse.fromFile(FileUtils.readFileToString(Paths.get(logPath).toFile(), Charset.defaultCharset()));
         } else if (containerDone) {
             // Container finished without producing logs
-            return new ContainerLogPollResponse("", false, ContainerLogPollResponse.LOG_COMPLETE_TIMESTAMP, -1);
+            return ContainerLogPollResponse.fromComplete("");
         }
 
         String logContent = null;
         try {
             // If log path is blank, that means we have not yet saved the logs from docker. Go fetch them now.
-            final boolean withTimestamps = !containerDone;
-            logContent = containerControlApi.getLog(container, logType, withTimestamps, sinceInt);
-        } catch (NoContainerServerException | ContainerBackendException e) {
-            log.debug("No {} log for {}", logType, container.databaseId());
-        }
+            logContent = containerControlApi.getLog(container, logType, true, since);
+        } catch (NoContainerServerException | ContainerBackendException ignored) {}
 
-        long lastTime = -1;
-        boolean fromFile = false;
         if (StringUtils.isBlank(logContent)) {
-            logContent = "";
-            lastTime = since == null ? queryTime : since;
-        } else if (!containerDone) {
-            // The logs we fetched will have timestamps on each line.
-            // We want to find the most recent timestamp, which we return as "since", which when passed in
-            //   subsequent calls will allow them to only fetch new logs.
-
-            // Scan through all matching datetime strings to find the last one
-            //  (because there doesn't seem to be a way to find the last match more directly)
-            final Matcher datetimeMatch = DATETIME_AT_LINE_START.matcher(logContent);
-            String datetimestamp = null;
-            while (datetimeMatch.find()) {
-                datetimestamp = datetimeMatch.group(DATETIME_GROUP_NAME);
-            }
-
-            final Instant datetime = StringUtils.isNotBlank(datetimestamp) ? parseTimestamp(datetimestamp) : null;
-            lastTime = datetime != null
-                    ? datetime.plus(1L, ChronoUnit.SECONDS).getEpochSecond()  // Small fudge factor to avoid getting the same log again
-                    : (since == null ? queryTime : since);  // Couldn't get a timestamp out of the logs, so fall back to what we do know
-
-            // Strip the timestamps, leaving the logs behind
-            logContent = datetimeMatch.reset().replaceAll("");
+            final String datetimestamp = sinceOrDefault(since, queryTime).format(DATETIME_OUTPUT_FORMATTER);
+            return ContainerLogPollResponse.fromLive("", datetimestamp);
         }
-        return new ContainerLogPollResponse(logContent, fromFile, lastTime, -1);
+
+        // The logs we fetched will have timestamps on each line.
+        // We want to find the most recent timestamp, which we return as "since", which when passed in
+        //   subsequent calls will allow them to only fetch new logs.
+
+        // Scan through all matching datetime strings to find the last one
+        //  (because there doesn't seem to be a way to find the last match more directly)
+        final Matcher datetimeMatch = DATETIME_AT_LINE_START.matcher(logContent);
+        String datetimestamp = null;
+        while (datetimeMatch.find()) {
+            datetimestamp = datetimeMatch.group(DATETIME_GROUP_NAME);
+        }
+
+        // Shift timestamp forward by 1 second (minimum precision that the backend APIs offer)
+        // to avoid getting the same log message again on the next call
+        // NOTE: This means we may get unlucky and miss log lines that were produced < 1 second after the current most recent log message :(
+        final OffsetDateTime lastLogDatetime = parseTimestamp(datetimestamp)
+                .map(dateTime -> dateTime.plus(1L, ChronoUnit.SECONDS))
+                .orElseGet(() -> sinceOrDefault(since, queryTime));  // Couldn't get a timestamp out of the logs, so fall back to what we do know;
+
+        // Format into datetimestamp
+        final String lastLogTimestamp = formatTimestamp(lastLogDatetime);
+
+        // Strip the timestamps, leaving the logs behind
+        logContent = datetimeMatch.reset().replaceAll("");
+
+        return ContainerLogPollResponse.fromLive(logContent, lastLogTimestamp);
     }
 
-    private static Instant parseTimestamp(final String datetime) throws DateTimeParseException {
-        if (StringUtils.isBlank(datetime)) {
+    private static OffsetDateTime sinceOrDefault(final OffsetDateTime since, final OffsetDateTime queryTime) {
+        return since == null ? queryTime : since;
+    }
+
+    @VisibleForTesting
+    public static Optional<OffsetDateTime> parseTimestamp(final String datetimestamp) {
+        if (StringUtils.isBlank(datetimestamp)) {
+            return Optional.empty();
+        }
+        OffsetDateTime datetime = null;
+        for (final DateTimeFormatter formatter : DATETIME_PARSING_FORMATTERS) {
+            try {
+                datetime = formatter.parse(datetimestamp, OffsetDateTime::from);
+                log.debug("  DID   parse timestamp {} into object {} using formatter {}", datetimestamp, datetime, formatter);
+                break;
+            } catch (DateTimeParseException ignored) {
+                log.debug("DID NOT parse timestamp {} using formatter {}", datetimestamp, formatter);
+            }
+        }
+        if (datetime == null) {
+            log.error("Could not parse timestamp {}", datetimestamp);
+        }
+        return Optional.ofNullable(datetime);
+    }
+
+    @VisibleForTesting
+    public static String formatTimestamp(final OffsetDateTime dateTime) {
+        if (dateTime == null) {
             return null;
         }
-        Instant instant = null;
-        for (final DateTimeFormatter formatter : DATETIME_FORMATTERS) {
-            try {
-                instant = formatter.parse(datetime, Instant::from);
-                break;
-            } catch (DateTimeParseException ignored) {}
-        }
-        if (instant == null) {
-            log.error("Couldn't parse timestamp \"{}\"", datetime);
-        }
-        return instant;
+        return DATETIME_OUTPUT_FORMATTER.format(
+                dateTime.atZoneSameInstant(UTC)
+        );
     }
 
     private PersistentWorkflowI getContainerWorkflow(UserI userI, final Container container) {

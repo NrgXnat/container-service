@@ -41,6 +41,7 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.powermock.reflect.Whitebox;
 
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -255,8 +256,9 @@ public class DockerControlApiTest {
 
         final boolean withTimestamp = false;
         final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final OffsetDateTime since = OffsetDateTime.now();
+        final Integer sinceEpoch = Math.toIntExact(since.toEpochSecond());
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(sinceEpoch);
 
         // Set up test-specific mocks
         if (backend == Backend.SWARM) {
@@ -267,7 +269,7 @@ public class DockerControlApiTest {
         } else if (backend == Backend.KUBERNETES) {
             when(container.podName()).thenReturn(BACKEND_ID);
             when(kubernetesClient.getLog(
-                    eq(BACKEND_ID), eq(logType), eq(withTimestamp), any(Integer.class)
+                    eq(BACKEND_ID), eq(logType), eq(withTimestamp), any(OffsetDateTime.class)
             )).thenReturn(LOG_CONTENTS);
         } else {
             when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType, timestampParam, sinceParam))
@@ -292,8 +294,9 @@ public class DockerControlApiTest {
 
         final boolean withTimestamp = false;
         final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
+        final OffsetDateTime since = OffsetDateTime.now();
+        final Integer sinceEpoch = Math.toIntExact(since.toEpochSecond());
+        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(sinceEpoch);
 
         // Set up test-specific mocks
         if (swarmMode) {

@@ -5,6 +5,7 @@ import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.LogType;
+import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
@@ -41,6 +42,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -246,7 +248,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         final LogType logType = ContainerService.STDOUT_LOG_NAME.contains(file) ?
                 LogType.STDOUT :
                 LogType.STDERR;
-        final String logContents = containerService.getLog(containerId, logType, null).getContent();
+        final String logContents = containerService.getLog(containerId, logType, (OffsetDateTime) null).getContent();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, getAttachmentDisposition(containerId + "-" + file, "log"))
                 .header(HttpHeaders.CONTENT_TYPE, TEXT)
@@ -259,8 +261,8 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ResponseBody
     public ContainerLogPollResponse pollLog(final @PathVariable @ContainerId String containerId,
                                                             final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file,
-                                                            final @RequestParam(required = false) Long since)
-            throws NotFoundException, IOException {
+                                                            final @RequestParam(required = false) String since)
+            throws NotFoundException, IOException, BadRequestException {
 
         final LogType logType = ContainerService.STDOUT_LOG_NAME.contains(file) ?
                 LogType.STDOUT :

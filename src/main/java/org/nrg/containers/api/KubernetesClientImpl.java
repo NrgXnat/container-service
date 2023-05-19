@@ -45,7 +45,8 @@ import org.nrg.framework.services.NrgEventServiceI;
 
 import java.io.File;
 import java.io.IOException;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -202,7 +203,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String getLog(final String podName, final LogType logType, final Boolean withTimestamp, final Integer since)
+    public String getLog(final String podName, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since)
             throws ContainerBackendException {
         if (logType == LogType.STDERR) {
             // Kubernetes does not split stdout and stderr logs.
@@ -210,17 +211,16 @@ public class KubernetesClientImpl implements KubernetesClient {
             return null;
         }
 
-        // Our since value is a unix timestamp, but the kubernetes API wants a relative "seconds before now"
-        final long currentUnixTimestamp = Instant.now().getEpochSecond();
-        final Integer sinceRelative = since == null ? null : Math.toIntExact(currentUnixTimestamp) - since;
-
-        if (sinceRelative != null && sinceRelative <= 0) {
+        // Our since value is a timestamp, but the kubernetes API wants a relative "seconds before now"
+        final OffsetDateTime now = OffsetDateTime.now();
+        if (since != null && !since.isBefore(now)) {
             // This can happen when the UI is streaming logs.
             // It will get the logs and ask for more in less than a second.
             // The API doesn't allow us to get logs with more precision than one second,
             //  so we can treat this as if no logs were created in the interval.
             return null;
         }
+        final Integer sinceRelative = since == null ? null : Math.toIntExact(ChronoUnit.SECONDS.between(now, since));
 
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);

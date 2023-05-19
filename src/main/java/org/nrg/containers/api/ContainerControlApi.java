@@ -21,6 +21,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.security.UserI;
 
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -56,10 +57,8 @@ public interface ContainerControlApi {
     ContainerMessage getContainer(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
     String getContainerStatus(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
 
-    @Deprecated String getLog(String backendId, LogType logType) throws ContainerBackendException, NoContainerServerException;
     String getLog(Container container, LogType logType) throws ContainerBackendException, NoContainerServerException;
-    @Deprecated String getLog(String backendId, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
-    String getLog(Container container, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
+    String getLog(Container container, LogType logType, Boolean withTimestamps, OffsetDateTime since) throws ContainerBackendException, NoContainerServerException;
     @Deprecated String getStdoutLog(Container container) throws NoDockerServerException, DockerServerException;
     @Deprecated String getStderrLog(Container container) throws NoDockerServerException, DockerServerException;
     @Deprecated String getContainerStdoutLog(String containerId, DockerClient.LogsParam... logParams) throws NoDockerServerException, DockerServerException;
