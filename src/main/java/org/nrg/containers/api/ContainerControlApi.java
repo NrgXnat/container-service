@@ -9,8 +9,8 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerMessage;
 import org.nrg.containers.model.container.auto.ServiceTask;
@@ -21,16 +21,12 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.security.UserI;
 
-import java.io.InputStream;
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
 public interface ContainerControlApi {
-    enum LogType {
-        STDOUT,
-        STDERR
-    }
 
     String ping() throws NoDockerServerException, DockerServerException;
     boolean canConnect();
@@ -61,11 +57,8 @@ public interface ContainerControlApi {
     ContainerMessage getContainer(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
     String getContainerStatus(final String id) throws NotFoundException, NoDockerServerException, DockerServerException;
 
-    @Deprecated String getLog(String backendId, LogType logType) throws ContainerBackendException, NoContainerServerException;
     String getLog(Container container, LogType logType) throws ContainerBackendException, NoContainerServerException;
-    @Deprecated String getLog(String backendId, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
-    String getLog(Container container, LogType logType, Boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
-    InputStream getLogStream(Container container, LogType logType, boolean withTimestamps, Integer since) throws ContainerBackendException, NoContainerServerException;
+    String getLog(Container container, LogType logType, Boolean withTimestamps, OffsetDateTime since) throws ContainerBackendException, NoContainerServerException;
     @Deprecated String getStdoutLog(Container container) throws NoDockerServerException, DockerServerException;
     @Deprecated String getStderrLog(Container container) throws NoDockerServerException, DockerServerException;
     @Deprecated String getContainerStdoutLog(String containerId, DockerClient.LogsParam... logParams) throws NoDockerServerException, DockerServerException;

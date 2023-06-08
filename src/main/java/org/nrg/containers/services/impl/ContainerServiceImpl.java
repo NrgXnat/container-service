@@ -3,18 +3,23 @@ package org.nrg.containers.services.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.LogType;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
@@ -47,6 +52,7 @@ import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationId
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
+import org.nrg.containers.rest.ContainerLogPollResponse;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
@@ -99,15 +105,25 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.Charset;
+import java.nio.file.Paths;
 import java.text.ParseException;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -120,6 +136,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.nrg.containers.model.command.entity.CommandType.DOCKER;
 import static org.nrg.containers.model.command.entity.CommandType.DOCKER_SETUP;
@@ -146,6 +164,12 @@ public class ContainerServiceImpl implements ContainerService {
     public static final String wrapupStr = "Wrapup";
     public static final String containerLaunchJustification = "Container launch";
     public static final String TO_BE_ASSIGNED = "To be assigned";
+
+    private static final String DATETIME_GROUP_NAME = "datetime";
+    public static final Pattern DATETIME_AT_LINE_START = Pattern.compile("(?<=^|\\n)(?<" + DATETIME_GROUP_NAME + ">\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\S*) ");
+    public static final DateTimeFormatter[] DATETIME_PARSING_FORMATTERS = {DateTimeFormatter.ISO_OFFSET_DATE_TIME, DateTimeFormatter.ISO_DATE_TIME};
+    public static final DateTimeFormatter DATETIME_OUTPUT_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+    public static final ZoneId UTC = ZoneId.of("UTC");
 
     private final ContainerControlApi containerControlApi;
     private final ContainerEntityService containerEntityService;
@@ -640,9 +664,9 @@ public class ContainerServiceImpl implements ContainerService {
         // Update workflow with resolved command (or try to create it if null)
         workflow = updateWorkflowWithResolvedCommand(workflow, resolvedCommand, userI);
 
-		try {
+        try {
             log.info("Creating container from resolved command.");
-        	final Container created = containerControlApi.create(preparedToLaunch, userI);
+            final Container created = containerControlApi.create(preparedToLaunch, userI);
 
             if (workflow != null) {
                 // Update workflow with container information
@@ -651,37 +675,37 @@ public class ContainerServiceImpl implements ContainerService {
             }
 
             // Save container in db.
-			final Container saved = toPojo(containerEntityService.save(fromPojo(
-	                created.toBuilder()
-	                        .workflowId(workflow != null ? workflow.getWorkflowId().toString() : null)
-	                        .parent(parent)
-	                        .build()
-	        ), userI));
-	
-	        if (resolvedCommand.wrapupCommands().size() > 0) {
-	            // Save wrapup containers in db
-	            log.info("Creating wrapup container objects in database (not creating docker containers).");
-	            for (final ResolvedCommand resolvedWrapupCommand : resolvedCommand.wrapupCommands()) {
-	                final Container wrapupContainer = createWrapupContainerInDbFromResolvedCommand(resolvedWrapupCommand,
+            final Container saved = toPojo(containerEntityService.save(fromPojo(
+                    created.toBuilder()
+                            .workflowId(workflow != null ? workflow.getWorkflowId().toString() : null)
+                            .parent(parent)
+                            .build()
+            ), userI));
+
+            if (resolvedCommand.wrapupCommands().size() > 0) {
+                // Save wrapup containers in db
+                log.info("Creating wrapup container objects in database (not creating docker containers).");
+                for (final ResolvedCommand resolvedWrapupCommand : resolvedCommand.wrapupCommands()) {
+                    final Container wrapupContainer = createWrapupContainerInDbFromResolvedCommand(resolvedWrapupCommand,
                             saved, userI, workflow);
-	                log.debug("Created wrapup container {} for parent container {}.", wrapupContainer.databaseId(),
+                    log.debug("Created wrapup container {} for parent container {}.", wrapupContainer.databaseId(),
                             saved.databaseId());
-	            }
-	        }
-	
-	        if (resolvedCommand.setupCommands().size() > 0) {
-	            log.info("Launching setup containers.");
-	            for (final ResolvedCommand resolvedSetupCommand : resolvedCommand.setupCommands()) {
-	                launchResolvedCommand(resolvedSetupCommand, userI, workflow, saved);
-	            }
-	        } else {
-	            start(userI, saved);
-	        }
-	
-	        return saved;
+                }
+            }
+
+            if (resolvedCommand.setupCommands().size() > 0) {
+                log.info("Launching setup containers.");
+                for (final ResolvedCommand resolvedSetupCommand : resolvedCommand.setupCommands()) {
+                    launchResolvedCommand(resolvedSetupCommand, userI, workflow, saved);
+                }
+            } else {
+                start(userI, saved);
+            }
+
+            return saved;
         } catch (Exception e) {
-        	handleFailure(workflow, e);
-        	throw e;
+            handleFailure(workflow, e);
+            throw e;
         }
     }
 
@@ -874,7 +898,7 @@ public class ContainerServiceImpl implements ContainerService {
         final ServiceTask task = event.task();
         Container service = event.service();
 
-	    log.debug("Processing service task event for service \"{}\" status \"{}\" exit code {}.",
+        log.debug("Processing service task event for service \"{}\" status \"{}\" exit code {}.",
                 task.serviceId(), task.status(), task.exitCode());
 
         if (service == null) {
@@ -1063,18 +1087,18 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
-	public void queueFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
+    public void queueFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
                               final Container containerOrService, final UserI userI) {
 
-		ContainerFinalizingRequest request = new ContainerFinalizingRequest(exitCodeString, isSuccessfulStatus,
+        ContainerFinalizingRequest request = new ContainerFinalizingRequest(exitCodeString, isSuccessfulStatus,
                 containerOrService.containerOrServiceId(), userI.getLogin());
 
-		Integer count = null;
+        Integer count = null;
         if (log.isDebugEnabled()){
             count = QueueUtils.count(request.getDestination());
         }
 
-		if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
+        if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
             if (canFinalize(userI, containerOrService, request)) {
                 log.debug("Added to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
                         count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
@@ -1087,12 +1111,12 @@ public class ContainerServiceImpl implements ContainerService {
             } else {
                 log.debug("Throttling finalizing queue container id {} must wait", request.getId());
             }
-		} else {
-			log.debug("Already in finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
+        } else {
+            log.debug("Already in finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
                     count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
                     containerOrService.status());
-		}
-	}
+        }
+    }
 
     private boolean canFinalize(UserI user, Container containerOrService, ContainerFinalizingRequest request) {
         Integer limit = containerControlApi.getFinalizingThrottle();
@@ -1143,9 +1167,9 @@ public class ContainerServiceImpl implements ContainerService {
         containerFinalizeService.sendContainerStatusUpdateEmail(userI, false, pipelineName,
                 xnatId, null, project, null);
     }
-	
+
     @Override
-	public void consumeFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
+    public void consumeFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
                                 final Container container, final UserI userI)
             throws ContainerException, NotFoundException {
         try {
@@ -1166,18 +1190,18 @@ public class ContainerServiceImpl implements ContainerService {
             log.error("Finalization failed on container {}", container, e);
             throw e;
         }
-	}
+    }
 
     @Override
     public boolean isWaiting(Container containerOrService){
         String status = containerOrService.status();
-    	return status != null && status.startsWith(WAITING);
+        return status != null && status.startsWith(WAITING);
     }
 
     @Override
     public boolean isFinalizing(Container containerOrService){
         String status = containerOrService.status();
-    	return status != null && (status.startsWith(ContainerRequest.inQueueStatusPrefix + WAITING) || status.equals(FINALIZING));
+        return status != null && (status.startsWith(ContainerRequest.inQueueStatusPrefix + WAITING) || status.equals(FINALIZING));
     }
 
     @Override
@@ -1542,83 +1566,157 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
-    @Nonnull
-    public Map<String, InputStream> getLogStreams(final long id)
-            throws NotFoundException {
-        return getLogStreams(get(id));
-    }
+    public void writeLogsToZipStream(String containerId, OutputStream outputStream) throws NotFoundException, IOException {
+        final Container container = get(containerId);
 
-    @Override
-    @Nonnull
-    public Map<String, InputStream> getLogStreams(final String containerId)
-            throws NotFoundException {
-        return getLogStreams(get(containerId));
-    }
-
-    @Nonnull
-    private Map<String, InputStream> getLogStreams(final Container container) {
-        final Map<String, InputStream> logStreams = new HashMap<>(ContainerService.LOG_NAMES.length);
-        for (final String logName : ContainerService.LOG_NAMES) {
-            final InputStream logStream = getLogStream(container, logName);
-            if (logStream != null) {
-                logStreams.put(logName, logStream);
+        try (final ZipOutputStream zipStream = (outputStream instanceof ZipOutputStream ? (ZipOutputStream) outputStream : new ZipOutputStream(outputStream))) {
+            for (final LogType logType : EnumSet.allOf(LogType.class)){
+                final InputStream inputStream = getLogStream(container, logType);
+                if (inputStream == null) {
+                    continue;
+                }
+                final ZipEntry entry = new ZipEntry(logType.logName());
+                try {
+                    zipStream.putNextEntry(entry);
+                    IOUtils.copy(inputStream, zipStream);
+                } catch (IOException e) {
+                    log.error("There was a problem writing {} to the zip.", logType, e);
+                    throw e;
+                }
             }
+
+        } catch (IOException e) {
+            log.error("There was a problem opening the zip stream.", e);
+            throw e;
         }
-        return logStreams;
-    }
-
-    @Override
-    @Nullable
-    public InputStream getLogStream(final long id, final String logFileName)
-            throws NotFoundException {
-        return getLogStream(get(id), logFileName);
     }
 
     @Nullable
-    private InputStream getLogStream(final Container container, final String logFileName) {
-        return getLogStream(container, logFileName, false, null);
-    }
-
-    @Override
-    @Nullable
-    public InputStream getLogStream(final String containerId, final String logFileName)
-            throws NotFoundException {
-        return getLogStream(containerId, logFileName, false, null);
-    }
-
-    @Override
-    @Nullable
-    public InputStream getLogStream(final String containerId, final String logFileName,
-                                    boolean withTimestamps, final Integer since)
-            throws NotFoundException {
-        return getLogStream(get(containerId), logFileName, withTimestamps, since);
-    }
-
-    @Nullable
-    private InputStream getLogStream(final Container container, final String logFileName,
-                                     boolean withTimestamps, final Integer since) {
+    private InputStream getLogStream(final Container container, final LogType logType) {
         final boolean containerDone = containerStatusIsTerminal(container);
-        final String logPath = container.getLogPath(logFileName);
+        final String logPath = container.getLogPath(logType.logName());
         if (!containerDone) {
             try {
                 // If log path is blank, that means we have not yet saved the logs from docker. Go fetch them now.
-                final ContainerControlApi.LogType logType = ContainerService.STDOUT_LOG_NAME.contains(logFileName) ?
-                        ContainerControlApi.LogType.STDOUT :
-                        ContainerControlApi.LogType.STDERR;
-                return containerControlApi.getLogStream(container, logType, withTimestamps, since);
+                final String log = containerControlApi.getLog(container, logType);
+                return log == null ? null : new ByteArrayInputStream(log.getBytes());
             } catch (NoContainerServerException | ContainerBackendException e) {
-                log.debug("No {} log for {}", logFileName, container.databaseId());
+                log.debug("No {} log for {}", logType, container.databaseId());
             }
         } else if (!StringUtils.isBlank(logPath)) {
             // If log path is not blank, that means we have saved the logs to a file (processing has completed). Read it now.
             try {
                 return new FileInputStream(logPath);
             } catch (FileNotFoundException e) {
-                log.error("Container {} log file {} not found. Path: {}", container.databaseId(), logFileName, logPath);
+                log.error("Container {} log file {} not found. Path: {}", container.databaseId(), logType, logPath);
             }
         }
 
         return null;
+    }
+
+
+    @Override
+    public ContainerLogPollResponse getLog(String containerId, LogType logType, String sinceTimestamp)
+            throws NotFoundException, IOException, BadRequestException {
+        OffsetDateTime since;
+        if (StringUtils.isBlank(sinceTimestamp)) {
+            since = null;
+        } else {
+            since = parseTimestamp(sinceTimestamp).orElseThrow(() -> new BadRequestException("Could not parse timestamp " + sinceTimestamp));
+        }
+        return getLog(containerId, logType, since);
+    }
+    @Override
+    public ContainerLogPollResponse getLog(String containerId, LogType logType, OffsetDateTime since)
+            throws NotFoundException, IOException {
+
+        final OffsetDateTime queryTime = OffsetDateTime.now(UTC);
+
+        final Container container = get(containerId);
+        boolean containerDone = container.statusIsTerminal();
+        final String logPath = container.getLogPath(logType.logName());
+
+        if (containerDone && StringUtils.isNotBlank(logPath)) {
+            // We have saved the logs to a file. Read it now.
+            return ContainerLogPollResponse.fromFile(FileUtils.readFileToString(Paths.get(logPath).toFile(), Charset.defaultCharset()));
+        } else if (containerDone) {
+            // Container finished without producing logs
+            return ContainerLogPollResponse.fromComplete("");
+        }
+
+        String logContent = null;
+        try {
+            // If log path is blank, that means we have not yet saved the logs from docker. Go fetch them now.
+            logContent = containerControlApi.getLog(container, logType, true, since);
+        } catch (NoContainerServerException | ContainerBackendException ignored) {}
+
+        if (StringUtils.isBlank(logContent)) {
+            final String datetimestamp = sinceOrDefault(since, queryTime).format(DATETIME_OUTPUT_FORMATTER);
+            return ContainerLogPollResponse.fromLive("", datetimestamp);
+        }
+
+        // The logs we fetched will have timestamps on each line.
+        // We want to find the most recent timestamp, which we return as "since", which when passed in
+        //   subsequent calls will allow them to only fetch new logs.
+
+        // Scan through all matching datetime strings to find the last one
+        //  (because there doesn't seem to be a way to find the last match more directly)
+        final Matcher datetimeMatch = DATETIME_AT_LINE_START.matcher(logContent);
+        String datetimestamp = null;
+        while (datetimeMatch.find()) {
+            datetimestamp = datetimeMatch.group(DATETIME_GROUP_NAME);
+        }
+
+        // Shift timestamp forward by 1 second (minimum precision that the backend APIs offer)
+        // to avoid getting the same log message again on the next call
+        // NOTE: This means we may get unlucky and miss log lines that were produced < 1 second after the current most recent log message :(
+        final OffsetDateTime lastLogDatetime = parseTimestamp(datetimestamp)
+                .map(dateTime -> dateTime.plus(1L, ChronoUnit.SECONDS))
+                .orElseGet(() -> sinceOrDefault(since, queryTime));  // Couldn't get a timestamp out of the logs, so fall back to what we do know;
+
+        // Format into datetimestamp
+        final String lastLogTimestamp = formatTimestamp(lastLogDatetime);
+
+        // Strip the timestamps, leaving the logs behind
+        logContent = datetimeMatch.reset().replaceAll("");
+
+        return ContainerLogPollResponse.fromLive(logContent, lastLogTimestamp);
+    }
+
+    private static OffsetDateTime sinceOrDefault(final OffsetDateTime since, final OffsetDateTime queryTime) {
+        return since == null ? queryTime : since;
+    }
+
+    @VisibleForTesting
+    public static Optional<OffsetDateTime> parseTimestamp(final String datetimestamp) {
+        if (StringUtils.isBlank(datetimestamp)) {
+            return Optional.empty();
+        }
+        OffsetDateTime datetime = null;
+        for (final DateTimeFormatter formatter : DATETIME_PARSING_FORMATTERS) {
+            try {
+                datetime = formatter.parse(datetimestamp, OffsetDateTime::from);
+                log.debug("  DID   parse timestamp {} into object {} using formatter {}", datetimestamp, datetime, formatter);
+                break;
+            } catch (DateTimeParseException ignored) {
+                log.debug("DID NOT parse timestamp {} using formatter {}", datetimestamp, formatter);
+            }
+        }
+        if (datetime == null) {
+            log.error("Could not parse timestamp {}", datetimestamp);
+        }
+        return Optional.ofNullable(datetime);
+    }
+
+    @VisibleForTesting
+    public static String formatTimestamp(final OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+        return DATETIME_OUTPUT_FORMATTER.format(
+                dateTime.atZoneSameInstant(UTC)
+        );
     }
 
     private PersistentWorkflowI getContainerWorkflow(UserI userI, final Container container) {
@@ -1627,17 +1725,17 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     private String getWorkflowStatus(UserI userI, final Container container) {
-     	   return getContainerWorkflow(userI, container).getStatus();
+        return getContainerWorkflow(userI, container).getStatus();
     }
 
-	private void handleFailure(UserI userI, final Container container) {
+    private void handleFailure(UserI userI, final Container container) {
        try {
-    	   String workFlowId = container.workflowId();
-    	   PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI,workFlowId);
-    	   handleFailure(workflow);
-    	}catch(Exception e) {
-        	log.error("Unable to update workflow and set it to FAILED status for container", e);
-    	}
+           String workFlowId = container.workflowId();
+           PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI,workFlowId);
+           handleFailure(workflow);
+       }catch(Exception e) {
+           log.error("Unable to update workflow and set it to FAILED status for container", e);
+       }
     }
     
     private void handleFailure(@Nullable PersistentWorkflowI workflow) {
@@ -1939,7 +2037,7 @@ public class ContainerServiceImpl implements ContainerService {
         String wrkFlowComment = containerOrService.containerOrServiceId();
         log.debug("Updating workflow for Container {}", wrkFlowComment);
 
-    	try {
+        try {
             workflow.setComments(wrkFlowComment);
             WorkflowUtils.save(workflow, workflow.buildEvent());
             log.debug("Updated workflow {}.", workflow.getWorkflowId());
@@ -2083,10 +2181,10 @@ public class ContainerServiceImpl implements ContainerService {
         return isFailed;
     }
 
-	@Override
-	public List<Container> retrieveServicesInWaitingState() {
+    @Override
+    public List<Container> retrieveServicesInWaitingState() {
         return toPojo(containerEntityService.retrieveServicesInWaitingState());
-	}
+    }
 
     @Override
     @Nonnull

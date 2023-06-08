@@ -27,7 +27,7 @@ public class ContainerUtils {
 
     public static final String KUBERNETES_FAILED_STATUS = "Failed";
 
-    enum TerminalState {
+    public enum TerminalState {
         COMPLETE("Complete"),
         FAILED("Failed"),
         KILLED("Killed");

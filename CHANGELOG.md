@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.3.2
+[Released 2023-06-07](https://bitbucket.org/xnatdev/container-service/src/3.3.2/).
+
+* **Improvement** [CS-835][] Refactor internals for fetching live logs to make them easier to understand and maintain
+* **Bugfix** [CS-605][] Fix silent container failures that were happening in container launch process
+* **Bugfix** [CS-902][] Fix for live container logs re-appending continuously
+
+[CS-835]: https://radiologics.atlassian.net/browse/CS-835
+[CS-605]: https://radiologics.atlassian.net/browse/CS-605
+[CS-902]: https://radiologics.atlassian.net/browse/CS-902
+
+## 3.3.1
+[Released 2023-03-30](https://bitbucket.org/xnatdev/container-service/src/3.3.1/).
+
+* **Bugfix** [CS-834][] Handle `ISO_DATE_TIME`s in addition to `ISO_INSTANT`s in container log timestamps
+
+[CS-834]: https://radiologics.atlassian.net/browse/CS-834
+
 ## 3.3.0
 [Released 2022-10-11](https://bitbucket.org/xnatdev/container-service/src/3.3.0/).
 

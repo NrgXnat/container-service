@@ -4,6 +4,8 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.api.LogType;
+import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
@@ -16,7 +18,6 @@ import org.nrg.containers.security.ContainerId;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xapi.rest.Project;
@@ -40,31 +41,19 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 import javax.servlet.http.HttpServletResponse;
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.text.ParseException;
-import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import static org.nrg.containers.services.ContainerService.XNAT_PASS;
 import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
-import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
+import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -242,29 +231,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
             notes = "Return stdout and stderr logs as a zip")
     public void getLogs(final @PathVariable @ContainerId String containerId,
                         final HttpServletResponse response)
-            throws IOException, InsufficientPrivilegesException, NoDockerServerException, DockerServerException, NotFoundException {
-        final Map<String, InputStream> logStreams = containerService.getLogStreams(containerId);
-
-        try(final ZipOutputStream zipStream = new ZipOutputStream(response.getOutputStream()) ) {
-            for(final String streamName : logStreams.keySet()){
-                final InputStream inputStream = logStreams.get(streamName);
-                final ZipEntry entry = new ZipEntry(streamName);
-                try {
-                    zipStream.putNextEntry(entry);
-                    writeToOuputStream(inputStream, zipStream);
-                } catch (IOException e) {
-                    log.error("There was a problem writing %s to the zip. " + e.getMessage(), streamName);
-                }
-            }
-
-            response.setStatus(HttpStatus.OK.value());
-            response.setHeader(HttpHeaders.CONTENT_DISPOSITION, getAttachmentDisposition(containerId, "zip"));
-            response.setHeader(HttpHeaders.CONTENT_TYPE, ZIP);
-        } catch (IOException e) {
-            log.error("There was a problem opening the zip stream.", e);
-        }
-
-        response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            throws IOException, NotFoundException {
+        containerService.writeLogsToZipStream(containerId, response.getOutputStream());
+        response.setStatus(HttpStatus.OK.value());
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, getAttachmentDisposition(containerId, "zip"));
+        response.setHeader(HttpHeaders.CONTENT_TYPE, ZIP);
     }
 
     @AuthDelegate(ContainerControlUserAuthorization.class)
@@ -273,143 +244,30 @@ public class ContainerRestApi extends AbstractXapiRestController {
     @ResponseBody
     public ResponseEntity<String> getLog(final @PathVariable @ContainerId String containerId,
                                          final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file)
-            throws NoDockerServerException, DockerServerException, NotFoundException, IOException {
+            throws NotFoundException, IOException {
+        final LogType logType = ContainerService.STDOUT_LOG_NAME.contains(file) ?
+                LogType.STDOUT :
+                LogType.STDERR;
+        final String logContents = containerService.getLog(containerId, logType, (OffsetDateTime) null).getContent();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, getAttachmentDisposition(containerId + "-" + file, "log"))
                 .header(HttpHeaders.CONTENT_TYPE, TEXT)
-                .body(doGetLog(containerId, file));
+                .body(logContents);
     }
 
     @AuthDelegate(ContainerControlUserAuthorization.class)
     @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> pollLog(final @PathVariable @ContainerId String containerId,
-                                       final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file,
-                                       final @RequestParam(required = false) Long since,
-                                       final @RequestParam(required = false) Long bytesRead,
-                                       final @RequestParam(required = false) Boolean loadAll)
-            throws NoDockerServerException, DockerServerException, NotFoundException, IOException {
+    public ContainerLogPollResponse pollLog(final @PathVariable @ContainerId String containerId,
+                                                            final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file,
+                                                            final @RequestParam(required = false) String since)
+            throws NotFoundException, IOException, BadRequestException {
 
-        // IntelliJ hits a breakpoint set on the return line twice if I don't define a local var here. No idea why.
-        Map<String, Object> body = doGetLog(containerId, file, since, bytesRead, loadAll != null && loadAll);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, JSON)
-                .body(body);
-    }
-
-    private String doGetLog(String containerId, String file)
-            throws NotFoundException, IOException {
-        return (String) doGetLog(containerId, file, null, null, true).get(CONTENT_KEY);
-    }
-
-    private Map<String, Object> doGetLog(String containerId, String file, Long since, Long bytesRead, boolean loadAll)
-            throws NotFoundException, IOException {
-        Integer sinceInt = null;
-        try {
-            sinceInt = since == null ? null : Math.toIntExact(since);
-        } catch (ArithmeticException e) {
-            log.error("Unable to convert since parameter to integer", e);
-        }
-
-        long queryTime = System.currentTimeMillis() / 1000L;
-        boolean containerDone = containerService.containerStatusIsTerminal(containerService.get(containerId));
-        final InputStream logStream = containerService.getLogStream(containerId, file, true, sinceInt);
-
-        String logContent;
-        long lastTime = -1;
-        long currentBytesRead = -1;
-        boolean fromFile = false;
-        if (logStream == null) {
-            logContent = "";
-            lastTime = since == null ? queryTime : since;
-        } else {
-            final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            if (logStream instanceof FileInputStream) {
-                long maxBytes = 1048576; // 1MB chunks
-                if (loadAll) {
-                    maxBytes = Long.MAX_VALUE;
-                }
-                // 1MB chunks
-                currentBytesRead = writeToOuputStream(logStream, byteArrayOutputStream,
-                        maxBytes, bytesRead == null ? 0 : bytesRead);
-                logContent = byteArrayOutputStream.toString(StandardCharsets.UTF_8.name());
-                fromFile = true;
-            } else {
-                // It's not a file and the container/service is still active (aka still potentially logging)
-                writeToOuputStream(logStream, byteArrayOutputStream);
-                logContent = byteArrayOutputStream.toString(StandardCharsets.UTF_8.name());
-
-                if (!containerDone) {
-                    // Determine what to pass for "since" querying based on timestamps,
-                    // leave as -1 to stop querying if container finished
-                    String[] lines = logContent.replaceAll("(\\n)+$", "").split("\\n");
-                    String lastLine;
-                    try {
-                        if (lines.length == 0 ||
-                                StringUtils.isBlank(lastLine = lines[lines.length - 1].replaceAll(" .*", ""))) {
-                            throw new ParseException(null, 0);
-                        }
-                        lastTime = getTimestampInEpochSecondsFromLogLine(lastLine);
-                    } catch (ParseException e) {
-                        lastTime = since == null ? queryTime : since;
-                    }
-                }
-
-                // Strip the timestamps
-                logContent = logContent.replaceAll("(^|\\n)\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{9}Z ","\n");
-            }
-        }
-        Map<String, Object> jsonContent = new HashMap<>();
-        jsonContent.put(CONTENT_KEY, logContent);
-        jsonContent.put("timestamp", lastTime);
-        jsonContent.put("bytesRead", currentBytesRead);
-        jsonContent.put("fromFile", fromFile);
-        return jsonContent;
-    }
-
-    private long getTimestampInEpochSecondsFromLogLine(final String line) {
-        final String dateTimeString = StringUtils.substringBefore(line, "\r");
-        Instant instant;
-        try {
-            instant = Instant.parse(dateTimeString);
-        } catch (DateTimeParseException e) {
-            // If dateTimeString is not in DateTimeFormatter.ISO_INSTANT format, try DateTimeFormatter.ISO_DATE_TIME
-            instant = OffsetDateTime.parse(dateTimeString, DateTimeFormatter.ISO_DATE_TIME).toInstant();
-        }
-        return instant.plus(1L, ChronoUnit.SECONDS).getEpochSecond();
-    }
-
-    private void writeToOuputStream(InputStream inputStream, OutputStream outputStream) throws IOException {
-        writeToOuputStream(inputStream, outputStream, Long.MAX_VALUE, 0);
-    }
-
-    private long writeToOuputStream(InputStream inputStream, OutputStream outputStream, long maxBytes, long bytesRead)
-            throws IOException {
-
-        long totalSkipped = 0;
-        if (bytesRead > 0) {
-            long skipped;
-            while (totalSkipped < bytesRead && (skipped = inputStream.skip(bytesRead - totalSkipped)) > 0) {
-                totalSkipped += skipped;
-            }
-            if (totalSkipped != bytesRead) {
-                log.error("Error skipping to proper location of input stream for paginated logging display");
-            }
-        }
-        byte[] buffer = new byte[1024];
-        int length;
-        long totalBytes = 0;
-        while ((length = inputStream.read(buffer)) > 0) {
-            outputStream.write(buffer, 0, length);
-            totalBytes += length;
-            if (totalBytes >= maxBytes) {
-                //TODO update so that we break on a line break or at least a whitespace character?
-                return totalBytes + totalSkipped;
-            }
-        }
-        // Done reading
-        return -1;
+        final LogType logType = ContainerService.STDOUT_LOG_NAME.contains(file) ?
+                LogType.STDOUT :
+                LogType.STDERR;
+        return containerService.getLog(containerId, logType, since);
     }
 
     private static String getAttachmentDisposition(final String name, final String extension) {

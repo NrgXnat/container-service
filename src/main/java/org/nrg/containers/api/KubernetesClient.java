@@ -6,6 +6,8 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.framework.exceptions.NotFoundException;
 
+import java.time.OffsetDateTime;
+
 public interface KubernetesClient {
     ApiClient getBackendClient();
     void setBackendClient(ApiClient apiClient);
@@ -16,7 +18,7 @@ public interface KubernetesClient {
     void stop();
 
     String ping() throws ContainerBackendException;
-    String getLog(String podName, final ContainerControlApi.LogType logType, final Boolean withTimestamp, final Integer since) throws ContainerBackendException;
+    String getLog(String podName, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) throws ContainerBackendException;
 
     String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, String serverContainerUser, final String gpuVendor)
             throws ContainerBackendException, ContainerException;

@@ -312,7 +312,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             //scroll to bottom
             if (autoScroll) $container.scrollTop($container[0].scrollHeight);
 
-            if (dataJson.timestamp !== -1) {
+            if (dataJson.timestamp !== "-1") {
                 // Container is still running, check for more!
                 refreshLog(containerId, logFile, dataJson.timestamp, false, false, startTime);
             }
@@ -382,7 +382,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         historyTable.logModal.title$.text(historyTable.logModal.title$.text() + ' (from file)');
                     } else if (refreshLogSince) {
                         // We were live logging, but we swapped to reading a file, notify user since we're starting back from the top
-                        XNAT.ui.dialog.alert('Processing competed');
+                        XNAT.ui.dialog.alert('Processing completed');
                         historyTable.logModal.title$.text(
                             historyTable.logModal.title$.text().replace('(live)', '(from file)')
                         );
