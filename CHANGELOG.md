@@ -1,7 +1,7 @@
 # Changelog
 
 ## 3.3.2
-Not yet released.
+[Released 2023-06-07](https://bitbucket.org/xnatdev/container-service/src/3.3.2/).
 
 * **Improvement** [CS-835][] Refactor internals for fetching live logs to make them easier to understand and maintain
 * **Bugfix** [CS-605][] Fix silent container failures that were happening in container launch process
