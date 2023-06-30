@@ -178,7 +178,8 @@ dependencies {
 
     implementation group: 'javax.interceptor', name: 'javax.interceptor-api', version: '1.2.2'
 
-    runtimeOnly "org.bouncycastle:bcpkix-jdk15on:1.64+"
+    runtimeOnly "org.bouncycastle:bcpkix-jdk15on:1.70+"
+    runtimeOnly "org.bouncycastle:bcprov-jdk15on:1.70+"
     runtimeOnly "commons-codec:commons-codec"
     runtimeOnly "commons-io:commons-io"
     runtimeOnly "org.apache.commons:commons-compress"
