@@ -23,6 +23,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private Integer maxConcurrentFinalizingJobs;
     private boolean statusEmailEnabled = true;
     private String gpuVendor;
+    private String archivePvcName;
+    private String buildPvcName;
+    private String combinedPvcName;
+    private String archivePathTranslation;
+    private String buildPathTranslation;
+    private String combinedPathTranslation;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -42,6 +48,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
         this.statusEmailEnabled = dockerServer.statusEmailEnabled();
         this.gpuVendor = dockerServer.gpuVendor();
+        this.archivePvcName = dockerServer.archivePvcName();
+        this.buildPvcName = dockerServer.buildPvcName();
+        this.combinedPvcName = dockerServer.combinedPvcName();
+        this.archivePathTranslation = dockerServer.archivePathTranslation();
+        this.buildPathTranslation = dockerServer.buildPathTranslation();
+        this.combinedPathTranslation = dockerServer.combinedPathTranslation();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -221,6 +233,30 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.gpuVendor = gpuVendor;
     }
 
+    public String getArchivePvcName() { return archivePvcName; }
+
+    public void setArchivePvcName(String archivePvcName) { this.archivePvcName = archivePvcName; }
+
+    public String getBuildPvcName() { return buildPvcName; }
+
+    public void setBuildPvcName(String buildPvcName) { this.buildPvcName = buildPvcName; }
+
+    public String getCombinedPvcName() { return combinedPvcName; }
+
+    public void setCombinedPvcName(String combinedPvcName) { this.combinedPvcName = combinedPvcName; }
+
+    public String getArchivePathTranslation() { return archivePathTranslation; }
+
+    public void setArchivePathTranslation(String archivePathTranslation) { this.archivePathTranslation = archivePathTranslation; }
+
+    public String getBuildPathTranslation() { return buildPathTranslation; }
+
+    public void setBuildPathTranslation(String buildPathTranslation) { this.buildPathTranslation = buildPathTranslation; }
+
+    public String getCombinedPathTranslation() { return combinedPathTranslation; }
+
+    public void setCombinedPathTranslation(String combinedPathTranslation) { this.combinedPathTranslation = combinedPathTranslation; }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -263,6 +299,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.maxConcurrentFinalizingJobs, that.maxConcurrentFinalizingJobs) &&
                 Objects.equals(this.statusEmailEnabled, that.statusEmailEnabled) &&
                 Objects.equals(this.gpuVendor, that.gpuVendor) &&
+                Objects.equals(this.archivePvcName, that.archivePvcName) &&
+                Objects.equals(this.buildPvcName, that.buildPvcName) &&
+                Objects.equals(this.combinedPvcName, that.combinedPvcName) &&
+                Objects.equals(this.archivePathTranslation, that.archivePathTranslation) &&
+                Objects.equals(this.buildPathTranslation, that.buildPathTranslation) &&
+                Objects.equals(this.combinedPathTranslation, that.combinedPathTranslation) &&
                 constrEqual;
     }
 
@@ -270,7 +312,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     public int hashCode() {
         return Objects.hash(name, host, certPath, lastEventCheckTime, backend, pathTranslationXnatPrefix,
                 pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
-                maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor);
+                maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
+                archivePathTranslation, buildPathTranslation, combinedPathTranslation);
     }
 
 }

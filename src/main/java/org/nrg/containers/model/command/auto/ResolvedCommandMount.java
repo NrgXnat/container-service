@@ -18,6 +18,7 @@ public abstract class ResolvedCommandMount {
     @JsonProperty("xnat-host-path") public abstract String xnatHostPath();
     @JsonProperty("container-host-path") public abstract String containerHostPath();
     @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
+    @Nullable @JsonProperty("mount-pvc-name") public abstract String mountPvcName();
 
     public static ResolvedCommandMount specialInput(final String xnatHostPath, final String containerHostPath) {
         return ResolvedCommandMount.builder()
@@ -29,18 +30,20 @@ public abstract class ResolvedCommandMount {
                 .build();
     }
 
-    public static ResolvedCommandMount output(final String name, final String xnatHostPath, final String containerHostPath, final String containerPath) {
+    public static ResolvedCommandMount output(final String name, final String xnatHostPath, final String containerHostPath,
+                                              final String containerPath, final String buildPvcName) {
         return ResolvedCommandMount.builder()
                 .name(name)
                 .writable(true)
                 .xnatHostPath(xnatHostPath)
                 .containerHostPath(containerHostPath)
                 .containerPath(containerPath)
+                .mountPvcName(buildPvcName)
                 .build();
     }
 
     public static ResolvedCommandMount specialOutput(final String xnatHostPath, final String containerHostPath) {
-        return output(OUTPUT, xnatHostPath, containerHostPath, SETUP_WRAPUP_OUTPUT_PATH);
+        return output(OUTPUT, xnatHostPath, containerHostPath, SETUP_WRAPUP_OUTPUT_PATH, null);
     }
 
     public static Builder builder() {
@@ -57,7 +60,7 @@ public abstract class ResolvedCommandMount {
         public abstract Builder containerHostPath(String containerHostPath);
         public abstract Builder containerPath(String containerPath);
         public abstract Builder viaSetupCommand(String viaSetupCommand);
-
+        public abstract Builder mountPvcName(String mountPvcName);
         public abstract ResolvedCommandMount build();
     }
 }

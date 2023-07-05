@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
 import org.nrg.containers.model.container.auto.Container;
 
+import javax.annotation.Nullable;
 import javax.persistence.CascadeType;
 import javax.persistence.Entity;
 import javax.persistence.FetchType;
@@ -30,6 +31,7 @@ public class ContainerEntityMount implements Serializable {
     @JsonProperty("container-host-path") private String containerHostPath;
     @JsonProperty("container-path") private String containerPath;
     @JsonProperty("input-files") private List<ContainerMountFilesEntity> inputFiles;
+    @JsonProperty("mount-pvc-name") @Nullable private String mountPvcName;
 
     public ContainerEntityMount() {}
 
@@ -47,6 +49,7 @@ public class ContainerEntityMount implements Serializable {
         this.setXnatHostPath(containerMountPojo.xnatHostPath());
         this.setContainerHostPath(containerMountPojo.containerHostPath());
         this.setContainerPath(containerMountPojo.containerPath());
+        this.setMountPvcName(containerMountPojo.mountPvcName());
         this.setInputFiles(
                 containerMountPojo.inputFiles().stream().map(ContainerMountFilesEntity::fromPojo).collect(Collectors.toList())
         );
@@ -112,6 +115,9 @@ public class ContainerEntityMount implements Serializable {
         this.containerPath = containerPath;
     }
 
+    public String getMountPvcName() { return mountPvcName; }
+
+    public void setMountPvcName(String mountPvcName) { this.mountPvcName = mountPvcName; }
     @Transient
     @JsonIgnore
     public boolean isWritable() {
@@ -172,6 +178,7 @@ public class ContainerEntityMount implements Serializable {
                 .add("containerHostPath", containerHostPath)
                 .add("remotePath", containerPath)
                 .add("inputFiles", inputFiles)
+                .add("mountPvcName", mountPvcName)
                 .toString();
     }
 }
