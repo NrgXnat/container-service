@@ -196,7 +196,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             coreApi.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, null);
             // if we get here everything is good
         } catch (ApiException e) {
-            log.error("Ping failed: message \"{}\" code {} body \"{}\"", e.getMessage(), e.getCode(), e.getResponseBody());
+            log.trace("Ping failed: message \"{}\" code {} body \"{}\"", e.getMessage(), e.getCode(), e.getResponseBody());
             throw new ContainerBackendException(e);
         }
         return "OK";

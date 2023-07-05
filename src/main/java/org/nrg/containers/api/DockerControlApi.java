@@ -159,7 +159,7 @@ public class DockerControlApi implements ContainerControlApi {
         try (final DockerClient client = getClient(dockerServer)) {
             return client.ping();
         } catch (DockerException | InterruptedException e) {
-            log.error("Unable to connect with Docker server {}:\n{}", dockerServer, e.getMessage());
+            log.trace("Ping failed to server {}", dockerServer, e);
             throw new DockerServerException(e);
         }
     }
@@ -169,7 +169,7 @@ public class DockerControlApi implements ContainerControlApi {
             client.inspectSwarm();
             // If we got this far without an exception, then all is well.
         } catch (DockerException | InterruptedException e) {
-            log.error(e.getMessage());
+            log.trace("Failed to inspect swarm", e);
             throw new DockerServerException(e);
         }
         return "OK";
@@ -181,7 +181,7 @@ public class DockerControlApi implements ContainerControlApi {
             final String pingResult = ping();
             return StringUtils.isNotBlank(pingResult) && pingResult.equals("OK");
         } catch (NoDockerServerException e) {
-            log.error(e.getMessage());
+            log.error("Cannot check connection. No docker server defined.");
         } catch (DockerServerException ignored) {
             // Any actual errors have already been logged. We can safely ignore them here.
         }
