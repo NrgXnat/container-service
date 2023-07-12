@@ -578,7 +578,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                           final String image,
                                                           final String inputMountXnatHostPath,
                                                           final String outputMountXnatHostPath,
-                                                          final String parentSourceObjectName)
+                                                          final String parentSourceObjectName,
+                                                          final String inputMountPvcName,
+                                                          final String outputMountPvcName)
                 throws CommandResolutionException {
             final String typeStringForLog;
             switch (type) {
@@ -607,9 +609,26 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
             log.debug("Done resolving {} command {} from image {}.", typeStringForLog, command.name(), image);
 
-            return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, getMountContainerHostPath(inputMountXnatHostPath,
-                            pathTranslationXnatPrefix, pathTranslationContainerHostPrefix), outputMountXnatHostPath, getMountContainerHostPath(
-                                    outputMountXnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix), parentSourceObjectName);
+            String inputMountContainerHostPath;
+            String outputMountContainerHostPath;
+
+            if (StringUtils.isNotBlank(archivePathTranslation) && type.equals(CommandType.DOCKER_SETUP)) {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, archivePathTranslation, "");
+            }
+            else if (StringUtils.isNotBlank(buildPathTranslation) && type.equals(CommandType.DOCKER_WRAPUP)) {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, buildPathTranslation, "");
+            } else {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+            }
+
+            if (StringUtils.isNotBlank(buildPathTranslation)) {
+                outputMountContainerHostPath = getMountContainerHostPath(outputMountXnatHostPath, buildPathTranslation, "");
+            } else {
+                outputMountContainerHostPath = getMountContainerHostPath(outputMountXnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+            }
+
+            return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, inputMountContainerHostPath,
+                    outputMountXnatHostPath, outputMountContainerHostPath, parentSourceObjectName, inputMountPvcName, outputMountPvcName);
         }
 
         private String getMountContainerHostPath(final String mountXnatHostPath, String xnatPathPrefix, String containerHostPathPrefix) {
@@ -2468,7 +2487,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
                     final String writableMountPath = getBuildDirectory();
 
-                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(), resolvedCommandMount.xnatHostPath(), writableMountPath, resolvedCommandOutput.name()));
+                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(),
+                            resolvedCommandMount.xnatHostPath(), writableMountPath, resolvedCommandOutput.name(), buildPvcName, buildPvcName));
                 }
             }
 
@@ -2584,7 +2604,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 final String writableMountPath = getBuildDirectory();
                 isBuildMount = true;
                 resolvedSetupCommands.add(
-                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPath, writableMountPath, mountName)
+                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPath, writableMountPath, mountName, archivePvcName, buildPvcName)
                 );
                 mountPath = writableMountPath;
             }

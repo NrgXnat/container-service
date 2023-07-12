@@ -284,7 +284,6 @@ public class KubernetesClientImpl implements KubernetesClient {
                             .withName(mount.mountPvcName())
                             .withNewPersistentVolumeClaim()
                             .withClaimName(mount.mountPvcName())
-                            .withReadOnly(!mount.writable())
                             .endPersistentVolumeClaim()
                             .build());
                     mounts.add(new V1VolumeMountBuilder()

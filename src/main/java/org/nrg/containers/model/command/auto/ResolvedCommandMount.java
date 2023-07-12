@@ -20,13 +20,14 @@ public abstract class ResolvedCommandMount {
     @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
     @Nullable @JsonProperty("mount-pvc-name") public abstract String mountPvcName();
 
-    public static ResolvedCommandMount specialInput(final String xnatHostPath, final String containerHostPath) {
+    public static ResolvedCommandMount specialInput(final String xnatHostPath, final String containerHostPath, final String mountPvcName) {
         return ResolvedCommandMount.builder()
                 .name(INPUT)
                 .writable(false)
                 .xnatHostPath(xnatHostPath)
                 .containerHostPath(containerHostPath)
                 .containerPath(SETUP_WRAPUP_INPUT_PATH)
+                .mountPvcName(mountPvcName)
                 .build();
     }
 
@@ -42,8 +43,8 @@ public abstract class ResolvedCommandMount {
                 .build();
     }
 
-    public static ResolvedCommandMount specialOutput(final String xnatHostPath, final String containerHostPath) {
-        return output(OUTPUT, xnatHostPath, containerHostPath, SETUP_WRAPUP_OUTPUT_PATH, null);
+    public static ResolvedCommandMount specialOutput(final String xnatHostPath, final String containerHostPath, final String mountPvcName) {
+        return output(OUTPUT, xnatHostPath, containerHostPath, SETUP_WRAPUP_OUTPUT_PATH, mountPvcName);
     }
 
     public static Builder builder() {

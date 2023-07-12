@@ -274,7 +274,9 @@ public abstract class ResolvedCommand {
                                                          final String inputMountContainerHostPath,
                                                          final String outputMountXnatHostPath,
                                                          final String outputMountContainerHostPath,
-                                                         final String parentSourceObjectName) {
+                                                         final String parentSourceObjectName,
+                                                         final String inputMountPvcName,
+                                                         final String outputMountPvcName) {
         return builder()
                 .wrapperId(0L)
                 .wrapperName("")
@@ -299,8 +301,8 @@ public abstract class ResolvedCommand {
                 .ulimits(command.ulimits())
                 .parentSourceObjectName(parentSourceObjectName)
                 .secrets(command.secrets().stream().map(ResolvedSecret::fromUnresolved).collect(Collectors.toList()))
-                .addMount(ResolvedCommandMount.specialInput(inputMountXnatHostPath, inputMountContainerHostPath))
-                .addMount(ResolvedCommandMount.specialOutput(outputMountXnatHostPath, outputMountContainerHostPath))
+                .addMount(ResolvedCommandMount.specialInput(inputMountXnatHostPath, inputMountContainerHostPath, inputMountPvcName))
+                .addMount(ResolvedCommandMount.specialOutput(outputMountXnatHostPath, outputMountContainerHostPath, outputMountPvcName))
                 .build();
     }
 

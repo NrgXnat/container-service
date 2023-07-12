@@ -652,8 +652,8 @@ public class CommandResolutionTest {
         assertThat(resolvedSetupCommand.workingDirectory(), is(setupCommand.workingDirectory()));
 
         assertThat(resolvedSetupCommand.mounts(), hasSize(2));
-        final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInput(resourceDir, resourceDir);
-        final ResolvedCommandMount expectedOutputMount = ResolvedCommandMount.specialOutput(resolvedCommandMountPath, resolvedCommandMountPath);
+        final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInput(resourceDir, resourceDir, null);
+        final ResolvedCommandMount expectedOutputMount = ResolvedCommandMount.specialOutput(resolvedCommandMountPath, resolvedCommandMountPath, null);
         assertThat(resolvedSetupCommand.mounts(), containsInAnyOrder(expectedInputMount, expectedOutputMount));
     }
 
