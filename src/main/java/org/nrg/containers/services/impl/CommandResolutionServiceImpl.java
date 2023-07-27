@@ -382,6 +382,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Resolving input tree with root input \"{}\".", rootNode.input().name());
                 final ResolvedInputTreeNode<? extends Input> resolvedRootNode =
                         resolveNode(rootNode, null, resolvedInputValuesByReplacementKey, resolveFully);
+                if (resolveFully && resolvedRootNode.input().type().equals("file") && resolvedRootNode.valuesAndChildren().get(0).resolvedValue().value().isEmpty()) {
+                    log.debug("Root input \"{}\" is a file without a specified value. Skipping.");
+                    continue;
+                }
                 log.debug("Done resolving input tree with root input \"{}\".", rootNode.input().name());
                 resolvedInputTrees.add(resolvedRootNode);
 
