@@ -14,6 +14,7 @@ import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.LogStream;
 import org.mandas.docker.client.messages.ContainerConfig;
 import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.RegistryAuth;
 import org.mandas.docker.client.messages.ServiceCreateResponse;
 import org.mandas.docker.client.messages.swarm.ContainerSpec;
 import org.mandas.docker.client.messages.swarm.ReplicatedService;
@@ -55,12 +56,10 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.anyVararg;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -127,11 +126,8 @@ public class DockerControlApiTest {
                 DockerControlApi.class, "pullImage", String.class))
                 .withArguments(anyString());
         PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
-                DockerControlApi.class, "getClient", DockerServer.class))
+                DockerControlApi.class, "getDockerClient", DockerServer.class))
                 .withArguments(dockerServer);
-        PowerMockito.doReturn(mockDockerClient).when(dockerControlApi, method(
-                DockerControlApi.class, "getClient", DockerServer.class, String.class))
-                .withArguments(eq(dockerServer), or(any(String.class), isNull(String.class)));
 
         // Mock simple return values
         when(dockerServer.backend()).thenReturn(backend);
@@ -504,7 +500,7 @@ public class DockerControlApiTest {
             // implementation is package-private.
             final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
             when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
-            when(mockDockerClient.createService(any(ServiceSpec.class)))
+            when(mockDockerClient.createService(any(ServiceSpec.class), any(RegistryAuth.class)))
                     .thenReturn(serviceCreateResponse);
         } else if (backend == Backend.KUBERNETES) {
             toLaunchAndExpectedContainerBuilder.serviceId(BACKEND_ID);
@@ -555,7 +551,7 @@ public class DockerControlApiTest {
             // implementation is package-private.
             final ServiceCreateResponse serviceCreateResponse = Mockito.mock(ServiceCreateResponse.class);
             when(serviceCreateResponse.id()).thenReturn(BACKEND_ID);
-            when(mockDockerClient.createService(any(ServiceSpec.class)))
+            when(mockDockerClient.createService(any(ServiceSpec.class), any(RegistryAuth.class)))
                     .thenReturn(serviceCreateResponse);
 
             expectedCreatedBuilder.serviceId(BACKEND_ID);
@@ -648,7 +644,7 @@ public class DockerControlApiTest {
                 return Collections.emptyList();
             }
         };
-        when(mockDockerClient.createService(any(ServiceSpec.class)))
+        when(mockDockerClient.createService(any(ServiceSpec.class), any(RegistryAuth.class)))
                 .thenReturn(serviceCreateResponse);
 
         // Run the method
@@ -656,7 +652,8 @@ public class DockerControlApiTest {
 
         // Assert on results
         final ArgumentCaptor<ServiceSpec> serviceSpecCaptor = ArgumentCaptor.forClass(ServiceSpec.class);
-        verify(mockDockerClient).createService(serviceSpecCaptor.capture());
+        final ArgumentCaptor<RegistryAuth> registryAuthArgumentCaptor = ArgumentCaptor.forClass(RegistryAuth.class);
+        Mockito.verify(mockDockerClient).createService(serviceSpecCaptor.capture(), registryAuthArgumentCaptor.capture());
 
         final ServiceSpec serviceSpec = serviceSpecCaptor.getValue();
         assertThat(serviceSpec.mode().replicated().replicas(), equalTo(numReplicas.value));

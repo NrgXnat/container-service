@@ -259,7 +259,7 @@ public class CommandLaunchIntegrationTest {
         dockerServerService.setServer(dockerServer);
         TestingUtils.commitTransaction();
 
-        dockerClient = controlApi.getClient();
+        dockerClient = controlApi.getDockerClient();
         kubernetesClient = kubernetesClientFactory.getKubernetesClient();
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));

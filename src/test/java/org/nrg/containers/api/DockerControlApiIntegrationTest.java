@@ -123,7 +123,7 @@ public class DockerControlApiIntegrationTest {
 
         controlApi = new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory);
 
-        CLIENT = controlApi.getClient();
+        CLIENT = controlApi.getDockerClient();
         TestingUtils.skipIfCannotConnectToDocker(CLIENT);
 
     }

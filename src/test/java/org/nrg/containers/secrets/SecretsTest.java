@@ -23,6 +23,7 @@ import org.junit.runner.RunWith;
 import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.messages.ContainerConfig;
 import org.mandas.docker.client.messages.ContainerCreation;
+import org.mandas.docker.client.messages.RegistryAuth;
 import org.mandas.docker.client.messages.ServiceCreateResponse;
 import org.mandas.docker.client.messages.swarm.ServiceSpec;
 import org.mockito.ArgumentCaptor;
@@ -31,7 +32,6 @@ import org.mockito.Mockito;
 import org.mockito.internal.util.reflection.Whitebox;
 import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.DockerControlApi;
-import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.api.KubernetesClientImpl;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -39,16 +39,13 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
-import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerSecretService;
-import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
 import org.nrg.containers.services.impl.ContainerSecretServiceImpl;
-import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xft.security.UserI;
@@ -84,16 +81,12 @@ import static org.hamcrest.Matchers.notNullValue;
 public class SecretsTest {
     @Mock private SystemPropertySecretSource.ValueObtainer valueObtainer;
     @Mock private CommandService commandService;
-    @Mock private CommandLabelService commandLabelService;
-    @Mock private DockerHubService dockerHubService;
     @Mock private DockerServerService dockerServerService;
-    @Mock private NrgEventServiceI eventService;
     @Mock private SiteConfigPreferences siteConfigPreferences;
     @Mock private DockerService dockerService;
     @Mock private CatalogService catalogService;
     @Mock private UserDataCache userDataCache;
     @Mock private KubernetesClientImpl kubernetesClient;
-    @Mock private KubernetesClientFactory kubernetesClientFactory;
     @Mock private DockerServerBase.DockerServer dockerServer;
 
     @Mock private UserI user;
@@ -321,9 +314,9 @@ public class SecretsTest {
         // Class under test
         final DockerControlApi dockerControlApi = PowerMockito.mock(DockerControlApi.class);
 
-        // Mock out DockerControlApi#getClient(dockerServer, docker image)
+        // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
-        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getClient", dockerServer, dockerImage);
+        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
 
         PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
 
@@ -340,7 +333,7 @@ public class SecretsTest {
                 return Collections.emptyList();
             }
         };
-        Mockito.when(dockerClient.createService(Mockito.any(ServiceSpec.class))).thenReturn(serviceCreateResponse);
+        Mockito.when(dockerClient.createService(Mockito.any(ServiceSpec.class), Mockito.any(RegistryAuth.class))).thenReturn(serviceCreateResponse);
 
         // Call method under test
         PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
@@ -349,7 +342,8 @@ public class SecretsTest {
 
         // Capture call to backend api mock
         final ArgumentCaptor<ServiceSpec> serviceSpecArgumentCaptor = ArgumentCaptor.forClass(ServiceSpec.class);
-        Mockito.verify(dockerClient).createService(serviceSpecArgumentCaptor.capture());
+        final ArgumentCaptor<RegistryAuth> registryAuthArgumentCaptor = ArgumentCaptor.forClass(RegistryAuth.class);
+        Mockito.verify(dockerClient).createService(serviceSpecArgumentCaptor.capture(), registryAuthArgumentCaptor.capture());
         final ServiceSpec serviceSpec = serviceSpecArgumentCaptor.getValue();
 
         // Check for secret env value
@@ -388,9 +382,9 @@ public class SecretsTest {
         // Class under test
         final DockerControlApi dockerControlApi = PowerMockito.mock(DockerControlApi.class);
 
-        // Mock out DockerControlApi#getClient(dockerServer, docker image)
+        // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
-        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getClient", dockerServer, dockerImage);
+        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
 
         PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
 
