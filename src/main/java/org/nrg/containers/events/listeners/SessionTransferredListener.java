@@ -15,8 +15,6 @@ import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
-import java.util.concurrent.ExecutorService;
-
 import static reactor.bus.selector.Selectors.type;
 
 @Slf4j
@@ -24,26 +22,19 @@ import static reactor.bus.selector.Selectors.type;
 public class SessionTransferredListener implements Consumer<Event<WorkflowStatusEvent>> {
 
     private final NrgEventServiceI eventService;
-    private final ExecutorService executorService;
 
     @Autowired
-    public SessionTransferredListener(final EventBus eventBus,
-                                      final NrgEventServiceI eventService,
-                                      final ExecutorService executorService) {
+    public SessionTransferredListener(final EventBus eventBus, final NrgEventServiceI eventService) {
         eventBus.on(type(WorkflowStatusEvent.class), this);
         this.eventService = eventService;
-        this.executorService = executorService;
-    }
-
-    @Override
-    public void accept(Event<WorkflowStatusEvent> event) {
-        executorService.execute(() -> processEvent(event.getData()));
     }
 
     //*
     // Translate "Transferred" or "Merged" workflow event into SessionArchivedOrMergedEvent for workflow events containing Session type
     //*
-    private void processEvent(final WorkflowStatusEvent wfsEvent) {
+    @Override
+    public void accept(Event<WorkflowStatusEvent> event) {
+        final WorkflowStatusEvent wfsEvent = event.getData();
         String entityType = wfsEvent.getEntityType();
         if (entityType != null && entityType.contains("Session")) {
             final String eventId = wfsEvent.getEventId();

@@ -4,12 +4,10 @@
 Not yet released.
 
 * **New Feature** [CS-864][] Support for mounting files from Kubernetes Persistent Volume Claims (PVCs)
-* **Improvement** [CS-923][] Process events by putting work onto a worker thread, not doing work in the event thread
 * **Bugfix** [CS-810][] Tweak logs on failed ping to compute backend server
 
 [CS-810]: https://radiologics.atlassian.net/browse/CS-810
 [CS-864]: https://radiologics.atlassian.net/browse/CS-864
-[CS-923]: https://radiologics.atlassian.net/browse/CS-923
 
 ## 3.3.2
 [Released 2023-06-07](https://bitbucket.org/xnatdev/container-service/src/3.3.2/).

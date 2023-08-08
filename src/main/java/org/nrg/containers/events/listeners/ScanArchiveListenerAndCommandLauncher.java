@@ -6,11 +6,7 @@ import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
-import org.nrg.containers.exceptions.CommandResolutionException;
-import org.nrg.containers.exceptions.ContainerException;
-import org.nrg.containers.exceptions.DockerServerException;
-import org.nrg.containers.exceptions.NoDockerServerException;
-import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.CommandEventMapping;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.services.CommandEventMappingService;
@@ -29,7 +25,6 @@ import reactor.fn.Consumer;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
 
 import static reactor.bus.selector.Selectors.type;
 
@@ -38,34 +33,29 @@ import static reactor.bus.selector.Selectors.type;
 public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<ScanArchiveEventToLaunchCommands>> {
     public static final String SCAN_ARCHIVED_EVENT = "ScanArchived";
 
-    private final ObjectMapper mapper;
-    private final ContainerService containerService;
-    private final CommandEventMappingService commandEventMappingService;
-    private final UserManagementServiceI userManagementService;
-    private final ExecutorService executorService;
+    private ObjectMapper mapper;
+    private ContainerService containerService;
+    private CommandEventMappingService commandEventMappingService;
+    private UserManagementServiceI userManagementService;
 
     @Autowired
     public ScanArchiveListenerAndCommandLauncher(final EventBus eventBus,
                                                  final ObjectMapper mapper,
                                                  final ContainerService containerService,
                                                  final CommandEventMappingService commandEventMappingService,
-                                                 final UserManagementServiceI userManagementService,
-                                                 final ExecutorService executorService) {
+                                                 final UserManagementServiceI userManagementService) {
         eventBus.on(type(ScanArchiveEventToLaunchCommands.class), this);
         this.mapper = mapper;
         this.containerService = containerService;
         this.commandEventMappingService = commandEventMappingService;
         this.userManagementService = userManagementService;
-        this.executorService = executorService;
     }
 
 
     @Override
     public void accept(Event<ScanArchiveEventToLaunchCommands> event) {
-        executorService.execute(() -> processEvent(event.getData()));
-    }
+        final ScanArchiveEventToLaunchCommands scanArchiveEventToLaunchCommands = event.getData();
 
-    private void processEvent(final ScanArchiveEventToLaunchCommands scanArchiveEventToLaunchCommands) {
         // Find commands defined for this event type
         final List<CommandEventMapping> commandEventMappings = commandEventMappingService.findByEventType(SCAN_ARCHIVED_EVENT);
 
@@ -117,8 +107,7 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
                     } catch (UserNotFoundException | UserInitException e) {
                         log.error("Error launching command {}. Could not find or Init subscription owner: {}",
                                 commandId, commandEventMapping.getSubscriptionUserName(), e);
-                    } catch (NotFoundException | CommandResolutionException | NoDockerServerException |
-                             DockerServerException | ContainerException | UnauthorizedException e) {
+                    } catch (NotFoundException | CommandResolutionException | NoDockerServerException | DockerServerException | ContainerException | UnauthorizedException e) {
                         log.error("Error launching command " + commandId, e);
                     } catch (Exception e) {
                         log.error("Error queueing launching command {}", commandId, e);
@@ -127,5 +116,4 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
             }
         }
     }
-
 }

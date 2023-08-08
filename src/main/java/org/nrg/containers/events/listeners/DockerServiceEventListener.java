@@ -7,32 +7,24 @@ import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.xdat.security.helpers.Users;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.stereotype.Component;
 import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
 import java.util.HashSet;
-import java.util.concurrent.ExecutorService;
 
 import static reactor.bus.selector.Selectors.type;
 
 @Slf4j
 @Component
 public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEvent>> {
-    private final ContainerService containerService;
-    private final ExecutorService executorService;
-    private final HashSet<Long> currentlyProcessing = new HashSet<>();
+    private ContainerService containerService;
+    private HashSet<Long> currentlyProcessing = new HashSet<>();
 
     @Autowired
-    public DockerServiceEventListener(final EventBus eventBus,
-                                      final ContainerService containerService,
-                                      final ExecutorService executorService) {
+    public DockerServiceEventListener(final EventBus eventBus) {
         eventBus.on(type(ServiceTaskEvent.class), this);
-        this.containerService = containerService;
-        this.executorService = executorService;
     }
 
     private synchronized boolean addToQueue(Long serviceDbId) {
@@ -44,10 +36,7 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
 
     @Override
     public void accept(final Event<ServiceTaskEvent> serviceTaskEvent) {
-        executorService.submit(() -> processEvent(serviceTaskEvent.getData()));
-    }
-
-    private void processEvent(final ServiceTaskEvent event) {
+        final ServiceTaskEvent event = serviceTaskEvent.getData();
         long serviceDbId = event.service().databaseId();
         final ServiceTaskEvent.EventType eventType = event.eventType();
         if (log.isTraceEnabled()) {
@@ -90,4 +79,8 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
         removeFromQueue(serviceDbId);
     }
 
+    @Autowired
+    public void setContainerService(final ContainerService containerService) {
+        this.containerService = containerService;
+    }
 }

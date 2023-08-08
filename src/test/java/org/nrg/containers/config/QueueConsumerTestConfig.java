@@ -78,7 +78,6 @@ import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
 import java.util.Properties;
-import java.util.concurrent.ExecutorService;
 
 @Configuration
 @EnableTransactionManagement
@@ -123,17 +122,13 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
-    public ContainerEventListener containerEventListener(final EventBus eventBus,
-                                                         final ContainerService containerService,
-                                                         final ExecutorService executorService) {
-        return new ContainerEventListener(eventBus, containerService, executorService);
+    public ContainerEventListener containerEventListener(final EventBus eventBus) {
+        return new ContainerEventListener(eventBus);
     }
 
     @Bean
-    public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
-                                                           final ContainerService containerService,
-                                                           final ExecutorService executorService) {
-        return new DockerServiceEventListener(eventBus, containerService, executorService);
+    public DockerServiceEventListener serviceEventListener(final EventBus eventBus) {
+        return new DockerServiceEventListener(eventBus);
     }
 
     @Bean
