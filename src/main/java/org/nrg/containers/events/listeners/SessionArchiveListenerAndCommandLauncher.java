@@ -34,6 +34,7 @@ import reactor.fn.Consumer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 import static reactor.bus.selector.Selectors.type;
 
@@ -45,11 +46,12 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
     public static final String SESSION_MERGED_EVENT = "Merged";
     public static final Map<String, String> WORKFLOW_TO_EVENT_ID = Maps.newHashMap(ImmutableMap.of(
             "Transferred", SESSION_ARCHIVED_EVENT, SESSION_MERGED_EVENT, SESSION_MERGED_EVENT));
-    private ObjectMapper mapper;
-    private ContainerService containerService;
-    private CommandEventMappingService commandEventMappingService;
-    private NrgEventServiceI eventService;
-    private UserManagementServiceI userManagementService;
+    private final ObjectMapper mapper;
+    private final ContainerService containerService;
+    private final CommandEventMappingService commandEventMappingService;
+    private final NrgEventServiceI eventService;
+    private final UserManagementServiceI userManagementService;
+    private final ExecutorService executorService;
 
     @Autowired
     public SessionArchiveListenerAndCommandLauncher(final EventBus eventBus,
@@ -57,23 +59,30 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
                                                     final ContainerService containerService,
                                                     final CommandEventMappingService commandEventMappingService,
                                                     final NrgEventServiceI eventService,
-                                                    final UserManagementServiceI userManagementService) {
+                                                    final UserManagementServiceI userManagementService,
+                                                    final ExecutorService executorService) {
         eventBus.on(type(SessionMergeOrArchiveEvent.class), this);
         this.mapper = mapper;
         this.containerService = containerService;
         this.commandEventMappingService = commandEventMappingService;
         this.eventService = eventService;
         this.userManagementService = userManagementService;
+        this.executorService = executorService;
     }
 
     @Override
     public void accept(Event<SessionMergeOrArchiveEvent> event) {
+        executorService.execute(() -> processEvent(event.getData()));
+    }
+
+    private void processEvent(final SessionMergeOrArchiveEvent sessionArchivedOrMergedEvent) {
+
         // Skip everything if no entries are found in the Command Automation table
-        if (commandEventMappingService.getAll() == null || commandEventMappingService.getAll().isEmpty()){
+        final List<CommandEventMapping> allCommandEventMappings = commandEventMappingService.getAll();
+        if (allCommandEventMappings == null || allCommandEventMappings.isEmpty()){
             return;
         }
 
-        final SessionMergeOrArchiveEvent sessionArchivedOrMergedEvent = event.getData();
         final Session session = new Session(sessionArchivedOrMergedEvent.session(), true, Collections.emptySet());
         final String eventId = sessionArchivedOrMergedEvent.eventId();
 
