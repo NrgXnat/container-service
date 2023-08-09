@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.5.0
+Not yet released
+
+* **Improvement** [CS-923][] Process events by putting work onto a worker thread, not doing work in the event thread
+
+[CS-923]: https://radiologics.atlassian.net/browse/CS-923
+
 ## 3.4.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.0/).
 
