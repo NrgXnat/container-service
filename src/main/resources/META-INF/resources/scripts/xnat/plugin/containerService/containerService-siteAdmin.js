@@ -147,6 +147,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         { label: 'Kubernetes', value: 'kubernetes' }
     ];
 
+    let pvcMountType = [
+        { label: 'No PVC Mount', value: ''},
+        { label: 'Separate Archive and Build', value: 'split'},
+        { label: 'Combined Archive and Build', value: 'combined'}
+    ];
+
     function containerHostUrl(appended){
         appended = isDefined(appended) ? '/' + appended : '';
         return restUrl('/xapi/docker/server' + appended);
@@ -322,6 +328,60 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                         { label: 'AMD', value: 'amd' },
                                     ]
                             })
+                        ]),
+
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>Archive and Build PVCs (Optional)</strong><br> Select how your xnat is currently hosting its data on Persistent Volumes (if applicable).'),
+
+                            XNAT.ui.panel.select.single({
+                                id: 'pvc_type',
+                                name: 'pvc_type',
+                                label: 'PVC Setup',
+                                className: 'pvc-selector',
+                                options: pvcMountType
+                            }),
+                            spawn('div.pvc-type-settings.split',[
+                                XNAT.ui.panel.input.text({
+                                    name: 'archive-pvc-name',
+                                    label: 'Archive Directory PVC Name',
+                                    className: 'archive-pvc-name'
+                                })
+                            ]),
+                            spawn('div.pvc-type-settings.split',[
+                                XNAT.ui.panel.input.text({
+                                    name: 'build-pvc-name',
+                                    label: 'Build Directory PVC Name',
+                                    className: 'build-pvc-name'
+                                })
+                            ]),
+                            spawn('div.pvc-type-settings.split',[
+                                spawn('p.divider', '<strong>Archive and Build Path Translations (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive and build mount points and the Server mount points for your XNAT data that is mounted within two PVCs.'),
+                                XNAT.ui.panel.input.text({
+                                    name: 'archive-path-translation',
+                                    label: 'Archive Directory Path Translation',
+                                    className: 'archive-path-translation'
+                                }),
+                                XNAT.ui.panel.input.text({
+                                    name: 'build-path-translation',
+                                    label: 'Build Directory Path Translation',
+                                    className: 'build-path-translation'
+                                })
+                            ]),
+                            spawn('div.pvc-type-settings.combined',[
+                                XNAT.ui.panel.input.text({
+                                    name: 'combined-pvc-name',
+                                    label: 'Combined Data PVC Name',
+                                    className: 'combined-pvc-name'
+                                })
+                            ]),
+                            spawn('div.pvc-type-settings.combined',[
+                                spawn('p.divider', '<strong>Combined PVC Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data that is mounted within a single combined PVC.'),
+                                XNAT.ui.panel.input.text({
+                                    name: 'combined-path-translation',
+                                    label: 'Combined Directory Path Translation',
+                                    className: 'combined-path-translation'
+                                })
+                            ])
                         ])
                     ])
                 );
@@ -335,6 +395,16 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
 
                 containerHostManager.displaySettings(item.backend || false);
+                if (item['archive-pvc-name']) {
+                    document.getElementById('pvc_type').value = 'split';
+                    containerHostManager.pvcSettings('split');
+                } else if (item['combined-pvc-name']) {
+                    document.getElementById('pvc_type').value = 'combined';
+                    containerHostManager.pvcSettings('combined');
+                } else {
+                    document.getElementById('pvc_type').value = '';
+                    containerHostManager.pvcSettings(false);
+                }
 
                 $('select[name=backend]').change();
             },
@@ -467,6 +537,19 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             $(document).find('.xnat-dialog.open .xnat-dialog-body').css('max-height',bodyHeight); // reset inner height of dialog
         }
     };
+
+    $(document).on('change','select.pvc-selector',function(){
+        containerHostManager.pvcSettings($(this).find(':selected').prop('value'))
+    });
+
+    containerHostManager.pvcSettings = function(selectedType) {
+        console.log("changepvcsettings");
+        $(document).find('.pvc-type-settings').hide();
+        $(document).find('.pvc-type-settings').each(function() {
+            if ($(this).hasClass(selectedType)) $(this).show();
+        });
+    }
+
 
     containerHostManager.addSwarmConstraint = function() {
         var element = spawn('div#swarm-constraint-'+containerHostManager.nconstraints+'.swarm-constraint', [

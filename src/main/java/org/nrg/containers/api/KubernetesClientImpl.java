@@ -47,13 +47,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -196,7 +190,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             coreApi.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, null);
             // if we get here everything is good
         } catch (ApiException e) {
-            log.error("Ping failed: message \"{}\" code {} body \"{}\"", e.getMessage(), e.getCode(), e.getResponseBody());
+            log.trace("Ping failed: message \"{}\" code {} body \"{}\"", e.getMessage(), e.getCode(), e.getResponseBody());
             throw new ContainerBackendException(e);
         }
         return "OK";
@@ -283,22 +277,41 @@ public class KubernetesClientImpl implements KubernetesClient {
         final List<V1VolumeMount> mounts = new ArrayList<>();
         final List<V1Volume> volumes = new ArrayList<>();
         if (ourMounts != null && !ourMounts.isEmpty()) {
-            for (final Container.ContainerMount mount : ourMounts) {
-                // For each mount we create a Volume and a VolumeMount with the same name.
-                // Volumes are set on the Pod, VolumeMounts are set on the Container.
-                // We assume that all mounts we make are already available on all worker nodes,
-                //  which implies we can mount the files we want at a host path.
-                volumes.add(new V1VolumeBuilder()
-                        .withName(mount.name())
-                        .withNewHostPath()
-                        .withPath(mount.xnatHostPath())
-                        .endHostPath()
-                        .build());
-                mounts.add(new V1VolumeMountBuilder()
-                        .withName(mount.name())
-                        .withMountPath(mount.containerPath())
-                        .withReadOnly(!mount.writable())
-                        .build());
+            if (StringUtils.isNotBlank(ourMounts.get(0).mountPvcName())) {
+                Set<V1Volume> volumesSet = new HashSet<>();
+                for (final Container.ContainerMount mount : ourMounts) {
+                    volumesSet.add(new V1VolumeBuilder()
+                            .withName(mount.mountPvcName())
+                            .withNewPersistentVolumeClaim()
+                            .withClaimName(mount.mountPvcName())
+                            .endPersistentVolumeClaim()
+                            .build());
+                    mounts.add(new V1VolumeMountBuilder()
+                            .withName(mount.mountPvcName())
+                            .withMountPath(mount.containerPath())
+                            .withSubPath(mount.containerHostPath())
+                            .withReadOnly(!mount.writable())
+                            .build());
+                }
+                volumes.addAll(volumesSet);
+            } else {
+                for (final Container.ContainerMount mount : ourMounts) {
+                    // For each mount we create a Volume and a VolumeMount with the same name.
+                    // Volumes are set on the Pod, VolumeMounts are set on the Container.
+                    // We assume that all mounts we make are already available on all worker nodes,
+                    //  which implies we can mount the files we want at a host path.
+                    volumes.add(new V1VolumeBuilder()
+                            .withName(mount.name())
+                            .withNewHostPath()
+                            .withPath(mount.xnatHostPath())
+                            .endHostPath()
+                            .build());
+                    mounts.add(new V1VolumeMountBuilder()
+                            .withName(mount.name())
+                            .withMountPath(mount.containerPath())
+                            .withReadOnly(!mount.writable())
+                            .build());
+                }
             }
         }
 

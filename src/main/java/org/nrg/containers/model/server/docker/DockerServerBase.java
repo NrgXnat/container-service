@@ -77,6 +77,30 @@ public abstract class DockerServerBase {
     @Nullable
     public abstract String gpuVendor();
 
+    @JsonProperty("archive-pvc-name")
+    @Nullable
+    public abstract String archivePvcName();
+
+    @JsonProperty("build-pvc-name")
+    @Nullable
+    public abstract String buildPvcName();
+
+    @JsonProperty("combined-pvc-name")
+    @Nullable
+    public abstract String combinedPvcName();
+
+    @JsonProperty("archive-path-translation")
+    @Nullable
+    public abstract String archivePathTranslation();
+
+    @JsonProperty("build-path-translation")
+    @Nullable
+    public abstract String buildPathTranslation();
+
+    @JsonProperty("combined-path-translation")
+    @Nullable
+    public abstract String combinedPathTranslation();
+
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
         public static final DockerServer DEFAULT_SOCKET = DockerServer.create("Local socket", "unix:///var/run/docker.sock");
@@ -96,13 +120,20 @@ public abstract class DockerServerBase {
                                           @Nullable @JsonProperty("swarm-constraints") final List<DockerServerSwarmConstraint> swarmConstraints,
                                           @JsonProperty("max-concurrent-finalizing-jobs") final Integer maxConcurrentFinalizingJobs,
                                           @JsonProperty("status-email-enabled") final boolean statusEmailEnabled,
-                                          @JsonProperty("gpu-vendor") final String gpuVendor) {
+                                          @JsonProperty("gpu-vendor") final String gpuVendor,
+                                          @JsonProperty("archive-pvc-name") final String archivePvcName,
+                                          @JsonProperty("build-pvc-name") final String buildPvcName,
+                                          @JsonProperty("combined-pvc-name") final String combinedPvcName,
+                                          @JsonProperty("archive-path-translation") final String archivePathTranslation,
+                                          @JsonProperty("build-path-translation") final String buildPathTranslation,
+                                          @JsonProperty("combined-path-translation") final String combinedPathTranslation) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
             }
             return create(id, name, host, certPath, backend, null, pathTranslationXnatPrefix,
                     pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
-                    maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor);
+                    maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
+                    archivePathTranslation, buildPathTranslation, combinedPathTranslation);
         }
 
         public static DockerServer create(final String name,
@@ -127,7 +158,13 @@ public abstract class DockerServerBase {
                                           final List<DockerServerSwarmConstraint> swarmConstraints,
                                           final Integer maxConcurrentFinalizingJobs,
                                           final Boolean statusEmailEnabled,
-                                          final String gpuVendor) {
+                                          final String gpuVendor,
+                                          final String archivePvcName,
+                                          final String buildPvcName,
+                                          final String combinedPvcName,
+                                          final String archivePathTranslation,
+                                          final String buildPathTranslation,
+                                          final String combinedPathTranslation) {
             return builder()
                     .id(id == null ? 0L : id)
                     .name(StringUtils.isBlank(name) ? host : name)
@@ -144,6 +181,12 @@ public abstract class DockerServerBase {
                     .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .statusEmailEnabled(statusEmailEnabled == null || statusEmailEnabled)
                     .gpuVendor(gpuVendor)
+                    .archivePvcName(archivePvcName)
+                    .buildPvcName(buildPvcName)
+                    .combinedPvcName(combinedPvcName)
+                    .archivePathTranslation(archivePathTranslation)
+                    .buildPathTranslation(buildPathTranslation)
+                    .combinedPathTranslation(combinedPathTranslation)
                     .build();
         }
 
@@ -167,7 +210,13 @@ public abstract class DockerServerBase {
                     swarmConstraints,
                     dockerServerEntity.getMaxConcurrentFinalizingJobs(),
                     dockerServerEntity.isStatusEmailEnabled(),
-                    dockerServerEntity.getGpuVendor());
+                    dockerServerEntity.getGpuVendor(),
+                    dockerServerEntity.getArchivePvcName(),
+                    dockerServerEntity.getBuildPvcName(),
+                    dockerServerEntity.getCombinedPvcName(),
+                    dockerServerEntity.getArchivePathTranslation(),
+                    dockerServerEntity.getBuildPathTranslation(),
+                    dockerServerEntity.getCombinedPathTranslation());
         }
 
         public static DockerServer create(final DockerServerPrefsBean dockerServerPrefsBean) {
@@ -186,6 +235,12 @@ public abstract class DockerServerBase {
                     null,
                     null,
                     true,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     null);
         }
 
@@ -207,7 +262,13 @@ public abstract class DockerServerBase {
                             this.swarmConstraints(),
                             this.maxConcurrentFinalizingJobs(),
                             this.statusEmailEnabled(),
-                            this.gpuVendor()
+                            this.gpuVendor(),
+                            this.archivePvcName(),
+                            this.buildPvcName(),
+                            this.combinedPvcName(),
+                            this.archivePathTranslation(),
+                            this.buildPathTranslation(),
+                            this.combinedPathTranslation()
                     );
         }
 
@@ -227,7 +288,13 @@ public abstract class DockerServerBase {
                     .swarmConstraints(Collections.emptyList())
                     .maxConcurrentFinalizingJobs(null)
                     .statusEmailEnabled(false)
-                    .gpuVendor(null);
+                    .gpuVendor(null)
+                    .archivePvcName(null)
+                    .buildPvcName(null)
+                    .combinedPvcName(null)
+                    .archivePathTranslation(null)
+                    .buildPathTranslation(null)
+                    .combinedPathTranslation(null);
         }
 
         public abstract Builder toBuilder();
@@ -293,6 +360,12 @@ public abstract class DockerServerBase {
             public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
             public abstract Builder statusEmailEnabled(boolean statusEmailEnabled);
             public abstract Builder gpuVendor(String gpuVendor);
+            public abstract Builder archivePvcName(String archivePvcName);
+            public abstract Builder buildPvcName(String buildPvcName);
+            public abstract Builder combinedPvcName(String combinedPvcName);
+            public abstract Builder archivePathTranslation(String archivePathTranslation);
+            public abstract Builder buildPathTranslation(String buildPathTranslation);
+            public abstract Builder combinedPathTranslation(String combinedPathTranslation);
             public abstract DockerServer build();
         }
     }
@@ -320,6 +393,12 @@ public abstract class DockerServerBase {
                                                           final Integer maxConcurrentFinalizingJobs,
                                                   @JsonProperty("status-email-enabled") final boolean statusEmailEnabled,
                                                   @JsonProperty("gpu-vendor") final String gpuVendor,
+                                                  @JsonProperty("archive-pvc-name") final String archivePvcName,
+                                                  @JsonProperty("build-pvc-name") final String buildPvcName,
+                                                  @JsonProperty("combined-pvc-name") final String combinedPvcName,
+                                                  @JsonProperty("archive-path-translation") final String archivePathTranslation,
+                                                  @JsonProperty("build-path-translation") final String buildPathTranslation,
+                                                  @JsonProperty("combined-path-translation") final String combinedPathTranslation,
                                                   @JsonProperty("ping") final Boolean ping) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
@@ -327,7 +406,9 @@ public abstract class DockerServerBase {
 
             return create(id, name, host, certPath, backend, new Date(0),
                     pathTranslationXnatPrefix, pathTranslationDockerPrefix, pullImagesOnXnatInit,
-                    user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, ping);
+                    user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, statusEmailEnabled,
+                    gpuVendor, archivePvcName, buildPvcName, combinedPvcName, archivePathTranslation, buildPathTranslation,
+                    combinedPathTranslation, ping);
         }
 
         public static DockerServerWithPing create(final Long id,
@@ -345,6 +426,12 @@ public abstract class DockerServerBase {
                                                   final Integer maxConcurrentFinalizingJobs,
                                                   final Boolean statusEmailEnabled,
                                                   final String gpuVendor,
+                                                  final String archivePvcName,
+                                                  final String buildPvcName,
+                                                  final String combinedPvcName,
+                                                  final String archivePathTranslation,
+                                                  final String buildPathTranslation,
+                                                  final String combinedPathTranslation,
                                                   final Boolean ping) {
             return builder()
                     .id(id == null ? 0L : id)
@@ -362,6 +449,12 @@ public abstract class DockerServerBase {
                     .maxConcurrentFinalizingJobs(maxConcurrentFinalizingJobs)
                     .statusEmailEnabled(statusEmailEnabled == null || statusEmailEnabled)
                     .gpuVendor(gpuVendor)
+                    .archivePvcName(archivePvcName)
+                    .buildPvcName(buildPvcName)
+                    .combinedPvcName(combinedPvcName)
+                    .archivePathTranslation(archivePathTranslation)
+                    .buildPathTranslation(buildPathTranslation)
+                    .combinedPathTranslation(combinedPathTranslation)
                     .ping(ping != null && ping)
                     .build();
         }
@@ -384,6 +477,12 @@ public abstract class DockerServerBase {
                     dockerServer.maxConcurrentFinalizingJobs(),
                     dockerServer.statusEmailEnabled(),
                     dockerServer.gpuVendor(),
+                    dockerServer.archivePvcName(),
+                    dockerServer.buildPvcName(),
+                    dockerServer.combinedPvcName(),
+                    dockerServer.archivePathTranslation(),
+                    dockerServer.buildPathTranslation(),
+                    dockerServer.combinedPathTranslation(),
                     ping
             );
         }
@@ -405,7 +504,13 @@ public abstract class DockerServerBase {
                     .swarmConstraints(Collections.emptyList())
                     .maxConcurrentFinalizingJobs(null)
                     .statusEmailEnabled(false)
-                    .gpuVendor(null);
+                    .gpuVendor(null)
+                    .archivePvcName(null)
+                    .buildPvcName(null)
+                    .combinedPvcName(null)
+                    .archivePathTranslation(null)
+                    .buildPathTranslation(null)
+                    .combinedPathTranslation(null);
         }
 
         public abstract Builder toBuilder();
@@ -427,6 +532,12 @@ public abstract class DockerServerBase {
             public abstract Builder maxConcurrentFinalizingJobs(Integer maxConcurrentFinalizingJobs);
             public abstract Builder statusEmailEnabled(boolean statusEmailEnabled);
             public abstract Builder gpuVendor(String gpuVendor);
+            public abstract Builder archivePvcName(String archivePvcName);
+            public abstract Builder buildPvcName(String buildPvcName);
+            public abstract Builder combinedPvcName(String combinedPvcName);
+            public abstract Builder archivePathTranslation(String archivePathTranslation);
+            public abstract Builder buildPathTranslation(String buildPathTranslation);
+            public abstract Builder combinedPathTranslation(String combinedPathTranslation);
             public abstract Builder ping(Boolean ping);
 
             public abstract DockerServerWithPing build();
@@ -517,14 +628,22 @@ public abstract class DockerServerBase {
                 Objects.equals(this.swarmConstraints(), that.swarmConstraints()) &&
                 Objects.equals(this.maxConcurrentFinalizingJobs(), that.maxConcurrentFinalizingJobs()) &&
                 Objects.equals(this.statusEmailEnabled(), that.statusEmailEnabled()) &&
-                Objects.equals(this.gpuVendor(), that.gpuVendor());
+                Objects.equals(this.gpuVendor(), that.gpuVendor()) &&
+                Objects.equals(this.archivePvcName(), that.archivePvcName()) &&
+                Objects.equals(this.buildPvcName(), that.buildPvcName()) &&
+                Objects.equals(this.combinedPvcName(), that.combinedPvcName()) &&
+                Objects.equals(this.archivePathTranslation(), that.archivePathTranslation()) &&
+                Objects.equals(this.buildPathTranslation(), that.buildPathTranslation()) &&
+                Objects.equals(this.combinedPathTranslation(), that.combinedPathTranslation());
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(name(), host(), certPath(), backend(),
                 pathTranslationXnatPrefix(), pathTranslationDockerPrefix(), pullImagesOnXnatInit(),
-                containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs(), statusEmailEnabled(), gpuVendor());
+                containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs(),
+                statusEmailEnabled(), gpuVendor(), archivePvcName(), buildPvcName(), combinedPvcName(),
+                archivePathTranslation(), buildPathTranslation(), combinedPathTranslation());
     }
 
 }

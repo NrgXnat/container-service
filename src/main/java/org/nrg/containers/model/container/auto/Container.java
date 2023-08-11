@@ -631,10 +631,10 @@ public abstract class Container {
 
     @JsonIgnore
     public String getLogPath(final String filename) {
-		String fullFileName = filename;
-		if (!filename.endsWith(".log")) {
-			fullFileName += ".log";
-		}
+        String fullFileName = filename;
+        if (!filename.endsWith(".log")) {
+            fullFileName += ".log";
+        }
         for (final String path : logPaths()) {
             if (path.endsWith(fullFileName)) {
                 return path;
@@ -785,6 +785,7 @@ public abstract class Container {
         @JsonProperty("xnat-host-path") public abstract String xnatHostPath();
         @JsonProperty("container-host-path") public abstract String containerHostPath();
         @JsonProperty("container-path") public abstract String containerPath();
+        @JsonProperty("mount-pvc-name") @Nullable public abstract String mountPvcName();
 
         /**
          * This used to return a list of the files that were found in an input mount. But we didn't use it anywhere in
@@ -803,7 +804,8 @@ public abstract class Container {
                                             @JsonProperty("xnat-host-path") final String xnatHostPath,
                                             @JsonProperty("container-host-path") final String containerHostPath,
                                             @JsonProperty("container-path") final String containerPath,
-                                            @JsonProperty("input-files") final List<ContainerMountFiles> inputFiles) {
+                                            @JsonProperty("input-files") final List<ContainerMountFiles> inputFiles,
+                                            @JsonProperty("mount-pvc-name") final String mountPvcName) {
             return builder()
                     .databaseId(databaseId)
                     .name(name)
@@ -812,6 +814,7 @@ public abstract class Container {
                     .containerHostPath(containerHostPath)
                     .containerPath(containerPath)
                     .inputFiles(inputFiles == null ? Collections.<ContainerMountFiles>emptyList() : inputFiles)
+                    .mountPvcName(mountPvcName)
                     .build();
         }
 
@@ -826,7 +829,7 @@ public abstract class Container {
                     });
             return create(containerEntityMount.getId(), containerEntityMount.getName(), containerEntityMount.isWritable(),
                     containerEntityMount.getXnatHostPath(), containerEntityMount.getContainerHostPath(),
-                    containerEntityMount.getContainerPath(), containerMountFiles);
+                    containerEntityMount.getContainerPath(), containerMountFiles, containerEntityMount.getMountPvcName());
         }
 
         public static ContainerMount create(final ResolvedCommandMount resolvedCommandMount) {
@@ -836,7 +839,8 @@ public abstract class Container {
                     resolvedCommandMount.xnatHostPath(),
                     resolvedCommandMount.containerHostPath(),
                     resolvedCommandMount.containerPath(),
-                    null);
+                    null,
+                    resolvedCommandMount.mountPvcName());
         }
 
         @JsonIgnore
@@ -858,6 +862,7 @@ public abstract class Container {
             public abstract Builder xnatHostPath(String xnatHostPath);
             public abstract Builder containerHostPath(String containerHostPath);
             public abstract Builder containerPath(String containerPath);
+            public abstract Builder mountPvcName(String mountPvcName);
 
             @Deprecated public abstract Builder inputFiles(List<ContainerMountFiles> inputFiles);
             @Deprecated abstract ImmutableList.Builder<ContainerMountFiles> inputFilesBuilder();

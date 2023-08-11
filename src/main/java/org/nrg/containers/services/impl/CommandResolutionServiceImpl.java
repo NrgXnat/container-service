@@ -281,6 +281,13 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private String pathTranslationXnatPrefix = null;
         private String pathTranslationContainerHostPrefix = null;
 
+        private String archivePvcName = null;
+        private String buildPvcName = null;
+
+        private String archivePathTranslation;
+
+        private String buildPathTranslation;
+
         private final List<ResolvedCommand> resolvedSetupCommands;
 
         // Caches
@@ -300,6 +307,15 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 final DockerServerBase.DockerServer dockerServer = dockerServerService.getServer();
                 pathTranslationXnatPrefix = dockerServer.pathTranslationXnatPrefix();
                 pathTranslationContainerHostPrefix = dockerServer.pathTranslationDockerPrefix();
+                if (StringUtils.isNotBlank(dockerServer.combinedPvcName())) {
+                    archivePvcName = dockerServer.combinedPvcName();
+                    buildPvcName = dockerServer.combinedPvcName();
+                    retrievePvcPathTranslations(dockerServer);
+                } else if (StringUtils.isNotBlank(dockerServer.buildPvcName()) && StringUtils.isNotBlank(dockerServer.archivePvcName())) {
+                    archivePvcName = dockerServer.archivePvcName();
+                    buildPvcName = dockerServer.buildPvcName();
+                    retrievePvcPathTranslations(dockerServer);
+                }
             } catch (NotFoundException e) {
                 log.debug("Could not get docker server. I'll keep going, but this is likely to cause other problems down the line.");
             }
@@ -322,6 +338,32 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             this.loadTypesMap = getTypeLoadMapForWrapper();
         }
 
+        private void retrievePvcPathTranslations(DockerServerBase.DockerServer dockerServer) {
+            if (StringUtils.isNotBlank(dockerServer.combinedPathTranslation())) {
+                archivePathTranslation = dockerServer.combinedPathTranslation();
+                buildPathTranslation = dockerServer.combinedPathTranslation();
+                return;
+            }
+
+            if (StringUtils.isNotBlank(dockerServer.archivePathTranslation())) {
+                archivePathTranslation = dockerServer.archivePathTranslation();
+            } else {
+                archivePathTranslation = siteConfigPreferences.getArchivePath();
+                if (!archivePathTranslation.endsWith("/")) {
+                    archivePathTranslation += "/";
+                }
+            }
+             if (StringUtils.isNotBlank(dockerServer.buildPathTranslation())) {
+                buildPathTranslation = dockerServer.buildPathTranslation();
+            } else {
+                buildPathTranslation = siteConfigPreferences.getBuildPath();
+
+                if (!buildPathTranslation.endsWith("/")) {
+                    buildPathTranslation += "/";
+                }
+            }
+        }
+
         @Nonnull
         private List<ResolvedInputTreeNode<? extends Input>> preResolveInputTrees()
                 throws CommandResolutionException, UnauthorizedException {
@@ -340,6 +382,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Resolving input tree with root input \"{}\".", rootNode.input().name());
                 final ResolvedInputTreeNode<? extends Input> resolvedRootNode =
                         resolveNode(rootNode, null, resolvedInputValuesByReplacementKey, resolveFully);
+                if (resolveFully && resolvedRootNode.input().type().equals("file") && resolvedRootNode.valuesAndChildren().get(0).resolvedValue().value().isEmpty()) {
+                    log.debug("Root input \"{}\" is a file without a specified value. Skipping.");
+                    continue;
+                }
                 log.debug("Done resolving input tree with root input \"{}\".", rootNode.input().name());
                 resolvedInputTrees.add(resolvedRootNode);
 
@@ -536,7 +582,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                           final String image,
                                                           final String inputMountXnatHostPath,
                                                           final String outputMountXnatHostPath,
-                                                          final String parentSourceObjectName)
+                                                          final String parentSourceObjectName,
+                                                          final String inputMountPvcName,
+                                                          final String outputMountPvcName)
                 throws CommandResolutionException {
             final String typeStringForLog;
             switch (type) {
@@ -565,14 +613,31 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
             log.debug("Done resolving {} command {} from image {}.", typeStringForLog, command.name(), image);
 
-            return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, getMountContainerHostPath(inputMountXnatHostPath),
-                    outputMountXnatHostPath, getMountContainerHostPath(outputMountXnatHostPath), parentSourceObjectName);
+            String inputMountContainerHostPath;
+            String outputMountContainerHostPath;
+
+            if (StringUtils.isNotBlank(archivePathTranslation) && type.equals(CommandType.DOCKER_SETUP)) {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, archivePathTranslation, "");
+            }
+            else if (StringUtils.isNotBlank(buildPathTranslation) && type.equals(CommandType.DOCKER_WRAPUP)) {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, buildPathTranslation, "");
+            } else {
+                inputMountContainerHostPath = getMountContainerHostPath(inputMountXnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+            }
+
+            if (StringUtils.isNotBlank(buildPathTranslation)) {
+                outputMountContainerHostPath = getMountContainerHostPath(outputMountXnatHostPath, buildPathTranslation, "");
+            } else {
+                outputMountContainerHostPath = getMountContainerHostPath(outputMountXnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+            }
+
+            return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, inputMountContainerHostPath,
+                    outputMountXnatHostPath, outputMountContainerHostPath, parentSourceObjectName, inputMountPvcName, outputMountPvcName);
         }
 
-        private String getMountContainerHostPath(final String mountXnatHostPath) {
-            return (pathTranslationXnatPrefix != null && pathTranslationContainerHostPrefix != null) ?
-                    mountXnatHostPath.replace(pathTranslationXnatPrefix, pathTranslationContainerHostPrefix) :
-                    mountXnatHostPath;
+        private String getMountContainerHostPath(final String mountXnatHostPath, String xnatPathPrefix, String containerHostPathPrefix) {
+            return (xnatPathPrefix != null && containerHostPathPrefix != null) ? mountXnatHostPath.replace(xnatPathPrefix,
+                    containerHostPathPrefix) : mountXnatHostPath;
         }
 
         private void checkForIllegalInputValue(final String inputName,
@@ -2426,7 +2491,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
                     final String writableMountPath = getBuildDirectory();
 
-                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(), resolvedCommandMount.xnatHostPath(), writableMountPath, resolvedCommandOutput.name()));
+                    resolvedWrapupCommands.add(resolveSpecialCommandType(CommandType.DOCKER_WRAPUP, resolvedCommandOutput.viaWrapupCommand(),
+                            resolvedCommandMount.xnatHostPath(), writableMountPath, resolvedCommandOutput.name(), buildPvcName, buildPvcName));
                 }
             }
 
@@ -2521,8 +2587,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             // Get xnat model object from input
             final XnatModelObject xnatModelObject = getXnatModelObjectForMounting(resolvedSourceInput);
 
+            StringBuilder mountPathBuilder = new StringBuilder();
+
             // Get a path to whatever we need to mount
-            String mountPath = resolveMountPathForModelObject(commandMount, xnatModelObject);
+            boolean isBuildMount = resolveMountPathForModelObject(commandMount, xnatModelObject, mountPathBuilder);
+
+            String mountPath = String.valueOf(mountPathBuilder);
 
             // Determine if we need to insert a setup command
             final Input input = resolvedSourceInput.input();
@@ -2536,8 +2606,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 // Then we mount the output build directory into this mount.
                 // In that way, the setup command will write to the mount whatever files we need to find.
                 final String writableMountPath = getBuildDirectory();
+                isBuildMount = true;
                 resolvedSetupCommands.add(
-                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPath, writableMountPath, mountName)
+                        resolveSpecialCommandType(CommandType.DOCKER_SETUP, viaSetupCommand, mountPath, writableMountPath, mountName, archivePvcName, buildPvcName)
                 );
                 mountPath = writableMountPath;
             }
@@ -2545,7 +2616,15 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.debug("Setting mount \"{}\" xnat host path to \"{}\".", mountName, mountPath);
 
             // Translate paths from XNAT prefix to container host prefix
-            final String mountPathOnContainerHost = getMountContainerHostPath(mountPath);
+            final String mountPathOnContainerHost;
+            if (isBuildMount && StringUtils.isNotBlank(buildPvcName)) {
+                mountPathOnContainerHost = getMountContainerHostPath(mountPath, buildPathTranslation, "");
+            } else if (!isBuildMount && StringUtils.isNotBlank(archivePvcName)){
+                mountPathOnContainerHost = getMountContainerHostPath(mountPath, archivePathTranslation, "");
+            }else {
+                mountPathOnContainerHost = getMountContainerHostPath(mountPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+            }
+
             log.debug("Setting mount \"{}\" container host path to \"{}\".", mountName, mountPathOnContainerHost);
 
             final ResolvedCommandMount resolvedCommandMount = ResolvedCommandMount.builder()
@@ -2555,6 +2634,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .viaSetupCommand(viaSetupCommand)
                     .xnatHostPath(mountPath)
                     .containerHostPath(mountPathOnContainerHost)
+                    .mountPvcName(isBuildMount ? buildPvcName : archivePvcName)
                     .build();
 
             log.debug("Done resolving mount \"{}\", source input \"{}\".", mountName, input.name());
@@ -2570,9 +2650,15 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.debug("Command mount \"{}\" has no inputs that provide it files. Assuming it is an output mount.", name);
 
             final String xnatHostPath = getBuildDirectory();
-            final String containerHostPath = getMountContainerHostPath(xnatHostPath);
 
-            return ResolvedCommandMount.output(name, xnatHostPath, containerHostPath, resolvedContainerPath);
+
+            if (StringUtils.isNotBlank(buildPvcName)) {
+                final String containerHostPath = getMountContainerHostPath(xnatHostPath, buildPathTranslation, "");
+                return ResolvedCommandMount.output(name, xnatHostPath, containerHostPath, resolvedContainerPath, buildPvcName);
+            } else {
+                final String containerHostPath = getMountContainerHostPath(xnatHostPath, pathTranslationXnatPrefix, pathTranslationContainerHostPrefix);
+                return ResolvedCommandMount.output(name, xnatHostPath, containerHostPath, resolvedContainerPath, null);
+            }
         }
 
         @Nonnull
@@ -2600,7 +2686,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         @Nonnull
-        private String resolveMountPathForModelObject(@Nonnull CommandMount commandMount, @Nonnull XnatModelObject xnatModelObject) throws CommandResolutionException {
+        private boolean resolveMountPathForModelObject(@Nonnull CommandMount commandMount, @Nonnull XnatModelObject xnatModelObject, StringBuilder mountPath) throws CommandResolutionException {
+            boolean isBuildPath = false;
+            String currentMountPath;
             final String srcPath = xnatModelObject.getRootPath();
 
             if (StringUtils.isBlank(srcPath)) {
@@ -2621,33 +2709,37 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             // Determine if we can mount the archive path directly or if we need to create a build directory
-            String mountPath;
             final boolean writable = commandMount.writable();
             if (!(writable || hasRemoteFiles)) {
                 // The source can be directly mounted
                 log.debug("Mount \"{}\" has a root path and is not set to \"writable\". The root path can be " +
                         "mounted directly into the container.", commandMount.name());
-                mountPath = srcPath;
+                currentMountPath = srcPath;
             } else {
                 // The mount has a source path and is set to "writable" or may have remote files. We must copy files
                 // from the root path into a writable build location.
-                mountPath = getBuildDirectory();
+                isBuildPath = true;
+                currentMountPath = getBuildDirectory();
 
                 if (srcIsFile) {
-                    mountPath = Paths.get(mountPath).resolve(srcPathObj.getFileName()).toString();
+                    currentMountPath = Paths.get(currentMountPath).resolve(srcPathObj.getFileName()).toString();
                 }
 
                 if (hasRemoteFiles) {
                     log.debug("Pulling any remote files into mount \"{}\".", commandMount.name());
-                    pullRemoteFiles(uri, srcPath, mountPath);
+                    pullRemoteFiles(uri, srcPath, currentMountPath);
                 } else {
                     // CS-54 Copy all files out of the root directory to a build directory.
                     log.debug("Mount \"{}\" has a root directory and is set to \"writable\". Copying all files " +
                             "from the root directory to build directory.", commandMount.name());
-                    copyLocalFiles(srcPath, mountPath, srcIsFile);
+                    copyLocalFiles(srcPath, currentMountPath, srcIsFile);
                 }
             }
-            return mountPath;
+            //Adding the mount path to the input string builder so as to be able to return both the mount path itself
+            //and whether we're working with a build directory or an archive directory. Definitely a hack but I don't
+            //think it should introduce any issues.
+            mountPath.delete(0, mountPath.length()).append(currentMountPath);
+            return isBuildPath;
         }
 
         private boolean hasRemoteFiles(final String uri) throws CommandMountResolutionException {

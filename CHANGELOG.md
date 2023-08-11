@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.0
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.4.0/).
+
+* **New Feature** [CS-864][] Support for mounting files from Kubernetes Persistent Volume Claims (PVCs)
+* **Bugfix** [CS-810][] Tweak logs on failed ping to compute backend server
+* **Bugfix** [CS-934][] Fix support for optional file inputs
+
+[CS-810]: https://radiologics.atlassian.net/browse/CS-810
+[CS-864]: https://radiologics.atlassian.net/browse/CS-864
+[CS-934]: https://radiologics.atlassian.net/browse/CS-934
+
 ## 3.3.2
 [Released 2023-06-07](https://bitbucket.org/xnatdev/container-service/src/3.3.2/).
 
