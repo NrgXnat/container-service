@@ -1,6 +1,7 @@
 package org.nrg.containers.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.hamcrest.TypeSafeMatcher;
@@ -43,6 +44,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -50,6 +52,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.when;
+import static org.nrg.containers.utils.ContainerUtils.*;
 
 @Slf4j
 @RunWith(Enclosed.class)
@@ -92,6 +95,12 @@ public class ContainerLogTest {
 
         @Before
         public void setup() {
+            SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+            Map<String, TaggedCounter> containerCounters = new HashMap();
+            containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
+            containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
+            containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+
             containerService = new ContainerServiceImpl(containerControlApi,
                     containerEntityService,
                     commandResolutionService,
@@ -104,7 +113,8 @@ public class ContainerLogTest {
                     orchestrationService,
                     eventService,
                     mapper,
-                    executorFactoryBean);
+                    executorFactoryBean,
+                    containerCounters);
         }
     }
 

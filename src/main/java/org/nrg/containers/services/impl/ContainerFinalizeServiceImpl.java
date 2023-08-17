@@ -42,6 +42,9 @@ import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
+
+
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -60,6 +63,8 @@ import java.util.regex.Pattern;
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 import static org.nrg.containers.services.ContainerService.XNAT_USER;
+import static org.nrg.containers.utils.ContainerUtils.CONTAINER_ERROR_STATUS_METRIC;
+import static org.nrg.containers.utils.ContainerUtils.CONTAINER_FINALIZED_STATUS_METRIC;
 
 
 @Slf4j
@@ -71,6 +76,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     private final CatalogService catalogService;
     private final MailService mailService;
     private final AliasTokenService aliasTokenService;
+    private final TaggedCounterWrapper containerCounterMetricWrapper;
+
 
     private final Pattern experimentUri = Pattern.compile("^(/archive)?/experiments/([^/]+)$");
 
@@ -79,12 +86,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                                         final SiteConfigPreferences siteConfigPreferences,
                                         final CatalogService catalogService,
                                         final MailService mailService,
-                                        final AliasTokenService aliasTokenService) {
+                                        final AliasTokenService aliasTokenService,
+                                        final TaggedCounterWrapper taggedCounterWrapper) {
         this.containerControlApi = containerControlApi;
         this.siteConfigPreferences = siteConfigPreferences;
         this.catalogService = catalogService;
         this.mailService = mailService;
         this.aliasTokenService = aliasTokenService;
+        this.containerCounterMetricWrapper = taggedCounterWrapper;
     }
 
     @Override
@@ -265,6 +274,11 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
                         .status(status)
                         .statusTime(statusTime);
+                try {
+                    containerCounterMetricWrapper.increment(CONTAINER_FINALIZED_STATUS_METRIC, toFinalize.dockerImage());
+                } catch(Exception e) {
+                    log.error("Could not fetch container finalize metric", e);
+                }
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
                 String exitCode = null;

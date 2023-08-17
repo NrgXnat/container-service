@@ -1,6 +1,7 @@
 package org.nrg.containers.rest;
 
 import com.google.common.collect.Maps;
+import io.micrometer.core.annotation.Timed;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
@@ -206,6 +207,7 @@ public class CommandRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/commands/available"}, params = {"project", "xsiType"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Commands available in given project context and XSIType")
     @ResponseBody
+    @Timed(value = "container.commands.available")
     public List<CommandSummaryForContext> availableCommands(final @RequestParam @Project String project,
                                                             final @RequestParam String xsiType)
             throws ElementNotFoundException {

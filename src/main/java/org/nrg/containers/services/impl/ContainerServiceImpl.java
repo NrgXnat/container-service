@@ -8,6 +8,7 @@ import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import io.micrometer.core.annotation.Timed;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -59,6 +60,7 @@ import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerFinalizeService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
+import org.nrg.containers.utils.ContainerMetricsUtils;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventServiceI;
@@ -93,6 +95,9 @@ import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
+import org.nrg.xnat.micrometer.tags.TaggedCounter;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
+
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
@@ -151,6 +156,8 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SE
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT_ASSESSOR;
 
+import static org.nrg.containers.utils.ContainerUtils.*;
+
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
@@ -184,6 +191,7 @@ public class ContainerServiceImpl implements ContainerService {
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
     private final NrgEventServiceI eventService;
+    private final TaggedCounterWrapper containerCounterMetricWrapper;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -202,7 +210,8 @@ public class ContainerServiceImpl implements ContainerService {
                                 final NrgEventServiceI eventService,
                                 final ObjectMapper mapper,
                                 @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
-                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {
+                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean,
+                                final TaggedCounterWrapper taggedCounterWrapper) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -216,7 +225,7 @@ public class ContainerServiceImpl implements ContainerService {
         this.eventService = eventService;
         this.mapper = mapper;
         this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
-
+        this.containerCounterMetricWrapper = taggedCounterWrapper;
         buildCache();
     }
 
@@ -711,6 +720,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     private void start(final UserI userI, final Container toStart) throws NoContainerServerException, ContainerException {
         log.info("Starting container.");
+        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_START_STATUS_METRIC, toStart);
         try {
             containerControlApi.start(toStart);
         } catch (ContainerBackendException e) {
@@ -1285,6 +1295,7 @@ public class ContainerServiceImpl implements ContainerService {
                         ContainerHistory failureHist = ContainerHistory.fromSystem(status,
                                 "Parent container failed (exit code=" + exitCode + ")");
                         addContainerHistoryItem(wrapupContainer, failureHist, userI);
+                        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_ERROR_STATUS_METRIC, wrapupContainer);
                     } else {
                         log.debug("Launching wrapup container {}.", wrapupContainer.databaseId());
                         // This wrapup container has not been launched yet. Launch it now.
@@ -1729,6 +1740,7 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     private void handleFailure(UserI userI, final Container container) {
+        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_ERROR_STATUS_METRIC, container);
        try {
            String workFlowId = container.workflowId();
            PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI,workFlowId);
@@ -2215,6 +2227,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     @Nonnull
+    @Timed("container.launch")
     public LaunchReport launchContainer(@Nullable final String project,
                                          final long commandId,
                                          @Nullable final String wrapperName,

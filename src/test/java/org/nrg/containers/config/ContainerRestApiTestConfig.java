@@ -1,6 +1,7 @@
 package org.nrg.containers.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.mockito.Mockito;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.rest.ContainerRestApi;
@@ -31,6 +32,10 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
+import java.util.HashMap;
+
+import static org.nrg.containers.utils.ContainerUtils.*;
+
 @Configuration
 @EnableWebMvc
 @EnableWebSecurity
@@ -56,10 +61,16 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Map<String, TaggedCounter> containerCounters = new HashMap();
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
                 commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
                 null, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, containerCounters);
     }
 
     @Bean

@@ -1,5 +1,6 @@
 package org.nrg.containers.rest;
 
+import io.micrometer.core.annotation.Timed;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +58,7 @@ import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
+
 
 @Slf4j
 @XapiRestController
@@ -166,6 +168,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Admin)
     @ApiOperation(value = "Finalize Container")
+    @Timed("container.finalize")
     public void finalize(final @PathVariable String id) throws NotFoundException, ContainerException, DockerServerException, NoDockerServerException {
         final UserI userI = getSessionUser();
         containerService.finalize(id, userI);

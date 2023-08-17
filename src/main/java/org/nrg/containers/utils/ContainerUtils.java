@@ -27,6 +27,11 @@ public class ContainerUtils {
 
     public static final String KUBERNETES_FAILED_STATUS = "Failed";
 
+    public static final String CONTAINER_START_STATUS_METRIC = "container-start-status-metric";
+    public static final String CONTAINER_FINALIZED_STATUS_METRIC = "container-finalized-status-metric";
+    public static final String CONTAINER_ERROR_STATUS_METRIC = "container-error-status-metric";
+
+
     public enum TerminalState {
         COMPLETE("Complete"),
         FAILED("Failed"),

@@ -1,6 +1,8 @@
 package org.nrg.containers.rest;
 
 import com.google.common.collect.Maps;
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +58,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
     private final ContainerService containerService;
     private final CommandResolutionService commandResolutionService;
     private final DockerServerService dockerServerService;
+
 
     @Autowired
     public LaunchRestApi(final CommandService commandService,
@@ -381,6 +384,7 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
     @ResponseBody
+    @Timed("container.bulkLaunch")
     public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @PathVariable String rootElement,

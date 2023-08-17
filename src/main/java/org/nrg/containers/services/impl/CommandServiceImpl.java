@@ -1,6 +1,9 @@
 package org.nrg.containers.services.impl;
 
 import com.google.common.collect.Lists;
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.LongTaskTimer;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.CommandValidationException;
@@ -71,6 +74,7 @@ public class CommandServiceImpl implements CommandService {
 
     @Override
     @Nonnull
+    @Timed(value = "container.commands.available.getAll")
     public List<Command> getAll() {
         return toPojo(commandEntityService.getAll());
     }
@@ -426,6 +430,7 @@ public class CommandServiceImpl implements CommandService {
     public List<CommandSummaryForContext> available(final String project,
                                                     final String context,
                                                     final UserI userI) throws ElementNotFoundException {
+
         if (StringUtils.isBlank(context)) {
             return Collections.emptyList();
         }

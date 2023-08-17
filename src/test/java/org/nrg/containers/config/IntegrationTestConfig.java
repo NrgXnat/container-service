@@ -1,6 +1,7 @@
 package org.nrg.containers.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.hibernate.SessionFactory;
 import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
@@ -84,9 +85,12 @@ import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
+
+import static org.nrg.containers.utils.ContainerUtils.*;
 
 @Configuration
 @EnableTransactionManagement
@@ -192,7 +196,13 @@ public class IntegrationTestConfig {
                                                              final CatalogService catalogService,
                                                              final MailService mailService,
                                                              final AliasTokenService aliasTokenService) {
-        return new ContainerFinalizeServiceImpl(containerControlApi, siteConfigPreferences, catalogService, mailService, aliasTokenService);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Map<String, TaggedCounter> containerCounters = new HashMap();
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+        TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
+        return new ContainerFinalizeServiceImpl(containerControlApi, siteConfigPreferences, catalogService, mailService, aliasTokenService, taggedCounterWrapper);
     }
 
     @Bean
@@ -209,10 +219,18 @@ public class IntegrationTestConfig {
                                              final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Map<String, TaggedCounter> containerCounters = new HashMap();
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+        TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
+
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
                 commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
                 containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, taggedCounterWrapper);
+
     }
 
     @Bean

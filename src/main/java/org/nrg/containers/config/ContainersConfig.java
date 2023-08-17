@@ -1,11 +1,15 @@
 package org.nrg.containers.config;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
 import javax.jms.JMSException;
 
+import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.nrg.containers.events.ContainerStatusUpdater;
@@ -16,6 +20,8 @@ import org.nrg.framework.annotations.XnatPlugin;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xnat.initialization.RootConfig;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
+import org.nrg.xnat.micrometer.tags.TaggedCounter;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +37,8 @@ import org.springframework.scheduling.support.PeriodicTrigger;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
+
+import static org.nrg.containers.utils.ContainerUtils.*;
 
 @Slf4j
 @EnableJms
@@ -131,6 +139,16 @@ public class ContainersConfig {
         tBean.setCorePoolSize(5);
         tBean.setThreadNamePrefix("container-");
         return tBean;
+    }
+
+    @Bean
+    public TaggedCounterWrapper containerTaggedCounterBean(final MeterRegistry meterRegistry) {
+        Map<String, TaggedCounter> containerCounters = new HashMap();
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
+        log.error("containerTaggedCounterBean  Initialized " + containerCounters.size());
+        return new TaggedCounterWrapper(containerCounters);
     }
 }
 
