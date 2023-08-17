@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.8.6"
+        vXnat = "1.8.10-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -51,6 +51,7 @@ def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
 def vJersey = "3.0.6"
+def vMicrometer = dependencyManagement.importedProperties["micrometer-core.version"]
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -175,6 +176,7 @@ dependencies {
     implementation ("xalan:xalan") {
         transitive = false
     }
+    implementation "io.micrometer:micrometer-core:${vMicrometer}"
 
     implementation group: 'javax.interceptor', name: 'javax.interceptor-api', version: '1.2.2'
 
