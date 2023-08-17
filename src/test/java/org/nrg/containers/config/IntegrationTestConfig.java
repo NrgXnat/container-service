@@ -67,6 +67,8 @@ import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.user.XnatUserProvider;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xdat.services.cache.UserDataCache;
+import org.nrg.xnat.micrometer.tags.TaggedCounter;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -87,6 +89,7 @@ import reactor.core.dispatch.RingBufferDispatcher;
 import javax.sql.DataSource;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 

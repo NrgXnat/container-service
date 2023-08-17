@@ -22,6 +22,7 @@ import org.nrg.containers.model.container.auto.Container.ContainerMount;
 import org.nrg.containers.model.container.auto.Container.ContainerOutput;
 import org.nrg.containers.services.ContainerFinalizeService;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.utils.ContainerMetricsUtils;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.om.XnatExperimentdata;
@@ -274,11 +275,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
                         .status(status)
                         .statusTime(statusTime);
-                try {
-                    containerCounterMetricWrapper.increment(CONTAINER_FINALIZED_STATUS_METRIC, toFinalize.dockerImage());
-                } catch(Exception e) {
-                    log.error("Could not fetch container finalize metric", e);
-                }
+                ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_FINALIZED_STATUS_METRIC, toFinalize);
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
                 String exitCode = null;

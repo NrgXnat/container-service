@@ -2,7 +2,6 @@ package org.nrg.containers.services.impl;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import io.micrometer.core.annotation.Timed;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.nrg.containers.daos.CommandEntityRepository;

@@ -60,6 +60,8 @@ import org.nrg.mail.services.impl.SpringBasedMailServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xnat.micrometer.tags.TaggedCounter;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -79,6 +81,7 @@ import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 
@@ -170,9 +173,9 @@ public class QueueConsumerTestConfig {
                                                              final MailService mailService, final AliasTokenService aliasTokenService) {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         Map<String, TaggedCounter> containerCounters = new HashMap();
-        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
-        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
-        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
         TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
         return new ContainerFinalizeServiceImpl(containerControlApi, siteConfigPreferences, catalogService, mailService, aliasTokenService, taggedCounterWrapper);
     }
@@ -193,14 +196,14 @@ public class QueueConsumerTestConfig {
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         Map<String, TaggedCounter> containerCounters = new HashMap();
-        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
-        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
-        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
-
+        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
+        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
+        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
+        TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
         return new ContainerServiceImpl(mockDockerControlApi, mockContainerEntityService,
                 commandResolutionService, mockCommandService, aliasTokenService, siteConfigPreferences,
                 containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, containerCounters);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, taggedCounterWrapper);
     }
 
     @Bean

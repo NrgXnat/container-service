@@ -33,6 +33,8 @@ import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xnat.micrometer.tags.TaggedCounter;
+import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
@@ -45,6 +47,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -97,9 +100,10 @@ public class ContainerLogTest {
         public void setup() {
             SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
             Map<String, TaggedCounter> containerCounters = new HashMap();
-            containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
-            containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
-            containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
+            containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
+            containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
+            containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
+            TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
 
             containerService = new ContainerServiceImpl(containerControlApi,
                     containerEntityService,
@@ -114,7 +118,7 @@ public class ContainerLogTest {
                     eventService,
                     mapper,
                     executorFactoryBean,
-                    containerCounters);
+                    taggedCounterWrapper);
         }
     }
 

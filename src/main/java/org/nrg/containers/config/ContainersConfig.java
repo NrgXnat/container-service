@@ -147,7 +147,6 @@ public class ContainersConfig {
         containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
         containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
         containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
-        log.error("containerTaggedCounterBean  Initialized " + containerCounters.size());
         return new TaggedCounterWrapper(containerCounters);
     }
 }
