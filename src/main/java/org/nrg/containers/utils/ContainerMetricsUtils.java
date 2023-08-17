@@ -8,7 +8,7 @@ import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
 @Slf4j
 public class ContainerMetricsUtils {
 
-    public  static void updateContainerMetrics(final TaggedCounterWrapper containerCounterMetricWrapper, final String metricName, final Container container) {
+    public synchronized static void updateContainerMetrics(final TaggedCounterWrapper containerCounterMetricWrapper, final String metricName, final Container container) {
         try {
             containerCounterMetricWrapper.increment(metricName, container.dockerImage());
         } catch(Exception e) {
