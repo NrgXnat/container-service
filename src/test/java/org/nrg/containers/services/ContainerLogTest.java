@@ -98,13 +98,6 @@ public class ContainerLogTest {
 
         @Before
         public void setup() {
-            SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-            Map<String, TaggedCounter> containerCounters = new HashMap();
-            containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
-            containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
-            containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
-            TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
-
             containerService = new ContainerServiceImpl(containerControlApi,
                     containerEntityService,
                     commandResolutionService,
@@ -117,8 +110,7 @@ public class ContainerLogTest {
                     orchestrationService,
                     eventService,
                     mapper,
-                    executorFactoryBean,
-                    taggedCounterWrapper);
+                    executorFactoryBean);
         }
     }
 

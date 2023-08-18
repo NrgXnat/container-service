@@ -194,16 +194,10 @@ public class QueueConsumerTestConfig {
                                              final NrgEventService mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
-        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-        Map<String, TaggedCounter> containerCounters = new HashMap();
-        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
-        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
-        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
-        TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
         return new ContainerServiceImpl(mockDockerControlApi, mockContainerEntityService,
                 commandResolutionService, mockCommandService, aliasTokenService, siteConfigPreferences,
                 containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, taggedCounterWrapper);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean

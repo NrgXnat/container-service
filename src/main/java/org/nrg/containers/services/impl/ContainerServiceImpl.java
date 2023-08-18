@@ -95,8 +95,6 @@ import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
-import org.nrg.xnat.micrometer.tags.TaggedCounter;
-import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
 
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
@@ -191,7 +189,6 @@ public class ContainerServiceImpl implements ContainerService {
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
     private final NrgEventServiceI eventService;
-    private final TaggedCounterWrapper containerCounterMetricWrapper;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -210,8 +207,8 @@ public class ContainerServiceImpl implements ContainerService {
                                 final NrgEventServiceI eventService,
                                 final ObjectMapper mapper,
                                 @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
-                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean,
-                                final TaggedCounterWrapper taggedCounterWrapper) {
+                                    final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean
+                                ) {
         this.containerControlApi = containerControlApi;
         this.containerEntityService = containerEntityService;
         this.commandResolutionService = commandResolutionService;
@@ -225,7 +222,6 @@ public class ContainerServiceImpl implements ContainerService {
         this.eventService = eventService;
         this.mapper = mapper;
         this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
-        this.containerCounterMetricWrapper = taggedCounterWrapper;
         buildCache();
     }
 
@@ -720,7 +716,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     private void start(final UserI userI, final Container toStart) throws NoContainerServerException, ContainerException {
         log.info("Starting container.");
-        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_START_STATUS_METRIC, toStart);
+        ContainerMetricsUtils.updateContainerMetrics(CONTAINER_START_STATUS_METRIC, toStart);
         try {
             containerControlApi.start(toStart);
         } catch (ContainerBackendException e) {
@@ -1295,7 +1291,7 @@ public class ContainerServiceImpl implements ContainerService {
                         ContainerHistory failureHist = ContainerHistory.fromSystem(status,
                                 "Parent container failed (exit code=" + exitCode + ")");
                         addContainerHistoryItem(wrapupContainer, failureHist, userI);
-                        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_ERROR_STATUS_METRIC, wrapupContainer);
+                        ContainerMetricsUtils.updateContainerMetrics(CONTAINER_ERROR_STATUS_METRIC, wrapupContainer);
                     } else {
                         log.debug("Launching wrapup container {}.", wrapupContainer.databaseId());
                         // This wrapup container has not been launched yet. Launch it now.
@@ -1740,7 +1736,7 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     private void handleFailure(UserI userI, final Container container) {
-        ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_ERROR_STATUS_METRIC, container);
+        ContainerMetricsUtils.updateContainerMetrics(CONTAINER_ERROR_STATUS_METRIC, container);
        try {
            String workFlowId = container.workflowId();
            PersistentWorkflowI workflow = WorkflowUtils.getUniqueWorkflow(userI,workFlowId);

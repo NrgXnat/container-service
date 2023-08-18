@@ -222,17 +222,11 @@ public class IntegrationTestConfig {
                                              final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
-        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-        Map<String, TaggedCounter> containerCounters = new HashMap();
-        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-status", "start", meterRegistry));
-        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-status", "finalized", meterRegistry));
-        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-status", "error", meterRegistry));
-        TaggedCounterWrapper taggedCounterWrapper = new TaggedCounterWrapper(containerCounters);
 
         return new ContainerServiceImpl(containerControlApi, containerEntityService,
                 commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
                 containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, taggedCounterWrapper);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
 
     }
 

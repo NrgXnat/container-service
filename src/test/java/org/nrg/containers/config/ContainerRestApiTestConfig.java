@@ -64,16 +64,10 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
-        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-        Map<String, TaggedCounter> containerCounters = new HashMap();
-        containerCounters.put(CONTAINER_START_STATUS_METRIC, new TaggedCounter("container-started", "start", meterRegistry));
-        containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
-        containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
-        TaggedCounterWrapper tgWrapper = new TaggedCounterWrapper(containerCounters);
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
                 commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
                 null, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean, tgWrapper);
+                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean

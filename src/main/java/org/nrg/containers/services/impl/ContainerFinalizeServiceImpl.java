@@ -3,6 +3,8 @@ package org.nrg.containers.services.impl;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.aop.MeterTag;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -15,6 +17,7 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.jms.requests.ContainerRequest;
+import org.nrg.containers.micrometer.ContainerMeterTagValueResolver;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.container.auto.Container;
@@ -64,8 +67,7 @@ import java.util.regex.Pattern;
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.ASSESSOR;
 import static org.nrg.containers.model.command.entity.CommandWrapperOutputEntity.Type.RESOURCE;
 import static org.nrg.containers.services.ContainerService.XNAT_USER;
-import static org.nrg.containers.utils.ContainerUtils.CONTAINER_ERROR_STATUS_METRIC;
-import static org.nrg.containers.utils.ContainerUtils.CONTAINER_FINALIZED_STATUS_METRIC;
+import static org.nrg.containers.utils.ContainerUtils.*;
 
 
 @Slf4j
@@ -98,7 +100,8 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     }
 
     @Override
-    public Container finalizeContainer(final Container toFinalize, final UserI userI, final boolean isFailed, final List<Container> wrapupContainers) {
+    @Timed("container-finalization-timer")
+    public Container finalizeContainer(@MeterTag(key = "container", resolver = ContainerMeterTagValueResolver.class) final Container toFinalize, final UserI userI, final boolean isFailed, final List<Container> wrapupContainers) {
         final ContainerFinalizeHelper helper =
                 new ContainerFinalizeHelper(toFinalize, userI, isFailed, wrapupContainers);
         return helper.finalizeContainer();
@@ -275,7 +278,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                 finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
                         .status(status)
                         .statusTime(statusTime);
-                ContainerMetricsUtils.updateContainerMetrics(containerCounterMetricWrapper, CONTAINER_FINALIZED_STATUS_METRIC, toFinalize);
+                ContainerMetricsUtils.updateContainerMetrics(CONTAINER_FINALIZED_STATUS_METRIC, toFinalize);
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
                 String exitCode = null;
@@ -305,10 +308,13 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                         break;
                     }
                 }
+
                 if (status == null || !status.startsWith(PersistentWorkflowUtils.FAILED)) {
                     // If it's not an XNAT failure status, we need to make it so
                     status = PersistentWorkflowUtils.FAILED;
                 }
+                ContainerMetricsUtils.updateContainerMetrics(CONTAINER_ERROR_STATUS_METRIC, toFinalize);
+
                 finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details, exitCode));
                 finalizedContainerBuilder.status(status)
                         .statusTime(new Date());

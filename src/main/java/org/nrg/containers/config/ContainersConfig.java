@@ -8,6 +8,10 @@ import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
 import javax.jms.JMSException;
 
+import io.micrometer.common.annotation.ValueExpressionResolver;
+import io.micrometer.common.annotation.ValueResolver;
+import io.micrometer.core.aop.MeterTagAnnotationHandler;
+import io.micrometer.core.aop.TimedAspect;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -16,8 +20,11 @@ import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.preferences.QueuePrefsBean;
 import org.nrg.containers.jms.tasks.QueueManager;
+import org.nrg.containers.micrometer.ContainerMeterTagValueResolver;
+import org.nrg.containers.micrometer.SpelValueExpressionResolver;
 import org.nrg.framework.annotations.XnatPlugin;
 import org.nrg.mail.services.MailService;
+import org.nrg.xdat.XDAT;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xnat.initialization.RootConfig;
 import org.nrg.xnat.micrometer.tags.TaggedCounterWrapper;
@@ -64,6 +71,7 @@ public class ContainersConfig {
         factory.setConnectionFactory(connectionFactory);
         factory.setConcurrency(QUEUE_MIN_CONCURRENCY_DFLT + "-" + QUEUE_MAX_CONCURRENCY_DFLT);
         factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, mailService));
+        setupMicrometerTimedAspect();
         return factory;
     }
 
@@ -148,6 +156,14 @@ public class ContainersConfig {
         containerCounters.put(CONTAINER_FINALIZED_STATUS_METRIC, new TaggedCounter("container-finalized", "finalized", meterRegistry));
         containerCounters.put(CONTAINER_ERROR_STATUS_METRIC, new TaggedCounter("container-error", "error", meterRegistry));
         return new TaggedCounterWrapper(containerCounters);
+    }
+
+    private void setupMicrometerTimedAspect() {
+        TimedAspect timedAspect = XDAT.getContextService().getBean(TimedAspect.class);
+        ValueResolver valueResolver = new ContainerMeterTagValueResolver();
+        ValueExpressionResolver valueExpressionResolver = new SpelValueExpressionResolver();
+        timedAspect.setMeterTagAnnotationHandler(
+                new MeterTagAnnotationHandler(aClass -> valueResolver,  aClass -> valueExpressionResolver));
     }
 }
 
