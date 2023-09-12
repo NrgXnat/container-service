@@ -1722,7 +1722,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 if (resolveFully && node.input().required()) {
                     // we're resolving for real, throw exception
                     throw new CommandResolutionException(message);
-                } else if (node.input() instanceof CommandWrapperDerivedInput && node.input().required()) {
+                } else if (node.input() instanceof CommandWrapperDerivedInput && node.input().required() && resolvedValueAndChildren.size() == 0) {
                     //we're in pre-resolve, but we will never find matching data for this input
                     throw new CommandPreResolutionException("The following required fields cannot be resolved using the provided data: " + node.input().name());
                 }else {
