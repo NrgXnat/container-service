@@ -1,11 +1,13 @@
 # Changelog
 
-## 3.5.0
-Not yet released
+## 3.4.1
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.4.1/).
 
 * **Improvement** [CS-923][] Process events by putting work onto a worker thread, not doing work in the event thread
+* **Bugfix** [CS-944][] Fix regression in 3.3.2 that broke command preresolution / launch UI generation when derived inputs matched multiple possible XNAT objects
 
 [CS-923]: https://radiologics.atlassian.net/browse/CS-923
+[CS-944]: https://radiologics.atlassian.net/browse/CS-944
 
 ## 3.4.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.0/).
