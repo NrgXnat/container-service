@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.1
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.4.1/).
+
+* **Improvement** [CS-923][] Process events by putting work onto a worker thread, not doing work in the event thread
+* **Improvement** [CS-939][] Remove synchronization on Docker Client creation (improves performance when using Docker and Docker Swarm compute backends) 
+* **Bugfix** [CS-944][] Fix regression in 3.3.2 that broke command preresolution / launch UI generation when derived inputs matched multiple possible XNAT objects
+
+[CS-923]: https://radiologics.atlassian.net/browse/CS-923
+[CS-939]: https://radiologics.atlassian.net/browse/CS-939
+[CS-944]: https://radiologics.atlassian.net/browse/CS-944
+
 ## 3.4.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.0/).
 

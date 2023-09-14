@@ -141,13 +141,17 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public ContainerEventListener containerEventListener(final EventBus eventBus) {
-        return new ContainerEventListener(eventBus);
+    public ContainerEventListener containerEventListener(final EventBus eventBus,
+                                                         final ContainerService containerService,
+                                                         final ExecutorService executorService) {
+        return new ContainerEventListener(eventBus, containerService, executorService);
     }
 
     @Bean
-    public DockerServiceEventListener serviceEventListener(final EventBus eventBus) {
-        return new DockerServiceEventListener(eventBus);
+    public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
+                                                           final ContainerService containerService,
+                                                           final ExecutorService executorService) {
+        return new DockerServiceEventListener(eventBus, containerService, executorService);
     }
 
     @Bean

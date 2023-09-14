@@ -225,7 +225,7 @@ public class SwarmRestartIntegrationTest {
                 .lastEventCheckTime(new Date())
                 .build());
 
-        CLIENT = controlApi.getClient();
+        CLIENT = controlApi.getDockerClient();
 
         TestingUtils.skipIfCannotConnectToSwarm(CLIENT);
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));

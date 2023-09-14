@@ -20,6 +20,7 @@ import reactor.fn.Consumer;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 import static reactor.bus.selector.Selectors.type;
@@ -30,21 +31,27 @@ public class WorkflowStatusEventOrchestrationListener implements Consumer<Event<
     private final ContainerService containerService;
     private final OrchestrationService orchestrationService;
     private final UserManagementServiceI userManagementServiceI;
+    private final ExecutorService executorService;
 
     @Autowired
     public WorkflowStatusEventOrchestrationListener(final ContainerService containerService,
                                                     final OrchestrationService orchestrationService,
                                                     final UserManagementServiceI userManagementServiceI,
-                                                    final EventBus eventBus) {
+                                                    final EventBus eventBus,
+                                                    final ExecutorService executorService) {
         this.containerService = containerService;
         this.orchestrationService = orchestrationService;
         this.userManagementServiceI = userManagementServiceI;
         eventBus.on(type(WorkflowStatusEvent.class), this);
+        this.executorService = executorService;
     }
 
     @Override
     public void accept(Event<WorkflowStatusEvent> busEvent) {
-        final WorkflowStatusEvent workflowStatusEvent = busEvent.getData();
+        executorService.submit(() -> processEvent(busEvent.getData()));
+    }
+
+    private void processEvent(final WorkflowStatusEvent workflowStatusEvent) {
         final PersistentWorkflowI workflow = workflowStatusEvent.getWorkflow();
         final Long orchestrationId = workflow.getNextStepId() == null ? null : Long.parseLong(workflow.getNextStepId());
         if (!workflow.getStatus().equals(PersistentWorkflowUtils.COMPLETE) || orchestrationId == null) {

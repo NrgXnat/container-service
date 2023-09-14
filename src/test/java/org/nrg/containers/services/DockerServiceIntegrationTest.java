@@ -113,7 +113,7 @@ public class DockerServiceIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(folder.newFolder().getAbsolutePath()); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        CLIENT = controlApi.getClient();
+        CLIENT = controlApi.getDockerClient();
     }
 
     private boolean canConnectToDocker() {

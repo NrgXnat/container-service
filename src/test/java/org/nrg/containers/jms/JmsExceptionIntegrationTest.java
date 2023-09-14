@@ -311,7 +311,7 @@ public class JmsExceptionIntegrationTest {
                 .build());
 
         String img = "busybox:latest";
-        CLIENT = controlApi.getClient();
+        CLIENT = controlApi.getDockerClient();
         CLIENT.pull(img);
         imagesToCleanUp.add(img);
 
