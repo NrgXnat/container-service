@@ -16,7 +16,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.4.1-RC-SNAPSHOT"
+version "3.4.1"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
