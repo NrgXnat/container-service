@@ -69,13 +69,19 @@ import org.nrg.containers.services.ContainerSecretService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.xdat.XDAT;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.base.BaseXnatExperimentdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
+import org.nrg.xft.exception.DBPoolException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
+import org.nrg.xnat.exceptions.InvalidArchiveStructure;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.URIManager.ArchiveItemURI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
@@ -99,6 +105,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -233,7 +240,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                final UserI userI)
             throws CommandResolutionException, UnauthorizedException {
         try {
-            final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI);
+            final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI, null);
             return helper.preResolve();
         } catch (CommandResolutionException | UnauthorizedException e) {
             log.error("Could not preresolve command", e);
@@ -247,7 +254,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                    final Map<String, String> inputValues,
                                    final UserI userI)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
-        return resolve(configuredCommand, inputValues, null, userI);
+        return resolve(configuredCommand, inputValues, null, userI, null);
     }
 
     @Override
@@ -255,10 +262,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
     public ResolvedCommand resolve(final ConfiguredCommand configuredCommand,
                                    final Map<String, String> inputValues,
                                    final String project,
-                                   final UserI userI)
+                                   final UserI userI,
+                                   final String workflowId)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
         try {
-            final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI);
+            final CommandResolutionHelper helper = new CommandResolutionHelper(configuredCommand, inputValues, project, userI, workflowId);
             return helper.resolve();
         } catch (CommandResolutionException | UnauthorizedException e) {
             log.error("Could not resolve command", e);
@@ -272,6 +280,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private final ConfiguredCommand command;
         private final String project;
         private final UserI userI;
+        private final String workflowId;
 
         private final Map<String, Set<String>> loadTypesMap;
 
@@ -296,11 +305,13 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private CommandResolutionHelper(final ConfiguredCommand configuredCommand,
                                         final Map<String, String> inputValues,
                                         final String project,
-                                        final UserI userI) throws CommandResolutionException {
+                                        final UserI userI,
+                                        final String workflowId) throws CommandResolutionException {
             this.commandWrapper = configuredCommand.wrapper();
             this.command = configuredCommand;
             this.project = project;
             this.userI = userI;
+            this.workflowId = workflowId;
 
             try {
                 log.debug("Getting docker server to read path prefixes.");
@@ -2689,7 +2700,22 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private boolean resolveMountPathForModelObject(@Nonnull CommandMount commandMount, @Nonnull XnatModelObject xnatModelObject, StringBuilder mountPath) throws CommandResolutionException {
             boolean isBuildPath = false;
             String currentMountPath;
-            final String srcPath = xnatModelObject.getRootPath();
+            final String srcPath;
+            if (xnatModelObject instanceof Project) {
+                try {
+                    Map<Path, Path> allPaths = org.nrg.xnat.utils.FileUtils.getAllSharedPaths(xnatModelObject.getId(), userI, false, false, true, false);
+                    if (allPaths.isEmpty()) {
+                        srcPath = xnatModelObject.getRootPath();
+                    } else {
+                        Path hardLinkPath = org.nrg.xnat.utils.FileUtils.createDirectoryForSharedData(allPaths, Paths.get(ContainerUtils.CS_SHARED_PROJECT_STRING, workflowId + xnatModelObject.getId()));
+                        srcPath = hardLinkPath.toString();
+                    }
+                }catch (Exception e) {
+                    throw new CommandResolutionException(e);
+                }
+            } else {
+                srcPath = xnatModelObject.getRootPath();
+            }
 
             if (StringUtils.isBlank(srcPath)) {
                 throw new CommandMountResolutionException("Mount \"" + commandMount.name() + "\" should have a root path but does not.", commandMount);

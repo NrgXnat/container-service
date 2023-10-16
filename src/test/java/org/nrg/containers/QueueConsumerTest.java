@@ -207,7 +207,8 @@ public class QueueConsumerTest {
                 mockConfiguredCommand,
                 Collections.emptyMap(),
                 null,
-                mockUser
+                mockUser,
+                fakeWorkflow.getWorkflowId().toString()
         )).thenReturn(RESOLVED_COMMAND);
 
         // Use powermock to mock out the static method XFTManager.isInitialized()
@@ -238,7 +239,8 @@ public class QueueConsumerTest {
                 eq(mockConfiguredCommand),
                 argThat(TestingUtils.isMapWithEntry(INPUT_NAME, badInputValue)),
                 isNull(String.class),
-                eq(mockUser)
+                eq(mockUser),
+                fakeWorkflow.getWorkflowId().toString()
         )).thenThrow(new CommandResolutionException(exceptionMessage));
 
         final String expectedWorkflowStatus = PersistentWorkflowUtils.FAILED + " (Command resolution)";

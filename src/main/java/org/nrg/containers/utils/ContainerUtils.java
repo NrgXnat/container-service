@@ -26,6 +26,7 @@ public class ContainerUtils {
     public static final int SECONDS_PER_WEEK = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY * DAYS_PER_WEEK;
 
     public static final String KUBERNETES_FAILED_STATUS = "Failed";
+    public static final String CS_SHARED_PROJECT_STRING = "container-service";
 
     public enum TerminalState {
         COMPLETE("Complete"),

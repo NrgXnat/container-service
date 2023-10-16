@@ -59,6 +59,7 @@ public interface CommandResolutionService {
     ResolvedCommand resolve(ConfiguredCommand configuredCommand,
                             Map<String, String> inputValues,
                             String project,
-                            UserI userI)
+                            UserI userI,
+                            String workflowId)
             throws NotFoundException, CommandResolutionException, UnauthorizedException;
 }

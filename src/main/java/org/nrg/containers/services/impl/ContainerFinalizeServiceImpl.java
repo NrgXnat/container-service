@@ -216,6 +216,16 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             String project = null;
             String pipeline_name = null;
             Integer eventId = null;
+            for (ContainerMount mount : toFinalize.mounts()) {
+                try {
+                    String containerHostPath = mount.containerHostPath();
+                    if (containerHostPath.contains(org.nrg.xnat.utils.FileUtils.SHARED_PROJECT_DIRECTORY_STRING)) {
+                        org.nrg.xnat.utils.FileUtils.removeCombinedFolder(Paths.get(ContainerUtils.CS_SHARED_PROJECT_STRING).resolve(Paths.get(containerHostPath).getFileName()));
+                    }
+                } catch (IOException e) {
+                    log.error("Unable to remove shared data folder for mount: " + mount.name() +".", e);
+                }
+            }
             if (wrkFlow != null) {
                 xnatId = wrkFlow.getId();
                 project   = wrkFlow.getExternalid();
