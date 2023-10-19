@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.4.2
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.4.2/).
+
+* **Bugfix** [CS-948][] Support K8s compute backend with PEM credential
+
+[CS-948]: https://radiologics.atlassian.net/browse/CS-948
+
 ## 3.4.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.1/).
 
