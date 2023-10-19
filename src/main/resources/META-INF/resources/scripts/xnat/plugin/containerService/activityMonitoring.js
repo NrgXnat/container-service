@@ -22,13 +22,10 @@ var XNAT = getObject(XNAT || {});
     XNAT.plugin.batchLaunch =
         getObject(XNAT.plugin.batchLaunch || {});
 
-    XNAT.plugin.containerService.updateBulkLaunchProgress = function(itemDivId, detailsTag, jsonobj, lastProgressIdx) {
-        if (!lastProgressIdx) {
-            lastProgressIdx = -1;
-        }
+    XNAT.plugin.containerService.updateBulkLaunchProgress = function(itemDivId, detailsTag, jsonobj, lastProgressIdx = -1) {
         const succeeded = jsonobj['succeeded'];
-        const payload = JSON.parse(jsonobj['payload']);
-        const total = payload['total'];
+        const payload = jsonobj['payload'];
+        const total = jsonobj['total'];
         const targetClass = 'overall';
         const $itemDivPercent = $(itemDivId).find('.percentComplete');
         const $detailsDiv = $(detailsTag);
@@ -38,12 +35,12 @@ var XNAT = getObject(XNAT || {});
             $detailsDiv.append('<div class="prog info ' + targetClass + '">Working...</div>');
             $progDiv = $detailsDiv.find('div.' + targetClass);
         }
-        if (total === -1) {
+        if (!total) {
             return [null, lastProgressIdx];
         }
 
-        const successCount = payload['successCount'];
-        const failureCount = payload['failureCount'];
+        const successCount = jsonobj['successCount'];
+        const failureCount = jsonobj['failureCount'];
         let percentComplete = (successCount + failureCount) / total * 100;
         percentComplete = Math.round((percentComplete + Number.EPSILON) * 100) / 100;
         if (percentComplete === 100 && succeeded == null) {
@@ -54,22 +51,24 @@ var XNAT = getObject(XNAT || {});
 
         let clazz;
         $progDiv.text(percentComplete + '% complete (' + successCount + ' succeeded, ' + failureCount + ' failed)');
-        if (payload['workflows']) {
-            $.each(payload['workflows'], function(k, v) {
-                const wfid = 'wf' + k;
-                const details = v['details'] ? ' (' + v['details'] + ')' : '';
-                const message = '<a onclick="XNAT.plugin.batchLaunch.viewWorkflowDetails(\''+k+'\',\'' + v['containerId'] + '\')">'
-                    + v['itemId'] + '</a>: ' + v['pipelineName'] + ' ' + v['status'] + details;
-                if (v['status'].toLowerCase().includes('failed')) {
+        if (payload) {
+            $.each(payload, function(key, value) {
+                const workflow = value['workflowLog'];
+                if (!workflow) return;
+                const workflowId = 'wf' + key;
+                const details = workflow['details'] ? ' (' + workflow['details'] + ')' : '';
+                const message = '<a onclick="XNAT.plugin.batchLaunch.viewWorkflowDetails(\'' + workflow['id'] + '\',\'' + workflow['containerId'] + '\')">'
+                    + workflow['itemId'] + '</a>: ' + workflow['pipelineName'] + ' ' + workflow['status'] + details;
+                if (workflow['status'].toLowerCase().includes('failed')) {
                     clazz = 'error';
-                } else if (v['status'].toLowerCase() === 'complete') {
+                } else if (workflow['status'].toLowerCase() === 'complete') {
                     clazz = 'success';
                 } else {
                     clazz = 'info';
                 }
-                let $wfDiv = $detailsDiv.find('#' + wfid);
+                let $wfDiv = $detailsDiv.find('#' + workflowId);
                 if ($wfDiv.length === 0) {
-                    $detailsDiv.append('<div id="' +wfid + '" class="prog ' + clazz + '">' + message + '</div>')
+                    $detailsDiv.append('<div id="' + workflowId + '" class="prog ' + clazz + '">' + message + '</div>')
                 } else {
                     $wfDiv.html(message).removeClass('info').addClass(clazz);
                 }

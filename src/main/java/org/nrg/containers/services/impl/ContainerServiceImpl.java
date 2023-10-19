@@ -90,7 +90,7 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
-import org.nrg.xnat.event.model.BulkLaunchEvent;
+import org.nrg.xnat.tracking.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -2306,7 +2306,6 @@ public class ContainerServiceImpl implements ContainerService {
 
         final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
                 .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
-        int failures = 0;
         for (final String target : targets) {
             final Map<String, String> paramsSet = new HashMap<>(allRequestParams);
             paramsSet.put(rootElement, target);
@@ -2320,16 +2319,13 @@ public class ContainerServiceImpl implements ContainerService {
             } catch (Exception e) {
                 // Most exceptions should be "logged" to the workflow but this is meant to catch
                 // issues submitting to the executorService
-                reportBuilder.addFailure(LaunchReport.Failure.create(e.getMessage() != null ?
-                                e.getMessage() : "Unable to queue container launch",
+                final String message = "Unable to queue container launch for " + target + ": " +
+                        StringUtils.defaultIfBlank(e.getMessage(),
+                                "[Unknown cause]");
+                reportBuilder.addFailure(LaunchReport.Failure.create(message,
                         paramsSet, commandId, wrapperId));
-                failures++;
+                eventService.triggerEvent(BulkLaunchEvent.executorServiceFailure(bulkLaunchId, userI.getID(), message));
             }
-        }
-
-        if (failures > 0) {
-            // this should be super uncommon
-            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
         }
 
         return reportBuilder.build();
