@@ -240,7 +240,7 @@ public class QueueConsumerTest {
                 argThat(TestingUtils.isMapWithEntry(INPUT_NAME, badInputValue)),
                 isNull(String.class),
                 eq(mockUser),
-                fakeWorkflow.getWorkflowId().toString()
+                eq(fakeWorkflow.getWorkflowId().toString())
         )).thenThrow(new CommandResolutionException(exceptionMessage));
 
         final String expectedWorkflowStatus = PersistentWorkflowUtils.FAILED + " (Command resolution)";
