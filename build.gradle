@@ -26,6 +26,7 @@ def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
 repositories {
+    mavenLocal()
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
     mavenCentral()
