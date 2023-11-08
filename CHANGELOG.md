@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.4.2
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.4.2/).
+
+* **Bugfix** [CS-948][] Support K8s compute backend with PEM credential
+
+[CS-948]: https://radiologics.atlassian.net/browse/CS-948
+
 ## 3.4.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.1/).
 
@@ -169,6 +176,7 @@ Container Service 3.2.0 also has many other changes.
 
 * [CS-563][]: Added support for deriving Subject Assessor inputs, independent of Image Session types.
 * [CS-617][]: Add configuration parameter to disable status emails.
+* [CS-686][]: Fixed support for Batch Launch of commands with Project Asset context.
 
 ### Bugfixes
 
@@ -192,6 +200,8 @@ Container Service 3.2.0 also has many other changes.
 [CS-678]: https://issues.xnat.org/browse/CS-678
 [CS-679]: https://issues.xnat.org/browse/CS-679
 [CS-680]: https://issues.xnat.org/browse/CS-680
+[CS-683]: https://issues.xnat.org/browse/CS-683
+
 
 ## 3.1.0
 
