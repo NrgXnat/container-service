@@ -1,5 +1,6 @@
 package org.nrg.containers.services.impl;
 
+import com.google.common.util.concurrent.Striped;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.daos.ContainerEntityRepository;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
 
 @Slf4j
 @Service
@@ -25,6 +27,11 @@ import java.util.List;
 public class HibernateContainerEntityService
         extends AbstractHibernateEntityService<ContainerEntity, ContainerEntityRepository>
         implements ContainerEntityService {
+
+    private static final int NUMBER_LOCKS_FOR_EVENTS = 4096; //value here is somewhat arbitrary - erring on the side of too many locks (we think - not sure how to test effectively)
+    @SuppressWarnings("UnstableApiUsage") // Striped is marked as @Beta in our guava version, but not in current version
+    private static final Striped<Lock> containerEventLocks = Striped.lazyWeakLock(NUMBER_LOCKS_FOR_EVENTS);
+
 
     @Override
     @Nonnull
@@ -57,14 +64,14 @@ public class HibernateContainerEntityService
     public ContainerEntity get(final String containerId) throws NotFoundException {
         final ContainerEntity containerEntity = retrieve(containerId);
         if (containerEntity == null) {
-     		//Could be service id - try by service id
+            //Could be service id - try by service id
             final ContainerEntity containerEntityByServiceId = getDao().retrieveByServiceId(containerId);
             if (containerEntityByServiceId == null) {
-	     		throw new NotFoundException("No container with ID " + containerId);
-		    }else {
-	            initialize(containerEntityByServiceId);
-	            return containerEntityByServiceId;
-		    }
+                throw new NotFoundException("No container with ID " + containerId);
+            }else {
+                initialize(containerEntityByServiceId);
+                return containerEntityByServiceId;
+            }
         }
         return containerEntity;
     }
@@ -154,7 +161,7 @@ public class HibernateContainerEntityService
 
     @Override
     @Nullable
-    public ContainerEntityHistory addContainerHistoryItem(final ContainerEntity containerEntity,
+    public ContainerEntityHistory addContainerHistoryItem(ContainerEntity containerEntity,
                                                           final ContainerEntityHistory history,
                                                           final UserI userI) {
         if (containerEntity.isItemInHistory(history)) {
@@ -165,24 +172,37 @@ public class HibernateContainerEntityService
         log.info("Adding new history item to container entity {}", containerEntity.getId());
         getDao().addHistoryItem(containerEntity, history);
 
-        final boolean historyEntryIsMoreRecentThanContainerStatus =
-                history.getTimeRecorded() != null &&
-                        (containerEntity.getStatusTime() == null ||
-                                history.getTimeRecorded().getTime() > containerEntity.getStatusTime().getTime());
+        @SuppressWarnings("UnstableApiUsage")
+        final Lock containerLock = containerEventLocks.get(String.valueOf(containerEntity.getId()));
 
-        if (historyEntryIsMoreRecentThanContainerStatus &&
-                (!ContainerUtils.statusIsTerminal(containerEntity.getStatus()) ||  // Don't overwrite a terminal status
-                        ContainerUtils.statusIsTerminal(history.getStatus()))  // ...except with a newer terminal status (i.e. Complete -> Failed)
-        ) {
-            containerEntity.setStatusTime(history.getTimeRecorded());
-            containerEntity.setStatus(history.getStatus());
-            log.debug("Setting container entity {} status to \"{}\", based on history entry status \"{}\".",
-                    containerEntity.getId(),
-                    containerEntity.getStatus(),
-                    history.getStatus());
+        log.debug("Acquiring lock for the container {}", containerEntity.getId());
+        containerLock.lock();
+        log.debug("Acquired lock for the container {}", containerEntity.getId());
+
+        try {
+            containerEntity = retrieve(containerEntity.getId());
+            final boolean historyEntryIsMoreRecentThanContainerStatus =
+                    history.getTimeRecorded() != null &&
+                            (containerEntity.getStatusTime() == null ||
+                                    history.getTimeRecorded().getTime() > containerEntity.getStatusTime().getTime());
+
+            if (historyEntryIsMoreRecentThanContainerStatus &&
+                    (!ContainerUtils.statusIsTerminal(containerEntity.getStatus()) ||  // Don't overwrite a terminal status
+                            ContainerUtils.statusIsTerminal(history.getStatus()))  // ...except with a newer terminal status (i.e. Complete -> Failed)
+            ) {
+                containerEntity.setStatusTime(history.getTimeRecorded());
+                containerEntity.setStatus(history.getStatus());
+                log.debug("Setting container entity {} status to \"{}\", based on history entry status \"{}\".",
+                        containerEntity.getId(),
+                        containerEntity.getStatus(),
+                        history.getStatus());
+            }
+
+            update(containerEntity);
+        } finally {
+            log.debug("Releasing lock for the container {}", containerEntity.getId());
+            containerLock.unlock();
         }
-
-        update(containerEntity);
 
         log.debug("{}", history);
 
