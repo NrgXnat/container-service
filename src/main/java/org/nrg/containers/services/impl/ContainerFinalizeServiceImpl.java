@@ -6,6 +6,8 @@ import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
@@ -50,7 +52,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
     }
 
     @Override
-    public Container finalizeContainer(final Container toFinalize, final UserI userI, final boolean isFailed, final List<Container> wrapupContainers) {
+    public Pair<Container, Container.ContainerHistory> finalizeContainer(final Container toFinalize, final UserI userI, final boolean isFailed, final List<Container> wrapupContainers) {
         final ContainerFinalizeHelper helper =
                 new ContainerFinalizeHelper(toFinalize, userI, isFailed, wrapupContainers);
         return helper.finalizeContainer();
@@ -204,7 +205,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             wrapperInputAndOutputValues = new HashMap<>(toFinalize.getWrapperInputs());
         }
 
-        private Container finalizeContainer() {
+        private Pair<Container, Container.ContainerHistory> finalizeContainer() {
             final Container.Builder finalizedContainerBuilder = toFinalize.toBuilder();
             List<String> logPaths = uploadLogs();
             finalizedContainerBuilder.logPaths(logPaths);
@@ -251,13 +252,14 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
             String details = wrkFlow != null ? wrkFlow.getDetails() : "";
             boolean processingCompleted = !isFailed;
 
+            Container.ContainerHistory finalizedHistoryItem;
+
             if (processingCompleted) {
                 // Upload outputs if processing completed successfully
 
                 final OutputsAndExceptions outputsAndExceptions = uploadOutputs(eventId);
                 final List<Exception> failedRequiredOutputs = outputsAndExceptions.exceptions;
                 status = PersistentWorkflowUtils.COMPLETE;
-                Date statusTime = new Date();
                 if (!failedRequiredOutputs.isEmpty()) {
                     details = "Failed to upload required outputs.\n" + Joiner.on("\n").join(Lists.transform(failedRequiredOutputs, new Function<Exception, String>() {
                         @Override
@@ -265,16 +267,10 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                             return input.getMessage();
                         }
                     }));
-                    final Container.ContainerHistory failedHistoryItem = Container.ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED + " (Upload)",
-                            details);
-                    status = failedHistoryItem.status();
-                    statusTime = failedHistoryItem.timeRecorded();
-                    finalizedContainerBuilder.addHistoryItem(failedHistoryItem)
-                            .statusTime(failedHistoryItem.timeRecorded());
+                    finalizedHistoryItem = Container.ContainerHistory.fromSystem(PersistentWorkflowUtils.FAILED + " (Upload)", details);
+                } else {
+                    finalizedHistoryItem = Container.ContainerHistory.fromSystem(status, details);
                 }
-                finalizedContainerBuilder.outputs(outputsAndExceptions.outputs)  // Overwrite any existing outputs
-                        .status(status)
-                        .statusTime(statusTime);
             } else {
                 // Check if failure already recorded (perhaps with more detail so we don't want to overwrite)
                 String exitCode = null;
@@ -308,27 +304,23 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                     // If it's not an XNAT failure status, we need to make it so
                     status = PersistentWorkflowUtils.FAILED;
                 }
-                finalizedContainerBuilder.addHistoryItem(Container.ContainerHistory.fromSystem(status, details, exitCode));
-                finalizedContainerBuilder.status(status)
-                        .statusTime(new Date());
-
                 if (StringUtils.isBlank(details)) {
                     details = "Non-zero exit code and/or failure status from container";
                 }
+                finalizedHistoryItem = Container.ContainerHistory.fromSystem(status, details, exitCode);
             }
 
             if (toFinalize.environmentVariables().containsKey(XNAT_USER)) {
                 aliasTokenService.invalidateToken(toFinalize.environmentVariables().get(XNAT_USER));
             }
 
-            ContainerUtils.updateWorkflowStatus(toFinalize.workflowId(), status, userI, details);
             if (!processingCompleted || CommandType.DOCKER.getName().equals(toFinalize.subtype())) {
                 // only send emails for the parent container or if processing failed
                 sendContainerStatusUpdateEmail(userI, processingCompleted, pipeline_name,
                         xnatId, xnatLabel, project, logPaths);
             }
 
-            return finalizedContainerBuilder.build();
+            return ImmutablePair.of(finalizedContainerBuilder.build(), finalizedHistoryItem);
         }
 
         private List<String> uploadLogs() {

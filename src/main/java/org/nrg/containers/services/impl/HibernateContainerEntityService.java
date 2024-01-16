@@ -199,15 +199,13 @@ public class HibernateContainerEntityService
             }
 
             update(containerEntity);
+
+            ContainerUtils.updateWorkflowStatus(containerEntity.getWorkflowId(), containerEntity.getStatus(),
+                    userI, history.getMessage());
         } finally {
             log.debug("Releasing lock for the container {}", containerEntity.getId());
             containerLock.unlock();
         }
-
-        log.debug("{}", history);
-
-        ContainerUtils.updateWorkflowStatus(containerEntity.getWorkflowId(), containerEntity.getStatus(),
-                userI, history.getMessage());
 
         return history;
     }

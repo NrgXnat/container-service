@@ -762,10 +762,6 @@ public abstract class Container {
 
         public abstract Builder history(List<ContainerHistory> history);
         abstract ImmutableList.Builder<ContainerHistory> historyBuilder();
-        public Builder addHistoryItem(final ContainerHistory history) {
-            historyBuilder().add(history);
-            return this;
-        }
 
         public abstract Builder logPaths(List<String> logPaths);
         abstract ImmutableList.Builder<String> logPathsBuilder();

@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
@@ -1317,12 +1318,14 @@ public class ContainerServiceImpl implements ContainerService {
         final String containerOrServiceId = notFinalized.containerOrServiceId();
         log.info("Finalizing Container {}, {} id {}.", databaseId, containerOrService, containerOrServiceId);
 
-        final Container finalized = containerFinalizeService.finalizeContainer(notFinalized, userI,
+        final Pair<Container, ContainerHistory> finalizationReturns = containerFinalizeService.finalizeContainer(notFinalized, userI,
                 failed, wrapupContainers);
-
-        log.debug("Done uploading files for container {}. Now saving information about outputs.", finalized);
-
-        containerEntityService.update(fromPojo(finalized));
+        final Container finalized = finalizationReturns.getLeft();
+        final ContainerHistory finalizationHistory = finalizationReturns.getRight();
+        // Update finalized container so logs and outputs are saved to db
+        update(finalized);
+        // Add final history item that was determined during finalization (which also updates container and workflow status)
+        addContainerHistoryItem(finalized, finalizationHistory, userI);
 
         // Now check if this container *is* a setup or wrapup container.
         // If so, we need to re-check the parent.
