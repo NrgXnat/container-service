@@ -3,9 +3,11 @@
 ## 3.4.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.3/).
 
+* **Improvement** [XNAT-7903][] Support shared data at project level 
 * **Bugfix** [CS-945][] Fix race condition on overlapping container status events
 
 [CS-945]: https://radiologics.atlassian.net/browse/CS-945
+[XNAT-7903]: https://radiologics.atlassian.net/browse/XNAT-7903
 
 ## 3.4.2
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.2/).
