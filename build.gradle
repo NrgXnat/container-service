@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.8.10-INTERNAL"
+        vXnat = "1.8.11-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
