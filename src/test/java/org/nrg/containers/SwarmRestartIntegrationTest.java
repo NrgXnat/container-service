@@ -6,6 +6,7 @@ import org.apache.commons.lang3.SystemUtils;
 import org.hibernate.NonUniqueObjectException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -137,6 +138,11 @@ public class SwarmRestartIntegrationTest {
             log.info("ENDING TEST " + description.getMethodName());
         }
     };
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {

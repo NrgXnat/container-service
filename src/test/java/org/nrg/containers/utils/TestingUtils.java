@@ -67,6 +67,7 @@ import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -75,6 +76,7 @@ import static org.mockito.Mockito.when;
 @Slf4j
 public class TestingUtils {
     public static final String BUSYBOX = "busybox:latest";
+    public static final boolean RUNNING_INTEGRATION_TESTS = Boolean.parseBoolean(System.getProperty("integration"));
 
     public static void commitTransaction() {
         TestTransaction.flagForCommit();
@@ -136,7 +138,14 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToDocker(DockerClient client) {
-        assumeThat("Cannot connect to docker", canConnectToDocker(client), is(true));
+        // If we aren't running integration tests, we have already skipped this test
+        if (RUNNING_INTEGRATION_TESTS) {
+            assumeTrue("Cannot connect to docker", canConnectToDocker(client));
+        }
+    }
+
+    public static void skipIfNotRunningIntegrationTests() {
+        assumeTrue("Not running integration tests", RUNNING_INTEGRATION_TESTS);
     }
 
     public static boolean canConnectToSwarm(DockerClient client) {

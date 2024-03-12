@@ -51,13 +51,13 @@ def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
 def vJersey = "3.0.6"
+def vBouncyCastle = "1.64" // Included in xnat-web via spring-security-jwt 1.1.1, see XNAT-7907
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
     implementation.extendsFrom(implementAndInclude)
     all {
         resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
-        exclude group: "org.bouncycastle"
     }
 }
 
@@ -70,6 +70,7 @@ dependencies {
     implementAndInclude ("org.mandas:docker-client:${vDockerClient}") {
         exclude group: "ch.qos.logback"
         exclude group: "org.slf4j"
+        exclude group: "org.bouncycastle"  // included in xnat-web via spring-security-jwt
         exclude group: "com.fasterxml.jackson.core"
         exclude group: "org.apache.commons", module: "commons-compress"  // included in xnat-web via parent
     }
@@ -92,6 +93,7 @@ dependencies {
         exclude group: "org.apache.commons", module: "commons-compress"
         exclude group: "org.apache.commons", module: "commons-lang3"
         exclude group: "org.slf4j"
+        exclude group: "org.bouncycastle"
         exclude group: "org.yaml", module: "snakeyaml"
     }
     implementAndInclude ("io.kubernetes:client-java-api:${vKubernetesClient}") {  // Explicitly including to exclude transitive deps
@@ -177,6 +179,8 @@ dependencies {
 
     implementation group: 'javax.interceptor', name: 'javax.interceptor-api', version: '1.2.2'
 
+    runtimeOnly "org.bouncycastle:bcpkix-jdk15on:$vBouncyCastle"
+    runtimeOnly "org.bouncycastle:bcprov-jdk15on:$vBouncyCastle"
     runtimeOnly "commons-codec:commons-codec"
     runtimeOnly "commons-io:commons-io"
     runtimeOnly "org.apache.commons:commons-compress"
@@ -203,8 +207,18 @@ dependencies {
     testImplementation "com.vladmihalcea:hibernate-types-43:${dependencyManagement.importedProperties["vladmihalcea-hibernate-types.version"]}"
 }
 
-task unitTest( type: Test ) {
-    exclude "**/*IntegrationTest.class"
+test {
+    systemProperty "integration", System.getProperty('integration') == "true"
+}
+
+tasks.register ( 'unitTest', Test ) {
+    systemProperties['integration'] = "false"
+    test
+}
+
+tasks.register ( 'integrationTest', Test ) {
+    systemProperties['integration'] = "true"
+    test
 }
 
 // Pulls in the Jenkins BUILD_NUMBER environment variable if available.

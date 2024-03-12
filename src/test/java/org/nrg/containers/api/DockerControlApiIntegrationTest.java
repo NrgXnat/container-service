@@ -8,6 +8,7 @@ import org.hamcrest.Matcher;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -78,6 +79,10 @@ public class DockerControlApiIntegrationTest {
 
     @Rule public ExpectedException exception = ExpectedException.none();
 
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {
@@ -153,7 +158,9 @@ public class DockerControlApiIntegrationTest {
         }
         imagesToCleanUp.clear();
 
-        CLIENT.close();
+        if (CLIENT != null) {
+            CLIENT.close();
+        }
     }
 
 

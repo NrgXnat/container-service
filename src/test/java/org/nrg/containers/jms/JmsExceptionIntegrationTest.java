@@ -1,5 +1,6 @@
 package org.nrg.containers.jms;
 
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
@@ -116,6 +117,11 @@ public class JmsExceptionIntegrationTest {
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {

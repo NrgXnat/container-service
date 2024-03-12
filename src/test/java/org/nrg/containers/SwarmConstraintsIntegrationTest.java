@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -194,6 +195,11 @@ public class SwarmConstraintsIntegrationTest {
             log.info("ENDING TEST " + description.getMethodName());
         }
     };
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {

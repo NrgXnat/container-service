@@ -1,19 +1,21 @@
 package org.nrg.containers.services;
 
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.DockerException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
+import org.mandas.docker.client.exceptions.DockerException;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.IntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.utils.TestingUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -38,7 +40,6 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.notNull;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer.DockerServer;
 
@@ -64,6 +65,11 @@ public class DockerServiceIntegrationTest {
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
 
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {

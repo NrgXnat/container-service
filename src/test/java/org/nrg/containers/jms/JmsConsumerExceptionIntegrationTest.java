@@ -2,6 +2,7 @@ package org.nrg.containers.jms;
 
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -73,6 +74,11 @@ public class JmsConsumerExceptionIntegrationTest {
     private final String FAKE_HOST = "mock://url";
     private final String FAKE_SITEID = "site";
     private final String FAKE_ID = "id";
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {
