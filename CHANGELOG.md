@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.5.0
+Not yet released.
+
+* **Improvement** [CS-946][] Prevent setting mutually distinct k8s PVC mounting options
+
+[CS-946]: https://radiologics.atlassian.net/browse/CS-946
+
 ## 3.4.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.3/).
 
