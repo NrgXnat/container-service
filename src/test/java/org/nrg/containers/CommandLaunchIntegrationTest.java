@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hamcrest.Matchers;
 import org.junit.After;
@@ -18,7 +19,10 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.LoggingBuildHandler;
+import org.mandas.docker.client.messages.swarm.ResourceSpec;
+import org.mandas.docker.client.messages.swarm.Service;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
@@ -108,6 +112,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItemInArray;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
@@ -1294,6 +1299,60 @@ public class CommandLaunchIntegrationTest {
         assertThat(exited.status(), not(containsString("Failed")));
         assertThat(exited.exitCode(), is("0"));
         assertThat(fakeWorkflow.getStatus(), not(startsWith(PersistentWorkflowUtils.FAILED)));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testCommandWithGenericResourcesGpu() throws Exception {
+        assumeThat("Generic resources not supported on docker backend", backend, is(not(Backend.DOCKER)));
+        assumeThat("GPU test not yet implemented on kubernetes", backend, is(not(Backend.KUBERNETES)));  // TODO add k8s support
+
+        // Load command and wrapper
+        final String comLaunchTestDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
+        final Path dir = Paths.get(comLaunchTestDir, "testCommandWithGenericResourcesGpu");
+        final String commandJsonFile = dir.resolve("debug_command_with_gpu.json").toString();
+        final String commandWrapperName = "debug-gpu";
+
+        final Command command = mapper.readValue(new File(commandJsonFile), Command.class);
+        final Command created = commandService.create(command);
+        TestingUtils.commitTransaction();
+
+        final CommandWrapper commandWrapper = created.xnatCommandWrappers().stream()
+                .filter(cw -> StringUtils.equals(cw.name(), commandWrapperName))
+                .findFirst()
+                .orElseThrow(RuntimeException::new);
+        assertThat(commandWrapper, is(not(nullValue())));
+
+        // Find project json file and load it
+        final String projectJsonFile = Paths.get(comLaunchTestDir, "project.json").toString();
+        final String projectDir = Paths.get(comLaunchTestDir, "project").toString();
+        final Project project = mapper.readValue(new File(projectJsonFile), Project.class);
+        project.setDirectory(projectDir);
+        final String projectJson = mapper.writeValueAsString(project);
+
+        // Create the mock objects we will need in order to verify permissions
+        final ArchivableItem mockProjectItem = mock(ArchivableItem.class);
+        final ExptURI mockUriObject = mock(ExptURI.class);
+        when(UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
+        when(mockUriObject.getSecurityItem()).thenReturn(mockProjectItem);
+
+        final Map<String, String> runtimeValues = Collections.singletonMap("project", projectJson);
+
+        log.debug("Queueing command for launch");
+        containerService.queueResolveCommandAndLaunchContainer(null, commandWrapper.id(),
+                0L, null, runtimeValues, mockUser, fakeWorkflow);
+        final Container execution = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        containersToCleanUp.add(execution.containerOrServiceId());
+
+        // Verify that we correctly sent the API message to the backend that we want a GPU
+        final DockerClient dockerClient = controlApi.getDockerClient();
+        final Service service = dockerClient.inspectService(execution.containerOrServiceId());
+        final List<ResourceSpec> genericResources = service.spec().taskTemplate().resources().reservations().resources();
+        assertThat(genericResources, hasSize(1));
+        final ResourceSpec gr = genericResources.get(0);
+        assertThat(gr.kind(), is("gpu"));
+        assertThat(gr, instanceOf(ResourceSpec.DiscreteResourceSpec.class));
+        assertThat(((ResourceSpec.DiscreteResourceSpec) gr).value(), is(1));
     }
 
     private void printContainerLogs(final Container container) throws IOException {
