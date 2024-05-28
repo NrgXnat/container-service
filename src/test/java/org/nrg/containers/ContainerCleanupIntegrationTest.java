@@ -16,10 +16,10 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.exceptions.ContainerNotFoundException;
 import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
@@ -37,6 +37,7 @@ import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
@@ -130,8 +131,6 @@ public class ContainerCleanupIntegrationTest {
     private static final List<String> containersToCleanUp = new ArrayList<>();
     private static final List<String> imagesToCleanUp = new ArrayList<>();
 
-    private DockerClient dockerClient;
-    private static Consumer<String> containerCleanupFunction;
     private KubernetesClient kubernetesClient;
     private String kubernetesNamespace;
 
@@ -238,20 +237,25 @@ public class ContainerCleanupIntegrationTest {
         )).thenReturn(true);
 
         // Setup docker server
-        DockerServer dockerServer = DockerServer.builder()
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
+        final DockerServer dockerServer = DockerServer.builder()
                 .name("Test server")
-                .host("unix:///var/run/docker.sock")
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .backend(backend)
                 .autoCleanup(autoCleanup)
                 .lastEventCheckTime(new Date())  // Set last event check time = now to filter out old events
                 .build();
         dockerServerService.setServer(dockerServer);
 
-        dockerClient = controlApi.getDockerClient();
-        kubernetesClient = kubernetesClientFactory.getKubernetesClient();
+        try {
+            kubernetesClient = kubernetesClientFactory.getKubernetesClient();
+        } catch (Exception ignored) {
+            kubernetesClient = Mockito.mock(KubernetesClient.class);
+        }
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.skipIfCannotConnect(backend, dockerClient, kubernetesClient.getBackendClient());
+        TestingUtils.skipIfCannotConnect(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient());
         kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
 
         kubernetesClient.start();
@@ -259,7 +263,7 @@ public class ContainerCleanupIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, dockerClient, kubernetesClient.getBackendClient(), kubernetesNamespace);
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
         assertThat(containerCleanupFunction, notNullValue());
         for (final String containerToCleanUp : containersToCleanUp) {
             if (containerToCleanUp == null) {
@@ -271,14 +275,12 @@ public class ContainerCleanupIntegrationTest {
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                dockerClient.removeImage(imageToCleanUp, true, false);
+                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
-
-        dockerClient.close();
 
         kubernetesClientFactory.shutdown();
         TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
@@ -648,7 +650,7 @@ public class ContainerCleanupIntegrationTest {
             case DOCKER:
                 checkFunc = () -> {
                     try {
-                        dockerClient.inspectContainer(id);
+                        controlApi.getDockerClient().inspectContainer(id);
                     } catch (ContainerNotFoundException e) {
                         // This is what we expect
                         return true;
@@ -661,7 +663,7 @@ public class ContainerCleanupIntegrationTest {
             case SWARM:
                 checkFunc = () -> {
                     try {
-                        dockerClient.inspectService(id);
+                        controlApi.getDockerClient().inspectService(id);
                     } catch (ServiceNotFoundException e) {
                         // This is what we expect
                         return true;

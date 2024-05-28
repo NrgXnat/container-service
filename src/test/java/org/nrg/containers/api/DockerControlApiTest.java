@@ -31,10 +31,8 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
-import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xft.security.UserI;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
@@ -60,7 +58,6 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.anyVararg;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -87,17 +84,15 @@ public class DockerControlApiTest {
     @Rule
     public TestRule watcher = new TestWatcher() {
         protected void starting(Description description) {
-            log.info("BEGINNING TEST " + description.getMethodName());
+            log.info("BEGINNING TEST {}", description.getMethodName());
         }
 
         protected void finished(Description description) {
-            log.info("ENDING TEST " + description.getMethodName());
+            log.info("ENDING TEST {}", description.getMethodName());
         }
     };
 
-    @Mock private CommandLabelService commandLabelService;
     @Mock private DockerHubService dockerHubService;
-    @Mock private NrgEventServiceI eventService;
     @Mock private DockerServerService dockerServerService;
     @Mock private KubernetesClientFactory kubernetesClientFactory;
     @Mock private KubernetesClient kubernetesClient;
@@ -120,7 +115,7 @@ public class DockerControlApiTest {
         // The fact that we have to do this is a code smell!
         // Should probably inject this client instance into DockerControlApi as a bean.
         dockerControlApi = PowerMockito.spy(new DockerControlApi(
-                dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory
+                dockerServerService, dockerHubService, kubernetesClientFactory
         ));
         PowerMockito.doReturn(mockDockerImage).when(dockerControlApi, method(
                 DockerControlApi.class, "pullImage", String.class))
@@ -315,165 +310,6 @@ public class DockerControlApiTest {
     }
 
     @Test
-    @SuppressWarnings("deprecation")
-    public void testGetStdoutLog() throws Exception {
-        // Test values
-        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stdout();
-
-        // Set up test-specific mocks
-        if (backend == Backend.SWARM) {
-            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                    .thenThrow(new RuntimeException("Should not be called"));
-            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
-        } else if (backend == Backend.KUBERNETES) {
-            when(container.podName()).thenReturn(BACKEND_ID);
-            when(kubernetesClient.getLog(
-                    BACKEND_ID, LogType.STDOUT, null, null
-            )).thenReturn(LOG_CONTENTS);
-        } else {
-            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
-            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                    .thenThrow(new RuntimeException("Should not be called"));
-        }
-
-        // Run the test
-        final String log = dockerControlApi.getStdoutLog(container);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testGetStderrLog() throws Exception {
-        assumeThat("Special stderr handling for kubernetes", backend, not(Backend.KUBERNETES));
-
-        // Test values
-        final DockerClient.LogsParam dockerClientLogType = DockerClient.LogsParam.stderr();
-
-        // Set up test-specific mocks
-        if (swarmMode) {
-            when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                    .thenThrow(new RuntimeException("Should not be called"));
-            when(mockDockerClient.serviceLogs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
-        } else {
-            when(mockDockerClient.logs(BACKEND_ID, dockerClientLogType)).thenReturn(logStream);
-            when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                    .thenThrow(new RuntimeException("Should not be called"));
-        }
-
-        // Run the test
-        final String log = dockerControlApi.getStderrLog(container);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testGetContainerStdoutLog() throws Exception {
-        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
-
-        // Test values.
-        // Ideally these values would be parameterized, but I don't know how to make
-        //  different sets of parameters for different tests in junit.
-        final boolean withTimestamp = false;
-        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
-        final DockerClient.LogsParam logType = DockerClient.LogsParam.stdout();
-
-        // Set up test-specific mocks
-        when(mockDockerClient.logs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
-        when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                .thenThrow(new RuntimeException("Should not be called"));
-
-        // Run the test
-        final String log = dockerControlApi.getContainerStdoutLog(BACKEND_ID, timestampParam, sinceParam);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testGetContainerStderrLog() throws Exception {
-        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
-
-        // Test values.
-        // Ideally these values would be parameterized, but I don't know how to make
-        //  different sets of parameters for different tests in junit.
-        final boolean withTimestamp = false;
-        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
-        final DockerClient.LogsParam logType = DockerClient.LogsParam.stderr();
-
-        // Set up test-specific mocks
-        when(mockDockerClient.logs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
-        when(mockDockerClient.serviceLogs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                .thenThrow(new RuntimeException("Should not be called"));
-
-        // Run the test
-        final String log = dockerControlApi.getContainerStderrLog(BACKEND_ID, timestampParam, sinceParam);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testGetServiceStdoutLog() throws Exception {
-        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
-
-        // Test values.
-        // Ideally these values would be parameterized, but I don't know how to make
-        //  different sets of parameters for different tests in junit.
-        final boolean withTimestamp = false;
-        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
-        final DockerClient.LogsParam logType = DockerClient.LogsParam.stdout();
-
-        // Set up test-specific mocks
-        when(mockDockerClient.serviceLogs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
-        when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                .thenThrow(new RuntimeException("Should not be called"));
-
-        // Run the test
-        final String log = dockerControlApi.getServiceStdoutLog(BACKEND_ID, timestampParam, sinceParam);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testGetServiceStderrLog() throws Exception {
-        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
-
-        // Test values.
-        // Ideally these values would be parameterized, but I don't know how to make
-        //  different sets of parameters for different tests in junit.
-        final boolean withTimestamp = false;
-        final DockerClient.LogsParam timestampParam = DockerClient.LogsParam.timestamps(withTimestamp);
-        final Integer since = Math.toIntExact(System.currentTimeMillis() / 1000L);
-        final DockerClient.LogsParam sinceParam = DockerClient.LogsParam.since(since);
-        final DockerClient.LogsParam logType = DockerClient.LogsParam.stderr();
-
-        // Set up test-specific mocks
-        when(mockDockerClient.serviceLogs(BACKEND_ID, logType, timestampParam, sinceParam)).thenReturn(logStream);
-        when(mockDockerClient.logs(any(String.class), (DockerClient.LogsParam) anyVararg()))
-                .thenThrow(new RuntimeException("Should not be called"));
-
-        // Run the test
-        final String log = dockerControlApi.getServiceStderrLog(BACKEND_ID, timestampParam, sinceParam);
-
-        // Check results
-        assertThat(log, is(equalTo(LOG_CONTENTS)));
-    }
-
-    @Test
     public void testCreate_container() throws Exception {
 
         // Make test objects
@@ -574,34 +410,6 @@ public class DockerControlApiTest {
 
         // Check results
         assertThat(created, equalTo(expected));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testCreateContainerOrSwarmService_container() throws Exception {
-        // Test objects
-        final Container toCreate = Mockito.mock(Container.class);
-        Mockito.doReturn(container).when(dockerControlApi).create(any(Container.class), any(UserI.class));
-
-        // Run the test
-        dockerControlApi.createContainerOrSwarmService(toCreate, user);
-
-        // Check the results
-        verify(dockerControlApi).create(toCreate, user);
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testCreateContainerOrSwarmService_resolvedCommand() throws Exception {
-        // Test objects
-        final ResolvedCommand resolvedCommand = Mockito.mock(ResolvedCommand.class);
-        Mockito.doReturn(container).when(dockerControlApi).create(any(ResolvedCommand.class), any(UserI.class));
-
-        // Run the test
-        dockerControlApi.createContainerOrSwarmService(resolvedCommand, user);
-
-        // Check the results
-        verify(dockerControlApi).create(resolvedCommand, user);
     }
 
     @Test
@@ -742,44 +550,6 @@ public class DockerControlApiTest {
 
         // Verify that the client method was called as expected
         verify(mockDockerClient).startContainer(BACKEND_ID);
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testKillContainer() throws Exception {
-        assumeThat("Method only called in local docker mode", backend, is(Backend.DOCKER));
-
-        // Run the test
-        dockerControlApi.killContainer(BACKEND_ID);
-
-        // Verify the client method was called as expected
-        verify(mockDockerClient).killContainer(BACKEND_ID);
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testKillService() throws Exception {
-        assumeThat("Method only called in swarm mode", backend, is(Backend.SWARM));
-
-        // Run the test
-        dockerControlApi.killService(BACKEND_ID);
-
-        // Verify the client method was called as expected
-        verify(mockDockerClient).removeService(BACKEND_ID);
-
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    public void testRemoveContainerOrService() throws Exception {
-        // Mock expected behavior
-        doNothing().when(dockerControlApi).autoCleanup(any(Container.class));
-
-        // Run the test
-        dockerControlApi.removeContainerOrService(container);
-
-        // Verify the expected behavior
-        verify(dockerControlApi).autoCleanup(container);
     }
 
     @Test

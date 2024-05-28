@@ -1,20 +1,18 @@
 package org.nrg.containers.services;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.DockerException;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.IntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -30,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.File;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasSize;
@@ -39,7 +36,6 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeThat;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer.DockerServer;
 
@@ -48,14 +44,13 @@ import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServ
 @ContextConfiguration(classes = IntegrationTestConfig.class)
 @Transactional
 public class DockerServiceIntegrationTest {
+    private final static String IMAGE_NAME = "xnat/testy-test:tag";
+
     private UserI mockUser;
+    private String imageId;
 
     private final String FAKE_USER = "mockUser";
-    private final String FAKE_ALIAS = "alias";
-    private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
-
-    private static DockerClient CLIENT;
 
     @Autowired private DockerControlApi controlApi;
     @Autowired private DockerService dockerService;
@@ -73,38 +68,12 @@ public class DockerServiceIntegrationTest {
 
     @Before
     public void setup() throws Exception {
-        // Mock out the prefs bean
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
-
-        dockerServerService.setServer(DockerServer.create("name", containerHost));
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
+        dockerServerService.setServer(DockerServer.builder()
+                .name("Test server")
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
+                .build());
 
         // Mock the userI
         mockUser = Mockito.mock(UserI.class);
@@ -119,29 +88,19 @@ public class DockerServiceIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(folder.newFolder().getAbsolutePath()); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        CLIENT = controlApi.getDockerClient();
-    }
+        TestingUtils.skipIfCannotConnectToDocker(controlApi.getDockerClient());
 
-    private boolean canConnectToDocker() {
-        try {
-            return CLIENT.ping().equals("OK");
-        } catch (InterruptedException | DockerException e) {
-            log.warn("Could not connect to docker.", e);
-        }
-        return false;
+        final String imageName = "xnat/testy-test:tag";
+        final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
+
+        imageId = controlApi.getDockerClient().build(Paths.get(dir), imageName);
     }
 
     @Test
     @DirtiesContext
     public void testSaveCommandFromImageLabels() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
 
-        final String imageName = "xnat/testy-test:tag";
-        final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
-
-        CLIENT.build(Paths.get(dir), imageName);
-
-        final List<Command> commands = dockerService.saveFromImageLabels(imageName);
+        final List<Command> commands = dockerService.saveFromImageLabels(IMAGE_NAME);
         assertThat(commands, hasSize(1));
         final Command command = commands.get(0);
         assertThat(command.id(), not(0L));
@@ -151,26 +110,19 @@ public class DockerServiceIntegrationTest {
         final Command.CommandWrapper wrapper = wrappers.get(0);
         assertThat(wrapper.id(), not(0L));
 
-        CLIENT.removeImage(imageName);
+        controlApi.getDockerClient().removeImage(IMAGE_NAME);
     }
 
     @Test
     @DirtiesContext
     public void testDeleteCommandWhenDeleteImage() throws Exception {
-        assumeThat(canConnectToDocker(), is(true));
-
-        final String imageName = "xnat/testy-test:tag";
-        final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
-
-        final String imageId = CLIENT.build(Paths.get(dir), imageName);
-
-        final List<Command> commands = dockerService.saveFromImageLabels(imageName);
+        final List<Command> commands = dockerService.saveFromImageLabels(IMAGE_NAME);
 
         TestTransaction.flagForCommit();
         TestTransaction.end();
         TestTransaction.start();
 
-        final DockerImage dockerImageByName = dockerService.getImage(imageName);
+        final DockerImage dockerImageByName = dockerService.getImage(IMAGE_NAME);
         final DockerImage dockerImageById = dockerService.getImage(imageId);
         assertThat(dockerImageByName, is(not(nullValue(DockerImage.class))));
         assertThat(dockerImageByName, is(dockerImageById));

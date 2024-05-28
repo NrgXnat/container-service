@@ -2,7 +2,6 @@ package org.nrg.containers.jms;
 
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -44,8 +43,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 
-import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.contains;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
@@ -56,7 +60,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = {JmsConfig.class, IntegrationTestConfig.class})
 @Transactional
-public class JmsConsumerExceptionIntegrationTest {
+public class JmsConsumerExceptionTest {
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;
@@ -74,11 +78,6 @@ public class JmsConsumerExceptionIntegrationTest {
     private final String FAKE_HOST = "mock://url";
     private final String FAKE_SITEID = "site";
     private final String FAKE_ID = "id";
-
-    @BeforeClass
-    public static void setupClass() {
-        TestingUtils.skipIfNotRunningIntegrationTests();
-    }
 
     @Before
     public void setup() throws Exception {

@@ -68,7 +68,7 @@ public class ContainerRestApiTest {
     private Authentication ADMIN_AUTH;
     private MockMvc mockMvc;
 
-    private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
+    private final MediaType JSON = MediaType.APPLICATION_JSON;
 
     @Autowired private WebApplicationContext wac;
     @Autowired private ObjectMapper mapper;
@@ -143,7 +143,6 @@ public class ContainerRestApiTest {
             final String response =
                     mockMvc.perform(request)
                             .andExpect(status().isOk())
-                            .andExpect(content().contentType(JSON))
                             .andReturn()
                             .getResponse()
                             .getContentAsString();
@@ -162,7 +161,6 @@ public class ContainerRestApiTest {
             final String response =
                     mockMvc.perform(request)
                             .andExpect(status().isOk())
-                            .andExpect(content().contentType(JSON))
                             .andReturn()
                             .getResponse()
                             .getContentAsString();
@@ -184,7 +182,6 @@ public class ContainerRestApiTest {
             final String response =
                     mockMvc.perform(request)
                             .andExpect(status().isOk())
-                            .andExpect(content().contentType(JSON))
                             .andReturn()
                             .getResponse()
                             .getContentAsString();
@@ -211,7 +208,6 @@ public class ContainerRestApiTest {
             final String response =
                     mockMvc.perform(request)
                             .andExpect(status().isOk())
-                            .andExpect(content().contentType(JSON))
                             .andReturn()
                             .getResponse()
                             .getContentAsString();

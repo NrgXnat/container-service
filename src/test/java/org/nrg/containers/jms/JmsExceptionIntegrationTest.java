@@ -1,17 +1,16 @@
 package org.nrg.containers.jms;
 
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mandas.docker.client.DockerClient;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
@@ -26,6 +25,7 @@ import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.entities.AliasToken;
@@ -65,16 +65,20 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.AdditionalMatchers.aryEq;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyMapOf;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
@@ -109,8 +113,6 @@ public class JmsExceptionIntegrationTest {
     private final String FAKE_HOST = "mock://url";
     private final String FAKE_SITEID = "site";
     private final String FAKE_ID = "id";
-
-    private static DockerClient CLIENT;
 
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
@@ -194,13 +196,9 @@ public class JmsExceptionIntegrationTest {
 
     @After
     public void cleanup() {
-        if (CLIENT == null) {
-            return;
-        }
-
         for (final String containerToCleanUp : containersToCleanUp) {
             try {
-                CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
+                controlApi.getDockerClient().removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
             } catch (Exception e) {
                 // do nothing
             }
@@ -209,14 +207,12 @@ public class JmsExceptionIntegrationTest {
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
+                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
-
-        CLIENT.close();
     }
 
     @Test
@@ -260,9 +256,9 @@ public class JmsExceptionIntegrationTest {
         TestingUtils.commitTransaction();
 
         log.debug("Waiting until task has started");
-        await().until(TestingUtils.containerHasStarted(CLIENT, false, container), is(true));
+        await().until(TestingUtils.containerHasStarted(controlApi.getDockerClient(), false, container), is(true));
         log.debug("Waiting until task has finished");
-        await().until(TestingUtils.containerIsRunning(CLIENT, false, container), is(false));
+        await().until(TestingUtils.containerIsRunning(controlApi.getDockerClient(), false, container), is(false));
         log.debug("Waiting until container has failed");
         await().until(TestingUtils.containerIsFinalized(containerService, container), is(true));
 
@@ -278,50 +274,20 @@ public class JmsExceptionIntegrationTest {
     }
 
     private void setupServer() throws Exception {
-        // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
         dockerServerService.setServer(DockerServerBase.DockerServer.builder()
                 .name("Test server")
-                .host(containerHost)
-                .certPath(certPath)
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .backend(Backend.DOCKER)
                 .lastEventCheckTime(new Date())
                 .build());
 
         String img = "busybox:latest";
-        CLIENT = controlApi.getDockerClient();
-        CLIENT.pull(img);
+        controlApi.getDockerClient().pull(img);
         imagesToCleanUp.add(img);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.skipIfCannotConnectToDocker(CLIENT);
+        TestingUtils.skipIfCannotConnectToDocker(controlApi.getDockerClient());
     }
 }

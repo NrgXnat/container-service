@@ -32,7 +32,7 @@ public abstract class ServiceTask {
     @Nullable public abstract String nodeId();
     public abstract Boolean swarmNodeError();
     public abstract String status();
-    @Nullable public abstract Date statusTime();
+    @Nullable public abstract String statusTime();
     @Nullable public abstract String containerId();
     @Nullable public abstract String message();
     @Nullable public abstract String err();
@@ -64,7 +64,7 @@ public abstract class ServiceTask {
                 .nodeId(task.nodeId())
                 .status(task.status().state())
                 .swarmNodeError(swarmNodeError)
-                .statusTime(task.status().timestamp())
+                .statusTime(task.status().timestamp().toString())
                 .message(msg)
                 .err(err)
                 .exitCode(exitCode)
@@ -75,7 +75,6 @@ public abstract class ServiceTask {
     public static ServiceTask createFromHistoryAndService(final @Nonnull Container.ContainerHistory history,
                                                           final @Nonnull Container service) {
         String exitCode = history.exitCode();
-        String externalTime = history.externalTimestamp();
         String message = history.message();
         return ServiceTask.builder()
                 .serviceId(service.serviceId())
@@ -83,7 +82,7 @@ public abstract class ServiceTask {
                 .status(history.status())
                 .swarmNodeError(message != null && message.contains(swarmNodeErrMsg)) // Hack
                 .exitCode(exitCode == null ? null : Long.parseLong(exitCode))
-                .statusTime(externalTime == null ? null : new Date(Long.parseLong(externalTime)))
+                .statusTime(history.externalTimestamp())
                 .build();
     }
 
@@ -124,7 +123,7 @@ public abstract class ServiceTask {
         public abstract Builder nodeId(final String nodeId);
         public abstract Builder status(final String status);
         public abstract Builder swarmNodeError(final Boolean swarmNodeError);
-        public abstract Builder statusTime(final Date statusTime);
+        public abstract Builder statusTime(final String statusTime);
         public abstract Builder message(final String message);
         public abstract Builder err(final String err);
         public abstract Builder exitCode(final Long exitCode);

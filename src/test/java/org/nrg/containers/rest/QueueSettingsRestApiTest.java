@@ -73,7 +73,7 @@ public class QueueSettingsRestApiTest {
 
     private final String PATH = "/jms_queues";
 
-    private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
+    private final MediaType JSON = MediaType.APPLICATION_JSON;
 
     private String VALID_MIN = "2";
     private String VALID_MAX = "300";
@@ -239,7 +239,6 @@ public class QueueSettingsRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();

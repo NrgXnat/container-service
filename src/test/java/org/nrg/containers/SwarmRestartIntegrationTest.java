@@ -1,7 +1,6 @@
 package org.nrg.containers;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hibernate.NonUniqueObjectException;
 import org.junit.After;
@@ -33,6 +32,7 @@ import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -69,7 +69,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.equalTo;
@@ -110,8 +109,6 @@ public class SwarmRestartIntegrationTest {
 
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
-
-    private static DockerClient CLIENT;
 
     @Autowired private CommandService commandService;
     @Autowired private ContainerService containerService;
@@ -194,48 +191,18 @@ public class SwarmRestartIntegrationTest {
                 eq(mockUser), any(XFTItem.class), any(EventDetails.class));
 
         // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
         dockerServerService.setServer(DockerServer.builder()
                 .name("Test server")
-                .host(containerHost)
-                .certPath(certPath)
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .backend(backend)
                 .lastEventCheckTime(new Date())
                 .build());
 
-        CLIENT = controlApi.getDockerClient();
-
-        TestingUtils.skipIfCannotConnectToSwarm(CLIENT);
+        TestingUtils.skipIfCannotConnectToSwarm(controlApi.getDockerClient());
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.pullBusyBox(CLIENT);
+        TestingUtils.pullBusyBox(controlApi.getDockerClient());
 
         final Command sleeper = commandService.create(Command.builder()
                 .name("long-running")
@@ -251,14 +218,14 @@ public class SwarmRestartIntegrationTest {
     }
 
     @After
-    public void cleanup() throws Exception {
+    public void cleanup() {
         fakeWorkflow = new FakeWorkflow();
         for (final String containerToCleanUp : containersToCleanUp) {
             try {
                 if (swarmMode) {
-                    CLIENT.removeService(containerToCleanUp);
+                    controlApi.getDockerClient().removeService(containerToCleanUp);
                 } else {
-                    CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
+                    controlApi.getDockerClient().removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
                 }
             } catch (Exception e) {
                 // do nothing
@@ -268,14 +235,12 @@ public class SwarmRestartIntegrationTest {
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
+                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
-
-        CLIENT.close();
     }
 
     @Test
@@ -289,26 +254,26 @@ public class SwarmRestartIntegrationTest {
         containersToCleanUp.add(serviceId);
 
         log.debug("Waiting until task has started");
-        await().until(TestingUtils.getServiceNode(CLIENT, service), is(notNullValue()));
+        await().until(TestingUtils.getServiceNode(controlApi.getDockerClient(), service), is(notNullValue()));
 
         // Restart
         log.debug("Kill node on which service is running to cause a restart");
-        String nodeId = TestingUtils.getServiceNode(CLIENT, service).call();
-        NodeInfo nodeInfo = CLIENT.inspectNode(nodeId);
+        String nodeId = TestingUtils.getServiceNode(controlApi.getDockerClient(), service).call();
+        NodeInfo nodeInfo = controlApi.getDockerClient().inspectNode(nodeId);
         ManagerStatus managerStatus = nodeInfo.managerStatus();
         Boolean isManager;
         if (managerStatus != null && (isManager = managerStatus.leader()) != null && isManager) {
             NodeSpec nodeSpec = NodeSpec.builder(nodeInfo.spec()).availability("drain").build();
             // drain the manager
-            CLIENT.updateNode(nodeId, nodeInfo.version().index(), nodeSpec);
+            controlApi.getDockerClient().updateNode(nodeId, nodeInfo.version().index(), nodeSpec);
             Thread.sleep(1000L); // Sleep long enough for status updater to run
             // readd manager
-            nodeInfo = CLIENT.inspectNode(nodeId);
+            nodeInfo = controlApi.getDockerClient().inspectNode(nodeId);
             nodeSpec = NodeSpec.builder(nodeInfo.spec()).availability("active").build();
-            CLIENT.updateNode(nodeId, nodeInfo.version().index(), nodeSpec);
+            controlApi.getDockerClient().updateNode(nodeId, nodeInfo.version().index(), nodeSpec);
         } else {
             // delete the node
-            CLIENT.deleteNode(nodeId, true);
+            controlApi.getDockerClient().deleteNode(nodeId, true);
             Thread.sleep(500L); // Sleep long enough for status updater to run
         }
 
@@ -318,7 +283,7 @@ public class SwarmRestartIntegrationTest {
         containersToCleanUp.add(restartedService.serviceId());
         assertThat(restartedService.countRestarts(), is(1));
         log.debug("Waiting until task has restarted");
-        await().until(TestingUtils.serviceIsRunning(CLIENT, restartedService)); //Running again = success!
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), restartedService)); //Running again = success!
     }
 
     @Test
@@ -333,11 +298,11 @@ public class SwarmRestartIntegrationTest {
         containersToCleanUp.add(serviceId);
 
         log.debug("Waiting until task has started");
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service));
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), service));
 
         // Restart
         log.debug("Removing service to throw a restart event");
-        CLIENT.removeService(serviceId);
+        controlApi.getDockerClient().removeService(serviceId);
 
         // Ensure the restart request has gone through
         await().until(TestingUtils.serviceHasTaskId(containerService, service.databaseId()), is(false));
@@ -349,7 +314,7 @@ public class SwarmRestartIntegrationTest {
         final Container restartedContainer = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedContainer.serviceId());
         assertThat(restartedContainer.countRestarts(), is(1));
-        await().until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running again = success!
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), restartedContainer)); //Running again = success!
     }
 
     @Test
@@ -368,7 +333,7 @@ public class SwarmRestartIntegrationTest {
                 .pollInterval(50, TimeUnit.MILLISECONDS)
                 .until(() -> {
                     try {
-                        Long replicas = CLIENT.inspectService(service.serviceId()).spec().mode().replicated().replicas();
+                        Long replicas = controlApi.getDockerClient().inspectService(service.serviceId()).spec().mode().replicated().replicas();
                         log.debug("Service {} replicas {}", service.serviceId(), replicas);
                         return replicas;
                     } catch (Exception e) {
@@ -378,7 +343,7 @@ public class SwarmRestartIntegrationTest {
 
         // Restart
         log.debug("Removing service {} before it starts running to throw a restart event", service.serviceId());
-        CLIENT.removeService(service.serviceId());
+        controlApi.getDockerClient().removeService(service.serviceId());
 
         // ensure that container restarted & status updates, etc
         log.debug("Waiting for container service to restart container {}...", service.databaseId());
@@ -408,7 +373,7 @@ public class SwarmRestartIntegrationTest {
 
         log.debug("Waiting until restarted container {} service {} is running...",
                 restartedContainer.databaseId(), restartedContainer.serviceId());
-        await().until(TestingUtils.serviceIsRunning(CLIENT, restartedContainer)); //Running = success!
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), restartedContainer)); //Running = success!
     }
 
 
@@ -429,10 +394,10 @@ public class SwarmRestartIntegrationTest {
             TestingUtils.commitTransaction();
 
             log.debug("Waiting until task has started");
-            await().until(TestingUtils.serviceIsRunning(CLIENT, service));
+            await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), service));
 
             log.debug("Removing service to throw a restart event");
-            CLIENT.removeService(serviceId);
+            controlApi.getDockerClient().removeService(serviceId);
             Thread.sleep(1000L); // Sleep long enough for status updater to run
 
             // ensure that container restarted & status updates, etc

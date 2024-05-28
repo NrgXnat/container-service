@@ -18,9 +18,9 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.DockerClient;
 import org.mandas.docker.client.LoggingBuildHandler;
 import org.mockito.ArgumentMatcher;
+import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
@@ -32,11 +32,17 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerMount;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.*;
+import org.nrg.containers.model.xnat.FakeWorkflow;
+import org.nrg.containers.model.xnat.Project;
+import org.nrg.containers.model.xnat.Resource;
+import org.nrg.containers.model.xnat.Scan;
+import org.nrg.containers.model.xnat.Session;
+import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -117,7 +123,11 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.nrg.containers.services.ContainerService.*;
+import static org.nrg.containers.services.ContainerService.XNAT_EVENT_ID;
+import static org.nrg.containers.services.ContainerService.XNAT_HOST;
+import static org.nrg.containers.services.ContainerService.XNAT_PASS;
+import static org.nrg.containers.services.ContainerService.XNAT_USER;
+import static org.nrg.containers.services.ContainerService.XNAT_WORKFLOW_ID;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
 import static org.powermock.api.mockito.PowerMockito.doNothing;
 import static org.powermock.api.mockito.PowerMockito.doReturn;
@@ -127,7 +137,8 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @RunWith(PowerMockRunner.class)
 @PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class})
+        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class,
+        org.nrg.xnat.utils.FileUtils.class})
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
@@ -152,7 +163,6 @@ public class CommandLaunchIntegrationTest {
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
 
-    private DockerClient dockerClient;
     private KubernetesClient kubernetesClient;
     private String kubernetesNamespace;
 
@@ -255,9 +265,11 @@ public class CommandLaunchIntegrationTest {
         )).thenReturn(true);
 
         // Setup docker server
-        DockerServer dockerServer = DockerServer.builder()
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
+        final DockerServer dockerServer = DockerServer.builder()
                 .name("Test server")
-                .host("unix:///var/run/docker.sock")
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .backend(backend)
                 .autoCleanup(true)
                 .lastEventCheckTime(new Date())  // Set last event check time = now to filter out old events
@@ -265,11 +277,14 @@ public class CommandLaunchIntegrationTest {
         dockerServerService.setServer(dockerServer);
         TestingUtils.commitTransaction();
 
-        dockerClient = controlApi.getDockerClient();
-        kubernetesClient = kubernetesClientFactory.getKubernetesClient();
+        try {
+            kubernetesClient = kubernetesClientFactory.getKubernetesClient();
+        } catch (Exception ignored) {
+            kubernetesClient = Mockito.mock(KubernetesClient.class);
+        }
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.skipIfCannotConnect(backend, dockerClient, kubernetesClient.getBackendClient());
+        TestingUtils.skipIfCannotConnect(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient());
         kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
 
         kubernetesClient.start();
@@ -277,7 +292,7 @@ public class CommandLaunchIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, dockerClient, kubernetesClient.getBackendClient(), kubernetesNamespace);
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
         assertThat(containerCleanupFunction, notNullValue());
         for (final String containerToCleanUp : containersToCleanUp) {
             if (containerToCleanUp == null) {
@@ -289,14 +304,12 @@ public class CommandLaunchIntegrationTest {
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                dockerClient.removeImage(imageToCleanUp, true, false);
+                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
-
-        dockerClient.close();
 
         kubernetesClient.stop();
         TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
@@ -458,6 +471,11 @@ public class CommandLaunchIntegrationTest {
         when(UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockProjectItem);
 
+        // Mock util method for shared file paths
+        PowerMockito.mockStatic(org.nrg.xnat.utils.FileUtils.class);
+        when(org.nrg.xnat.utils.FileUtils.getAllSharedPaths(project.getId(), mockUser, false, false, true, false))
+                .thenReturn(Collections.emptyMap());
+
         final Map<String, String> runtimeValues = Maps.newHashMap();
         runtimeValues.put("project", projectJson);
 
@@ -577,7 +595,7 @@ public class CommandLaunchIntegrationTest {
         final String setupCommandImageName = setupCommandSplitOnColon[0] + ":" + setupCommandSplitOnColon[1];
         final String setupCommandName = setupCommandSplitOnColon[2];
 
-        dockerClient.build(setupCommandDirPath, setupCommandImageName);
+        controlApi.getDockerClient().build(setupCommandDirPath, setupCommandImageName);
         imagesToCleanUp.add(setupCommandImageName);
 
         // Make the setup command from the json file.
@@ -705,8 +723,8 @@ public class CommandLaunchIntegrationTest {
         final String commandWithWrapupCommandImageName = commandWithWrapupCommand.image();
 
         // Build two images: the wrapup image and the main image
-        dockerClient.build(wrapupCommandDirPath, wrapupCommandImageName, "Dockerfile.wrapup", new LoggingBuildHandler());
-        dockerClient.build(wrapupCommandDirPath, commandWithWrapupCommandImageName, "Dockerfile.main", new LoggingBuildHandler());
+        controlApi.getDockerClient().build(wrapupCommandDirPath, wrapupCommandImageName, "Dockerfile.wrapup", new LoggingBuildHandler());
+        controlApi.getDockerClient().build(wrapupCommandDirPath, commandWithWrapupCommandImageName, "Dockerfile.main", new LoggingBuildHandler());
         imagesToCleanUp.add(wrapupCommandImageName);
         imagesToCleanUp.add(commandWithWrapupCommandImageName);
 
@@ -874,7 +892,7 @@ public class CommandLaunchIntegrationTest {
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        dockerClient.build(testDir, imageName);
+        controlApi.getDockerClient().build(testDir, imageName);
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -914,7 +932,7 @@ public class CommandLaunchIntegrationTest {
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        dockerClient.build(testDir, imageName);
+        controlApi.getDockerClient().build(testDir, imageName);
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -993,7 +1011,7 @@ public class CommandLaunchIntegrationTest {
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testDeleteCommandWhenDeleteImageAfterLaunchingContainer");
 
-        final String imageId = dockerClient.build(testDir, imageName);
+        final String imageId = controlApi.getDockerClient().build(testDir, imageName);
 
         final List<Command> commands = dockerService.saveFromImageLabels(imageName);
 

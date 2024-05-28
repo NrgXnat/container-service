@@ -66,7 +66,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assume.assumeThat;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -76,6 +75,7 @@ import static org.mockito.Mockito.when;
 @Slf4j
 public class TestingUtils {
     public static final String BUSYBOX = "busybox:latest";
+    private static final String DEFAULT_DOCKER_SOCKET = "unix:///var/run/docker.sock";
     public static final boolean RUNNING_INTEGRATION_TESTS = Boolean.parseBoolean(System.getProperty("integration"));
 
     public static void commitTransaction() {
@@ -110,6 +110,54 @@ public class TestingUtils {
         return combinations;
     }
 
+    public static BackendConfig getBackendConfig() throws Exception {
+        return getBackendConfig(null);
+    }
+
+    public static BackendConfig getBackendConfig(SystemDelegate systemDelegate) throws Exception {
+        if (systemDelegate == null) {
+            systemDelegate = new SysEnvSystemDelegate();
+        }
+
+        final String hostEnv = systemDelegate.getenv("DOCKER_HOST");
+        final String certPathEnv = systemDelegate.getenv("DOCKER_CERT_PATH");
+        final String tlsVerify = systemDelegate.getenv("DOCKER_TLS_VERIFY");
+
+        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
+        final String certPath;
+        if (useTls) {
+            if (StringUtils.isBlank(certPathEnv)) {
+                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
+            }
+            certPath = certPathEnv;
+        } else {
+            certPath = "";
+        }
+
+        final String containerHost;
+        if (StringUtils.isBlank(hostEnv)) {
+            containerHost = DEFAULT_DOCKER_SOCKET;
+        } else if (hostEnv.startsWith("tcp://")) {
+            // Must switch out tcp:// for either http:// or https://
+            containerHost = hostEnv.replace("tcp://", useTls ? "https://" : "http://");
+        } else {
+            containerHost = hostEnv;
+        }
+
+        return new BackendConfig(containerHost, certPath);
+    }
+
+    public interface SystemDelegate {
+        String getenv(String key);
+    }
+
+    public static final class SysEnvSystemDelegate implements SystemDelegate {
+        @Override
+        public String getenv(String key) {
+            return System.getenv(key);
+        }
+    }
+
     public static void skipIfCannotConnect(Backend backend, DockerClient dockerClient, ApiClient kubernetesClient) {
         switch (backend) {
             case DOCKER:
@@ -139,9 +187,8 @@ public class TestingUtils {
 
     public static void skipIfCannotConnectToDocker(DockerClient client) {
         // If we aren't running integration tests, we have already skipped this test
-        if (RUNNING_INTEGRATION_TESTS) {
-            assumeTrue("Cannot connect to docker", canConnectToDocker(client));
-        }
+        skipIfNotRunningIntegrationTests();
+        assumeTrue("Cannot connect to docker", canConnectToDocker(client));
     }
 
     public static void skipIfNotRunningIntegrationTests() {
@@ -165,7 +212,8 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToSwarm(DockerClient client) {
-        assumeThat("Cannot connect to swarm", canConnectToSwarm(client), is(true));
+        skipIfNotRunningIntegrationTests();
+        assumeTrue("Cannot connect to swarm", canConnectToSwarm(client));
     }
 
     public static boolean canConnectToKubernetes(ApiClient client) {
@@ -185,7 +233,8 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToKubernetes(ApiClient client) {
-        assumeThat("Cannot connect to kubernetes", canConnectToKubernetes(client), is(true));
+        skipIfNotRunningIntegrationTests();
+        assumeTrue("Cannot connect to kubernetes", canConnectToKubernetes(client));
     }
 
     public static String createKubernetesNamespace(final KubernetesClient kubernetesClient) {

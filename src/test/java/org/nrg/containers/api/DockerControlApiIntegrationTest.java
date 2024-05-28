@@ -1,11 +1,8 @@
 package org.nrg.containers.api;
 
-import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matcher;
-import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -29,19 +26,17 @@ import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.TestingUtils;
-import org.nrg.framework.services.NrgEventServiceI;
 
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
@@ -54,11 +49,6 @@ import static org.mockito.Mockito.when;
 @Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class DockerControlApiIntegrationTest {
-    private static String CONTAINER_HOST;
-    private static String CERT_PATH;
-
-    private static DockerClient CLIENT;
-
     private static final String BUSYBOX_LATEST = "busybox:latest";
     private static final String ALPINE_LATEST = "alpine:latest";
     private static final String BUSYBOX_ID = "sha256:47bcc53f74dc94b1920f0b34f6036096526296767650f223433fe65c35f149eb";
@@ -70,12 +60,9 @@ public class DockerControlApiIntegrationTest {
 
     @Mock private DockerServerService dockerServerService;
     @Mock private DockerHubService dockerHubService;
-    @Mock private NrgEventServiceI eventService;
-    @Mock private CommandLabelService commandLabelService;
     @Mock private KubernetesClientFactory kubernetesClientFactory;
-    private ExecutorService executorService;
 
-    private DockerControlApi controlApi;
+    private static DockerControlApi controlApi;
 
     @Rule public ExpectedException exception = ExpectedException.none();
 
@@ -86,63 +73,27 @@ public class DockerControlApiIntegrationTest {
 
     @Before
     public void setup() throws Exception {
-
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            CERT_PATH = certPathEnv;
-        } else {
-            CERT_PATH = "";
-        }
-
-        if (StringUtils.isBlank(hostEnv)) {
-            CONTAINER_HOST = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                CONTAINER_HOST = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                CONTAINER_HOST = hostEnv;
-            }
-        }
-
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
         final DockerServer dockerServer = DockerServer.builder()
                 .name("Test server")
-                .host(CONTAINER_HOST)
-                .certPath(CERT_PATH)
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .backend(Backend.DOCKER)
                 .lastEventCheckTime(new Date())
                 .build();
         when(dockerServerService.getServer()).thenReturn(dockerServer);
 
-        executorService = Executors.newCachedThreadPool();
+        controlApi = new DockerControlApi(dockerServerService, dockerHubService, kubernetesClientFactory);
 
-        controlApi = new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory);
+        TestingUtils.skipIfCannotConnectToDocker(controlApi.getDockerClient());
 
-        CLIENT = controlApi.getDockerClient();
-        TestingUtils.skipIfCannotConnectToDocker(CLIENT);
-
-    }
-
-    @After
-    public void cleanup() {
-        executorService.shutdown();
     }
 
     @AfterClass
     public static void classCleanup() throws Exception {
         for (final String containerToCleanUp : containersToCleanUp) {
             try {
-                CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
+                controlApi.getDockerClient().removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
             } catch (Exception e) {
                 // do nothing
             }
@@ -151,22 +102,18 @@ public class DockerControlApiIntegrationTest {
 
         for (final String imageToCleanUp : imagesToCleanUp) {
             try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
+                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
             } catch (Exception e) {
                 // do nothing
             }
         }
         imagesToCleanUp.clear();
-
-        if (CLIENT != null) {
-            CLIENT.close();
-        }
     }
 
 
     @Test
     public void testPingServer() throws Exception {
-        assertThat(TestingUtils.canConnectToDocker(CLIENT), is(true));
+        assertThat(TestingUtils.canConnectToDocker(controlApi.getDockerClient()), is(true));
     }
 
     @Test
@@ -175,23 +122,17 @@ public class DockerControlApiIntegrationTest {
         imagesToCleanUp.add(BUSYBOX_LATEST);
         imagesToCleanUp.add(ALPINE_LATEST);
 
-        CLIENT.pull(BUSYBOX_LATEST);
-        CLIENT.pull(ALPINE_LATEST);
+        controlApi.getDockerClient().pull(BUSYBOX_LATEST);
+        controlApi.getDockerClient().pull(ALPINE_LATEST);
         final List<DockerImage> images = controlApi.getAllImages();
 
-        final List<String> imageNames = imagesToTags(images);
+        final Set<String> imageNames = images.stream()
+                .map(DockerImage::tags)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
         assertThat(BUSYBOX_LATEST, isIn(imageNames));
         assertThat(ALPINE_LATEST, isIn(imageNames));
-    }
-
-    private List<String> imagesToTags(final List<DockerImage> images) {
-        final List<String> tags = Lists.newArrayList();
-        for (final DockerImage image : images) {
-            if (image.tags() != null) {
-                tags.addAll(image.tags());
-            }
-        }
-        return tags;
     }
 
     @Test
@@ -222,10 +163,10 @@ public class DockerControlApiIntegrationTest {
     @Test
     public void testDeleteImage() throws DockerException, InterruptedException, NoDockerServerException, DockerServerException {
         imagesToCleanUp.add(BUSYBOX_NAME);
-        CLIENT.pull(BUSYBOX_NAME);
-        int beforeImageCount = CLIENT.listImages().size();
+        controlApi.getDockerClient().pull(BUSYBOX_NAME);
+        int beforeImageCount = controlApi.getDockerClient().listImages().size();
         controlApi.deleteImageById(BUSYBOX_ID, true);
-        List<org.mandas.docker.client.messages.Image> images = CLIENT.listImages();
+        List<org.mandas.docker.client.messages.Image> images = controlApi.getDockerClient().listImages();
         int afterImageCount = images.size();
         assertThat(afterImageCount+1, is(beforeImageCount));
         for(org.mandas.docker.client.messages.Image image:images){
@@ -238,11 +179,11 @@ public class DockerControlApiIntegrationTest {
         log.debug("Starting event polling test.");
 
         if (log.isDebugEnabled()) {
-            final Version version = CLIENT.version();
+            final Version version = controlApi.getDockerClient().version();
             log.debug("Docker version: {}", version);
         }
         
-        final Info dockerInfo = CLIENT.info();
+        final Info dockerInfo = controlApi.getDockerClient().info();
         if (dockerInfo.kernelVersion().contains("moby")) {
             // If we are running docker in the moby VM, then it isn't running natively
             //   on the host machine. Sometimes the clocks on the host and VM can get out
@@ -262,10 +203,10 @@ public class DockerControlApiIntegrationTest {
                             .build())
                     .build();
             imagesToCleanUp.add("alpine");
-            final ContainerCreation containerCreation = CLIENT.createContainer(containerConfig);
+            final ContainerCreation containerCreation = controlApi.getDockerClient().createContainer(containerConfig);
 
             containersToCleanUp.add(containerCreation.id());
-            CLIENT.startContainer(containerCreation.id());
+            controlApi.getDockerClient().startContainer(containerCreation.id());
         }
 
         final Date start = new Date();
@@ -281,9 +222,9 @@ public class DockerControlApiIntegrationTest {
                 .cmd("sh", "-c", "echo Hello world")
                 .build();
 
-        final ContainerCreation creation = CLIENT.createContainer(config);
+        final ContainerCreation creation = controlApi.getDockerClient().createContainer(config);
         containersToCleanUp.add(creation.id());
-        CLIENT.startContainer(creation.id());
+        controlApi.getDockerClient().startContainer(creation.id());
 
         Thread.sleep(1000); // Wait to ensure we get some events
         final Date end = new Date();

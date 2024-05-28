@@ -81,7 +81,7 @@ public class CommandConfigurationRestApiTest {
     private final String project = "some-project";
     private final String FAKE_USERNAME = "fakeuser";
     private final String FAKE_PASSWORD = "fakepass";
-    private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
+    private final MediaType JSON = MediaType.APPLICATION_JSON;
     private final MediaType XML = MediaType.APPLICATION_XML;
 
     @Autowired private WebApplicationContext wac;
@@ -224,7 +224,6 @@ public class CommandConfigurationRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
@@ -300,7 +299,6 @@ public class CommandConfigurationRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();

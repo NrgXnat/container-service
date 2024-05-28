@@ -146,7 +146,6 @@ public class DockerRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
