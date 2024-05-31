@@ -6,11 +6,27 @@ Not yet released.
 * **Improvement** [CS-946][] Prevent setting mutually distinct k8s PVC mounting options
 * **Bugfix** [CS-968][] Switch the docker API library we use from [docker-client][] to [docker-java][].
     This should restore CS functionality on docker engine v25 and higher.
+    
+### A Note About Our Docker Library
+Originally we used the [spotify/docker-client][] library to wrap the docker remote API in java method calls. They stopped updating that and put out their final release [v6.1.1][] in 2016.  
+
+We switched the Container Service to use a fork of that client, [dmandalidis/docker-client][] in CS version 3.0.0. Given that this was a fork of the client we already used, it was a simple drop-in replacement with no changes needed.
+
+But that library maintainer did continue to make changes. In 2023 they released a major version upgrade, [v7.0.0][], which dropped support for Java 8. That is the version of Java we use in XNAT (at time of writing) so this change meant we weren't able to update our version of this library. That was fine for a while...  
+...Until version 25 of the docker engine, in which they made an API change which caused an error in the version we used of `docker-client`. The library (presumably) fixed their issue but we weren't able to use that fix because our version of the library was frozen by their decision to drop Java 8 support.
+
+This forced us to switch our library from `docker-client` to [docker-java][]. This was not a drop-in replacement, and did require a migration. All the same docker API endpoints were supported in a 1:1 replacement—which took a little effort but was straightforward—except for one. The `docker-java` library did not support requesting `GenericResources` on a swarm service, which is the mechanism by which we allow commands to specify that they need a GPU. We opened a ticket reporting that lack of support (https://github.com/docker-java/docker-java/issues/2320), but at time of writing there has been no response. I created a fork (https://github.com/johnflavin/docker-java) and fixed the issue myself (https://github.com/docker-java/docker-java/pull/2327), but at time of writing that also has no response. I built a custom version of `docker-java` `3.4.0.1` and pushed that to the XNAT artifactory ([ext-release-local/com/github/docker-java][]).
+
+Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3.4.0.1` for our docker (and swarm) API support.
 
 [CS-946]: https://radiologics.atlassian.net/browse/CS-946
 [CS-968]: https://radiologics.atlassian.net/browse/CS-968
-[docker-client]: https://github.com/dmandalidis/docker-client
+[spotify/docker-client]: https://github.com/spotify/docker-client
+[v6.1.1]: https://github.com/spotify/docker-client/releases/tag/v6.1.1
+[dmandalidis/docker-client]: https://github.com/dmandalidis/docker-client
+[v7.0.0]: https://github.com/dmandalidis/docker-client/tree/v7.0.0
 [docker-java]: https://github.com/docker-java/docker-java
+[ext-release-local/com/github/docker-java]: https://nrgxnat.jfrog.io/ui/repos/tree/General/ext-release-local/com/github/docker-java
 
 ## 3.4.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.3/).
