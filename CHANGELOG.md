@@ -36,7 +36,6 @@ Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3
 [CS-946]: https://radiologics.atlassian.net/browse/CS-946
 [CS-966]: https://radiologics.atlassian.net/browse/CS-966
 [CS-968]: https://radiologics.atlassian.net/browse/CS-968
-[docker-client]: https://github.com/spotify/docker-client
 [spotify/docker-client]: https://github.com/spotify/docker-client
 [v6.1.1]: https://github.com/spotify/docker-client/releases/tag/v6.1.1
 [dmandalidis/docker-client]: https://github.com/dmandalidis/docker-client
