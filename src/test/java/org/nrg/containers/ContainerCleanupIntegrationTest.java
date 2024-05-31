@@ -1,6 +1,7 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.exception.NotFoundException;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import lombok.extern.slf4j.Slf4j;
@@ -16,8 +17,6 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.exceptions.ContainerNotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
@@ -273,14 +272,7 @@ public class ContainerCleanupIntegrationTest {
         }
         containersToCleanUp.clear();
 
-        for (final String imageToCleanUp : imagesToCleanUp) {
-            try {
-                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        imagesToCleanUp.clear();
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
         kubernetesClientFactory.shutdown();
         TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
@@ -650,8 +642,8 @@ public class ContainerCleanupIntegrationTest {
             case DOCKER:
                 checkFunc = () -> {
                     try {
-                        controlApi.getDockerClient().inspectContainer(id);
-                    } catch (ContainerNotFoundException e) {
+                        controlApi.getDockerClient().inspectContainerCmd(id).exec();
+                    } catch (NotFoundException e) {
                         // This is what we expect
                         return true;
                     } catch (Exception ignored) {
@@ -663,8 +655,8 @@ public class ContainerCleanupIntegrationTest {
             case SWARM:
                 checkFunc = () -> {
                     try {
-                        controlApi.getDockerClient().inspectService(id);
-                    } catch (ServiceNotFoundException e) {
+                        controlApi.getDockerClient().inspectServiceCmd(id).exec();
+                    } catch (NotFoundException e) {
                         // This is what we expect
                         return true;
                     } catch (Exception ignored) {

@@ -1,13 +1,13 @@
 package org.nrg.containers.api;
 
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
-import org.mandas.docker.client.exceptions.TaskNotFoundException;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.ServiceNotFoundException;
+import org.nrg.containers.exceptions.TaskNotFoundException;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;

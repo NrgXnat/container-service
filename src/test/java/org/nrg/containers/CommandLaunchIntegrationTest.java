@@ -1,6 +1,10 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.model.DiscreteResourceSpec;
+import com.github.dockerjava.api.model.GenericResource;
+import com.github.dockerjava.api.model.Service;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
@@ -19,10 +23,6 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.LoggingBuildHandler;
-import org.mandas.docker.client.messages.swarm.ResourceSpec;
-import org.mandas.docker.client.messages.swarm.Service;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
@@ -48,6 +48,7 @@ import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.DockerService;
 import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
+import org.nrg.containers.utils.LoggingBuildCallback;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.entities.AliasToken;
@@ -307,14 +308,7 @@ public class CommandLaunchIntegrationTest {
         }
         containersToCleanUp.clear();
 
-        for (final String imageToCleanUp : imagesToCleanUp) {
-            try {
-                controlApi.getDockerClient().removeImage(imageToCleanUp, true, false);
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        imagesToCleanUp.clear();
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
         kubernetesClient.stop();
         TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
@@ -600,7 +594,10 @@ public class CommandLaunchIntegrationTest {
         final String setupCommandImageName = setupCommandSplitOnColon[0] + ":" + setupCommandSplitOnColon[1];
         final String setupCommandName = setupCommandSplitOnColon[2];
 
-        controlApi.getDockerClient().build(setupCommandDirPath, setupCommandImageName);
+        controlApi.getDockerClient().buildImageCmd(setupCommandDirPath.toFile())
+                .withTags(Collections.singleton(setupCommandImageName))
+                .exec(new LoggingBuildCallback())
+                .awaitCompletion();
         imagesToCleanUp.add(setupCommandImageName);
 
         // Make the setup command from the json file.
@@ -728,8 +725,14 @@ public class CommandLaunchIntegrationTest {
         final String commandWithWrapupCommandImageName = commandWithWrapupCommand.image();
 
         // Build two images: the wrapup image and the main image
-        controlApi.getDockerClient().build(wrapupCommandDirPath, wrapupCommandImageName, "Dockerfile.wrapup", new LoggingBuildHandler());
-        controlApi.getDockerClient().build(wrapupCommandDirPath, commandWithWrapupCommandImageName, "Dockerfile.main", new LoggingBuildHandler());
+        controlApi.getDockerClient().buildImageCmd(wrapupCommandDirPath.resolve("Dockerfile.wrapup").toFile())
+                .withTags(Collections.singleton(wrapupCommandImageName))
+                .exec(new LoggingBuildCallback())
+                .awaitCompletion();
+        controlApi.getDockerClient().buildImageCmd(wrapupCommandDirPath.resolve("Dockerfile.main").toFile())
+                .withTags(Collections.singleton(commandWithWrapupCommandImageName))
+                .exec(new LoggingBuildCallback())
+                .awaitCompletion();
         imagesToCleanUp.add(wrapupCommandImageName);
         imagesToCleanUp.add(commandWithWrapupCommandImageName);
 
@@ -897,7 +900,10 @@ public class CommandLaunchIntegrationTest {
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        controlApi.getDockerClient().build(testDir, imageName);
+        controlApi.getDockerClient().buildImageCmd(testDir.toFile())
+                .withTags(Collections.singleton(imageName))
+                .exec(new LoggingBuildCallback())
+                .awaitCompletion();
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -937,7 +943,10 @@ public class CommandLaunchIntegrationTest {
         final String commandJsonFile = Paths.get(testDir.toString(), "/command.json").toString();
 
         final String imageName = "xnat/entrypoint-test:latest";
-        controlApi.getDockerClient().build(testDir, imageName);
+        controlApi.getDockerClient().buildImageCmd(testDir.toFile())
+                .withTags(Collections.singleton(imageName))
+                .exec(new LoggingBuildCallback())
+                .awaitCompletion();
         imagesToCleanUp.add(imageName);
 
         final Command commandToCreate = mapper.readValue(new File(commandJsonFile), Command.class);
@@ -1016,7 +1025,10 @@ public class CommandLaunchIntegrationTest {
         final String resourceDir = Paths.get(ClassLoader.getSystemResource("commandLaunchTest").toURI()).toString().replace("%20", " ");
         final Path testDir = Paths.get(resourceDir, "/testDeleteCommandWhenDeleteImageAfterLaunchingContainer");
 
-        final String imageId = controlApi.getDockerClient().build(testDir, imageName);
+        final String imageId = controlApi.getDockerClient().buildImageCmd(testDir.toFile())
+                .withTags(Collections.singleton(imageName))
+                .exec(new LoggingBuildCallback())
+                .awaitImageId();
 
         final List<Command> commands = dockerService.saveFromImageLabels(imageName);
 
@@ -1346,13 +1358,13 @@ public class CommandLaunchIntegrationTest {
 
         // Verify that we correctly sent the API message to the backend that we want a GPU
         final DockerClient dockerClient = controlApi.getDockerClient();
-        final Service service = dockerClient.inspectService(execution.containerOrServiceId());
-        final List<ResourceSpec> genericResources = service.spec().taskTemplate().resources().reservations().resources();
+        final Service service = dockerClient.inspectServiceCmd(execution.containerOrServiceId()).exec();
+        final List<GenericResource<?>> genericResources = service.getSpec().getTaskTemplate().getResources().getReservations().getGenericResources();
         assertThat(genericResources, hasSize(1));
-        final ResourceSpec gr = genericResources.get(0);
-        assertThat(gr.kind(), is("gpu"));
-        assertThat(gr, instanceOf(ResourceSpec.DiscreteResourceSpec.class));
-        assertThat(((ResourceSpec.DiscreteResourceSpec) gr).value(), is(1));
+        final GenericResource<?> gr = genericResources.get(0);
+        assertThat(gr.getKind(), is("gpu"));
+        assertThat(gr, instanceOf(DiscreteResourceSpec.class));
+        assertThat(gr.getValue(), is(1));
     }
 
     private void printContainerLogs(final Container container) throws IOException {

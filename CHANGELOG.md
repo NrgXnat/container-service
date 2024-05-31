@@ -4,8 +4,13 @@
 Not yet released.
 
 * **Improvement** [CS-946][] Prevent setting mutually distinct k8s PVC mounting options
+* **Bugfix** [CS-968][] Switch the docker API library we use from [docker-client][] to [docker-java][].
+    This should restore CS functionality on docker engine v25 and higher.
 
 [CS-946]: https://radiologics.atlassian.net/browse/CS-946
+[CS-968]: https://radiologics.atlassian.net/browse/CS-968
+[docker-client]: https://github.com/dmandalidis/docker-client
+[docker-java]: https://github.com/docker-java/docker-java
 
 ## 3.4.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.3/).

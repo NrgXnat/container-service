@@ -3,6 +3,7 @@ package org.nrg.containers.services.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.model.TaskState;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
@@ -13,7 +14,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
@@ -1072,7 +1072,7 @@ public class ContainerServiceImpl implements ContainerService {
         final ContainerHistory newHistoryItem = ContainerHistory.builder()
                 .entityType("service")
                 .entityId(null)
-                .status(TaskStatus.TASK_STATE_FAILED)
+                .status(TaskState.FAILED.getValue())
                 .exitCode("126")
                 .timeRecorded(now)
                 .externalTimestamp(String.valueOf(now.getTime()))

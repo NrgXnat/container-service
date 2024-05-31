@@ -26,7 +26,9 @@ import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.Matchers.greaterThan;
@@ -92,8 +94,13 @@ public class DockerServiceIntegrationTest {
 
         final String imageName = "xnat/testy-test:tag";
         final String dir = Paths.get(ClassLoader.getSystemResource("dockerServiceIntegrationTest").toURI()).toString().replace("%20", " ");
+        final Path dockerfilePath = Paths.get(dir, "Dockerfile");
 
-        imageId = controlApi.getDockerClient().build(Paths.get(dir), imageName);
+        imageId = controlApi.getDockerClient().buildImageCmd()
+                .withDockerfile(dockerfilePath.toFile())
+                .withTags(Collections.singleton(imageName))
+                .start()
+                .awaitImageId();
     }
 
     @Test
@@ -110,7 +117,7 @@ public class DockerServiceIntegrationTest {
         final Command.CommandWrapper wrapper = wrappers.get(0);
         assertThat(wrapper.id(), not(0L));
 
-        controlApi.getDockerClient().removeImage(IMAGE_NAME);
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), Collections.singletonList(imageId));
     }
 
     @Test
