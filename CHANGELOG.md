@@ -1,7 +1,6 @@
 # Changelog
 
 ## 3.5.0
-Not yet released.
 
 * **Improvement** [CS-946][] Prevent setting mutually distinct k8s PVC mounting options
 * **Bugfix** [CS-968][] Switch the docker API library we use from [docker-client][] to [docker-java][].
