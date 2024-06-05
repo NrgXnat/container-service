@@ -214,6 +214,7 @@ def isDirty, branchName, gitHash, gitHashFull, commitDistance, lastTag, isCleanT
 
 try {
     def gitDetails = versionDetails()
+    logger.info("Version details {}", gitDetails)
     isDirty = gitVersion().endsWith ".dirty"
     branchName = gitDetails.branchName ?: "Unknown"
     gitHash = gitDetails.gitHash
@@ -222,7 +223,7 @@ try {
     lastTag = gitDetails.lastTag
     isCleanTag = gitDetails.isCleanTag
 } catch (IllegalArgumentException e) {
-    logger.info "Got an error trying to read VCS metadata from git. It's possible this project is not under VCS control. Using placeholder values for manifest entries."
+    logger.info("Got an error trying to read VCS metadata from git. It's possible this project is not under VCS control. Using placeholder values for manifest entries.", e)
     isDirty = true
     branchName = "Unknown"
     gitHash = "None"
@@ -232,6 +233,20 @@ try {
     isCleanTag = false
 }
 
+logger.info """
+Building artifacts with manifest attributes:
+
+ * Build-Date:              ${buildDate}
+ * Build-Number:            ${buildNumber}
+ * Implementation-Version:  ${version}
+ * Implementation-Sha-Full: ${gitHashFull}
+ * Implementation-Sha:      ${gitHash}
+ * Implementation-Commit:   ${commitDistance}
+ * Implementation-LastTag:  ${lastTag}
+ * Implementation-Branch:   ${branchName}
+ * Implementation-CleanTag: ${isCleanTag}
+ * Implementation-Dirty:    ${isDirty}
+"""
 def sharedManifest = java.manifest {
     attributes "Application-Name": pluginAppName,
             "Build-Date": buildDate,
