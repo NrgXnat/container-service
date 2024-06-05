@@ -43,8 +43,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 
-import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.contains;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
@@ -55,7 +60,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
 @ContextConfiguration(classes = {JmsConfig.class, IntegrationTestConfig.class})
 @Transactional
-public class JmsConsumerExceptionIntegrationTest {
+public class JmsConsumerExceptionTest {
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
     @Autowired private PermissionsServiceI mockPermissionsServiceI;

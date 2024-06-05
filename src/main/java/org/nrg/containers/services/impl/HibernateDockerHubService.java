@@ -3,7 +3,6 @@ package org.nrg.containers.services.impl;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
-import org.mandas.docker.client.ImageRef;
 import org.nrg.containers.daos.DockerHubDao;
 import org.nrg.containers.exceptions.NotUniqueException;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
@@ -62,16 +61,18 @@ public class HibernateDockerHubService
     }
 
     @Override
-    public DockerHubEntity getByUrl(final String url) throws NotUniqueException, NotFoundException {
-        DockerHubEntity dockerHubEntity = getDao().findByUrl(url);
-        if (dockerHubEntity == null && url.startsWith("https")) {
-            // try with http (org.mandas.docker.client.ImageRef always returns https)
-            dockerHubEntity = getDao().findByUrl(url.replace("https", "http"));
+    public DockerHub getByUrl(final String url) {
+        try {
+            DockerHubEntity entity = getDao().findByUrl(url);
+            if (entity == null && url.startsWith("https")) {
+                // try with http (org.mandas.docker.client.ImageRef always returns https)
+                entity = getDao().findByUrl(url.replace("https", "http"));
+            }
+            return toPojo(entity, getDefaultHubId());
+        } catch (NotUniqueException e) {
+            log.error("Found multiple DockerHubs with url {}", url);
+            return null;
         }
-        if (dockerHubEntity == null) {
-            throw new NotFoundException("Could not find hub with name " + url);
-        }
-        return dockerHubEntity;
     }
 
     @Override
@@ -146,18 +147,6 @@ public class HibernateDockerHubService
     @Override
     public DockerHub getDefault() {
         return retrieveHub(getDefaultHubId());
-    }
-
-    @Override
-    public DockerHub getHubForImage(String imageName) {
-        final String url = new ImageRef(imageName).getRegistryUrl();
-        DockerHubEntity entity = null;
-        try {
-            entity = getByUrl(url);
-        } catch (NotUniqueException | NotFoundException e) {
-            log.error("Unable to locate docker hub for url {}", url, e);
-        }
-        return toPojo(entity, getDefaultHubId());
     }
 
     @Override

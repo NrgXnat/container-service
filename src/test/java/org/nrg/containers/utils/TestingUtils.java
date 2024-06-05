@@ -1,6 +1,11 @@
 package org.nrg.containers.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.PingCmd;
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.model.Task;
+import com.github.dockerjava.api.model.TaskState;
 import com.google.common.collect.Maps;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
@@ -15,15 +20,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matchers;
 import org.junit.rules.TemporaryFolder;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.exceptions.DockerRequestException;
-import org.mandas.docker.client.exceptions.ImageNotFoundException;
-import org.mandas.docker.client.exceptions.NotFoundException;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
-import org.mandas.docker.client.messages.ContainerInfo;
-import org.mandas.docker.client.messages.swarm.Service;
-import org.mandas.docker.client.messages.swarm.Task;
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.mockito.ArgumentMatcher;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientImpl;
@@ -66,7 +62,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assume.assumeThat;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -75,6 +71,8 @@ import static org.mockito.Mockito.when;
 @Slf4j
 public class TestingUtils {
     public static final String BUSYBOX = "busybox:latest";
+    private static final String DEFAULT_DOCKER_SOCKET = "unix:///var/run/docker.sock";
+    public static final boolean RUNNING_INTEGRATION_TESTS = Boolean.parseBoolean(System.getProperty("integration"));
 
     public static void commitTransaction() {
         TestTransaction.flagForCommit();
@@ -108,6 +106,54 @@ public class TestingUtils {
         return combinations;
     }
 
+    public static BackendConfig getBackendConfig() throws Exception {
+        return getBackendConfig(null);
+    }
+
+    public static BackendConfig getBackendConfig(SystemDelegate systemDelegate) throws Exception {
+        if (systemDelegate == null) {
+            systemDelegate = new SysEnvSystemDelegate();
+        }
+
+        final String hostEnv = systemDelegate.getenv("DOCKER_HOST");
+        final String certPathEnv = systemDelegate.getenv("DOCKER_CERT_PATH");
+        final String tlsVerify = systemDelegate.getenv("DOCKER_TLS_VERIFY");
+
+        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
+        final String certPath;
+        if (useTls) {
+            if (StringUtils.isBlank(certPathEnv)) {
+                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
+            }
+            certPath = certPathEnv;
+        } else {
+            certPath = "";
+        }
+
+        final String containerHost;
+        if (StringUtils.isBlank(hostEnv)) {
+            containerHost = DEFAULT_DOCKER_SOCKET;
+        } else if (hostEnv.startsWith("tcp://")) {
+            // Must switch out tcp:// for either http:// or https://
+            containerHost = hostEnv.replace("tcp://", useTls ? "https://" : "http://");
+        } else {
+            containerHost = hostEnv;
+        }
+
+        return new BackendConfig(containerHost, certPath);
+    }
+
+    public interface SystemDelegate {
+        String getenv(String key);
+    }
+
+    public static final class SysEnvSystemDelegate implements SystemDelegate {
+        @Override
+        public String getenv(String key) {
+            return System.getenv(key);
+        }
+    }
+
     public static void skipIfCannotConnect(Backend backend, DockerClient dockerClient, ApiClient kubernetesClient) {
         switch (backend) {
             case DOCKER:
@@ -127,8 +173,10 @@ public class TestingUtils {
             return false;
         }
 
-        try {
-            return client.ping().equals("OK");
+        try (final PingCmd cmd = client.pingCmd()) {
+            cmd.exec();
+            // No exception means we can connect
+            return true;
         } catch (Exception ignored) {
             // Exceptions mean we cannot connect
             return false;
@@ -136,7 +184,14 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToDocker(DockerClient client) {
-        assumeThat("Cannot connect to docker", canConnectToDocker(client), is(true));
+        // If we aren't running integration tests, we have already skipped this test
+        if (RUNNING_INTEGRATION_TESTS) {
+            assumeTrue("Cannot connect to docker", canConnectToDocker(client));
+        }
+    }
+
+    public static void skipIfNotRunningIntegrationTests() {
+        assumeTrue("Not running integration tests", RUNNING_INTEGRATION_TESTS);
     }
 
     public static boolean canConnectToSwarm(DockerClient client) {
@@ -145,7 +200,7 @@ public class TestingUtils {
         }
 
         try {
-            client.inspectSwarm();
+            client.inspectSwarmCmd().exec();
 
             // if we got here without an exception we're good
             return true;
@@ -156,7 +211,8 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToSwarm(DockerClient client) {
-        assumeThat("Cannot connect to swarm", canConnectToSwarm(client), is(true));
+        skipIfNotRunningIntegrationTests();
+        assumeTrue("Cannot connect to swarm", canConnectToSwarm(client));
     }
 
     public static boolean canConnectToKubernetes(ApiClient client) {
@@ -176,7 +232,8 @@ public class TestingUtils {
     }
 
     public static void skipIfCannotConnectToKubernetes(ApiClient client) {
-        assumeThat("Cannot connect to kubernetes", canConnectToKubernetes(client), is(true));
+        skipIfNotRunningIntegrationTests();
+        assumeTrue("Cannot connect to kubernetes", canConnectToKubernetes(client));
     }
 
     public static String createKubernetesNamespace(final KubernetesClient kubernetesClient) {
@@ -213,7 +270,7 @@ public class TestingUtils {
     private static void dockerCleanup(DockerClient dockerClient, String containerId) {
         try {
             log.debug("Cleaning up container {}", containerId);
-            dockerClient.removeContainer(containerId, DockerClient.RemoveContainerParam.forceKill());
+            dockerClient.removeContainerCmd(containerId).withForce(true).exec();
         } catch (NotFoundException ignored) {
             // ignored
         } catch (Exception e) {
@@ -224,8 +281,8 @@ public class TestingUtils {
     private static void dockerSwarmCleanup(DockerClient dockerClient, String serviceId) {
         try {
             log.debug("Cleaning up service {}", serviceId);
-            dockerClient.removeService(serviceId);
-        } catch (ServiceNotFoundException ignored) {
+            dockerClient.removeServiceCmd(serviceId).exec();
+        } catch (NotFoundException ignored) {
             // ignored
         } catch (Exception e) {
             log.error("Could not clean up service {}", serviceId, e);
@@ -255,6 +312,42 @@ public class TestingUtils {
                 return jobName -> kubernetesCleanupJob(new BatchV1Api(kubernetesClient), kubernetesNamespace, jobName);
         }
         return null;
+    }
+
+    public static void cleanDockerImages(final DockerClient client, List<String> images) {
+        images.forEach(image -> {
+            try {
+                client.removeImageCmd(image).withForce(true).withNoPrune(false).exec();
+            } catch (NotFoundException ignored) {
+                // ignored
+            } catch (Exception e) {
+                log.error("Could not clean up image {}", image, e);
+            }
+        });
+    }
+
+    public static void cleanDockerContainers(final DockerClient client, Collection<String> containers) {
+        containers.forEach(container -> {
+            try {
+                client.removeContainerCmd(container).withForce(true).exec();
+            } catch (NotFoundException ignored) {
+                // ignored
+            } catch (Exception e) {
+                log.error("Could not clean up container {}", container, e);
+            }
+        });
+    }
+
+    public static void cleanSwarmServices(final DockerClient client, Collection<String> services) {
+        services.forEach(service -> {
+            try {
+                client.removeServiceCmd(service).exec();
+            } catch (NotFoundException ignored) {
+                // ignored
+            } catch (Exception e) {
+                log.error("Could not clean up service {}", service, e);
+            }
+        });
     }
 
     @SuppressWarnings("unchecked")
@@ -309,91 +402,32 @@ public class TestingUtils {
         };
     }
 
-    public static Callable<Boolean> containerHasStarted(final DockerClient CLIENT, final boolean swarmMode,
-                                                        final Container container) {
-        return () -> {
-            try {
-                if (swarmMode) {
-                    String id = container.serviceId();
-                    if (id == null) {
-                        log.debug("Service id null");
-                        return false;
-                    }
-                    final Service serviceResponse = CLIENT.inspectService(id);
-                    final List<Task> tasks = CLIENT.listTasks(Task.Criteria.builder().serviceName(serviceResponse.spec().name()).build());
-                    if (tasks.size() == 0) {
-                        log.debug("No tasks for service {}", id);
-                        return false;
-                    }
-                    for (final Task task : tasks) {
-                        final ServiceTask serviceTask = ServiceTask.create(task, id);
-                        log.debug("Service {} task {} status {}", id, task.id(), task.status());
-                        if (!serviceTask.hasNotStarted()) {
-                            // if it's not a "before running" status (aka running or some exit status)
-                            log.debug("Service {} task {} has started!", id, task.id());
-                            return true;
-                        }
-                    }
-                    log.debug("No tasks have started");
-                    return false;
-                } else {
-                    String id = container.containerId();
-                    if (id == null) {
-                        return false;
-                    }
-                    final ContainerInfo containerInfo = CLIENT.inspectContainer(id);
-                    String status = containerInfo.state().status();
-                    return !"CREATED".equals(status);
-                }
-            } catch (NotFoundException ignored) {
-                // Ignore exception. If container is not found, it is not running.
-                return false;
-            } catch (DockerRequestException e) {
-                if (e.status() == 404) {
-                    // Service tasks were not found. Try again later.
-                    // This exception status checking is usually performed in docker client,
-                    //  but it isn't for listTasks
-                    return false;
-                }
-                throw e;
-            }
-        };
-    }
-
-    public static Callable<Boolean> containerIsRunning(final DockerClient CLIENT, final boolean swarmMode,
+    public static Callable<Boolean> containerIsRunning(final DockerClient client, final boolean swarmMode,
                                                        final Container container) {
         return () -> {
             try {
                 if (swarmMode) {
-                    final Service serviceResponse = CLIENT.inspectService(container.serviceId());
-                    final List<Task> tasks = CLIENT.listTasks(Task.Criteria.builder().serviceName(serviceResponse.spec().name()).build());
-                    for (final Task task : tasks) {
-                        if (ServiceTask.isExitStatus(task.status().state())) {
-                            return false;
-                        }
-                    }
-                    return true; // consider it "running" until it's an exit status
+                    final String serviceName = client.inspectServiceCmd(container.serviceId())
+                            .exec()
+                            .getSpec()
+                            .getName();
+                    return client.listTasksCmd()
+                            .withServiceFilter(serviceName)
+                            .exec()
+                            .stream()
+                            .noneMatch(task -> ServiceTask.isExitStatus(task.getStatus().getState().name()));
                 } else {
-                    final ContainerInfo containerInfo = CLIENT.inspectContainer(container.containerId());
-                    return containerInfo.state().running();
+                    return client.inspectContainerCmd(container.containerId()).exec().getState().getRunning();
                 }
             } catch (NotFoundException ignored) {
                 // Ignore exception. If container is not found, it is not running.
                 return false;
-            } catch (DockerRequestException e) {
-                if (e.status() == 404) {
-                    // Service tasks were not found. Try again later.
-                    // This exception status checking is usually performed in docker client,
-                    //  but it isn't for listTasks
-                    return false;
-                }
-                throw e;
             }
         };
     }
 
-    public static Callable<Boolean> serviceIsRunning(final DockerClient CLIENT, final Container container) {
-        return serviceIsRunning(CLIENT, container, false);
+    public static Callable<Boolean> serviceIsRunning(final DockerClient client, final Container container) {
+        return serviceIsRunning(client, container, false);
     }
 
     public static Callable<Boolean> serviceHasTaskId(final ContainerService containerService, final long containerDbId) {
@@ -409,60 +443,29 @@ public class TestingUtils {
         };
     }
 
-    public static Callable<Boolean> serviceIsRunning(final DockerClient CLIENT, final Container container,
+    public static Callable<Boolean> serviceIsRunning(final DockerClient client, final Container container,
                                                      boolean rtnForNoServiceId) {
-        return () -> {
-            try {
-                String servicdId = container.serviceId();
-                if (StringUtils.isBlank(servicdId)) {
-                    // Want this to be the value we aren't waiting for
-                    return rtnForNoServiceId;
-                }
-                final Service serviceResponse = CLIENT.inspectService(servicdId);
-                final List<Task> tasks = CLIENT.listTasks(Task.Criteria.builder().serviceName(serviceResponse.spec().name()).build());
-                if (tasks.size() == 0) {
-                    return false;
-                }
-                for (final Task task : tasks) {
-                    if (task.status().state().equals(TaskStatus.TASK_STATE_RUNNING)) {
-                        return true;
-                    }
-                }
-                return false;
-            } catch (NotFoundException ignored) {
-                // Ignore exception. If container is not found, it is not running.
-                return false;
-            } catch (DockerRequestException e) {
-                if (e.status() == 404) {
-                    // Service tasks were not found. Try again later.
-                    // This exception status checking is usually performed in docker client,
-                    //  but it isn't for listTasks
-                    return false;
-                }
-                throw e;
-            }
-        };
+        return () -> StringUtils.isBlank(container.serviceId()) ? rtnForNoServiceId : getServiceNode(client, container) != null;
     }
 
-    public static Callable<String> getServiceNode(final DockerClient CLIENT, final Container container) {
-        return () -> {
-            try {
-                final Service serviceResponse = CLIENT.inspectService(container.serviceId());
-                final List<Task> tasks = CLIENT.listTasks(Task.Criteria.builder().serviceName(serviceResponse.spec().name()).build());
-                if (tasks.size() == 0) {
-                    return null;
-                }
-                for (final Task task : tasks) {
-                    if (task.status().state().equals(TaskStatus.TASK_STATE_RUNNING)) {
-                        return task.nodeId();
-                    }
-                }
-                return null;
-            } catch (Exception ignored) {
-                // Ignore exceptions
-                return null;
-            }
-        };
+    public static String getServiceNode(final DockerClient client, final Container container) {
+        try {
+            final String serviceName = client.inspectServiceCmd(container.serviceId())
+                    .exec()
+                    .getSpec()
+                    .getName();
+            return client.listTasksCmd()
+                    .withServiceFilter(serviceName)
+                    .exec()
+                    .stream()
+                    .filter(task -> task.getStatus().getState().equals(TaskState.RUNNING))
+                    .map(Task::getNodeId)
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ignored) {
+            // Ignore exceptions
+        }
+        return null;
     }
 
     public static Container getContainerFromWorkflow(final ContainerService containerService,
@@ -509,14 +512,6 @@ public class TestingUtils {
         };
     }
 
-    public static Callable<Boolean> containerHasLogPaths(final ContainerService containerService,
-                                                         final long containerDbId) {
-        return () -> {
-            final Container container = containerService.get(containerDbId);
-            return container.logPaths().size() > 0;
-        };
-    }
-
     public static String setupSessionMock(TemporaryFolder folder, ObjectMapper mapper, Map<String, String> runtimeValues) throws Exception {
         final Path wrapupCommandDirPath = Paths.get(ClassLoader.getSystemResource("wrapupCommand").toURI());
         final String wrapupCommandDir = wrapupCommandDirPath.toString().replace("%20", " ");
@@ -560,14 +555,6 @@ public class TestingUtils {
 
         when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
                 .thenReturn(setupWrapupWorkflow);
-    }
-
-    public static void pullBusyBox(DockerClient client) throws Exception {
-        try {
-            client.inspectImage(BUSYBOX);
-        } catch (ImageNotFoundException e) {
-            client.pull(BUSYBOX);
-        }
     }
 }
 

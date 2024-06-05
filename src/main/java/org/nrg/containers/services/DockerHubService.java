@@ -11,11 +11,11 @@ import java.util.List;
 public interface DockerHubService extends BaseHibernateService<DockerHubEntity> {
     DockerHubEntity retrieve(String name) throws NotUniqueException;
     DockerHubEntity get(String name) throws NotUniqueException, NotFoundException;
-    DockerHubEntity getByUrl(final String url) throws NotUniqueException, NotFoundException;
     DockerHub retrieveHub(long id);
     DockerHub retrieveHub(String name) throws NotUniqueException;
     DockerHub getHub(long hubId) throws NotFoundException;
     DockerHub getHub(String hubName) throws NotFoundException, NotUniqueException;
+    DockerHub getByUrl(final String url);
     List<DockerHub> getHubs();
 
     void setDefault(DockerHub dockerHub, String username, String reason);
@@ -33,8 +33,6 @@ public interface DockerHubService extends BaseHibernateService<DockerHubEntity> 
 
     long getDefaultHubId();
     DockerHub getDefault();
-
-    DockerHub getHubForImage(String imageName);
 
     class DockerHubDeleteDefaultException extends RuntimeException {
         public DockerHubDeleteDefaultException(final String message) {

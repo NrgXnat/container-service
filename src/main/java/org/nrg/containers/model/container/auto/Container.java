@@ -1174,7 +1174,7 @@ public abstract class Container {
                     .status(task.status())
                     .exitCode(task.exitCode() == null ? null : String.valueOf(task.exitCode()))
                     .timeRecorded(new Date())
-                    .externalTimestamp(task.statusTime() == null ? null : String.valueOf(task.statusTime().getTime()))
+                    .externalTimestamp(task.statusTime())
                     .message(message)
                     .build();
         }

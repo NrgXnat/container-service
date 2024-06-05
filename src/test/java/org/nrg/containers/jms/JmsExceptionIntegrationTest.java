@@ -1,12 +1,8 @@
 package org.nrg.containers.jms;
 
-import org.junit.Ignore;
-import org.mandas.docker.client.DockerClient;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.SystemUtils;
-import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -15,12 +11,8 @@ import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
-import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.model.command.auto.Command;
-import org.nrg.containers.model.container.auto.Container;
-import org.nrg.containers.model.server.docker.Backend;
-import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
@@ -62,18 +54,18 @@ import javax.jms.JMSRuntimeException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
-import java.util.regex.Pattern;
 
-import static org.awaitility.Awaitility.await;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assume.assumeThat;
 import static org.mockito.AdditionalMatchers.aryEq;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyMapOf;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
@@ -109,13 +101,16 @@ public class JmsExceptionIntegrationTest {
     private final String FAKE_SITEID = "site";
     private final String FAKE_ID = "id";
 
-    private static DockerClient CLIENT;
-
     private final List<String> containersToCleanUp = new ArrayList<>();
     private final List<String> imagesToCleanUp = new ArrayList<>();
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder(new File(System.getProperty("user.dir") + "/build"));
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {
@@ -186,33 +181,6 @@ public class JmsExceptionIntegrationTest {
         fakeWorkflow.setPipelineName(wrapper.name());
     }
 
-    @After
-    public void cleanup() {
-        if (CLIENT == null) {
-            return;
-        }
-
-        for (final String containerToCleanUp : containersToCleanUp) {
-            try {
-                CLIENT.removeContainer(containerToCleanUp, DockerClient.RemoveContainerParam.forceKill());
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        containersToCleanUp.clear();
-
-        for (final String imageToCleanUp : imagesToCleanUp) {
-            try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        imagesToCleanUp.clear();
-
-        CLIENT.close();
-    }
-
     @Test
     @DirtiesContext
     public void testStagingQueueFailure() throws Exception {
@@ -233,89 +201,5 @@ public class JmsExceptionIntegrationTest {
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
                 anyMapOf(String.class, File.class));
-    }
-
-    @Test
-    @DirtiesContext
-    @Ignore
-    public void testFinalizingQueueFailure() throws Exception {
-        setupServer();
-
-        // setup jmsTemplate to throw exception
-        String exceptionMsg = "exception";
-        Mockito.doThrow(new JMSRuntimeException(exceptionMsg)).when(mockJmsTemplate)
-                .convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
-
-        containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L,
-                null, Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
-        final Container container = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        containersToCleanUp.add(container.containerId());
-
-        TestingUtils.commitTransaction();
-
-        log.debug("Waiting until task has started");
-        await().until(TestingUtils.containerHasStarted(CLIENT, false, container), is(true));
-        log.debug("Waiting until task has finished");
-        await().until(TestingUtils.containerIsRunning(CLIENT, false, container), is(false));
-        log.debug("Waiting until container has failed");
-        await().until(TestingUtils.containerIsFinalized(containerService, container), is(true));
-
-        assertThat(fakeWorkflow.getStatus(), is(PersistentWorkflowUtils.FAILED + " (JMS)"));
-        assertThat(fakeWorkflow.getDetails(), is(exceptionMsg));
-
-        Mockito.verify(mockMailService, timeout(1000).times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
-                aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), Matchers.<String[]>eq(null),
-                Mockito.matches(".*" + wrapper.name() + ".*Failed.*"),
-                Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
-                Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
-                anyMapOf(String.class, File.class));
-    }
-
-    private void setupServer() throws Exception {
-        // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        final String certPath;
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        final String containerHost;
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
-        dockerServerService.setServer(DockerServerBase.DockerServer.builder()
-                .name("Test server")
-                .host(containerHost)
-                .certPath(certPath)
-                .backend(Backend.DOCKER)
-                .lastEventCheckTime(new Date())
-                .build());
-
-        String img = "busybox:latest";
-        CLIENT = controlApi.getDockerClient();
-        CLIENT.pull(img);
-        imagesToCleanUp.add(img);
-
-        assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
-        TestingUtils.skipIfCannotConnectToDocker(CLIENT);
     }
 }

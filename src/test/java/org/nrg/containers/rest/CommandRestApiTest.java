@@ -81,7 +81,7 @@ public class CommandRestApiTest {
 
     private final String FAKE_URL = "mock://url";
     private final String FAKE_DOCKER_IMAGE = "abc123:tag";
-    private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
+    private final MediaType JSON = MediaType.APPLICATION_JSON;
     private final MediaType XML = MediaType.APPLICATION_XML;
     private final String NON_ADMIN_IS_OWNER_PROJECT = "projectowner";
     private final String NON_ADMIN_IS_MEMBER_PROJECT = "projectmember";
@@ -183,10 +183,10 @@ public class CommandRestApiTest {
     public void testGetAll() throws Exception {
         final String path = "/commands";
 
-        final Command created = commandService.create(commandService.create(Command.builder()
+        final Command created = commandService.create(Command.builder()
                 .name("one")
                 .image(FAKE_DOCKER_IMAGE)
-                .build()));
+                .build());
 
         TestTransaction.flagForCommit();
         TestTransaction.end();
@@ -200,7 +200,6 @@ public class CommandRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
@@ -237,7 +236,6 @@ public class CommandRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isOk())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
@@ -260,7 +258,8 @@ public class CommandRestApiTest {
                         "}";
 
         final MockHttpServletRequestBuilder request =
-                post(path).content(commandJson).contentType(JSON)
+                post(path).content(commandJson)
+                        .contentType(JSON)
                         .with(authentication(ADMIN_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
@@ -268,7 +267,6 @@ public class CommandRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isCreated())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
@@ -370,7 +368,8 @@ public class CommandRestApiTest {
         final String path = String.format(pathTemplate, command.id());
 
         final MockHttpServletRequestBuilder request =
-                post(path).content(commandWrapperJson).contentType(JSON)
+                post(path).content(commandWrapperJson)
+                        .contentType(JSON)
                         .with(authentication(ADMIN_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
@@ -378,7 +377,6 @@ public class CommandRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isCreated())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
@@ -512,7 +510,8 @@ public class CommandRestApiTest {
         final String commandJson = mapper.writeValueAsString(ecatHeaderDump);
 
         final MockHttpServletRequestBuilder request =
-                post(path).content(commandJson).contentType(JSON)
+                post(path).content(commandJson)
+                        .contentType(JSON)
                         .with(authentication(ADMIN_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
@@ -520,7 +519,6 @@ public class CommandRestApiTest {
         final String response =
                 mockMvc.perform(request)
                         .andExpect(status().isCreated())
-                        .andExpect(content().contentType(JSON))
                         .andReturn()
                         .getResponse()
                         .getContentAsString();

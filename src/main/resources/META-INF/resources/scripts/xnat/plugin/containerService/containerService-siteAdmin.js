@@ -342,6 +342,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             }),
                             spawn('div.pvc-type-settings.split',[
                                 XNAT.ui.panel.input.text({
+                                    id: 'archive_pvc_name',
                                     name: 'archive-pvc-name',
                                     label: 'Archive Directory PVC Name',
                                     className: 'archive-pvc-name'
@@ -349,6 +350,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             ]),
                             spawn('div.pvc-type-settings.split',[
                                 XNAT.ui.panel.input.text({
+                                    id: 'build_pvc_name',
                                     name: 'build-pvc-name',
                                     label: 'Build Directory PVC Name',
                                     className: 'build-pvc-name'
@@ -357,11 +359,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             spawn('div.pvc-type-settings.split',[
                                 spawn('p.divider', '<strong>Archive and Build Path Translations (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive and build mount points and the Server mount points for your XNAT data that is mounted within two PVCs.'),
                                 XNAT.ui.panel.input.text({
+                                    id: 'archive_path_translation',
                                     name: 'archive-path-translation',
                                     label: 'Archive Directory Path Translation',
                                     className: 'archive-path-translation'
                                 }),
                                 XNAT.ui.panel.input.text({
+                                    id: 'build_path_translation',
                                     name: 'build-path-translation',
                                     label: 'Build Directory Path Translation',
                                     className: 'build-path-translation'
@@ -369,6 +373,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             ]),
                             spawn('div.pvc-type-settings.combined',[
                                 XNAT.ui.panel.input.text({
+                                    id: 'combined_pvc_name',
                                     name: 'combined-pvc-name',
                                     label: 'Combined Data PVC Name',
                                     className: 'combined-pvc-name'
@@ -377,6 +382,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             spawn('div.pvc-type-settings.combined',[
                                 spawn('p.divider', '<strong>Combined PVC Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data that is mounted within a single combined PVC.'),
                                 XNAT.ui.panel.input.text({
+                                    id: 'combined_path_translation',
                                     name: 'combined-path-translation',
                                     label: 'Combined Directory Path Translation',
                                     className: 'combined-path-translation'
@@ -435,6 +441,24 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                 if (pattern.test(containerUser)) passK8sValidation=true;
                             });
                             if (!passK8sValidation) errors = errors.concat('Validation error: Kubernetes mode expects an integer UID for the container user input')
+                        }
+
+                        let pvc_type = $form.find('.pvc-selector').find('option:selected').val();
+                        if (pvc_type === 'split') {
+                            $("#combined_pvc_name").val('');
+                            $("#combined_path_translation").val('');
+                        } else if (pvc_type === 'combined') {
+                            $("#archive_pvc_name").val('');
+                            $("#build_pvc_name").val('');
+                            $("#archive_path_translation").val('');
+                            $("#build_path_translation").val('');
+                        } else {
+                            $("#combined_pvc_name").val('');
+                            $("#combined_path_translation").val('');
+                            $("#archive_pvc_name").val('');
+                            $("#build_pvc_name").val('');
+                            $("#archive_path_translation").val('');
+                            $("#build_path_translation").val('');
                         }
 
                         function getLabel($element) {

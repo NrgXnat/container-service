@@ -97,11 +97,9 @@ public class IntegrationTestConfig {
      */
     @Bean
     public DockerControlApi dockerControlApi(final DockerServerService dockerServerService,
-                                             final CommandLabelService commandLabelService,
                                              final DockerHubService dockerHubService,
-                                             final NrgEventServiceI eventService,
                                              final KubernetesClientFactory kubernetesClientFactory) {
-        return new DockerControlApi(dockerServerService, commandLabelService, dockerHubService, eventService, kubernetesClientFactory);
+        return new DockerControlApi(dockerServerService, dockerHubService, kubernetesClientFactory);
     }
 
     @Bean

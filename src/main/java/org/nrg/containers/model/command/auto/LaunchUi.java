@@ -37,7 +37,7 @@ public abstract class LaunchUi {
                 .meta(LaunchUiMeta.create(partiallyResolvedCommand))
                 .containerServerConfig(LaunchUiServer.create(server))
                 .populateInputTreeAndInputValueTreeFromResolvedInputTrees(partiallyResolvedCommand.resolvedInputTrees(),
-                        inputConfigurationMap, bulkLaunch)
+                        new HashMap<>(inputConfigurationMap), bulkLaunch)
                 .build();
     }
 
