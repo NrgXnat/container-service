@@ -12,7 +12,6 @@ plugins {
     id "com.palantir.git-version" version "3.1.0"
     id "io.spring.dependency-management" version "1.0.9.RELEASE"
     id "io.franzbecker.gradle-lombok" version "4.0.0"
-    id "net.linguica.maven-settings" version "0.5"
 }
 
 group "org.nrg.xnatx.plugins"
@@ -26,7 +25,6 @@ def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
 repositories {
-    mavenLocal()
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
     mavenCentral()
