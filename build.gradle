@@ -232,7 +232,7 @@ try {
     isCleanTag = false
 }
 
-ext.gitManifest = manifest {
+def sharedManifest = java.manifest {
     attributes "Application-Name": pluginAppName,
             "Build-Date": buildDate,
             "Build-Number": buildNumber,
@@ -257,8 +257,8 @@ task fatJar(type: Jar) {
         exclude "META-INF/*.RSA"
     }
     duplicatesStrategy "exclude"
-    manifest {
-        from gitManifest
+    manifest = java.manifest {
+        from sharedManifest
     }
     with jar
 }
@@ -268,9 +268,9 @@ sourceSets.main.java {
     exclude "*/AutoValue.java"
 }
 
-jar{
-    manifest {
-        from gitManifest
+jar {
+    manifest = java.manifest {
+        from sharedManifest
     }
     doLast {
         if (!gradle.taskGraph.hasTask(":fatJar")) {
@@ -281,16 +281,16 @@ jar{
 
 task sourceJar(type: Jar, dependsOn: classes) {
     classifier = "sources"
-    manifest {
-        from gitManifest
+    manifest = java.manifest {
+        from sharedManifest
     }
     from sourceSets.main.allSource
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
     classifier = "javadoc"
-    manifest {
-        from gitManifest
+    manifest = java.manifest {
+        from sharedManifest
     }
     from javadoc.destinationDir
 }
