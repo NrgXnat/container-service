@@ -8,7 +8,6 @@ buildscript {
 plugins {
     id "idea"
     id "java"
-    id "maven-publish"
     id "com.palantir.git-version" version "3.1.0"
     id "io.spring.dependency-management" version "1.0.9.RELEASE"
     id "io.franzbecker.gradle-lombok" version "4.0.0"
@@ -286,64 +285,59 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
     from javadoc.destinationDir
 }
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            artifacts {
-                artifact sourceJar
-                artifact javadocJar
-                artifact fatJar
-            }
-
-            pom.withXml {
-                def root = asNode()
-                root.appendNode("name", pluginAppName)
-                root.appendNode("description", "XNAT plugin for launching and managing containers.")
-                root.appendNode("url", "https://github.com/nrgxnat/container-service")
-                root.appendNode("inceptionYear", "2016")
-
-                def scm = root.appendNode("scm")
-                scm.appendNode("url", "https://github.com/nrgxnat/container-service")
-                scm.appendNode("connection", "scm:https://github.com/nrgxnat/container-service.git")
-                scm.appendNode("developerConnection", "scm:git@github.com:nrgxnat/container-service")
-
-                def license = root.appendNode("licenses").appendNode("license")
-                license.appendNode("name", "Simplified BSD 2-Clause License")
-                license.appendNode("url", "https://xnat.org/about/license.php")
-                license.appendNode("distribution", "repo")
-
-                def developers = root.appendNode("developers")
-                def flavin = developers.appendNode("developer")
-                flavin.appendNode("id", "jflavin")
-                flavin.appendNode("name", "John Flavin")
-                flavin.appendNode("email", "jflavin@wustl.edu")
-
-                def kelsey = developers.appendNode("developer")
-                kelsey.appendNode("id", "kelseym")
-                kelsey.appendNode("name", "Matt Kelsey")
-                kelsey.appendNode("email", "kelseym@wustl.edu")
-
-                def will = developers.appendNode("developer")
-                will.appendNode("id", "hortonw")
-                will.appendNode("name", "Will Horton")
-                will.appendNode("email", "hortonw@wustl.edu")
-            }
-        }
-    }
-    repositories {
-        maven {
-            if (project.version.endsWith("-SNAPSHOT")) {
-                url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot-local"
-            } else {
-                url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
-            }
-            // The value for name must match <id> in ~/.m2/settings.xml
-            name = "XNAT_Artifactory"
-        }
-    }
-}
-
-def propertyWithDefault(def String property, def Object value) {
-    hasProperty(property) ? getProperty(property) : value
-}
-
+//publishing {
+//    publications {
+//        mavenJava(MavenPublication) {
+//            artifacts {
+//                artifact sourceJar
+//                artifact javadocJar
+//                artifact fatJar
+//            }
+//
+//            pom.withXml {
+//                def root = asNode()
+//                root.appendNode("name", pluginAppName)
+//                root.appendNode("description", "XNAT plugin for launching and managing containers.")
+//                root.appendNode("url", "https://github.com/nrgxnat/container-service")
+//                root.appendNode("inceptionYear", "2016")
+//
+//                def scm = root.appendNode("scm")
+//                scm.appendNode("url", "https://github.com/nrgxnat/container-service")
+//                scm.appendNode("connection", "scm:https://github.com/nrgxnat/container-service.git")
+//                scm.appendNode("developerConnection", "scm:git@github.com:nrgxnat/container-service")
+//
+//                def license = root.appendNode("licenses").appendNode("license")
+//                license.appendNode("name", "Simplified BSD 2-Clause License")
+//                license.appendNode("url", "https://xnat.org/about/license.php")
+//                license.appendNode("distribution", "repo")
+//
+//                def developers = root.appendNode("developers")
+//                def flavin = developers.appendNode("developer")
+//                flavin.appendNode("id", "jflavin")
+//                flavin.appendNode("name", "John Flavin")
+//                flavin.appendNode("email", "jflavin@wustl.edu")
+//
+//                def kelsey = developers.appendNode("developer")
+//                kelsey.appendNode("id", "kelseym")
+//                kelsey.appendNode("name", "Matt Kelsey")
+//                kelsey.appendNode("email", "kelseym@wustl.edu")
+//
+//                def will = developers.appendNode("developer")
+//                will.appendNode("id", "hortonw")
+//                will.appendNode("name", "Will Horton")
+//                will.appendNode("email", "hortonw@wustl.edu")
+//            }
+//        }
+//    }
+//    repositories {
+//        maven {
+//            if (project.version.endsWith("-SNAPSHOT")) {
+//                url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot-local"
+//            } else {
+//                url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
+//            }
+//            // The value for name must match <id> in ~/.m2/settings.xml
+//            name = "XNAT_Artifactory"
+//        }
+//    }
+//}
