@@ -136,6 +136,7 @@ dependencies {
     implementation "io.springfox:springfox-swagger-ui"
 
     implementation "org.hibernate:hibernate-core"
+    implementation "com.vladmihalcea:hibernate-types-55"
 
     implementation "com.fasterxml.jackson.core:jackson-annotations"
     implementation "com.fasterxml.jackson.core:jackson-core"
@@ -190,7 +191,6 @@ dependencies {
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
-    testImplementation "com.vladmihalcea:hibernate-types-43:${dependencyManagement.importedProperties["vladmihalcea-hibernate-types.version"]}"
 }
 
 test {

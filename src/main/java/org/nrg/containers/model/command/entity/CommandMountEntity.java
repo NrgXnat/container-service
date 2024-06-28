@@ -10,6 +10,8 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+
+import javax.persistence.Transient;
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -53,6 +55,7 @@ public class CommandMountEntity implements Serializable {
         return writable;
     }
 
+    @Transient
     public Boolean getWritable() {
         return writable;
     }

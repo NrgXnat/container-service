@@ -5,7 +5,6 @@ import com.github.dockerjava.api.model.SwarmNodeAvailability;
 import com.github.dockerjava.api.model.SwarmNodeManagerStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.SystemUtils;
-import org.hibernate.NonUniqueObjectException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -62,6 +61,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.persistence.EntityExistsException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -446,7 +446,7 @@ public class SwarmRestartIntegrationTest {
         log.debug("Kill service as if through API");
         try {
             containerService.kill(service.serviceId(), mockUser);
-        } catch (NonUniqueObjectException e) {
+        } catch (EntityExistsException e) {
             log.error(e.getMessage());
         }
 
