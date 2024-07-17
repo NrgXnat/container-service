@@ -1,7 +1,6 @@
 package org.nrg.containers.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hibernate.SessionFactory;
 import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.api.ContainerControlApi;
@@ -11,28 +10,6 @@ import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.daos.DockerServerEntityRepository;
 import org.nrg.containers.events.listeners.ContainerEventListener;
 import org.nrg.containers.events.listeners.DockerServiceEventListener;
-import org.nrg.containers.model.command.entity.CommandEntity;
-import org.nrg.containers.model.command.entity.CommandInputEntity;
-import org.nrg.containers.model.command.entity.CommandMountEntity;
-import org.nrg.containers.model.command.entity.CommandOutputEntity;
-import org.nrg.containers.model.command.entity.CommandWrapperDerivedInputEntity;
-import org.nrg.containers.model.command.entity.CommandWrapperEntity;
-import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
-import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
-import org.nrg.containers.model.command.entity.DockerCommandEntity;
-import org.nrg.containers.model.command.entity.DockerSetupCommandEntity;
-import org.nrg.containers.model.command.entity.DockerWrapupCommandEntity;
-import org.nrg.containers.model.container.entity.ContainerEntity;
-import org.nrg.containers.model.container.entity.ContainerEntityHistory;
-import org.nrg.containers.model.container.entity.ContainerEntityInput;
-import org.nrg.containers.model.container.entity.ContainerEntityMount;
-import org.nrg.containers.model.container.entity.ContainerEntityOutput;
-import org.nrg.containers.model.container.entity.ContainerMountFilesEntity;
-import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
-import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
-import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
-import org.nrg.containers.model.server.docker.DockerServerEntity;
-import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.CommandLabelService;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
@@ -66,18 +43,13 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.orm.hibernate5.HibernateTransactionManager;
-import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
-import org.springframework.transaction.support.ResourceTransactionManager;
 import reactor.Environment;
 import reactor.bus.EventBus;
 import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
-import javax.sql.DataSource;
-import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 
 @Configuration
@@ -262,45 +234,5 @@ public class QueueConsumerTestConfig {
     @Bean
     public ContainerEntityRepository containerEntityRepository() {
         return new ContainerEntityRepository();
-    }
-
-    /*
-    Session factory
-     */
-    @Bean
-    public LocalSessionFactoryBean sessionFactory(final DataSource dataSource, @Qualifier("hibernateProperties") final Properties properties) {
-        final LocalSessionFactoryBean bean = new LocalSessionFactoryBean();
-        bean.setDataSource(dataSource);
-        bean.setHibernateProperties(properties);
-        bean.setAnnotatedClasses(
-                DockerServerEntity.class,
-                DockerServerEntitySwarmConstraint.class,
-                CommandEntity.class,
-                DockerCommandEntity.class,
-                DockerSetupCommandEntity.class,
-                DockerWrapupCommandEntity.class,
-                CommandInputEntity.class,
-                CommandOutputEntity.class,
-                CommandMountEntity.class,
-                CommandWrapperEntity.class,
-                CommandWrapperExternalInputEntity.class,
-                CommandWrapperDerivedInputEntity.class,
-                CommandWrapperOutputEntity.class,
-                OrchestrationEntity.class,
-                OrchestratedWrapperEntity.class,
-                OrchestrationProjectEntity.class,
-                ContainerEntity.class,
-                ContainerEntityHistory.class,
-                ContainerEntityInput.class,
-                ContainerEntityOutput.class,
-                ContainerEntityMount.class,
-                ContainerMountFilesEntity.class);
-
-        return bean;
-    }
-
-    @Bean
-    public ResourceTransactionManager transactionManager(final SessionFactory sessionFactory) throws Exception {
-        return new HibernateTransactionManager(sessionFactory);
     }
 }

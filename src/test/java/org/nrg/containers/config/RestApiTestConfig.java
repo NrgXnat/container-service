@@ -61,7 +61,7 @@ public class RestApiTestConfig extends WebMvcConfigurerAdapter {
 
     @Bean
     public RoleHolder mockRoleHolder(@Qualifier("mockRoleService") final RoleServiceI roleServiceI,
-                                     final NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
+                                     @Qualifier("mockNamedParameterJdbcTemplate") final NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
         return new RoleHolder(roleServiceI, namedParameterJdbcTemplate);
     }
 
