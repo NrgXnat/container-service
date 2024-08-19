@@ -18,6 +18,7 @@ import io.kubernetes.client.openapi.models.V1JobList;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.models.V1PodSpec;
 import io.kubernetes.client.openapi.models.V1PodStatus;
 import io.kubernetes.client.util.CallGeneratorParams;
 import lombok.extern.slf4j.Slf4j;
@@ -223,6 +224,10 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                 timestamp = null;
             }
 
+            // Node
+            final V1PodSpec podSpec = pod.getSpec();
+            final String nodeName = podSpec == null ? null : podSpec.getNodeName();
+
             return new KubernetesStatusChangeEvent(
                     jobNameFromPodLabels(pod),
                     objName(pod),
@@ -232,7 +237,8 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                     containerState,
                     containerStateReason,
                     exitCode,
-                    timestamp
+                    timestamp,
+                    nodeName
             );
         }
 
@@ -276,7 +282,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                 return;
             }
 
-            log.debug("Pod {} updated", newEvent.podName());
+            log.debug("Pod {} updated", newEvent.getPodName());
             triggerEvent(newEvent);
         }
 
