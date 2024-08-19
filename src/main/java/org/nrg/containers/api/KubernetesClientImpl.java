@@ -54,7 +54,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static io.kubernetes.client.util.Config.SERVICEACCOUNT_CA_PATH;
-import static org.apache.commons.httpclient.HttpStatus.SC_BAD_REQUEST;
+import org.springframework.http.HttpStatus;
 import static org.nrg.containers.utils.ContainerUtils.SECONDS_PER_WEEK;
 
 @Slf4j
@@ -219,7 +219,7 @@ public class KubernetesClientImpl implements KubernetesClient {
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);
         } catch (ApiException e) {
-            if (e.getCode() == SC_BAD_REQUEST && e.getResponseBody() != null && e.getResponseBody().contains(CONTAINER_CREATING)) {
+            if (e.getCode() == HttpStatus.BAD_REQUEST.value() && e.getResponseBody() != null && e.getResponseBody().contains(CONTAINER_CREATING)) {
                 // Kubernetes returns an error when we try to read logs for a container that is being created,
                 //  but we don't need to consider that an error
                 log.info("Could not read log for pod \"{}\". Container is creating. message \"{}\" code {} body {}", podName, e.getMessage(), e.getCode(), e.getResponseBody());
