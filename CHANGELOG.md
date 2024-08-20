@@ -1,9 +1,10 @@
 # Changelog
 
 ## 3.5.0
-Not yet released.
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.5.0/).
 
 * **Improvement** [CS-946][] Prevent setting mutually distinct k8s PVC mounting options
+* **Bugfix** [CS-966][] Ensure tracking of container IDs in workflow tables in a Kubernetes environment
 * **Bugfix** [CS-968][] Switch the docker API library we use from [docker-client][] to [docker-java][].
     This should restore CS functionality on docker engine v25 and higher.
     
@@ -20,7 +21,9 @@ This forced us to switch our library from `docker-client` to [docker-java][]. Th
 Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3.4.0.1` for our docker (and swarm) API support.
 
 [CS-946]: https://radiologics.atlassian.net/browse/CS-946
+[CS-966]: https://radiologics.atlassian.net/browse/CS-966
 [CS-968]: https://radiologics.atlassian.net/browse/CS-968
+[docker-client]: https://github.com/spotify/docker-client
 [spotify/docker-client]: https://github.com/spotify/docker-client
 [v6.1.1]: https://github.com/spotify/docker-client/releases/tag/v6.1.1
 [dmandalidis/docker-client]: https://github.com/dmandalidis/docker-client
