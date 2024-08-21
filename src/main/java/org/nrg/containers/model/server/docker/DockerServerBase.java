@@ -320,6 +320,14 @@ public abstract class DockerServerBase {
                         StringUtils.equalsIgnoreCase("amd", gpuVendor))) {
                     errors.add("The value of the GPU Vendor can only be nvidia or amd");
                 }
+                if (StringUtils.isNotEmpty(combinedPvcName()) && (StringUtils.isNotEmpty(archivePvcName())
+                        || StringUtils.isNotEmpty(buildPvcName()))) {
+                    errors.add("You cannot have a Kubernetes server setup which uses mounts from a PVC with separate and combined locations for build and archive. Please choose one or the other.");
+                }
+                if (StringUtils.isNotEmpty(combinedPathTranslation()) && (StringUtils.isNotEmpty(archivePathTranslation())
+                        || StringUtils.isNotEmpty(buildPathTranslation()))) {
+                    errors.add("You cannot have a Kubernetes server setup which has path translations for both separate and combined locations for build and archive directories. Please choose one or the other.");
+                }
             } else {
                 // Docker + Swarm must have a host configured
                 if (StringUtils.isBlank(host())) {

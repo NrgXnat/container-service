@@ -1,0 +1,43 @@
+{
+    "name": "debug-gpu",
+    "description": "Used to ensure we can request GPU resources. Will not run.",
+    "label": "Debug - GPU",
+    "version": "1.0",
+    "schema-version": "1.0",
+    "type": "docker",
+    "command-line": "#COMMAND#",
+    "image": "xnat/debug-command:latest",
+    "override-entrypoint": true,
+    "generic-resources": {
+        "gpu": "1"
+    },
+    "inputs": [
+        {
+            "name": "command",
+            "description": "The command to run",
+            "type": "string",
+            "required": true,
+            "default-value": "echo hello world",
+            "replacement-key": "#COMMAND#"
+        }
+    ],
+    "xnat": [
+        {
+            "name": "debug-gpu",
+            "description": "Run the debug gpu container with a project",
+            "label": "Debug - GPU",
+            "contexts": ["xnat:projectData"],
+            "external-inputs": [
+                {
+                    "name": "project",
+                    "description": "Input project",
+                    "type": "Project",
+                    "required": true,
+                    "load-children": false
+                }
+            ],
+            "derived-inputs": [],
+            "output-handlers": []
+        }
+    ]
+}

@@ -3,6 +3,7 @@ package org.nrg.containers.services.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.model.TaskState;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
@@ -13,7 +14,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
@@ -861,22 +861,29 @@ public class ContainerServiceImpl implements ContainerService {
             KubernetesStatusChangeEvent kEvent = ((KubernetesStatusChangeEvent) event);
 
             // Check if we need to set additional ids
-            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.podName() != null;
-            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kEvent.containerId() != null;
-            if (shouldUpdatePodName || shouldUpdateContainerId) {
+            boolean shouldUpdateNode = containerWithAddedEvent.nodeId() == null && kEvent.getNodeId() != null;
+            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.getPodName() != null;
+            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kEvent.getContainerId() != null;
+            if (shouldUpdateNode || shouldUpdatePodName || shouldUpdateContainerId) {
                 Container.Builder builder = containerWithAddedEvent.toBuilder();
 
+                if (shouldUpdateNode) {
+                    log.debug("Container {} for job {}: setting nodeId to node {}",
+                            container.databaseId(), container.jobName(), kEvent.getNodeId()
+                    );
+                    builder.nodeId(kEvent.getNodeId());
+                }
                 if (shouldUpdatePodName) {
                     log.debug("Container {} for job {}: setting taskId to pod name {}",
-                            container.databaseId(), container.jobName(), kEvent.podName()
+                            container.databaseId(), container.jobName(), kEvent.getPodName()
                     );
-                    builder.taskId(kEvent.podName());
+                    builder.taskId(kEvent.getPodName());
                 }
                 if (shouldUpdateContainerId) {
                     log.debug("Container {} for job {}: setting containerId to container id {}",
-                            container.databaseId(), container.jobName(), kEvent.containerId()
+                            container.databaseId(), container.jobName(), kEvent.getContainerId()
                     );
-                    builder.containerId(kEvent.containerId());
+                    builder.containerId(kEvent.getContainerId());
                 }
                 containerEntityService.update(fromPojo(builder.build()));
                 containerWithAddedEvent = retrieve(container.databaseId());
@@ -1072,7 +1079,7 @@ public class ContainerServiceImpl implements ContainerService {
         final ContainerHistory newHistoryItem = ContainerHistory.builder()
                 .entityType("service")
                 .entityId(null)
-                .status(TaskStatus.TASK_STATE_FAILED)
+                .status(TaskState.FAILED.getValue())
                 .exitCode("126")
                 .timeRecorded(now)
                 .externalTimestamp(String.valueOf(now.getTime()))

@@ -3,6 +3,12 @@ package org.nrg.containers.secrets;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.CreateContainerCmd;
+import com.github.dockerjava.api.command.CreateContainerResponse;
+import com.github.dockerjava.api.command.CreateServiceCmd;
+import com.github.dockerjava.api.command.CreateServiceResponse;
+import com.github.dockerjava.api.model.ServiceSpec;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1EnvVar;
@@ -20,16 +26,11 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.messages.ContainerConfig;
-import org.mandas.docker.client.messages.ContainerCreation;
-import org.mandas.docker.client.messages.RegistryAuth;
-import org.mandas.docker.client.messages.ServiceCreateResponse;
-import org.mandas.docker.client.messages.swarm.ServiceSpec;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.internal.util.reflection.Whitebox;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClientImpl;
@@ -79,6 +80,8 @@ import static org.hamcrest.Matchers.notNullValue;
 @RunWith(PowerMockRunner.class)
 @PrepareOnlyThisForTest(DockerControlApi.class)
 public class SecretsTest {
+    private final static Answer RETURN_SELF = InvocationOnMock::getMock;
+
     @Mock private SystemPropertySecretSource.ValueObtainer valueObtainer;
     @Mock private CommandService commandService;
     @Mock private DockerServerService dockerServerService;
@@ -322,18 +325,12 @@ public class SecretsTest {
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
-        final ServiceCreateResponse serviceCreateResponse = new ServiceCreateResponse() {
-            @Override
-            public String id() {
-                return containerId;
-            }
+        final CreateServiceResponse resp = Mockito.mock(CreateServiceResponse.class);
+        Mockito.when(resp.getId()).thenReturn(containerId);
 
-            @Override
-            public List<String> warnings() {
-                return Collections.emptyList();
-            }
-        };
-        Mockito.when(dockerClient.createService(Mockito.any(ServiceSpec.class), Mockito.any(RegistryAuth.class))).thenReturn(serviceCreateResponse);
+        final CreateServiceCmd cmd = Mockito.mock(CreateServiceCmd.class, RETURN_SELF);
+        Mockito.doReturn(resp).when(cmd).exec();
+        Mockito.when(dockerClient.createServiceCmd(Mockito.any(ServiceSpec.class))).thenReturn(cmd);
 
         // Call method under test
         PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
@@ -342,12 +339,11 @@ public class SecretsTest {
 
         // Capture call to backend api mock
         final ArgumentCaptor<ServiceSpec> serviceSpecArgumentCaptor = ArgumentCaptor.forClass(ServiceSpec.class);
-        final ArgumentCaptor<RegistryAuth> registryAuthArgumentCaptor = ArgumentCaptor.forClass(RegistryAuth.class);
-        Mockito.verify(dockerClient).createService(serviceSpecArgumentCaptor.capture(), registryAuthArgumentCaptor.capture());
+        Mockito.verify(dockerClient).createServiceCmd(serviceSpecArgumentCaptor.capture());
         final ServiceSpec serviceSpec = serviceSpecArgumentCaptor.getValue();
 
         // Check for secret env value
-        assertThat(serviceSpec.taskTemplate().containerSpec().env(),
+        assertThat(serviceSpec.getTaskTemplate().getContainerSpec().getEnv(),
                 contains(secretEnvironmentVariableName + "=" + secretValue));
     }
 
@@ -390,18 +386,16 @@ public class SecretsTest {
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
-        final ContainerCreation containerCreation = new ContainerCreation() {
-            @Override
-            public String id() {
-                return containerId;
-            }
+        final CreateContainerResponse resp = new CreateContainerResponse();
+        resp.setId(containerId);
+        resp.setWarnings(new String[0]);
 
-            @Override
-            public List<String> warnings() {
-                return Collections.emptyList();
-            }
-        };
-        Mockito.when(dockerClient.createContainer(Mockito.any(ContainerConfig.class))).thenReturn(containerCreation);
+        // This default answer lets us stub out all the method chaining .withFoo().withBar() without having to stub each one
+        // Have to make it explicitly because Mockito.RETURNS_SELF is not available in our version
+        @SuppressWarnings("rawtypes")
+        final CreateContainerCmd cmd = Mockito.mock(CreateContainerCmd.class, (Answer) InvocationOnMock::getMock);
+        Mockito.doReturn(resp).when(cmd).exec();
+        Mockito.when(dockerClient.createContainerCmd(dockerImage)).thenReturn(cmd);
 
         // Call method under test
         PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerContainer", toCreate, dockerServer);
@@ -409,12 +403,13 @@ public class SecretsTest {
         dockerControlApi.create(toCreate, user);
 
         // Capture call to backend api mock
-        final ArgumentCaptor<ContainerConfig> containerConfigArgumentCaptor = ArgumentCaptor.forClass(ContainerConfig.class);
-        Mockito.verify(dockerClient).createContainer(containerConfigArgumentCaptor.capture());
-        final ContainerConfig containerConfig = containerConfigArgumentCaptor.getValue();
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        final ArgumentCaptor<List<String>> withEnvArgumentCaptor = ArgumentCaptor.forClass((Class) List.class);
+        Mockito.verify(cmd).withEnv(withEnvArgumentCaptor.capture());
+        final List<String> env = withEnvArgumentCaptor.getValue();
 
         // Check for secret env value
-        assertThat(containerConfig.env(), contains(secretEnvironmentVariableName + "=" + secretValue));
+        assertThat(env, contains(secretEnvironmentVariableName + "=" + secretValue));
     }
 
     @Test

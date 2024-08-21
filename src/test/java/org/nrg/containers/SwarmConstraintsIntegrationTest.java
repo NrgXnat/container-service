@@ -1,11 +1,12 @@
 package org.nrg.containers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.model.SwarmNode;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -13,10 +14,6 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.mandas.docker.client.DockerClient;
-import org.mandas.docker.client.messages.swarm.Node;
-import org.mandas.docker.client.messages.swarm.NodeInfo;
-import org.mandas.docker.client.messages.swarm.NodeSpec;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -34,6 +31,7 @@ import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
+import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
@@ -73,10 +71,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
@@ -86,6 +82,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.Matchers.any;
@@ -108,9 +105,6 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmConstraintsIntegrationTest {
-    private String certPath;
-    private String containerHost;
-
     private UserI mockUser;
     private String buildDir;
     private String archiveDir;
@@ -167,7 +161,6 @@ public class SwarmConstraintsIntegrationTest {
     private final Map<String, Map<String, String>> nodeLabelsToReset = new HashMap<>();
 
     private DockerServer.Builder dockerServerBuilder;
-    private static DockerClient CLIENT;
 
     @Autowired private CommandService commandService;
     @Autowired private ContainerService containerService;
@@ -194,6 +187,11 @@ public class SwarmConstraintsIntegrationTest {
             log.info("ENDING TEST " + description.getMethodName());
         }
     };
+
+    @BeforeClass
+    public static void setupClass() {
+        TestingUtils.skipIfNotRunningIntegrationTests();
+    }
 
     @Before
     public void setup() throws Exception {
@@ -261,33 +259,6 @@ public class SwarmConstraintsIntegrationTest {
         )).thenReturn(true);
 
         // Setup docker server
-        final String defaultHost = "unix:///var/run/docker.sock";
-        final String hostEnv = System.getenv("DOCKER_HOST");
-        final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
-        final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
-
-        final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
-        if (useTls) {
-            if (StringUtils.isBlank(certPathEnv)) {
-                throw new Exception("Must set DOCKER_CERT_PATH if DOCKER_TLS_VERIFY=1.");
-            }
-            certPath = certPathEnv;
-        } else {
-            certPath = "";
-        }
-
-        if (StringUtils.isBlank(hostEnv)) {
-            containerHost = defaultHost;
-        } else {
-            final Pattern tcpShouldBeHttpRe = Pattern.compile("tcp://.*");
-            final java.util.regex.Matcher tcpShouldBeHttpMatch = tcpShouldBeHttpRe.matcher(hostEnv);
-            if (tcpShouldBeHttpMatch.matches()) {
-                // Must switch out tcp:// for either http:// or https://
-                containerHost = hostEnv.replace("tcp://", "http" + (useTls ? "s" : "") + "://");
-            } else {
-                containerHost = hostEnv;
-            }
-        }
 
         final Command sleeper = commandService.create(Command.builder()
                 .name("long-running")
@@ -300,10 +271,11 @@ public class SwarmConstraintsIntegrationTest {
                 .build());
         sleeperWrapper = sleeper.xnatCommandWrappers().get(0);
 
+        final BackendConfig backendConfig = TestingUtils.getBackendConfig();
         dockerServerBuilder = DockerServer.builder()
                 .name("Test server")
-                .host(containerHost)
-                .certPath(certPath)
+                .host(backendConfig.getContainerHost())
+                .certPath(backendConfig.getCertPath())
                 .lastEventCheckTime(new Date())
                 .backend(Backend.SWARM);
 
@@ -311,48 +283,33 @@ public class SwarmConstraintsIntegrationTest {
         dockerServerService.setServer(dockerServerBuilder.swarmConstraints(Collections.emptyList()).build());
         TestingUtils.commitTransaction();
 
-        CLIENT = controlApi.getDockerClient();
-        TestingUtils.skipIfCannotConnectToSwarm(CLIENT);
+        TestingUtils.skipIfCannotConnectToSwarm(controlApi.getDockerClient());
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
     }
 
     @After
     public void cleanup() throws Exception {
         fakeWorkflow = new FakeWorkflow();
-        for (final String containerToCleanUp : containersToCleanUp) {
-            try {
-                CLIENT.removeService(containerToCleanUp);
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        containersToCleanUp.clear();
-
-        for (final String imageToCleanUp : imagesToCleanUp) {
-            try {
-                CLIENT.removeImage(imageToCleanUp, true, false);
-            } catch (Exception e) {
-                // do nothing
-            }
-        }
-        imagesToCleanUp.clear();
+        TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
         for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
             String nodeId = entry.getKey();
             Map<String, String> originalLabels = entry.getValue();
-            NodeInfo nodeInfo = CLIENT.inspectNode(nodeId);
-            NodeSpec current = nodeInfo.spec();
-            NodeSpec original = NodeSpec.builder()
-                    .name(current.name())
-                    .role(current.role())
-                    .availability(current.availability())
-                    .labels(originalLabels)
-                    .build();
-            CLIENT.updateNode(nodeId, nodeInfo.version().index(), original);
+            SwarmNode current = controlApi.getDockerClient()
+                    .listSwarmNodesCmd()
+                    .withIdFilter(Collections.singletonList(nodeId))
+                    .exec()
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new Exception("Node not found"));
+            controlApi.getDockerClient().updateSwarmNodeCmd()
+                    .withSwarmNodeId(nodeId)
+                    .withVersion(current.getVersion().getIndex())
+                    .withSwarmNodeSpec(current.getSpec().withLabels(originalLabels))
+                    .exec();
         }
         nodeLabelsToReset.clear();
-
-        CLIENT.close();
     }
 
     private List<DockerServerBase.DockerServerSwarmConstraint> setUpServerWithConstraints() throws Exception {
@@ -366,12 +323,12 @@ public class SwarmConstraintsIntegrationTest {
         final List<DockerServerBase.DockerServerSwarmConstraint> constraints = new ArrayList<>(DEFAULT_SWARM_SERVER_CONSTRAINTS);
 
         // Find manager
-        List<Node> managerNodes = CLIENT.listNodes(Node.Criteria.builder().nodeRole("manager").build());
+        List<SwarmNode> managerNodes = controlApi.getDockerClient().listSwarmNodesCmd().withRoleFilter(Collections.singletonList("manager")).exec();
         assertThat(managerNodes.size(), greaterThan(0));
-        Node managerNode = managerNodes.get(0);
+        SwarmNode managerNode = managerNodes.get(0);
 
         // Add test labels
-        Map<String, String> oldLabels = managerNode.spec().labels();
+        Map<String, String> oldLabels = managerNode.getSpec().getLabels();
         Map<String, String> labelsToAdd = new HashMap<>(DEFAULT_MANAGER_NODE_LABELS);
 
         if (managerNodes.size() > 1) {
@@ -396,14 +353,16 @@ public class SwarmConstraintsIntegrationTest {
         }
 
         // Ensure we clean up node label changes
-        nodeLabelsToReset.put(managerNode.id(), oldLabels);
+        nodeLabelsToReset.put(managerNode.getId(), oldLabels);
         Map<String, String> newLabels = new HashMap<>(oldLabels);
         newLabels.putAll(labelsToAdd);
 
         // Update manager node to match constraints
-        CLIENT.updateNode(managerNode.id(), managerNode.version().index(),
-                NodeSpec.builder(managerNode.spec()).labels(newLabels).build()
-        );
+        controlApi.getDockerClient().updateSwarmNodeCmd()
+                .withSwarmNodeId(managerNode.getId())
+                .withVersion(managerNode.getVersion().getIndex())
+                .withSwarmNodeSpec(managerNode.getSpec().withLabels(newLabels))
+                .exec();
 
         // Add constraints to DockerServer settings
         DockerServer server = dockerServerBuilder
@@ -430,7 +389,7 @@ public class SwarmConstraintsIntegrationTest {
         containersToCleanUp.add(service.serviceId());
 
         log.debug("Waiting for service to start running...");
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service)); //Running = success!
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), service)); //Running = success!
         log.debug("SUCCESS: Service is running");
     }
 
@@ -454,7 +413,7 @@ public class SwarmConstraintsIntegrationTest {
 
         // Check that service does run
         log.debug("Waiting for service to start running...");
-        await().until(TestingUtils.serviceIsRunning(CLIENT, service));
+        await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), service)); //Running = success!
         log.debug("SUCCESS: Service is running");
     }
 
@@ -480,14 +439,14 @@ public class SwarmConstraintsIntegrationTest {
         log.debug("Waiting for service to be created...");
         await().until(() -> {
             try {
-                return Objects.equals(containerService.get(service.serviceId()).status(), "pending");
+                return "pending".equals(containerService.get(service.serviceId()).status());
             } catch (Exception e) {
                 return false;
             }
         });
         // Check that service is not running
         log.debug("Service was created. Checking that service is not running");
-        assertThat(TestingUtils.serviceIsRunning(CLIENT, service, true).call(), is(false));
+        assertEquals(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), service, true).call(), false);
         log.debug("SUCCESS: Service is not running");
     }
 
@@ -643,7 +602,7 @@ public class SwarmConstraintsIntegrationTest {
 
         // Expect that constraints are ignored and container runs
         log.debug("Waiting for container to run...");
-        await().until(TestingUtils.containerIsRunning(CLIENT, false, container)); //Running = success!
+        await().until(TestingUtils.containerIsRunning(controlApi.getDockerClient(), false, container)); //Running = success!
         log.debug("SUCCESS: Container is running");
     }
 }

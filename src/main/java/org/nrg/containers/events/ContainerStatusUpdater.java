@@ -1,14 +1,19 @@
 package org.nrg.containers.events;
 
+import com.github.dockerjava.api.model.TaskState;
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
-import org.mandas.docker.client.exceptions.ServiceNotFoundException;
-import org.mandas.docker.client.exceptions.TaskNotFoundException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
-import org.nrg.containers.exceptions.*;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
+import org.nrg.containers.exceptions.NoContainerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.ServiceNotFoundException;
+import org.nrg.containers.exceptions.TaskNotFoundException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -27,8 +32,6 @@ import javax.annotation.Nonnull;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-
-import static org.mandas.docker.client.messages.swarm.TaskStatus.TASK_STATE_FAILED;
 
 @Slf4j
 @Component
@@ -339,7 +342,7 @@ public class ContainerStatusUpdater implements Runnable {
                 .serviceId(service.serviceId())
                 .taskId(null)
                 .nodeId(null)
-                .status(TASK_STATE_FAILED)
+                .status(TaskState.FAILED.getValue())
                 .swarmNodeError(true)
                 .statusTime(null)
                 .message(ServiceTask.swarmNodeErrMsg)

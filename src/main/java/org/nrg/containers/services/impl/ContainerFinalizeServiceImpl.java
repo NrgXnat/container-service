@@ -1,5 +1,6 @@
 package org.nrg.containers.services.impl;
 
+import com.github.dockerjava.api.model.TaskState;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
@@ -8,7 +9,6 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.mandas.docker.client.messages.swarm.TaskStatus;
 import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
@@ -288,7 +288,7 @@ public class ContainerFinalizeServiceImpl implements ContainerFinalizeService {
                             : "";
                     final boolean startsWithFailed = containerStatus.startsWith(PersistentWorkflowUtils.FAILED);
                     if (startsWithFailed ||
-                            containerStatus.equals(TaskStatus.TASK_STATE_FAILED) ||
+                            containerStatus.equals(TaskState.FAILED.getValue()) ||
                             containerStatus.equals("die")) {
                         // This history entry should give us the details that we need
                         if (startsWithFailed) {
