@@ -2208,8 +2208,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     commandConfigManager.filterCommandList = filterCommandList = function(){
         // check all active filters
         var ccmTable = $(document).find('table.sitewide-command-configs'),
-            commandFilterKey = ccmTable.find('input.filter-commandlabel').val() || false,
-            containerFilterKey = ccmTable.find('input.filter-container').val() || false;
+            commandFilterKey = ccmTable.find('input.filter-commandlabel').val().toLowerCase() || false,
+            containerFilterKey = ccmTable.find('input.filter-container').val().toLowerCase() || false;
 
         var rowsToFilter = $(ccmTable).find('tr.command-config-listing');
         if (!commandFilterKey && !containerFilterKey) {
@@ -2218,8 +2218,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             rowsToFilter.each(function(){
                 // show this row only if filters are empty or have values matching the command or container
                 var showRow = (
-                    ($(this).prop('title').indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
-                    ($(this).data('image').indexOf(containerFilterKey) >= 0 || !containerFilterKey ));
+                    ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
+                    ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ));
 
                 if (showRow) {
                     $(this).removeClass('hidden')
