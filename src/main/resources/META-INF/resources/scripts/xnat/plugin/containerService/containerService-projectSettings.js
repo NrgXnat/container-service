@@ -391,11 +391,36 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         return spawn('span',{ 'style': { 'color': '#808080' }},'disabled');
     }
 
+    projCommandConfigManager.filterCommandList = filterCommandList = function(){
+            // check all active filters
+            var pccmTable = $(document).find('table.project-command-configs'),
+                commandFilterKey = pccmTable.find('input.filter-commandlabel').val().toLowerCase() || false,
+                containerFilterKey = pccmTable.find('input.filter-container').val().toLowerCase() || false;
+
+            var rowsToFilter = $(pccmTable).find('tr.command-config-listing');
+            if (!commandFilterKey && !containerFilterKey) {
+                rowsToFilter.removeClass('hidden');
+            } else {
+                rowsToFilter.each(function(){
+                    // show this row only if filters are empty or have values matching the command or container
+                    var showRow = (
+                        ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
+                        ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ));
+
+                    if (showRow) {
+                        $(this).removeClass('hidden')
+                    } else {
+                        $(this).addClass('hidden')
+                    }
+                })
+            }
+        }
+
     projCommandConfigManager.table = function(config){
 
         // initialize the table - we'll add to it below
         var pccmTable = XNAT.table({
-            className: 'xnat-table '+config.className,
+            className: 'xnat-table project-command-configs '+config.className,
             style: {
                 width: '100%',
                 marginTop: '15px',
@@ -413,7 +438,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
         // add master switch
         pccmTable.tr({ 'style': { 'background-color': '#f3f3f3' }})
-            .td( {className: 'name', colSpan: 2 }, 'Enable / Disable All Commands' )
+            .td([ spawn('div',[ filterCommandLabel()]) ])
+            .td([ spawn('div',[ filterContainer()]) ])
             .td([ spawn('div',[ masterCommandCheckbox() ]) ])
             .td();
 
@@ -526,6 +552,28 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             ]);
         }
 
+        function filterCommandLabel(){
+            return spawn('input', {
+                addClass: 'filter-data filter-commandlabel',
+                type: 'text',
+                title: 'Filter on the command label',
+                placeholder: 'Filter by Command',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.projCommandConfigManager.filterCommandList
+            })
+        }
+
+        function filterContainer(){
+            return spawn('input', {
+                addClass: 'filter-data filter-container',
+                type: 'text',
+                title: 'Filter on the container name',
+                placeholder: 'Filter by Container',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.projCommandConfigManager.filterCommandList
+            })
+        }
+
         projCommandConfigManager.getAll().done(function(data) {
             commandList = data;
 
@@ -543,7 +591,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             };
                             refreshCommandWrapperList(wrapper.id);
 
-                            pccmTable.tr({title: wrapper.name, data: {id: wrapper.id, name: wrapper.name, image: command.image}})
+                            var label = (wrapper.description) ? wrapper.description : wrapper.name;
+
+                            pccmTable.tr({addClass: 'command-config-listing', title: label, data: {id: wrapper.id, name: wrapper.name, image: command.image}})
                                 .td([viewLink(command, wrapper)]).addClass('name')
                                 .td(command.image)
                                 .td([['div.center', [enabledCheckbox(command,wrapper)]]])

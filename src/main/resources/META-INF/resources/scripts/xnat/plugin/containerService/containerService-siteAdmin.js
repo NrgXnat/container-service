@@ -2205,6 +2205,30 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     };
 
+    commandConfigManager.filterCommandList = filterCommandList = function(){
+        // check all active filters
+        var ccmTable = $(document).find('table.sitewide-command-configs'),
+            commandFilterKey = ccmTable.find('input.filter-commandlabel').val().toLowerCase() || false,
+            containerFilterKey = ccmTable.find('input.filter-container').val().toLowerCase() || false;
+
+        var rowsToFilter = $(ccmTable).find('tr.command-config-listing');
+        if (!commandFilterKey && !containerFilterKey) {
+            rowsToFilter.removeClass('hidden');
+        } else {
+            rowsToFilter.each(function(){
+                // show this row only if filters are empty or have values matching the command or container
+                var showRow = (
+                    ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
+                    ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ));
+
+                if (showRow) {
+                    $(this).removeClass('hidden')
+                } else {
+                    $(this).addClass('hidden')
+                }
+            })
+        }
+    }
 
     commandConfigManager.table = function(){
 
@@ -2219,15 +2243,16 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         });
 
         // add table header row
-        ccmTable.tr()
+        ccmTable.tr({ addClass: 'header-row' })
             .th({ addClass: 'left', html: '<b>XNAT Command Label</b>' })
             .th('<b>Container</b>')
             .th('<b>Enabled</b>')
             .th({ width: 170, html: '<b>Actions</b>' });
 
         // add master switch
-        ccmTable.tr({ 'style': { 'background-color': '#f3f3f3' }})
-            .td({className: 'name', html: 'Enable / Disable All Commands', colSpan: 2 })
+        ccmTable.tr({ addClass: 'header-row', 'style': { 'background-color': '#f3f3f3' }})
+            .td([ spawn('div',[filterCommandLabel()]) ])
+            .td([ spawn('div',[filterContainer()]) ])
             .td([ spawn('div',[masterCommandCheckbox()]) ])
             .td();
 
@@ -2356,6 +2381,28 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             ]);
         }
 
+        function filterCommandLabel(){
+            return spawn('input', {
+                addClass: 'filter-data filter-commandlabel',
+                type: 'text',
+                title: 'Filter on the command label',
+                placeholder: 'Filter by Command',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandList
+                })
+        }
+
+        function filterContainer(){
+            return spawn('input', {
+                addClass: 'filter-data filter-container',
+                type: 'text',
+                title: 'Filter on the container name',
+                placeholder: 'Filter by Container',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandList
+                })
+        }
+
         commandConfigManager.getAll().done(function(data) {
             wrapperList = {};
             commandOptions = {};
@@ -2376,7 +2423,11 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             };
                             refreshCommandWrapperList(wrapper.id);
 
-                            ccmTable.tr({title: wrapper.name, data: {wrapperid: wrapper.id, commandid: command.id, name: wrapper.name, image: command.image}})
+                            var label = (wrapper.description.length) ?
+                                wrapper.description :
+                                wrapper.name;
+
+                            ccmTable.tr({title: label, addClass: 'command-config-listing', data: {wrapperid: wrapper.id, commandid: command.id, name: wrapper.name, image: command.image}})
                                 .td([ viewLink(command, wrapper) ]).addClass('name')
                                 .td([ spawn('span.truncate.truncate200', command.image ) ])
                                 .td([ spawn('div', [enabledCheckbox(command,wrapper)]) ])

@@ -16,13 +16,13 @@ import java.util.List;
 @Repository
 public class OrchestrationEntityDao extends AbstractHibernateDAO<OrchestrationEntity> {
     public List<OrchestrationEntity> findAllWithDisabledAndOrder() {
-        final Criteria criteria = getCriteriaForType();
+        final Criteria criteria = getSession().createCriteria(getParameterizedType());
         criteria.addOrder(Order.asc("id"));
         return GenericUtils.convertToTypedList(criteria.list(), getParameterizedType());
     }
 
     public List<OrchestrationEntity> findEnabledUsingWrapper(long wrapperId) {
-        final Criteria criteria = getCriteriaForType();
+        final Criteria criteria = getSession().createCriteria(getParameterizedType());
         criteria.add(Restrictions.eq("enabled", true));
         final Criteria wrapperCriteria = criteria.createCriteria("wrapperList");
         final Criteria commandCriteria = wrapperCriteria.createCriteria("commandWrapperEntity");

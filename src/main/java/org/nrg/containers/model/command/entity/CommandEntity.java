@@ -537,7 +537,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
 
     // Use fully-qualified name until we add a TypeDef to AbstractHibernateEntity - See XNAT-7172
     @Type(type = "com.vladmihalcea.hibernate.type.json.JsonType")
-    @Column(columnDefinition = "json")
+    @Column(columnDefinition = "jsonb")
     public List<Secret> getSecrets() {
         return secrets;
     }

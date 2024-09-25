@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.8.10"
+        vXnat = "1.9.0-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -16,7 +16,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.5.0"
+version "3.6.0-RC-SNAPSHOT"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -136,6 +136,7 @@ dependencies {
     implementation "io.springfox:springfox-swagger-ui"
 
     implementation "org.hibernate:hibernate-core"
+    implementation "com.vladmihalcea:hibernate-types-55"
 
     implementation "com.fasterxml.jackson.core:jackson-annotations"
     implementation "com.fasterxml.jackson.core:jackson-core"
@@ -187,10 +188,12 @@ dependencies {
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
+    testImplementation "commons-net:commons-net"
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
-    testImplementation "com.vladmihalcea:hibernate-types-43:${dependencyManagement.importedProperties["vladmihalcea-hibernate-types.version"]}"
+    testImplementation "org.testcontainers:junit-jupiter:1.19.0"
+    testImplementation "org.testcontainers:postgresql:1.19.0"
 }
 
 test {
