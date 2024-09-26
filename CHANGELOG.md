@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.6.0
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.6.0/)
+
+* **Improvement** [XNAT-7990](https://radiologics.atlassian.net/browse/XNAT-7990) Update Hibernate and Spring dependencies for compatibility with XNAT 1.9.0
+* **Improvement** [XNAT-7991](https://radiologics.atlassian.net/browse/XNAT-7991) Replace calls to deprecated commons-httpclient dependency
+* **Improvement** [CS-943](https://radiologics.atlassian.net/browse/CS-943) Add filtering to lists of installed commands in site-wide and project settings
+* Also improved unit tests for automated validation 
+
 ## 3.5.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.5.0/).
 
