@@ -5,6 +5,8 @@ import org.nrg.framework.event.EventI;
 import java.util.Map;
 
 public interface ContainerEvent extends EventI {
+    String QUEUE = "containerEventQueue";
+
     String backendId();
     String status();
     String details();

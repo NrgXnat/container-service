@@ -9,6 +9,10 @@ import javax.annotation.Nonnull;
 
 @AutoValue
 public abstract class ServiceTaskEvent implements EventI {
+    private static final long serialVersionUID = 5423148597895355320L;
+
+    public static final String QUEUE = "serviceTaskEventQueue";
+
     public abstract ServiceTask task();
     public abstract Container service();
     public abstract EventType eventType();

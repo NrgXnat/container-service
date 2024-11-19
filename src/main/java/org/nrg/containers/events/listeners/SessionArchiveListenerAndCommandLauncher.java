@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.config.ContainersConfig;
 import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
 import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.containers.exceptions.CommandResolutionException;
@@ -13,6 +14,7 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.CommandEventMapping;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
@@ -20,12 +22,15 @@ import org.nrg.containers.services.CommandEventMappingService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventServiceI;
+import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
 import reactor.bus.Event;
 import reactor.bus.EventBus;
@@ -34,7 +39,6 @@ import reactor.fn.Consumer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
 
 import static reactor.bus.selector.Selectors.type;
 
@@ -42,16 +46,16 @@ import static reactor.bus.selector.Selectors.type;
 @Service
 @SuppressWarnings("unused")
 public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<SessionMergeOrArchiveEvent>> {
-    public static final String SESSION_ARCHIVED_EVENT = "SessionArchived";
-    public static final String SESSION_MERGED_EVENT = "Merged";
-    public static final Map<String, String> WORKFLOW_TO_EVENT_ID = Maps.newHashMap(ImmutableMap.of(
+    public static final String                     SESSION_ARCHIVED_EVENT = "SessionArchived";
+    public static final String                     SESSION_MERGED_EVENT   = "Merged";
+    public static final Map<String, String>        WORKFLOW_TO_EVENT_ID   = Maps.newHashMap(ImmutableMap.of(
             "Transferred", SESSION_ARCHIVED_EVENT, SESSION_MERGED_EVENT, SESSION_MERGED_EVENT));
-    private final ObjectMapper mapper;
-    private final ContainerService containerService;
-    private final CommandEventMappingService commandEventMappingService;
-    private final NrgEventServiceI eventService;
-    private final UserManagementServiceI userManagementService;
-    private final ExecutorService executorService;
+    private final       ObjectMapper               mapper;
+    private final       ContainerService           containerService;
+    private final       CommandEventMappingService commandEventMappingService;
+    private final       NrgEventServiceI           eventService;
+    private final       UserManagementServiceI     userManagementService;
+    private final       JmsTemplate                template;
 
     @Autowired
     public SessionArchiveListenerAndCommandLauncher(final EventBus eventBus,
@@ -60,31 +64,32 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
                                                     final CommandEventMappingService commandEventMappingService,
                                                     final NrgEventServiceI eventService,
                                                     final UserManagementServiceI userManagementService,
-                                                    final ExecutorService executorService) {
+                                                    final JmsTemplate template) {
         eventBus.on(type(SessionMergeOrArchiveEvent.class), this);
-        this.mapper = mapper;
-        this.containerService = containerService;
+        this.mapper                     = mapper;
+        this.containerService           = containerService;
         this.commandEventMappingService = commandEventMappingService;
-        this.eventService = eventService;
-        this.userManagementService = userManagementService;
-        this.executorService = executorService;
+        this.eventService               = eventService;
+        this.userManagementService      = userManagementService;
+        this.template                   = template;
     }
 
     @Override
-    public void accept(Event<SessionMergeOrArchiveEvent> event) {
-        executorService.execute(() -> processEvent(event.getData()));
+    public void accept(final Event<SessionMergeOrArchiveEvent> event) {
+        QueueUtils.sendJmsRequest(template, SessionMergeOrArchiveEvent.QUEUE, event.getData());
     }
 
-    private void processEvent(final SessionMergeOrArchiveEvent sessionArchivedOrMergedEvent) {
-
+    @JmsListener(containerFactory = ContainersConfig.EVENT_HANDLING_QUEUE_LISTENER_FACTORY,
+                 destination = SessionMergeOrArchiveEvent.QUEUE)
+    public void onRequest(final SessionMergeOrArchiveEvent sessionArchivedOrMergedEvent) {
         // Skip everything if no entries are found in the Command Automation table
         final List<CommandEventMapping> allCommandEventMappings = commandEventMappingService.getAll();
-        if (allCommandEventMappings == null || allCommandEventMappings.isEmpty()){
+        if (allCommandEventMappings == null || allCommandEventMappings.isEmpty()) {
             return;
         }
 
         final Session session = new Session(sessionArchivedOrMergedEvent.session(), true, Collections.emptySet());
-        final String eventId = sessionArchivedOrMergedEvent.eventId();
+        final String  eventId = sessionArchivedOrMergedEvent.eventId();
 
         if (eventId.equals(SESSION_ARCHIVED_EVENT)) {
             // Fire ScanArchiveEvent for each contained scan
@@ -98,15 +103,15 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
 
         if (commandEventMappings != null && !commandEventMappings.isEmpty()) {
             for (CommandEventMapping commandEventMapping : commandEventMappings) {
-                final Long commandId = commandEventMapping.getCommandId();
-                final String wrapperName = commandEventMapping.getXnatCommandWrapperName();
+                final Long   commandId             = commandEventMapping.getCommandId();
+                final String wrapperName           = commandEventMapping.getXnatCommandWrapperName();
                 final String subscriptionProjectId = commandEventMapping.getProjectId();
 
                 final String sessionProjectId = sessionArchivedOrMergedEvent.session().getProject();
                 // Allow action to run if subscriptionProjectId is null, empty, or matches sessionProjectId
                 if (subscriptionProjectId == null || subscriptionProjectId.isEmpty() || subscriptionProjectId.equals(sessionProjectId)) {
-                    final Map<String, String> inputValues = Maps.newHashMap();
-                    String sessionString = session.getUri();
+                    final Map<String, String> inputValues   = Maps.newHashMap();
+                    String                    sessionString = session.getUri();
                     try {
                         sessionString = mapper.writeValueAsString(session);
                     } catch (JsonProcessingException e) {
@@ -117,27 +122,27 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
                         final UserI subscriptionUser = userManagementService.getUser(commandEventMapping.getSubscriptionUserName());
                         if (log.isInfoEnabled()) {
                             final String wrapperMessage = StringUtils.isNotBlank(wrapperName) ?
-                                    String.format("wrapper \"%s\"", wrapperName) :
-                                    "identity wrapper";
+                                                          String.format("wrapper \"%s\"", wrapperName) :
+                                                          "identity wrapper";
                             final String message = String.format(
                                     "Launching command %s, %s, for user \"%s\" as \"%s\"",
                                     commandId,
                                     wrapperMessage,
                                     sessionArchivedOrMergedEvent.user().getLogin(),
                                     subscriptionUser.getLogin()
-                            );
+                                                                );
                             log.info(message);
                         }
                         if (log.isDebugEnabled()) {
                             log.debug("Runtime parameter values:");
                             for (final Map.Entry<String, String> paramEntry : inputValues.entrySet()) {
-                                log.debug(paramEntry.getKey() + ": " + paramEntry.getValue());
+                                log.debug("{}: {}", paramEntry.getKey(), paramEntry.getValue());
                             }
                         }
                         PersistentWorkflowI workflow = containerService.createContainerWorkflow(session.getUri(),
-                                session.getXsiType(), wrapperName, subscriptionProjectId, subscriptionUser);
+                                                                                                session.getXsiType(), wrapperName, subscriptionProjectId, subscriptionUser);
                         containerService.queueResolveCommandAndLaunchContainer(subscriptionProjectId, 0L,
-                                commandId, wrapperName, inputValues, subscriptionUser, workflow);
+                                                                               commandId, wrapperName, inputValues, subscriptionUser, workflow);
                     } catch (UserNotFoundException | UserInitException e) {
                         log.error("Error launching command {}. Could not find or Init subscription owner: {}", commandId, commandEventMapping.getSubscriptionUserName(), e);
                     } catch (NotFoundException | CommandResolutionException | NoDockerServerException | DockerServerException | ContainerException | UnauthorizedException e) {

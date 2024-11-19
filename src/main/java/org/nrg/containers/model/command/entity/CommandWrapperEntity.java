@@ -1,8 +1,6 @@
 package org.nrg.containers.model.command.entity;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
@@ -14,6 +12,8 @@ import java.util.*;
 
 @Entity
 public class CommandWrapperEntity implements Serializable {
+    private static final long serialVersionUID = -6157508626100671643L;
+
     private long id;
     private String name;
     private String label;
@@ -45,7 +45,7 @@ public class CommandWrapperEntity implements Serializable {
         for (final Command.CommandWrapperExternalInput externalCommandWrapperInput : commandWrapper.externalInputs()) {
             externalInputsByName.put(externalCommandWrapperInput.name(), externalCommandWrapperInput);
         }
-        final List<CommandWrapperExternalInputEntity> externalInputEntities = this.externalInputs == null ? Collections.<CommandWrapperExternalInputEntity>emptyList() : this.externalInputs;
+        final List<CommandWrapperExternalInputEntity> externalInputEntities = this.externalInputs == null ? Collections.emptyList() : this.externalInputs;
         for (final CommandWrapperExternalInputEntity externalInputEntity : externalInputEntities) {
             if (externalInputsByName.containsKey(externalInputEntity.getName())) {
                 externalInputEntity.update(externalInputsByName.get(externalInputEntity.getName()));
@@ -68,7 +68,7 @@ public class CommandWrapperEntity implements Serializable {
         for (final Command.CommandWrapperDerivedInput derivedCommandWrapperInput : commandWrapper.derivedInputs()) {
             derivedInputsByName.put(derivedCommandWrapperInput.name(), derivedCommandWrapperInput);
         }
-        final List<CommandWrapperDerivedInputEntity> derivedInputEntities = this.derivedInputs == null ? Collections.<CommandWrapperDerivedInputEntity>emptyList() : this.derivedInputs;
+        final List<CommandWrapperDerivedInputEntity> derivedInputEntities = this.derivedInputs == null ? Collections.emptyList() : this.derivedInputs;
         for (final CommandWrapperDerivedInputEntity derivedInputEntity : derivedInputEntities) {
             if (derivedInputsByName.containsKey(derivedInputEntity.getName())) {
                 derivedInputEntity.update(derivedInputsByName.get(derivedInputEntity.getName()));
@@ -91,7 +91,7 @@ public class CommandWrapperEntity implements Serializable {
         for (final Command.CommandWrapperOutput commandWrapperOutput : commandWrapper.outputHandlers()) {
             outputsByName.put(commandWrapperOutput.name(), commandWrapperOutput);
         }
-        final List<CommandWrapperOutputEntity> outputEntities = this.outputHandlers == null ? Collections.<CommandWrapperOutputEntity>emptyList() : this.outputHandlers;
+        final List<CommandWrapperOutputEntity> outputEntities = this.outputHandlers == null ? Collections.emptyList() : this.outputHandlers;
         for (final CommandWrapperOutputEntity outputEntity : outputEntities) {
             if (outputsByName.containsKey(outputEntity.getName())) {
                 outputEntity.update(outputsByName.get(outputEntity.getName()));
@@ -163,7 +163,7 @@ public class CommandWrapperEntity implements Serializable {
 
     public void setContexts(final Set<String> contexts) {
         this.contexts = contexts == null ?
-                Sets.<String>newHashSet() :
+                new HashSet<>() :
                 contexts;
     }
 
@@ -172,7 +172,7 @@ public class CommandWrapperEntity implements Serializable {
             return;
         }
         if (this.contexts == null) {
-            this.contexts = Sets.newHashSet();
+            this.contexts = new HashSet<>();
         }
         this.contexts.add(context);
     }
@@ -185,7 +185,7 @@ public class CommandWrapperEntity implements Serializable {
 
     public void setExternalInputs(final List<CommandWrapperExternalInputEntity> externalInputs) {
         this.externalInputs = externalInputs == null ?
-                Lists.<CommandWrapperExternalInputEntity>newArrayList() :
+                new ArrayList<>() :
                 externalInputs;
         for (final CommandWrapperExternalInputEntity externalInput : this.externalInputs) {
             externalInput.setCommandWrapperEntity(this);
@@ -199,7 +199,7 @@ public class CommandWrapperEntity implements Serializable {
         externalInput.setCommandWrapperEntity(this);
 
         if (this.externalInputs == null) {
-            this.externalInputs = Lists.newArrayList();
+            this.externalInputs = new ArrayList<>();
         }
         if (!this.externalInputs.contains(externalInput)) {
             this.externalInputs.add(externalInput);
@@ -221,7 +221,7 @@ public class CommandWrapperEntity implements Serializable {
 
     public void setDerivedInputs(final List<CommandWrapperDerivedInputEntity> derivedInputs) {
         this.derivedInputs = derivedInputs == null ?
-                Lists.<CommandWrapperDerivedInputEntity>newArrayList() :
+                new ArrayList<>() :
                 derivedInputs;
 
         for (final CommandWrapperDerivedInputEntity derivedInput : this.derivedInputs) {
@@ -236,7 +236,7 @@ public class CommandWrapperEntity implements Serializable {
         derivedInput.setCommandWrapperEntity(this);
 
         if (this.derivedInputs == null) {
-            this.derivedInputs = Lists.newArrayList();
+            this.derivedInputs = new ArrayList<>();
         }
         if (!this.derivedInputs.contains(derivedInput)) {
             this.derivedInputs.add(derivedInput);
@@ -258,7 +258,7 @@ public class CommandWrapperEntity implements Serializable {
 
     public void setOutputHandlers(final List<CommandWrapperOutputEntity> outputHandlers) {
         this.outputHandlers = outputHandlers == null ?
-                Lists.<CommandWrapperOutputEntity>newArrayList() :
+                new ArrayList<>() :
                 outputHandlers;
 
         for (final CommandWrapperOutputEntity commandWrapperOutputEntity : this.outputHandlers) {
@@ -273,7 +273,7 @@ public class CommandWrapperEntity implements Serializable {
         outputHandler.setCommandWrapperEntity(this);
 
         if (this.outputHandlers == null) {
-            this.outputHandlers = Lists.newArrayList();
+            this.outputHandlers = new ArrayList<>();
         }
         if (!this.outputHandlers.contains(outputHandler)) {
             this.outputHandlers.add(outputHandler);
@@ -295,7 +295,7 @@ public class CommandWrapperEntity implements Serializable {
 
     public void setOrchestrations(final List<OrchestratedWrapperEntity> orchestrations) {
         this.orchestrations = orchestrations == null ?
-                Lists.newArrayList() :
+                new ArrayList<>() :
                 orchestrations;
 
         for (final OrchestratedWrapperEntity orchestratedWrapperEntity : this.orchestrations) {
@@ -310,7 +310,7 @@ public class CommandWrapperEntity implements Serializable {
         orchestration.setCommandWrapperEntity(this);
 
         if (this.orchestrations == null) {
-            this.orchestrations = Lists.newArrayList();
+            this.orchestrations = new ArrayList<>();
         }
         if (!this.orchestrations.contains(orchestration)) {
             this.orchestrations.add(orchestration);

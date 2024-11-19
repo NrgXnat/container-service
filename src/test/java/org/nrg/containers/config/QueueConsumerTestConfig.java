@@ -50,8 +50,6 @@ import reactor.bus.EventBus;
 import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
-import java.util.concurrent.ExecutorService;
-
 @Configuration
 @EnableTransactionManagement
 @Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class})
@@ -96,16 +94,16 @@ public class QueueConsumerTestConfig {
 
     @Bean
     public ContainerEventListener containerEventListener(final EventBus eventBus,
-                                                         final ContainerService containerService,
-                                                         final ExecutorService executorService) {
-        return new ContainerEventListener(eventBus, containerService, executorService);
+                                                         final ContainerService containerService) {
+        //noinspection deprecation
+        return new ContainerEventListener(eventBus, containerService);
     }
 
     @Bean
     public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
-                                                           final ContainerService containerService,
-                                                           final ExecutorService executorService) {
-        return new DockerServiceEventListener(eventBus, containerService, executorService);
+                                                           final ContainerService containerService) {
+        //noinspection deprecation
+        return new DockerServiceEventListener(eventBus, containerService);
     }
 
     @Bean

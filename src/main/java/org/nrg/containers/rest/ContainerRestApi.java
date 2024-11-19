@@ -263,7 +263,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
                                                             final @PathVariable @ApiParam(allowableValues = "stdout, stderr") String file,
                                                             final @RequestParam(required = false) String since)
             throws NotFoundException, IOException, BadRequestException {
-
+        if (StringUtils.isBlank(since)) {
+            log.info("Polling container {} for {} logs", containerId, file);
+        } else {
+            log.info("Polling container {} for {} logs since {}", containerId, file, since);
+        }
         final LogType logType = ContainerService.STDOUT_LOG_NAME.contains(file) ?
                 LogType.STDOUT :
                 LogType.STDERR;

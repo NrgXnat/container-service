@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 public class CommandInputEntity implements Serializable {
     public static Type DEFAULT_TYPE = Type.STRING;
 
+    private static final long serialVersionUID = -7249610681219689521L;
+
     private long id;
     private CommandEntity commandEntity;
     private String name;

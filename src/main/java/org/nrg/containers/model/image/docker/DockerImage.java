@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @AutoValue
 @ApiModel(description = "Properties that define an image.")
@@ -60,5 +61,12 @@ public abstract class DockerImage {
         }
 
         public abstract DockerImage build();
+    }
+
+    @Override
+    public String toString() {
+        return "{\"imageId\": \"" + imageId() + "\", " +
+               " \"tags\": [\"" + String.join("\", \"", tags()) + "\"], " +
+               " \"labels\": [\"" + labels().entrySet().stream().map(entry -> "\"" + entry.getKey() + "\": \"" + entry.getValue() + "\"").collect(Collectors.joining(", ")) + "\"]}";
     }
 }

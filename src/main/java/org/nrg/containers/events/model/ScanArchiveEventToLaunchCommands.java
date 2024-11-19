@@ -9,6 +9,10 @@ import java.util.HashSet;
 
 @AutoValue
 public abstract class ScanArchiveEventToLaunchCommands implements EventI {
+    private static final long serialVersionUID = 6052791990440957304L;
+
+    public static final String QUEUE = "scanArchiveEventToLaunchCommandsQueue";
+
     public abstract Scan scan();
     public abstract String project();
     public abstract UserI user();

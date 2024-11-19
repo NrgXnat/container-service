@@ -7,6 +7,10 @@ import org.nrg.xft.security.UserI;
 
 @AutoValue
 public abstract class SessionMergeOrArchiveEvent implements EventI {
+    private static final long serialVersionUID = 5840070113252303212L;
+
+    public static final String QUEUE = "sessionMergeOrArchiveEventQueue";
+
     public abstract XnatImagesessiondata session();
     public abstract String project();
     public abstract UserI user();

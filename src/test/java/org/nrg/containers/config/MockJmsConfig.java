@@ -8,7 +8,6 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.xdat.security.services.UserManagementServiceI;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.core.BrowserCallback;
@@ -16,7 +15,6 @@ import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.core.MessagePostProcessor;
 
 import javax.jms.Destination;
-import javax.jms.JMSException;
 import java.util.concurrent.ExecutorService;
 
 import static org.mockito.Matchers.any;
@@ -32,9 +30,9 @@ public class MockJmsConfig {
         return new ContainerStagingRequestListener(containerService, mockUserManagementServiceI);
     }
 
-    @Bean(name = "containerStagingRequest")
-    public Destination containerStagingRequest(@Value("containerStagingRequest") String containerStagingRequest) throws JMSException {
-        return new ActiveMQQueue(containerStagingRequest);
+    @Bean(name = ContainerStagingRequest.DESTINATION)
+    public Destination containerStagingRequest() {
+        return new ActiveMQQueue(ContainerStagingRequest.DESTINATION);
     }
 
     @Bean
@@ -43,11 +41,12 @@ public class MockJmsConfig {
         return new ContainerFinalizingRequestListener(containerService, mockUserManagementServiceI);
     }
 
-    @Bean(name = "containerFinalizingRequest")
-    public Destination containerFinalizingRequest(@Value("containerFinalizingRequest") String containerFinalizingRequest) throws JMSException {
-        return new ActiveMQQueue(containerFinalizingRequest);
+    @Bean(name = ContainerFinalizingRequest.DESTINATION)
+    public Destination containerFinalizingRequest() {
+        return new ActiveMQQueue(ContainerFinalizingRequest.DESTINATION);
     }
 
+    @SuppressWarnings("unchecked")
     @Bean
     public JmsTemplate mockJmsTemplate(Destination containerStagingRequest,
                                        final ContainerStagingRequestListener containerStagingRequestListener,
@@ -86,8 +85,8 @@ public class MockJmsConfig {
         ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
 
         // Mock counts
-        doReturn(0).when(mockJmsTemplate).browse(eq("containerStagingRequest"), (BrowserCallback<Integer>) any(BrowserCallback.class));
-        doReturn(0).when(mockJmsTemplate).browse(eq("containerFinalizingRequest"), (BrowserCallback<Integer>) any(BrowserCallback.class));
+        doReturn(0).when(mockJmsTemplate).browse(eq(ContainerStagingRequest.DESTINATION), (BrowserCallback<Integer>) any(BrowserCallback.class));
+        doReturn(0).when(mockJmsTemplate).browse(eq(ContainerFinalizingRequest.DESTINATION), (BrowserCallback<Integer>) any(BrowserCallback.class));
 
         return mockJmsTemplate;
     }

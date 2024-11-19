@@ -73,6 +73,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.orm.hibernate5.HibernateTransactionManager;
 import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
@@ -141,15 +142,15 @@ public class IntegrationTestConfig {
     @Bean
     public ContainerEventListener containerEventListener(final EventBus eventBus,
                                                          final ContainerService containerService,
-                                                         final ExecutorService executorService) {
-        return new ContainerEventListener(eventBus, containerService, executorService);
+                                                         final JmsTemplate template) {
+        return new ContainerEventListener(eventBus, containerService, template);
     }
 
     @Bean
     public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
                                                            final ContainerService containerService,
-                                                           final ExecutorService executorService) {
-        return new DockerServiceEventListener(eventBus, containerService, executorService);
+                                                           final JmsTemplate template) {
+        return new DockerServiceEventListener(eventBus, containerService, template);
     }
 
     @Bean

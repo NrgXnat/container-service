@@ -451,7 +451,7 @@ public class ContainerServiceImpl implements ContainerService {
             try {
                 long diffHours = getTimeSinceWorkflowMod(wrk);
                 log.trace("Checking workflow {}", wrk.getWorkflowId());
-                if (diffHours < 5 || QueueUtils.count(ContainerStagingRequest.destination) > 0) {
+                if (diffHours < 5 || QueueUtils.count(ContainerStagingRequest.DESTINATION) > 0) {
                     continue;
                 }
                 // TODO ultimately we should re-queue this, but for now just fail it
@@ -477,7 +477,7 @@ public class ContainerServiceImpl implements ContainerService {
             String containerId = null;
             try {
                 long diffHours = getTimeSinceWorkflowMod(wrk);
-                if (diffHours < 5 || QueueUtils.count(ContainerFinalizingRequest.destination) > 0) {
+                if (diffHours < 5 || QueueUtils.count(ContainerFinalizingRequest.DESTINATION) > 0) {
                     continue;
                 }
                 containerId = wrk.getComments();
@@ -552,7 +552,7 @@ public class ContainerServiceImpl implements ContainerService {
         log.debug("Adding to staging queue: count {}, project {}, wrapperId {}, commandId {}, wrapperName {}, " +
                         "inputValues {}, username {}, workflowId {}", count, request.getProject(),
                 request.getWrapperId(), request.getCommandId(), request.getWrapperName(),
-                request.getInputValues(), request.getUsername(), request.getWorkflowid());
+                request.getInputValues(), request.getUsername(), request.getWorkflowId());
 
         try {
             updateWorkflow(workflow, ContainerRequest.inQueueStatusPrefix + PersistentWorkflowUtils.QUEUED);
@@ -861,22 +861,29 @@ public class ContainerServiceImpl implements ContainerService {
             KubernetesStatusChangeEvent kEvent = ((KubernetesStatusChangeEvent) event);
 
             // Check if we need to set additional ids
-            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.podName() != null;
-            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kEvent.containerId() != null;
-            if (shouldUpdatePodName || shouldUpdateContainerId) {
+            boolean shouldUpdateNode = containerWithAddedEvent.nodeId() == null && kEvent.getNodeId() != null;
+            boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.getPodName() != null;
+            boolean shouldUpdateContainerId = containerWithAddedEvent.containerId() == null && kEvent.getContainerId() != null;
+            if (shouldUpdateNode || shouldUpdatePodName || shouldUpdateContainerId) {
                 Container.Builder builder = containerWithAddedEvent.toBuilder();
 
+                if (shouldUpdateNode) {
+                    log.debug("Container {} for job {}: setting nodeId to node {}",
+                            container.databaseId(), container.jobName(), kEvent.getNodeId()
+                    );
+                    builder.nodeId(kEvent.getNodeId());
+                }
                 if (shouldUpdatePodName) {
                     log.debug("Container {} for job {}: setting taskId to pod name {}",
-                            container.databaseId(), container.jobName(), kEvent.podName()
+                            container.databaseId(), container.jobName(), kEvent.getPodName()
                     );
-                    builder.taskId(kEvent.podName());
+                    builder.taskId(kEvent.getPodName());
                 }
                 if (shouldUpdateContainerId) {
                     log.debug("Container {} for job {}: setting containerId to container id {}",
-                            container.databaseId(), container.jobName(), kEvent.containerId()
+                            container.databaseId(), container.jobName(), kEvent.getContainerId()
                     );
-                    builder.containerId(kEvent.containerId());
+                    builder.containerId(kEvent.getContainerId());
                 }
                 containerEntityService.update(fromPojo(builder.build()));
                 containerWithAddedEvent = retrieve(container.databaseId());

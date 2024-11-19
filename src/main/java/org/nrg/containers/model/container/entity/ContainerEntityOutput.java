@@ -19,6 +19,8 @@ import java.util.Objects;
 
 @Entity
 public class ContainerEntityOutput implements Serializable {
+    private static final long serialVersionUID = 8693161183148238732L;
+
     private long id;
     @JsonIgnore private ContainerEntity containerEntity;
     private String name;

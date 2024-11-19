@@ -4,13 +4,14 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import javax.persistence.*;
 import java.io.Serializable;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 @Entity
 @Table(uniqueConstraints = {@UniqueConstraint(columnNames = {"attribute", "docker_server_entity"})})
 public class DockerServerEntitySwarmConstraint implements Serializable {
+    private static final long serialVersionUID = 1682224859190115647L;
+
     private long id;
     @JsonIgnore
     private DockerServerEntity dockerServerEntity;

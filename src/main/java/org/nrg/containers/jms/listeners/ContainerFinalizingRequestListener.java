@@ -1,5 +1,6 @@
 package org.nrg.containers.jms.listeners;
 
+import org.nrg.containers.config.ContainersConfig;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.utils.QueueUtils;
@@ -29,15 +30,15 @@ public class ContainerFinalizingRequestListener {
 		this.userManagementServiceI = userManagementServiceI;
 	}
 
-	@JmsListener(containerFactory = "finalizingQueueListenerFactory", destination = "containerFinalizingRequest")
+	@JmsListener(containerFactory = ContainersConfig.FINALIZING_QUEUE_LISTENER_FACTORY,
+				 destination = ContainerFinalizingRequest.DESTINATION)
 	public void onRequest(ContainerFinalizingRequest request)
 			throws UserNotFoundException, NotFoundException, UserInitException, ContainerException {
 		Container container = containerService.get(request.getId());
 		UserI user = userManagementServiceI.getUser(request.getUsername());
 		if (log.isDebugEnabled()) {
-			int count = QueueUtils.count(request.getDestination());
-			log.debug("Consuming finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
-					count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(), container.status());
+			log.debug("Consuming finalizing queue: count {}, exitcode {}, is successful {}, id {}, username {}, status {}",
+					  QueueUtils.count(request.getDestination()), request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(), container.status());
 		}
     	containerService.consumeFinalize(request.getExitCodeString(), request.isSuccessful(), container, user);
     }

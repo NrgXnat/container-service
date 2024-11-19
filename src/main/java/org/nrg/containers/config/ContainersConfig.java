@@ -4,74 +4,73 @@ import java.util.concurrent.TimeUnit;
 
 import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
-import javax.jms.JMSException;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.nrg.containers.events.ContainerStatusUpdater;
+import org.nrg.containers.events.listeners.ContainerServiceWorkflowStatusEventListener;
+import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
+import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.preferences.QueuePrefsBean;
+import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
+import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.jms.tasks.QueueManager;
 import org.nrg.framework.annotations.XnatPlugin;
+import org.nrg.framework.services.SerializerService;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xnat.initialization.RootConfig;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
 import org.springframework.context.annotation.ComponentScan.Filter;
-import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.scheduling.config.TriggerTask;
 import org.springframework.scheduling.support.PeriodicTrigger;
 
-import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.guava.GuavaModule;
 
 @Slf4j
 @EnableJms
 @Configuration
 @XnatPlugin(value = "containers",
-        name = "containers",
-        description = "Container Service",
-        entityPackages = "org.nrg.containers",
-        logConfigurationFile = "META-INF/resources/containers-logback.xml",
-        version = ""
-)
+            name = "containers",
+            description = "Container Service",
+            entityPackages = "org.nrg.containers",
+            logConfigurationFile = "META-INF/resources/containers-logback.xml")
 @ComponentScan(value = "org.nrg.containers",
-        excludeFilters = @Filter(type = FilterType.REGEX, pattern = ".*TestConfig.*", value = {}))
+               excludeFilters = @Filter(type = FilterType.REGEX, pattern = ".*TestConfig.*"))
 @Import({RootConfig.class})
 public class ContainersConfig {
-    public static final String QUEUE_MIN_CONCURRENCY_DFLT = "10";
-    public static final String QUEUE_MAX_CONCURRENCY_DFLT = "20";
+    public static final String QUEUE_MIN_CONCURRENCY_DFLT            = "10";
+    public static final String QUEUE_MAX_CONCURRENCY_DFLT            = "20";
+    public static final String FINALIZING_QUEUE_LISTENER_FACTORY     = "finalizingQueueListenerFactory";
+    public static final String STAGING_QUEUE_LISTENER_FACTORY        = "stagingQueueListenerFactory";
+    public static final String EVENT_HANDLING_QUEUE_LISTENER_FACTORY = "eventHandlingQueueListenerFactory";
 
-    private DefaultJmsListenerContainerFactory defaultFactory(ConnectionFactory connectionFactory,
-                                                              final SiteConfigPreferences siteConfigPreferences,
-                                                              final MailService mailService) {
-        DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
-        factory.setConnectionFactory(connectionFactory);
-        factory.setConcurrency(QUEUE_MIN_CONCURRENCY_DFLT + "-" + QUEUE_MAX_CONCURRENCY_DFLT);
-        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, mailService));
-        return factory;
-    }
-
-    @Bean(name = "finalizingQueueListenerFactory")
+    @Bean(name = FINALIZING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory finalizingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                              final MailService mailService,
-                                                                             @Qualifier("springConnectionFactory")
-                                                                                           ConnectionFactory connectionFactory) {
+                                                                             @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
         return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
     }
 
-    @Bean(name = "stagingQueueListenerFactory")
+    @Bean(name = STAGING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory stagingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                           final MailService mailService,
-                                                                          @Qualifier("springConnectionFactory")
-                                                                                       ConnectionFactory connectionFactory) {
+                                                                          @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
+        return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
+    }
+
+    @Bean(name = EVENT_HANDLING_QUEUE_LISTENER_FACTORY)
+    public DefaultJmsListenerContainerFactory eventHandlingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
+                                                                                final MailService mailService,
+                                                                                @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
         return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
     }
 
@@ -87,27 +86,44 @@ public class ContainersConfig {
         );
     }
 
-    @Bean(name = "containerStagingRequest")
-    public Destination containerStagingRequest(@Value("containerStagingRequest") String containerStagingRequest)
-            throws JMSException {
-        return new ActiveMQQueue(containerStagingRequest);
+    @Bean(name = ContainerStagingRequest.DESTINATION)
+    public Destination containerStagingRequest() {
+        return new ActiveMQQueue(ContainerStagingRequest.DESTINATION);
     }
 
-	@Bean(name = "containerFinalizingRequest")
-	public Destination containerFinalizingRequest(@Value("containerFinalizingRequest") String containerFinalizingRequest)
-            throws JMSException {
-		return new ActiveMQQueue(containerFinalizingRequest);
-	}
-	
-	@Bean    
-	public Module guavaModule() {
-        return new GuavaModule();
+    @Bean(name = ContainerFinalizingRequest.DESTINATION)
+    public Destination containerFinalizingRequest() {
+        return new ActiveMQQueue(ContainerFinalizingRequest.DESTINATION);
     }
-	
+
+    @Bean(name = ContainerEvent.QUEUE)
+    public Destination containerEventQueue() {
+        return new ActiveMQQueue(ContainerEvent.QUEUE);
+    }
+
+    @Bean(name = ContainerServiceWorkflowStatusEventListener.QUEUE)
+    public Destination containerServiceWorkflowStatusEventQueue() {
+        return new ActiveMQQueue(ContainerServiceWorkflowStatusEventListener.QUEUE);
+    }
+
+    @Bean(name = ServiceTaskEvent.QUEUE)
+    public Destination serviceTaskEventQueue() {
+        return new ActiveMQQueue(ServiceTaskEvent.QUEUE);
+    }
+
+    @Bean(name = ScanArchiveEventToLaunchCommands.QUEUE)
+    public Destination scanArchiveEventToLaunchCommandsQueue() {
+        return new ActiveMQQueue(ScanArchiveEventToLaunchCommands.QUEUE);
+    }
+
+    @Bean(name = SessionMergeOrArchiveEvent.QUEUE)
+    public Destination sessionMergeOrArchiveEventQueue() {
+        return new ActiveMQQueue(SessionMergeOrArchiveEvent.QUEUE);
+    }
 
     @Bean
-    public ObjectMapper objectMapper(final Jackson2ObjectMapperBuilder objectMapperBuilder) {
-        return objectMapperBuilder.build();
+    public ObjectMapper objectMapper(final SerializerService serializer) {
+        return serializer.getObjectMapper();
     }
 
     @Bean
@@ -117,6 +133,7 @@ public class ContainersConfig {
                 new PeriodicTrigger(10L, TimeUnit.SECONDS)
         );
     }
+
     @Bean
     public TriggerTask queueManagerTask(final QueueManager queueManager) {
         return new TriggerTask(
@@ -132,5 +149,14 @@ public class ContainersConfig {
         tBean.setThreadNamePrefix("container-");
         return tBean;
     }
-}
 
+    private DefaultJmsListenerContainerFactory defaultFactory(final ConnectionFactory connectionFactory,
+                                                              final SiteConfigPreferences siteConfigPreferences,
+                                                              final MailService mailService) {
+        final DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setConcurrency(QUEUE_MIN_CONCURRENCY_DFLT + "-" + QUEUE_MAX_CONCURRENCY_DFLT);
+        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, mailService));
+        return factory;
+    }
+}

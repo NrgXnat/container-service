@@ -15,7 +15,6 @@ import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHubWithPing;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.image.docker.DockerImageAndCommandSummary;
-import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
 import org.nrg.containers.services.CommandLabelService;
@@ -29,7 +28,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,10 +38,10 @@ import java.util.stream.Collectors;
 @Service
 public class DockerServiceImpl implements DockerService {
 
-    private ContainerControlApi controlApi;
-    private DockerHubService dockerHubService;
-    private CommandService commandService;
-    private DockerServerService dockerServerService;
+    private final ContainerControlApi controlApi;
+    private final DockerHubService    dockerHubService;
+    private final CommandService      commandService;
+    private final DockerServerService dockerServerService;
     private final CommandLabelService commandLabelService;
 
     @Autowired
@@ -110,7 +108,7 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public DockerHubBase.DockerHubStatus pingHub(final long hubId) throws DockerServerException, NoDockerServerException, NotFoundException {
+    public DockerHubBase.DockerHubStatus pingHub(final long hubId) throws NotFoundException {
         final DockerHub hub = dockerHubService.getHub(hubId);
         return pingHub(hub);
     }
@@ -244,8 +242,8 @@ public class DockerServiceImpl implements DockerService {
 
         // Get set of unique image names referenced in all commands
         Set<String> cmdImageTags = commandService.getAll().stream()
-                .filter(command -> StringUtils.isNotBlank(command.image()))
-                .map(command -> command.image())
+                .map(Command::image)
+                .filter(StringUtils::isNotBlank)
                 .collect(Collectors.toCollection(HashSet::new));
 
         // Create Image objects for command images not already installed
@@ -254,7 +252,9 @@ public class DockerServiceImpl implements DockerService {
         for (final String cmdImageTag : cmdImageTags.stream()
                 .filter(tag -> !installedTags.contains(tag))
                 .collect(Collectors.toList())) {
-            allImages.add(DockerImage.builder().addTag(cmdImageTag).build());
+            final DockerImage image = DockerImage.builder().addTag(cmdImageTag).build();
+            log.debug("Creating DockerImage object for image tag {}: {}", cmdImageTag, image);
+            allImages.add(image);
         }
         return allImages;
     }
@@ -308,6 +308,7 @@ public class DockerServiceImpl implements DockerService {
             } else {
                 // If image has no ID, then we will have problems tracking it uniquely.
                 // Just skip it.
+                log.debug("Docker image has no ID, skipping: {}", image);
             }
         }
 
@@ -372,11 +373,11 @@ public class DockerServiceImpl implements DockerService {
                 }
             } else {
                 // command does not refer to an image? Should not be possible...
-                log.error("Command " + String.valueOf(command.id()) + " has a blank imageName.");
+                log.error("Command {} has a blank imageName.", command.id());
             }
         }
 
-        // Now we go through the imagesummary builders and build all of them,
+        // Now we go through the image-summary builders and build all of them,
         // including the final list of commands.
         final List<DockerImageAndCommandSummary> summaries = Lists.newArrayList();
         for (final String imageId : imageSummaryBuildersByImageId.keySet()) {
@@ -425,7 +426,7 @@ public class DockerServiceImpl implements DockerService {
     @Nonnull
     private List<Command> saveFromImageLabels(final String imageName, final DockerImage dockerImage) {
         if (log.isDebugEnabled()) {
-            log.debug("Parsing labels for " + imageName);
+            log.debug("Parsing labels for {}", imageName);
         }
         final List<Command> parsed = commandLabelService.parseLabels(imageName, dockerImage);
 
@@ -497,7 +498,7 @@ public class DockerServiceImpl implements DockerService {
         log.debug("Getting all commands for image {}.", imageWithoutCommandName);
         final List<Command> commandsByImage = commandService.getByImage(imageWithoutCommandName);
 
-        if (commandsByImage != null && commandsByImage.size() > 0) {
+        if (commandsByImage != null && !commandsByImage.isEmpty()) {
             if (StringUtils.isNotBlank(commandName)) {
                 for (final Command commandByImage : commandsByImage) {
                     if (commandName.equals(commandByImage.name())) {

@@ -17,6 +17,7 @@ import java.util.Objects;
 
 @Entity
 public class CommandMountEntity implements Serializable {
+    private static final long serialVersionUID = -739696438807760178L;
 
     private long id;
     private CommandEntity commandEntity;

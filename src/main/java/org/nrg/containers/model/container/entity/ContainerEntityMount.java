@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 
 @Entity
 public class ContainerEntityMount implements Serializable {
+    private static final long serialVersionUID = -5527804402387889543L;
+
     private long id;
     @JsonIgnore private ContainerEntity containerEntity;
     @JsonProperty(required = true) private String name;

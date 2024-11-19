@@ -301,7 +301,7 @@ public class DockerControlApi implements ContainerControlApi {
     @Nonnull
     private List<DockerImage> getAllImages(final DockerServer server) throws DockerServerException {
         if (server.backend() == Backend.KUBERNETES) {
-            return Collections.emptyList();
+            return new ArrayList<>();
         }
 
         final DockerClient client = getDockerClient(server);
@@ -908,6 +908,7 @@ public class DockerControlApi implements ContainerControlApi {
             case DOCKER:
                 return getDockerContainerLog(server, container.containerId(), logType, withTimestamps, since);
             case KUBERNETES:
+                log.info("Getting logs for container {} (database ID: {}) in pod {} (server type {} on host {})", container.containerId(), container.databaseId(), container.podName(), server.backend(), server.host());
                 return getKubernetesClient().getLog(container.podName(), logType, withTimestamps, since);
             default:
                 throw new NoContainerServerException("Not implemented");

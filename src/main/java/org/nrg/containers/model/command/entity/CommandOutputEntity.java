@@ -16,6 +16,7 @@ import java.util.Objects;
 
 @Entity
 public class CommandOutputEntity implements Serializable {
+    private static final long serialVersionUID = 5842170429718869053L;
 
     private long id;
     private CommandEntity commandEntity;
