@@ -21,6 +21,7 @@ import javax.persistence.Enumerated;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -31,7 +32,9 @@ import java.util.stream.Collectors;
 
 @Entity
 @Slf4j
-public class ContainerEntity extends AbstractHibernateEntity {
+public class ContainerEntity extends AbstractHibernateEntity implements Serializable {
+    private static final long serialVersionUID = 2346142731253539259L;
+
     public static final String KILL_STATUS = "kill";
 
     private long commandId;

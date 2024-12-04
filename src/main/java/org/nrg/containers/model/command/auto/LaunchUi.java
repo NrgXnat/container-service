@@ -16,13 +16,15 @@ import org.nrg.containers.model.server.docker.DockerServerBase;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
 @SuppressWarnings("NullableProblems")
 @AutoValue
-public abstract class LaunchUi {
+public abstract class LaunchUi implements Serializable {
+    private static final long serialVersionUID = -2521492353895811028L;
 
     @JsonProperty("meta") public abstract LaunchUiMeta meta();
     @JsonProperty("container-server-config") public abstract LaunchUiServer containerServerConfig();
@@ -83,7 +85,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiServer {
+    public static abstract class LaunchUiServer implements Serializable {
+        private static final long serialVersionUID = 7220708395044759826L;
+
         @Nullable @JsonProperty("swarm-constraints") public abstract List<LaunchUiServerSwarmConstraint> swarmConstraints();
 
         public static LaunchUiServer create(final DockerServerBase server) {
@@ -116,7 +120,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiServerSwarmConstraint {
+    public static abstract class LaunchUiServerSwarmConstraint implements Serializable {
+        private static final long serialVersionUID = -8578103454403313467L;
+
         //@JsonProperty("user-settable") public abstract boolean userSettable();
         @JsonProperty("attribute") public abstract String attribute();
         @JsonProperty("comparator") public abstract String comparator();
@@ -153,7 +159,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiServerConstraintSelected {
+    public static abstract class LaunchUiServerConstraintSelected implements Serializable {
+        private static final long serialVersionUID = -8859121840081998151L;
+
         @JsonProperty("attribute") public abstract String attribute();
         @JsonProperty("value") public abstract String value();
 
@@ -180,7 +188,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiMeta {
+    public static abstract class LaunchUiMeta implements Serializable {
+        private static final long serialVersionUID = -690603119241800276L;
+
         @JsonProperty("command-id") public abstract Long commandId();
         @JsonProperty("command-name") public abstract String commandName();
         @Nullable @JsonProperty("command-label") public abstract String commandLabel();
@@ -267,7 +277,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiInputTree {
+    public static abstract class LaunchUiInputTree implements Serializable {
+        private static final long serialVersionUID = 2823617603771748422L;
+
         @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("description") public abstract String description();
@@ -334,7 +346,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiValueTree {
+    public static abstract class LaunchUiValueTree implements Serializable {
+        private static final long serialVersionUID = 8029125056134537842L;
+
         @JsonProperty("name") public abstract String name();
         @JsonProperty("values") public abstract List<LaunchUiValueTreeValueAndChildren> valueAndChildrenList();
 
@@ -379,7 +393,9 @@ public abstract class LaunchUi {
     }
 
     @AutoValue
-    public static abstract class LaunchUiValueTreeValueAndChildren {
+    public static abstract class LaunchUiValueTreeValueAndChildren implements Serializable {
+        private static final long serialVersionUID = -2745465716806890377L;
+
         @JsonProperty("value") public abstract String value();
         @JsonProperty("label") public abstract String label();
         @JsonProperty("children") public abstract List<LaunchUiValueTree> children();

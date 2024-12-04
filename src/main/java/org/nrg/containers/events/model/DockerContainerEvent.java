@@ -3,12 +3,15 @@ package org.nrg.containers.events.model;
 import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableMap;
 
+import java.io.Serializable;
 import java.util.Date;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 @AutoValue
-public abstract class DockerContainerEvent implements ContainerEvent {
+public abstract class DockerContainerEvent implements ContainerEvent, Serializable {
+    private static final long serialVersionUID = -6676309798270638416L;
+
     private static final Pattern ignoreStatusPattern = Pattern.compile("kill|destroy");
     private static final Pattern exitStatusPattern = Pattern.compile("die");
 

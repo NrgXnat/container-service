@@ -17,12 +17,15 @@ import org.nrg.containers.model.command.auto.Command.ConfiguredCommand;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 
 @AutoValue
-public abstract class CommandConfiguration {
+public abstract class CommandConfiguration implements Serializable {
+    private static final long serialVersionUID = 8170342547718966567L;
+
     @JsonProperty("inputs") public abstract ImmutableMap<String, CommandInputConfiguration> inputs();
     @JsonProperty("outputs") public abstract ImmutableMap<String, CommandOutputConfiguration> outputs();
 
@@ -100,7 +103,9 @@ public abstract class CommandConfiguration {
 
     @AutoValue
     @JsonInclude(Include.ALWAYS)
-    public static abstract class CommandInputConfiguration {
+    public static abstract class CommandInputConfiguration implements Serializable {
+        private static final long serialVersionUID = 4213914303065089464L;
+
         @Nullable @JsonProperty("description") public abstract String description();
         @Nullable @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("default-value") public abstract String defaultValue();
@@ -204,7 +209,9 @@ public abstract class CommandConfiguration {
 
     @AutoValue
     @JsonInclude(Include.ALWAYS)
-    public static abstract class CommandOutputConfiguration {
+    public static abstract class CommandOutputConfiguration implements Serializable {
+        private static final long serialVersionUID = 7264552512492029282L;
+
         @Nullable @JsonProperty("type") public abstract String type();
         @Nullable @JsonProperty("label") public abstract String label();
 

@@ -7,13 +7,16 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
 /**
  * This is a value class that will be returned when the UI requests
  * a list of commands that are available to be launched for a given context.
  */
 @AutoValue
-public abstract class CommandSummaryForContext {
+public abstract class CommandSummaryForContext implements Serializable {
+    private static final long serialVersionUID = -1096965712427376973L;
+
     @JsonProperty("command-id") public abstract long commandId();
     @JsonProperty("command-name") public abstract String commandName();
     @Nullable @JsonProperty("command-label") public abstract String commandLabel();

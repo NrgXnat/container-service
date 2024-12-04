@@ -5,9 +5,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
 @AutoValue
-public abstract class ContainerMessage {
+public abstract class ContainerMessage implements Serializable {
+    private static final long serialVersionUID = 3977595045080393805L;
+
     @JsonProperty("id") public abstract String id();
     @Nullable @JsonProperty("status") public abstract String status();
 

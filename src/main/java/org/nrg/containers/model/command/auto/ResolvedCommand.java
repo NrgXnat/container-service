@@ -15,6 +15,7 @@ import org.nrg.containers.model.container.ContainerInputType;
 import org.nrg.containers.secrets.ResolvedSecret;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -22,7 +23,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @AutoValue
-public abstract class ResolvedCommand {
+public abstract class ResolvedCommand implements Serializable {
+    private static final long serialVersionUID = 3923760196912310050L;
+
     private ImmutableSet<ResolvedCommandInput> externalWrapperInputValues;
     private ImmutableSet<ResolvedCommandInput> derivedWrapperInputValues;
     private ImmutableSet<ResolvedCommandInput> commandInputValues;
@@ -408,7 +411,9 @@ public abstract class ResolvedCommand {
     }
 
     @AutoValue
-    public abstract static class PartiallyResolvedCommand {
+    public abstract static class PartiallyResolvedCommand implements Serializable {
+        private static final long serialVersionUID = -1230649066996933377L;
+
         public abstract Long wrapperId();
         public abstract String wrapperName();
         @Nullable public abstract String wrapperLabel();
@@ -467,7 +472,9 @@ public abstract class ResolvedCommand {
     }
 
     @AutoValue
-    public abstract static class ResolvedCommandOutput {
+    public abstract static class ResolvedCommandOutput implements Serializable {
+        private static final long serialVersionUID = 3725973822031522687L;
+
         @JsonProperty("name") public abstract String name();
         @JsonProperty("from-command-output") public abstract String fromCommandOutput();
         @JsonProperty("from-output-handler") public abstract String fromOutputHandler();
@@ -513,7 +520,9 @@ public abstract class ResolvedCommand {
     }
 
     @AutoValue
-    public abstract static class ResolvedCommandInput {
+    public abstract static class ResolvedCommandInput implements Serializable {
+        private static final long serialVersionUID = -2847879422881727385L;
+
         @JsonProperty("name") public abstract String name();
         @JsonProperty("value") public abstract String value();
         @JsonProperty("type") public abstract ContainerInputType type();

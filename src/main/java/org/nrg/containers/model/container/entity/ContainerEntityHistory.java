@@ -12,12 +12,14 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+import java.io.Serializable;
 import java.util.Date;
 import java.util.Objects;
 
 @Slf4j
 @Entity
-public class ContainerEntityHistory {
+public class ContainerEntityHistory implements Serializable {
+    private static final long serialVersionUID = 1171911080376252532L;
     private long id;
     @JsonIgnore private ContainerEntity containerEntity;
     private String status;

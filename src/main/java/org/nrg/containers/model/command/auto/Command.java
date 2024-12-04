@@ -37,6 +37,7 @@ import org.nrg.xft.security.UserI;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,7 +56,9 @@ import java.util.stream.Stream;
 import static org.nrg.containers.utils.ContainerServicePermissionUtils.CONTEXT_PERMISSION_PLACEHOLDER;
 
 @AutoValue
-public abstract class Command {
+public abstract class Command implements Serializable {
+    private static final long serialVersionUID = -3590061186278274642L;
+
     private static final ObjectMapper mapper = new ObjectMapper();
 
     private static final Pattern COMMAND_NAME = Pattern.compile("[^A-Za-z0-9_-]");
@@ -722,7 +725,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandMount {
+    public static abstract class CommandMount implements Serializable {
+        private static final long serialVersionUID = 4248444333537283957L;
+
         @JsonIgnore public abstract long id();
         @Nullable @JsonProperty("name") public abstract String name();
         @JsonProperty("writable") public abstract boolean writable();
@@ -763,7 +768,8 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandInput extends Input {
+    public static abstract class CommandInput extends Input implements Serializable {
+        private static final long serialVersionUID = -5214025464346665917L;
 
         @Nullable @JsonProperty("command-line-flag") public abstract String commandLineFlag();
         @Nullable @JsonProperty("command-line-separator") public abstract String commandLineSeparator();
@@ -947,7 +953,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandOutput {
+    public static abstract class CommandOutput implements Serializable{
+        private static final long serialVersionUID = -201159696295912347L;
+
         @JsonIgnore public abstract long id();
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("description") public abstract String description();
@@ -1026,7 +1034,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandWrapper {
+    public static abstract class CommandWrapper implements Serializable {
+        private static final long serialVersionUID = -3294451818589646212L;
+
         @JsonProperty("id") public abstract long id();
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("label") public abstract String label();
@@ -1377,7 +1387,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandWrapperCreation {
+    public static abstract class CommandWrapperCreation implements Serializable {
+        private static final long serialVersionUID = 6374958576665887957L;
+
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("description") public abstract String description();
@@ -1403,6 +1415,8 @@ public abstract class Command {
     }
 
     public static abstract class CommandWrapperInput extends Input {
+        private static final long serialVersionUID = -5445086302263058878L;
+
         @Nullable @JsonProperty("provides-value-for-command-input") public abstract String providesValueForCommandInput();
         @Nullable @JsonProperty("provides-files-for-command-mount") public abstract String providesFilesForCommandMount();
         @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
@@ -1442,7 +1456,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandWrapperExternalInput extends CommandWrapperInput {
+    public static abstract class CommandWrapperExternalInput extends CommandWrapperInput implements Serializable {
+        private static final long serialVersionUID = 8478434394449736845L;
+
         @JsonCreator
         static CommandWrapperExternalInput create(@JsonProperty("name") final String name,
                                                   @JsonProperty("label") final String label,
@@ -1553,6 +1569,8 @@ public abstract class Command {
 
     @AutoValue
     public static abstract class CommandWrapperDerivedInput extends CommandWrapperInput {
+        private static final long serialVersionUID = -771566012305580433L;
+
         @Nullable @JsonProperty("derived-from-wrapper-input") public abstract String derivedFromWrapperInput();
         @Nullable @JsonProperty("derived-from-xnat-object-property") public abstract String derivedFromXnatObjectProperty();
         @Nullable @JsonProperty("via-setup-command") public abstract String viaSetupCommand();
@@ -1775,7 +1793,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandWrapperOutput {
+    public static abstract class CommandWrapperOutput implements Serializable {
+        private static final long serialVersionUID = -7451228848123007113L;
+
         @JsonIgnore public abstract long id();
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("accepts-command-output") public abstract String commandOutputName();
@@ -1961,7 +1981,9 @@ public abstract class Command {
      * A command with no IDs. Intended to be sent in by a user when creating a new command.
      */
     @AutoValue
-    public static abstract class CommandCreation {
+    public static abstract class CommandCreation implements Serializable {
+        private static final long serialVersionUID = 2858261266974093625L;
+
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("label") public abstract String label();
         @Nullable @JsonProperty("description") public abstract String description();
@@ -2045,7 +2067,9 @@ public abstract class Command {
     }
 
     @AutoValue
-    public static abstract class CommandWrapperOutputCreation {
+    public static abstract class CommandWrapperOutputCreation implements Serializable {
+        private static final long serialVersionUID = 1416126594029207550L;
+
         @Nullable @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("accepts-command-output") public abstract String commandOutputName();
         @Nullable @JsonProperty("via-wrapup-command") public abstract String viaWrapupCommand();
@@ -2116,7 +2140,9 @@ public abstract class Command {
      * A command with project- or site-wide configuration applied. Contains only a single wrapper.
      */
     @AutoValue
-    public static abstract class ConfiguredCommand {
+    public static abstract class ConfiguredCommand implements Serializable {
+        private static final long serialVersionUID = 7213052826937882389L;
+
         public abstract long id();
         public abstract String name();
         @Nullable public abstract String label();
@@ -2240,7 +2266,9 @@ public abstract class Command {
         }
     }
 
-    public static abstract class Input {
+    public static abstract class Input implements Serializable {
+        private static final long serialVersionUID = -7860128877729745749L;
+
         @JsonIgnore public abstract long id();
         @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("label") public abstract String label();

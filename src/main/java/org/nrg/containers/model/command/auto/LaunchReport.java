@@ -11,10 +11,13 @@ import org.nrg.containers.model.container.auto.Container;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
-public abstract class LaunchReport {
+public abstract class LaunchReport implements Serializable {
+    private static final long serialVersionUID = -5801114793149419949L;
+
     @JsonProperty("status") public abstract String status();
     @JsonProperty("params") public abstract ImmutableMap<String, String> launchParams();
     @Nullable @JsonProperty("id") public abstract Long databaseId();
@@ -23,7 +26,10 @@ public abstract class LaunchReport {
 
     @AutoValue
     public static abstract class Success extends LaunchReport {
+        private static final long serialVersionUID = -5222343077479424405L;
+
         protected final static String STATUS = "success";
+
         @Nonnull @JsonProperty("workflow-id") public abstract String workflowId();
 
         @JsonCreator
@@ -52,7 +58,10 @@ public abstract class LaunchReport {
 
     @AutoValue
     public static abstract class Failure extends LaunchReport {
+        private static final long serialVersionUID = 7865479951417993454L;
+
         private final static String STATUS = "failure";
+
         @JsonProperty("message") public abstract String message();
 
         @JsonCreator
@@ -89,7 +98,9 @@ public abstract class LaunchReport {
     }
 
     @AutoValue
-    public abstract static class BulkLaunchReport {
+    public abstract static class BulkLaunchReport implements Serializable {
+        private static final long serialVersionUID = -8776594852968210397L;
+
         @JsonProperty("bulk-launch-id") public abstract String bulkLaunchId();
         @JsonProperty("pipeline-name") public abstract String pipelineName();
         @JsonProperty("successes") public abstract ImmutableList<Success> successes();

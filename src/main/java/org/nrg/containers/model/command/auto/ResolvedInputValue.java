@@ -8,9 +8,12 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.xnat.XnatModelObject;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
 @AutoValue
-public abstract class ResolvedInputValue {
+public abstract class ResolvedInputValue implements Serializable {
+    private static final long serialVersionUID = 3736382357316063998L;
+
     @JsonProperty("type") public abstract String type();
     @Nullable @JsonProperty("value") public abstract String value();
     @Nullable @JsonProperty("value-label") public abstract String valueLabel();

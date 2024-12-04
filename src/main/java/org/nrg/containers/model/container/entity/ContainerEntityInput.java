@@ -14,10 +14,13 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+import java.io.Serializable;
 import java.util.Objects;
 
 @Entity
-public class ContainerEntityInput {
+public class ContainerEntityInput implements Serializable {
+    private static final long serialVersionUID = 1872068918967708951L;
+
     private long id;
     @JsonIgnore private ContainerEntity containerEntity;
     @Enumerated(EnumType.STRING) private ContainerInputType type;

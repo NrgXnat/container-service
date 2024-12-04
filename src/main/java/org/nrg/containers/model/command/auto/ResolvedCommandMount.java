@@ -4,9 +4,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
 @AutoValue
-public abstract class ResolvedCommandMount {
+public abstract class ResolvedCommandMount implements Serializable {
+    private static final long serialVersionUID = -6864779617157829074L;
+
     public static final String INPUT = "input";
     public static final String OUTPUT = "output";
     public static final String SETUP_WRAPUP_INPUT_PATH = "/" + INPUT;

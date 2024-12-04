@@ -6,8 +6,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
-public abstract class DockerHubBase {
+public abstract class DockerHubBase implements Serializable {
+    private static final long serialVersionUID = -7053921281835388132L;
 
     @JsonProperty("id") public abstract long id();
     @Nullable @JsonProperty("name") public abstract String name();
@@ -21,6 +23,8 @@ public abstract class DockerHubBase {
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public abstract static class DockerHub extends DockerHubBase {
+        private static final long serialVersionUID = 6104412147824430916L;
+
         public static final String DEFAULT_NAME = "Docker Hub";
         public static final String DEFAULT_URL = "https://index.docker.io/v1/";
         public static final DockerHub DEFAULT = DockerHub.create(0L, DEFAULT_NAME, DEFAULT_URL, false,
@@ -50,7 +54,9 @@ public abstract class DockerHubBase {
 
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public abstract static class DockerHubStatus {
+    public abstract static class DockerHubStatus implements Serializable {
+        private static final long serialVersionUID = 4252661488644868308L;
+
         @JsonProperty("ping") public abstract Boolean ping();
         @JsonProperty("response") public abstract String response();
         @JsonProperty("message") public abstract String message();
@@ -86,6 +92,8 @@ public abstract class DockerHubBase {
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public abstract static class DockerHubWithPing extends DockerHubBase {
+        private static final long serialVersionUID = -4277893938218132409L;
+
         @Nullable @JsonProperty("status") public abstract DockerHubStatus status();
 
         @JsonCreator

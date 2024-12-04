@@ -10,10 +10,13 @@ import org.nrg.containers.exceptions.InvalidDefinitionException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public abstract class DockerServerBase {
+public abstract class DockerServerBase implements Serializable {
+    private static final long serialVersionUID = 4458269433790705942L;
+
     @JsonProperty("id")
     public abstract long id();
 
@@ -103,6 +106,8 @@ public abstract class DockerServerBase {
 
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
+        private static final long serialVersionUID = 3879071283219400186L;
+
         public static final DockerServer DEFAULT_SOCKET = DockerServer.create("Local socket", "unix:///var/run/docker.sock");
 
         @JsonCreator
@@ -380,6 +385,8 @@ public abstract class DockerServerBase {
 
     @AutoValue
     public static abstract class DockerServerWithPing extends DockerServerBase {
+        private static final long serialVersionUID = 4329295970646182399L;
+
         @Nullable
         @JsonProperty("ping")
         public abstract Boolean ping();
@@ -553,7 +560,9 @@ public abstract class DockerServerBase {
     }
 
     @AutoValue
-    public static abstract class DockerServerSwarmConstraint {
+    public static abstract class DockerServerSwarmConstraint implements Serializable {
+        private static final long serialVersionUID = 7702940141914762990L;
+
         @JsonProperty("id") public abstract long id();
         @JsonProperty("user-settable") public abstract boolean userSettable();
         @JsonProperty("attribute") public abstract String attribute();

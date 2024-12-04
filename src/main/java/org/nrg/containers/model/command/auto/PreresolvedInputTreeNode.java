@@ -7,10 +7,13 @@ import org.nrg.containers.model.command.auto.Command.CommandWrapperDerivedInput;
 import org.nrg.containers.model.command.auto.Command.CommandWrapperExternalInput;
 import org.nrg.containers.model.command.auto.Command.Input;
 
+import java.io.Serializable;
 import java.util.List;
 
 @AutoValue
-public abstract class PreresolvedInputTreeNode<T extends Command.Input> {
+public abstract class PreresolvedInputTreeNode<T extends Command.Input> implements Serializable {
+    private static final long serialVersionUID = -2965708997601698228L;
+
     public abstract T input();
     public abstract List<PreresolvedInputTreeNode<? extends Input>> children();
 

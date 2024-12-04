@@ -9,12 +9,15 @@ import com.google.auto.value.AutoValue;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
+import java.io.Serializable;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @AutoValue
-public abstract class ServiceTask {
+public abstract class ServiceTask implements Serializable {
+    private static final long serialVersionUID = 6109868523030890519L;
+
     private static final Pattern successStatusPattern = Pattern.compile(TaskState.COMPLETE.getValue());
     private static final Pattern exitStatusPattern = Pattern.compile(
             Stream.of(TaskState.FAILED, TaskState.COMPLETE,

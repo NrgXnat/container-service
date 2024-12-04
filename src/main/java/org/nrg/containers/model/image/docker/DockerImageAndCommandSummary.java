@@ -11,13 +11,16 @@ import org.nrg.containers.model.command.entity.CommandEntity;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 @AutoValue
-public abstract class DockerImageAndCommandSummary {
+public abstract class DockerImageAndCommandSummary implements Serializable {
+    private static final long serialVersionUID = 6496872347287750335L;
+
     @Nullable @JsonProperty("image-id") public abstract String imageId();
     @Nullable @JsonProperty("server") public abstract String server();
     @JsonProperty("names") public abstract ImmutableSet<String> imageNames();

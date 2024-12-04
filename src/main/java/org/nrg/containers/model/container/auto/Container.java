@@ -38,6 +38,7 @@ import org.nrg.xnat.utils.WorkflowUtils;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -53,7 +54,9 @@ import static org.nrg.containers.utils.ContainerUtils.instanceOrDefault;
 
 @Slf4j
 @AutoValue
-public abstract class Container {
+public abstract class Container implements Serializable {
+    private static final long serialVersionUID = -6810388804754801990L;
+
     @JsonIgnore private volatile List<String> _bindMountStrings = null;
     @JsonIgnore private volatile List<String> _envStrings = null;
     @JsonIgnore private volatile List<String> _portStrings = null;
@@ -774,7 +777,9 @@ public abstract class Container {
     }
 
     @AutoValue
-    public static abstract class ContainerMount {
+    public static abstract class ContainerMount implements Serializable {
+        private static final long serialVersionUID = -2292768201315058409L;
+
         @JsonProperty("id") public abstract long databaseId();
         @JsonProperty("name") public abstract String name();
         @JsonProperty("writable") public abstract boolean writable();
@@ -793,7 +798,6 @@ public abstract class Container {
         @Deprecated @JsonProperty("input-files") public abstract ImmutableList<ContainerMountFiles> inputFiles();
 
         @JsonCreator
-        @SuppressWarnings("deprecation")
         public static ContainerMount create(@JsonProperty("id") final long databaseId,
                                             @JsonProperty("name") final String name,
                                             @JsonProperty("writable") final boolean writable,
@@ -809,7 +813,7 @@ public abstract class Container {
                     .xnatHostPath(xnatHostPath)
                     .containerHostPath(containerHostPath)
                     .containerPath(containerPath)
-                    .inputFiles(inputFiles == null ? Collections.<ContainerMountFiles>emptyList() : inputFiles)
+                    .inputFiles(inputFiles == null ? Collections.emptyList() : inputFiles)
                     .mountPvcName(mountPvcName)
                     .build();
         }
@@ -874,7 +878,9 @@ public abstract class Container {
      */
     @AutoValue
     @Deprecated
-    public static abstract class ContainerMountFiles {
+    public static abstract class ContainerMountFiles implements Serializable {
+        private static final long serialVersionUID = -7993078273953457834L;
+
         @JsonProperty("id") public abstract long databaseId();
         @Nullable @JsonProperty("from-xnat-input") public abstract String fromXnatInput();
         @Nullable @JsonProperty("from-uri") public abstract String fromUri();
@@ -897,7 +903,9 @@ public abstract class Container {
     }
 
     @AutoValue
-    public static abstract class ContainerInput {
+    public static abstract class ContainerInput implements Serializable {
+        private static final long serialVersionUID = 172575529359108385L;
+
         @JsonProperty("id") public abstract long databaseId();
         @JsonProperty("type") public abstract ContainerInputType type();
         @JsonProperty("name") public abstract String name();
@@ -941,7 +949,9 @@ public abstract class Container {
     }
 
     @AutoValue
-    public static abstract class ContainerOutput {
+    public static abstract class ContainerOutput implements Serializable {
+        private static final long serialVersionUID = 1683338477764081480L;
+
         @JsonProperty("id") public abstract long databaseId();
         @JsonProperty("name") public abstract String name();
         @Nullable @JsonProperty("from-command-output") public abstract String fromCommandOutput();
@@ -1070,7 +1080,9 @@ public abstract class Container {
     }
 
     @AutoValue
-    public static abstract class ContainerHistory implements Comparable<ContainerHistory> {
+    public static abstract class ContainerHistory implements Comparable<ContainerHistory>, Serializable {
+        private static final long serialVersionUID = 6531419114153708622L;
+
         @Nullable @JsonProperty("id") public abstract Long databaseId();
         @JsonProperty("status") public abstract String status();
         @JsonProperty("entity-type") public abstract String entityType();

@@ -9,11 +9,14 @@ import com.google.common.collect.Maps;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.Map;
 
 @AutoValue
-public abstract class CommandConfigurationInternal {
+public abstract class CommandConfigurationInternal implements Serializable {
+    private static final long serialVersionUID = -3178906512250243619L;
+
     @Nullable @JsonProperty("enabled") public abstract Boolean enabled();
     @JsonProperty("inputs") abstract ImmutableMap<String, CommandInputConfiguration> inputs();
     @JsonProperty("outputs") abstract ImmutableMap<String, CommandOutputConfiguration> outputs();
@@ -107,7 +110,9 @@ public abstract class CommandConfigurationInternal {
 
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public static abstract class CommandInputConfiguration {
+    public static abstract class CommandInputConfiguration implements Serializable {
+        private static final long serialVersionUID = -3031457962998071158L;
+
         @Nullable @JsonProperty("default-value") public abstract String defaultValue();
         @Nullable @JsonProperty("matcher") public abstract String matcher();
         @Nullable @JsonProperty("user-settable") public abstract Boolean userSettable();
@@ -162,7 +167,9 @@ public abstract class CommandConfigurationInternal {
 
     @AutoValue
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public static abstract class CommandOutputConfiguration {
+    public static abstract class CommandOutputConfiguration implements Serializable {
+        private static final long serialVersionUID = -4905537837345380901L;
+
         @Nullable @JsonProperty("label") public abstract String label();
 
         @JsonCreator

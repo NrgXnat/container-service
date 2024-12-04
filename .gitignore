@@ -24,3 +24,5 @@ hibernate.cfg.xml
 *.html.confluence
 container-service-api.md
 /bin/
+
+gradle.properties

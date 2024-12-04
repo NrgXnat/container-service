@@ -4,9 +4,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
 
 import javax.annotation.Nullable;
+import java.io.Serializable;
 
 @AutoValue
-public abstract class PluginVersionCheck {
+public abstract class PluginVersionCheck implements Serializable {
+    private static final long serialVersionUID = 270432226185468124L;
+
     @JsonProperty("compatible") public abstract Boolean compatible();
     @Nullable @JsonProperty("xnat-version-detected") public abstract String xnatVersionDetected();
     @Nullable @JsonProperty("min-xnat-version-required") public abstract String xnatVersionRequired();

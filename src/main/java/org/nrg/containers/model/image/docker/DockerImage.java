@@ -10,6 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +18,8 @@ import java.util.stream.Collectors;
 
 @AutoValue
 @ApiModel(description = "Properties that define an image.")
-public abstract class DockerImage {
+public abstract class DockerImage implements Serializable {
+    private static final long serialVersionUID = 85716281086259521L;
 
     @Nullable @JsonProperty("image-id") public abstract String imageId();
     @JsonProperty("tags") public abstract ImmutableList<String> tags();

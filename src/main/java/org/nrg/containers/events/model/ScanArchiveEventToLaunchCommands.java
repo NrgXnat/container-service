@@ -1,5 +1,6 @@
 package org.nrg.containers.events.model;
 
+import com.google.auto.value.AutoAnnotation;
 import com.google.auto.value.AutoValue;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.framework.event.EventI;
