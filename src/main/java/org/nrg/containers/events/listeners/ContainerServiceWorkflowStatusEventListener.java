@@ -81,7 +81,7 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
             try {
                 final UserI user = Users.getUser(event.getUserId());
                 QueueUtils.sendJmsRequest(template,
-                                          QUEUE,
+                                          SessionMergeOrArchiveEvent.QUEUE,
                                           SessionMergeOrArchiveEvent.create(XnatImagesessiondata.getXnatImagesessiondatasById(event.getEntityId(), user, true),
                                                                             user,
                                                                             SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.get(eventId)));
