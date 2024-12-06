@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.6.2
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.6.2/)
+* **Bugfix** [CS-975](https://radiologics.atlassian.net/browse/CS-975) Queued messages failed on ActiveMQ due to improper configuration of class serialization
+
 ## 3.6.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.1/)
 * **Improvement** [CS-975](https://radiologics.atlassian.net/browse/CS-975)/[XNAT-8111](https://radiologics.atlassian.net/browse/XNAT-8111) Convert event handlers in CS to use JMS instead of executors
