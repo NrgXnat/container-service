@@ -199,7 +199,7 @@ dependencies {
     testImplementation "org.springframework:spring-test"
     testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
     testImplementation "org.springframework.security:spring-security-config"
-    testImplementation "org.mockito:mockito-core:5.8.0"
+    testImplementation "org.mockito:mockito-core"
     testImplementation "javax.servlet:javax.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
