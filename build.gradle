@@ -13,6 +13,8 @@ plugins {
     id "io.spring.dependency-management" version "1.0.9.RELEASE"
     id "io.franzbecker.gradle-lombok" version "5.0.0"
     id "net.linguica.maven-settings" version "0.5"
+    id("org.openrewrite.rewrite") version("7.0.4")
+
 }
 
 group "org.nrg.xnatx.plugins"
@@ -64,6 +66,12 @@ configurations {
     }
 }
 
+    tasks.withType(Test).configureEach {
+            jvmArgs("--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED")
+            jvmArgs("--add-opens", "java.base/java.all=ALL-UNNAMED")
+            jvmArgs("--add-opens", "java.xml/jdk.xml.internal=ALL-UNNAMED")
+        }
+
 lombok {
     version = dependencyManagement.importedProperties["lombok.version"] as String
     sha256 = dependencyManagement.importedProperties["lombok.checksum"] as String
@@ -72,6 +80,9 @@ lombok {
 dependencies {
     annotationProcessor "org.nrg:framework"
     annotationProcessor "com.google.auto.value:auto-value:${vAutoValue}"
+
+    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks:3.1.0")
+
 
     compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
 
@@ -188,7 +199,7 @@ dependencies {
     testImplementation "org.springframework:spring-test"
     testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
     testImplementation "org.springframework.security:spring-security-config"
-    testImplementation "org.mockito:mockito-core"
+    testImplementation "org.mockito:mockito-core:5.8.0"
     testImplementation "javax.servlet:javax.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
@@ -196,10 +207,15 @@ dependencies {
     testImplementation "org.apache.commons:commons-dbcp2"
     testImplementation "commons-net:commons-net"
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
-    testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
+    testImplementation "org.powermock:powermock-api-mockito2:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
+}
+
+rewrite {
+    activeRecipe("org.openrewrite.java.testing.mockito.ReplacePowerMockito")
+    setExportDatatables(true)
 }
 
 test {
