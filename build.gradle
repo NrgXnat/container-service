@@ -40,7 +40,7 @@ dependencyManagement {
     imports {
         mavenBom("org.nrg:parent:${vXnat}") {
             bomProperties([
-                    "mockito.version": vMockito,
+                    // "mockito.version": vMockito,
                     "javassist.version": vJavassist
             ])
         }
@@ -50,7 +50,7 @@ dependencyManagement {
 def vDockerJava = "3.4.0.1"
 def vAutoValue = "1.5.4"
 def vKubernetesClient = "15.0.+"
-def vPowerMock = "1.7.0"
+def vPowerMock = "2.0.9"
 def vGson = dependencyManagement.importedProperties["gson.version"]
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
@@ -199,15 +199,15 @@ dependencies {
     testImplementation "org.springframework:spring-test"
     testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
     testImplementation "org.springframework.security:spring-security-config"
-    testImplementation "org.mockito:mockito-core"
+    testImplementation "org.mockito:mockito-core:${vMockito}"
     testImplementation "javax.servlet:javax.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
     testImplementation "commons-net:commons-net"
-    testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
-    testImplementation "org.powermock:powermock-api-mockito2:${vPowerMock}"
+    // testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
+    // testImplementation "org.powermock:powermock-api-mockito2:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
