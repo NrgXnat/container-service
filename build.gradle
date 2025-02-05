@@ -25,7 +25,7 @@ java {
     targetCompatibility = 21
 }
 
-def vMockito = "1.10.19"
+def vMockito = "5.7.0"
 def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
@@ -66,11 +66,11 @@ configurations {
     }
 }
 
-    tasks.withType(Test).configureEach {
-            jvmArgs("--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED")
-            jvmArgs("--add-opens", "java.base/java.all=ALL-UNNAMED")
-            jvmArgs("--add-opens", "java.xml/jdk.xml.internal=ALL-UNNAMED")
-        }
+tasks.withType(Test).configureEach {
+//        jvmArgs("--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED")
+        jvmArgs("--add-opens", "java.xml/jdk.xml.internal=ALL-UNNAMED")
+        jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+    }
 
 lombok {
     version = dependencyManagement.importedProperties["lombok.version"] as String
@@ -194,12 +194,18 @@ dependencies {
     runtimeOnly "com.google.code.findbugs:jsr305"
     runtimeOnly "org.yaml:snakeyaml:1.15+"
 
-    testImplementation "junit:junit"
+    testImplementation "junit:junit:4.13.2"
+    testImplementation(platform('org.junit:junit-bom:5.10.2'))
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation "org.hamcrest:hamcrest-library"
     testImplementation "org.springframework:spring-test"
     testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core:${vMockito}"
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.0.0'  // JUnit 5 integration for Mockito
+
     testImplementation "javax.servlet:javax.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
@@ -214,20 +220,26 @@ dependencies {
 }
 
 rewrite {
+    // activeRecipe("org.openrewrite.java.testing.mockito.Mockito1to5Migration")
     activeRecipe("org.openrewrite.java.testing.mockito.ReplacePowerMockito")
+
     setExportDatatables(true)
 }
 
 test {
+    useJUnitPlatform()
     systemProperty "integration", System.getProperty('integration') == "true"
 }
 
 tasks.register ( 'unitTest', Test ) {
+    useJUnitPlatform()
+
     systemProperties['integration'] = "false"
     test
 }
 
 tasks.register ( 'integrationTest', Test ) {
+    useJUnitPlatform()
     systemProperties['integration'] = "true"
     test
 }
