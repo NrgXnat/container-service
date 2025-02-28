@@ -428,6 +428,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .commandName(command.name())
                     .commandLabel(command.label())
                     .commandDescription(command.description())
+                    .commandMetadata(command.commandMetadata())
                     .image(command.image())
                     .type(command.type())
                     .overrideEntrypoint(command.overrideEntrypoint() == null ? Boolean.FALSE : command.overrideEntrypoint())

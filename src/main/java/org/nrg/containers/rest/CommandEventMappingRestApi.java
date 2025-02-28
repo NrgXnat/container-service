@@ -14,6 +14,7 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.XapiRequestMapping;
+import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -27,15 +28,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.nrg.containers.security.ContainerControlUserAuthorization;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 import static org.springframework.web.bind.annotation.RequestMethod.PUT;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 
 @Slf4j
 @XapiRestController
@@ -74,7 +76,8 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     }
 
 
-    @XapiRequestMapping(method = POST, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(method = POST, restrictTo = Authorizer)
     @ApiOperation(value = "Create a Command-Event Mapping", code = 201,
             notes = "Use the event service to trigger commands based on events")
     @Deprecated
@@ -112,14 +115,17 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
         return null;
     }
 
-    @XapiRequestMapping(value = {"/{id}"}, method = DELETE, restrictTo = Admin)
+
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = {"/{id}"}, method = DELETE, restrictTo = Authorizer)
     @ApiOperation(value = "Delete a Command-Event Mapping", code = 204)
     public ResponseEntity<String> delete(final @PathVariable Long id) {
         commandEventMappingService.delete(id);
         return new ResponseEntity<>("", HttpStatus.NO_CONTENT);
     }
 
-    @XapiRequestMapping(value = {"/{id}/enable"}, method = PUT, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = {"/{id}/enable"}, method = PUT, restrictTo = Authorizer)
     @ApiOperation(value = "Enable a Command-Event Mapping",
             notes = "Use the event service to trigger commands based on events")
     @Deprecated
@@ -130,7 +136,8 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
         return ResponseEntity.ok().build();
     }
 
-    @XapiRequestMapping(value = {"/{id}/disable"}, method = PUT, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = {"/{id}/disable"}, method = PUT, restrictTo = Authorizer)
     @ApiOperation(value = "Disable a Command-Event Mapping",
             notes = "Use the event service to trigger commands based on events")
     @Deprecated
@@ -141,7 +148,8 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
         return ResponseEntity.ok().build();
     }
 
-    @XapiRequestMapping(value = {"/{id}/convert"}, method = POST, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = {"/{id}/convert"}, method = POST, restrictTo = Authorizer)
     @ApiOperation(value = "Convert a Command-Event Automation item to an Event Service Subscription")
     @ResponseBody
     public ResponseEntity<Void> convert(final @PathVariable Long id) throws Exception {

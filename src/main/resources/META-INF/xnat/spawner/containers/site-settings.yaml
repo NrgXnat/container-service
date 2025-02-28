@@ -18,6 +18,8 @@ serverSetupPanel:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         commandAutomationScript:
             tag: script|src="~/scripts/xnat/plugin/containerService/commandAutomation.js"
+        csSiteAdminManageProjectsScripts:
+            tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin-assignProject.js"
         csSiteAdminScripts:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
         jqueryUi:
@@ -291,6 +293,7 @@ siteSettings:
     name: containerAdminPage
     label: Administer Container Service
     meta:
+        restricted: ContainerManager
         tabGroups:
             containerServiceTabGroup: Container Service
     contains: tabs

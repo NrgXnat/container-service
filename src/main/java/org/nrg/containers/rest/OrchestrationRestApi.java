@@ -19,8 +19,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.nrg.xapi.rest.AuthDelegate;
+import org.nrg.containers.security.ContainerControlUserAuthorization;
 
-import javax.annotation.Nullable;
 import java.security.InvalidParameterException;
 import java.util.List;
 
@@ -42,14 +43,16 @@ public class OrchestrationRestApi extends AbstractXapiRestController {
         this.orchestrationService = orchestrationService;
     }
 
-    @XapiRequestMapping(method = POST, restrictTo = Admin, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(method = POST, restrictTo = Authorizer, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ApiOperation(value = "Create or update orchestration")
     public ResponseEntity<Orchestration> setupOrchestration(final @RequestBody Orchestration orchestration)
             throws NotFoundException {
         return new ResponseEntity<>(orchestrationService.createOrUpdate(orchestration), HttpStatus.OK);
     }
 
-    @XapiRequestMapping(method = GET, restrictTo = Admin, produces = MediaType.APPLICATION_JSON_VALUE)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(method = GET, restrictTo = Authorizer, produces = MediaType.APPLICATION_JSON_VALUE)
     @ApiOperation(value = "Get orchestrations")
     public ResponseEntity<List<Orchestration>> getOrchestrations() {
         return new ResponseEntity<>(orchestrationService.getAllPojos(), HttpStatus.OK);
@@ -77,14 +80,16 @@ public class OrchestrationRestApi extends AbstractXapiRestController {
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
-    @XapiRequestMapping(value = "/{id}", method = DELETE, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = "/{id}", method = DELETE, restrictTo = Authorizer)
     @ApiOperation(value = "Delete orchestration")
     public ResponseEntity<Void> deleteOrchestration(@PathVariable final long id) {
         orchestrationService.delete(id);
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
-    @XapiRequestMapping(value = "/{id}/enabled/{enabled}", method = PUT, restrictTo = Admin)
+    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @XapiRequestMapping(value = "/{id}/enabled/{enabled}", method = PUT, restrictTo = Authorizer)
     @ApiOperation(value = "Enable or disable orchestration")
     public ResponseEntity<Void> enableOrDisableOrchestration(@PathVariable final long id,
                                                              @PathVariable final boolean enabled)

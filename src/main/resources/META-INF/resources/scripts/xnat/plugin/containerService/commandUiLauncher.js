@@ -823,6 +823,34 @@ var XNAT = getObject(XNAT || {});
      ** Launcher Options
      */
 
+     function formatInfo(key, val) {
+         return '<b>' + String(key).charAt(0).toUpperCase() + String(key).slice(1) + "</b>:" + val + '<br>';
+     }
+
+     function containerMetaDataButtonInfoText(commandMetadata) {
+         var commandMetadataContent = "";
+        for (const key in commandMetadata) {
+            if (commandMetadata.hasOwnProperty(key)) {
+                commandMetadataContent += `${formatInfo(key,commandMetadata[key])}`;
+            }
+        }
+         return {
+             tag: 'span.tip.shadowed',
+             element: {
+                 style: {
+                     width: '350px',
+                     left: '-385px',
+                     top: '-75px',
+                     zIndex: 10000
+                 }
+             },
+             content: [
+                 `${commandMetadataContent}`
+             ],
+             filler: null
+         }
+     }
+
     function launchContainer(configData,rootElement,wrapperId,targets,targetLabels,project){
         var workList = configData['input-config'];
         launcher.inputList = configData['input-config'];
@@ -834,8 +862,19 @@ var XNAT = getObject(XNAT || {});
             projectContainerLaunchUrl(projectContext,wrapperId,rootElement) :
             containerLaunchUrl(wrapperId,rootElement);
         var bulkLaunch = false;
+        var containerInfoText = containerMetaDataButtonInfoText(configData['meta']['command-metadata']);
+        var containerInfoIcon = spawn(
+                                        'span.tip_icon',
+                                          {
+                                              title: 'Container Info'
+                                          },
+                                          containerInfoText
+                                        );
 
-        var formContent = [spawn('p','Please specify settings for this container.')];
+        var formContent = [spawn('div',[spawn('div.pull-left',{style: { 'display': 'inline' }},'Please specify settings for this container.'),
+                           spawn('div',{style: { 'display': 'inline' }},
+                           [containerInfoIcon])])
+                         ];
 
         if (targets) {
             // Bulk launch
@@ -859,7 +898,7 @@ var XNAT = getObject(XNAT || {});
             XNAT.ui.dialog.open({
                 title: 'Set Container Launch Values',
                 content: launcherContent,
-                width: 550,
+                width: 750,
                 maxBtn: true,
                 scroll: true,
                 beforeShow: function(obj){

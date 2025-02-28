@@ -7,7 +7,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
 * How do you run it? What does the command-line string look like?
 * Does it need files? Where should they go? How do you want to get those out of XNAT?
 * Does it produce any files at the end? Those have to get back into XNAT, so where should they go?
-
+* What is the visibility level of  the command: Public, Private, Protected
 
 # Command object format
 
@@ -129,7 +129,8 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
                     }
                 ]
             }
-        ]
+        ],
+        "visibility": ""
     }
 
 - **name** - The name of the command. Should be unique, but that is not required.
@@ -144,6 +145,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
 - **hash** - (Docker images only) A sha hash value for the image.
 - **working-directory** - The working directory in which the command line should be executed.
 - **command-line** - This string is a templatized version of the command-line string that will be executed inside the container. The templatized portions will be resolved at launch time with the values of the command's inputs. See the section on [template strings](#template-strings) below for more detail. The length of the string that can be stored in this field is 2048.
+- **command-metadata** - This JSON blob of key, value pairs would contain metadata about the Container such as Authors, Citation, Source etc. 
 - **reserve-memory** Integer value in MB to ensure containers have at least this much memory available
 - **limit-memory** Integer value in MB to ensure containers don't use more memory than this
 - **limit-cpu** Float value to ensure containers don't use more cycle shares than this. For example, a value of 1.5 would mean the container can't use more cycles than 1.5 CPUs are capable of.
@@ -168,8 +170,8 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
     - **true-value** - The string to use in the command line for a boolean input when its value is `true`. Some examples: "true", "T", "Y", "1", "--a-flag". Default: "true".
     - **false-value** - The string to use in the command line for a boolean input when its value is `false`. Some examples: "false", "F", "N", "0", "--some-other-flag". Default: "false".
     - **sensitive** - A boolean value. Set to `true` if you want the value of this parameter to be masked out in the UI and REST API responses. The value will still be present in the database and logs. Default: `false`.   
-	- **select-values** - If type is `select-one` or `select-many`, you must provide an array of possible values for this input. _These are only relevant if the input's value is NOT provided by an external or derived input_. Default: `[]`.
-	- **multiple-delimmiter** - One of `quoted-space`, `space`, `comma`, or `flag` (or null). This parameter will only be relevant if `"type":"select-many"` OR if this input's value is provided by a [derived-input](#wrapper-inputs) with `"multiple":true`. When this input's value is replaced in the command-line string, the multiple-delimiter defines how multiple values will be separated. Values are as follows: "space" = space-delimited (e.g, `1 2`), "comma" = comma-delimited (e.g, `1,2`), "quoted-space" = space-delimited within single quotes (e.g, `'1 2'`), "flag" = delimited by "command-line-flag" + "command-line-separator" (e.g., `--flag=1 --flag=2`). Default: `space`
+    - **select-values** - If type is `select-one` or `select-many`, you must provide an array of possible values for this input. _These are only relevant if the input's value is NOT provided by an external or derived input_. Default: `[]`.
+    - **multiple-delimmiter** - One of `quoted-space`, `space`, `comma`, or `flag` (or null). This parameter will only be relevant if `"type":"select-many"` OR if this input's value is provided by a [derived-input](#wrapper-inputs) with `"multiple":true`. When this input's value is replaced in the command-line string, the multiple-delimiter defines how multiple values will be separated. Values are as follows: "space" = space-delimited (e.g, `1 2`), "comma" = comma-delimited (e.g, `1,2`), "quoted-space" = space-delimited within single quotes (e.g, `'1 2'`), "flag" = delimited by "command-line-flag" + "command-line-separator" (e.g., `--flag=1 --flag=2`). Default: `space`
 - **outputs** - A list of outputs that will be used to upload files produced by the container. See [Command Outputs](#command-outputs).
     - **name** - The name of the output.
     - **description** - A human-friendly description of the output.
@@ -210,7 +212,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
         - **via-setup-command** - A reference to a setup command image (format: `repo/image:version[:commandname]` where the `commandname` is optional). See the page on [Setup Commands](https://wiki.xnat.org/display/CS/Setup+Commands) for more.
         - **derived-from-wrapper-input** - Name of a Wrapper input which is a "parent" to this input. See [Deriving values](#deriving-values).
         - **derived-from-xnat-object-property** - Property of an XNAT object that will be used for the value of this input. See [Deriving values](#deriving-values).
-		- **multiple** - A boolean value indicating whether this input should be allowed to resolve to multiple values (e.g., you want this input to be all T1 scans, rather than matching precisely one or erroring-out). If `true`, this input cannot provide values for a command-mount, nor be the target for an output handler, nor have children apart from providing values for a command-input. Default: `false`.
+        - **multiple** - A boolean value indicating whether this input should be allowed to resolve to multiple values (e.g., you want this input to be all T1 scans, rather than matching precisely one or erroring-out). If `true`, this input cannot provide values for a command-mount, nor be the target for an output handler, nor have children apart from providing values for a command-input. Default: `false`.
     - **output-handlers** - A list of [output handlers](#output-handling). You use these to instruct the container service how and where to upload your container's outputs.
         - **name**
         - **type** - The type of object that will be created in XNAT. Currently `"Resource", "Assessor", and "Scan"` are accepted. The latter two must be xml files.
@@ -223,6 +225,7 @@ If you want XNAT to execute your docker image, you will need a Command. The Comm
         - **content** - The content label of the files that will be uploaded to the new Resource.
         - **description** - The description of the files that will be uploaded to the new Resource.
         - **tags** - The list of tags on the files that will be uploaded to the new Resource.
+- **visibility** - Introduced in v3.7.0, Command visibility can be one of Public, Private, Protected. By default the visibility of a command is Public.
 
 
 ## Mounts

@@ -433,7 +433,7 @@ public class CommandServiceImpl implements CommandService {
         final boolean isSiteWide = StringUtils.isBlank(project);
 
         // Are they able to read the project at all?
-        if (!isSiteWide && !ContainerServicePermissionUtils.canReadProject(userI, project)) {
+        if (!isSiteWide  && !ContainerServicePermissionUtils.canReadProject(userI, project)) {
             log.debug("User \"{}\" cannot read project \"{}\"", userI.getUsername(), project);
             return Collections.emptyList();
         }
@@ -517,6 +517,16 @@ public class CommandServiceImpl implements CommandService {
     public boolean xsiTypesMatch(final @Nonnull String xsiType,
                                   final @Nonnull Set<String> wrapperXsiTypes) throws ElementNotFoundException {
         return ContainerServicePermissionUtils.xsiTypeEqualToOrInstanceOf(xsiType, wrapperXsiTypes);
+    }
+
+    /**
+     * Returns the project ids for which the wrapper identified by wrapperId has the status of status
+     * @param wrapperId Command wrapper Id
+     * @param status the status : enabled / disabled
+     * @return
+     */
+    public List<String> getProjects(final long wrapperId, final String status) {
+       return containerConfigService.getProjects(wrapperId, status);
     }
 
 

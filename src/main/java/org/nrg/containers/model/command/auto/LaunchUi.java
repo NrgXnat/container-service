@@ -3,6 +3,7 @@ package org.nrg.containers.model.command.auto;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.auto.value.AutoValue;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -195,6 +196,7 @@ public abstract class LaunchUi implements Serializable {
         @JsonProperty("command-name") public abstract String commandName();
         @Nullable @JsonProperty("command-label") public abstract String commandLabel();
         @Nullable @JsonProperty("command-description") public abstract String commandDescription();
+        @Nullable @JsonProperty("command-metadata") public abstract JsonNode commandMetadata();
         @JsonProperty("wrapper-id") public abstract Long wrapperId();
         @JsonProperty("wrapper-name") public abstract String wrapperName();
         @Nullable @JsonProperty("wrapper-label") public abstract String wrapperLabel();
@@ -206,6 +208,7 @@ public abstract class LaunchUi implements Serializable {
                                           final @Nonnull String commandName,
                                           final @Nullable String commandLabel,
                                           final @Nullable String commandDescription,
+                                          final @Nullable JsonNode commandMetadata,
                                           final @Nonnull Long wrapperId,
                                           final @Nonnull String wrapperName,
                                           final @Nullable String wrapperLabel,
@@ -217,6 +220,7 @@ public abstract class LaunchUi implements Serializable {
                     .commandName(commandName)
                     .commandLabel(commandLabel)
                     .commandDescription(commandDescription)
+                    .commandMetadata(commandMetadata)
                     .wrapperId(wrapperId)
                     .wrapperName(wrapperName)
                     .wrapperLabel(wrapperLabel)
@@ -232,6 +236,7 @@ public abstract class LaunchUi implements Serializable {
                     .commandName(partiallyResolvedCommand.commandName())
                     .commandLabel(partiallyResolvedCommand.commandLabel())
                     .commandDescription(partiallyResolvedCommand.commandDescription())
+                    .commandMetadata(partiallyResolvedCommand.commandMetadata())
                     .wrapperId(partiallyResolvedCommand.wrapperId())
                     .wrapperName(partiallyResolvedCommand.wrapperName())
                     .wrapperDescription(partiallyResolvedCommand.wrapperDescription())
@@ -247,6 +252,7 @@ public abstract class LaunchUi implements Serializable {
                     .commandName(configuredCommand.name())
                     .commandLabel(configuredCommand.label())
                     .commandDescription(configuredCommand.description())
+                    .commandMetadata(configuredCommand.commandMetadata())
                     .wrapperId(wrapper.id())
                     .wrapperName(wrapper.name())
                     .wrapperDescription(wrapper.description())
@@ -265,6 +271,7 @@ public abstract class LaunchUi implements Serializable {
             public abstract Builder commandName(@Nonnull String commandName);
             public abstract Builder commandLabel(@Nullable String commandLabel);
             public abstract Builder commandDescription(@Nullable String commandDescription);
+            public abstract Builder commandMetadata(@Nullable JsonNode commandMetadata);
             public abstract Builder wrapperId(@Nonnull Long wrapperId);
             public abstract Builder wrapperName(@Nonnull String wrapperName);
             public abstract Builder wrapperLabel(@Nullable String wrapperLabel);

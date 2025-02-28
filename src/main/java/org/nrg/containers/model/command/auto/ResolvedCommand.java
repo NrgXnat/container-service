@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.auto.value.AutoValue;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -422,6 +423,7 @@ public abstract class ResolvedCommand implements Serializable {
         public abstract String commandName();
         @Nullable public abstract String commandLabel();
         @Nullable public abstract String commandDescription();
+        @Nullable public abstract JsonNode commandMetadata();
         public abstract String image();
         @Nullable
         public abstract String containerName();
@@ -449,6 +451,7 @@ public abstract class ResolvedCommand implements Serializable {
             public abstract Builder commandName(String commandDescription);
             public abstract Builder commandLabel(String commandLabel);
             public abstract Builder commandDescription(String commandDescription);
+            public abstract Builder commandMetadata(JsonNode commandMetadata);
             public abstract Builder image(String image);
             public abstract Builder containerName(String containerName);
             public abstract Builder type(String type);
