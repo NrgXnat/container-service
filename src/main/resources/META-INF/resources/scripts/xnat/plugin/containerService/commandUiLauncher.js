@@ -829,7 +829,7 @@ var XNAT = getObject(XNAT || {});
 
      function containerMetaDataButtonInfoText(commandMetadata) {
         var commandMetadataContent = "";
-        if (Object.keys(commandMetadata).lengthh === 0) {
+        if (commandMetadata === undefined || Object.keys(commandMetadata).length === 0) {
             commandMetadataContent = "No metadata available";
         } else {
             for (const key in commandMetadata) {
