@@ -828,10 +828,14 @@ var XNAT = getObject(XNAT || {});
      }
 
      function containerMetaDataButtonInfoText(commandMetadata) {
-         var commandMetadataContent = "";
-        for (const key in commandMetadata) {
-            if (commandMetadata.hasOwnProperty(key)) {
-                commandMetadataContent += `${formatInfo(key,commandMetadata[key])}`;
+        var commandMetadataContent = "";
+        if (Object.keys(commandMetadata).lengthh === 0) {
+            commandMetadataContent = "No metadata available";
+        } else {
+            for (const key in commandMetadata) {
+                if (commandMetadata.hasOwnProperty(key)) {
+                    commandMetadataContent += `${formatInfo(key,commandMetadata[key])}`;
+                }
             }
         }
          return {

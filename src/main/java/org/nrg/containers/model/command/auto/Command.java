@@ -227,7 +227,7 @@ public abstract class Command implements Serializable {
                                 .collect(Collectors.toList()))
                 .secrets(commandEntity.getSecrets() == null ? Collections.emptyList() :
                         new ArrayList<>(commandEntity.getSecrets()))
-                .visibility(commandEntity.getVisibilityType().getVisibilityType());
+                .visibility(commandEntity.getVisibilityType() == null ? CommandVisibility.PUBLIC_CONTAINER.getVisibilityType() : commandEntity.getVisibilityType().getVisibilityType());
 
         if (commandEntity.getType() == CommandType.DOCKER) {
             builder = builder.index(((DockerCommandEntity) commandEntity).getIndex())
