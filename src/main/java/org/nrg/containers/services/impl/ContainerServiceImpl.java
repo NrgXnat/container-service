@@ -1129,19 +1129,26 @@ public class ContainerServiceImpl implements ContainerService {
     private boolean canFinalize(UserI user, Container containerOrService, ContainerFinalizingRequest request) {
         Integer limit = containerControlApi.getFinalizingThrottle();
         if (limit == null) {
+            markAsQueuedForFinalizing(containerOrService, request, user);
             return true;
         }
 
-        synchronized (this) {
-            List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
-            boolean canFinalize = wfs == null || wfs.size() < limit;
-            if (canFinalize) {
-                addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
-                        request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
-                        user);
-            }
-            return canFinalize;
+        // To be perfectly accurate, this should be synchronized, but that's a massive performance bottleneck.
+        // A slightly-overlapping check is probably good enough.
+        List<WrkWorkflowdata> wfs = getContainerWorkflowsByStatuses(Arrays.asList(FINALIZING, _WAITING), user);
+        boolean canFinalize = wfs == null || wfs.size() < limit;
+        if (canFinalize) {
+            markAsQueuedForFinalizing(containerOrService, request, user);
         }
+        return canFinalize;
+    }
+
+    private void markAsQueuedForFinalizing(final Container containerOrService,
+                                           final ContainerRequest request,
+                                           final UserI user) {
+        addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(
+                request.makeJMSQueuedStatus(containerOrService.status()), "Queued for finalizing"),
+                user);
     }
 
     private void recoverFromQueueingFailureFinalizing(Exception e,
