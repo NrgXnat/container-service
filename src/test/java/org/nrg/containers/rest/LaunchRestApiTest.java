@@ -51,11 +51,11 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyMapOf;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -97,7 +97,7 @@ public class LaunchRestApiTest {
     private CommandWrapper COMMAND_WRAPPER;
     private ResolvedCommand RESOLVED_COMMAND;
 
-    private final MediaType JSON = MediaType.APPLICATION_JSON_UTF8;
+    private final MediaType JSON = MediaType.APPLICATION_JSON;
     private final MediaType XML = MediaType.APPLICATION_XML;
 
     @Autowired private WebApplicationContext wac;
@@ -205,7 +205,7 @@ public class LaunchRestApiTest {
 
         when(mockContainerService.launchContainer(
                 anyString(), any(Long.class), anyString(), eq(WRAPPER_ID), eq(FAKE_ROOT),
-                anyMapOf(String.class, String.class), any(UserI.class))
+                any(Map.class), any(UserI.class))
         ).thenReturn(report);
 
         final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
@@ -232,7 +232,7 @@ public class LaunchRestApiTest {
 
         when(mockContainerService.launchContainer(
                 any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
-                anyMapOf(String.class, String.class), any(UserI.class))
+                any(Map.class), any(UserI.class))
         ).thenReturn(report);
 
         final String path = String.format(pathTemplate, WRAPPER_ID, FAKE_ROOT);
@@ -276,7 +276,7 @@ public class LaunchRestApiTest {
 
         when(mockContainerService.bulkLaunch(
                 any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
-                anyMapOf(String.class, String.class), any(UserI.class)
+                anyMap(), any(UserI.class)
         )).thenReturn(report);
 
         //final String exceptionMessage = "Unable to queue container launch";
@@ -326,7 +326,7 @@ public class LaunchRestApiTest {
                 .commandName(COMMAND_NAME)
                 .image(IMAGE)
                 .build();
-        when(mockCommandResolutionService.preResolve(eq(project), any(long.class), any(String.class), eq(WRAPPER_ID), anyMapOf(String.class, String.class), eq(mockAdmin)))
+        when(mockCommandResolutionService.preResolve(eq(project), any(long.class), any(String.class), eq(WRAPPER_ID), anyMap(), eq(mockAdmin)))
                 .thenReturn(partiallyResolvedCommand);
 
         final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,

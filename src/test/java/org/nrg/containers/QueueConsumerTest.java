@@ -9,7 +9,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
-import org.mockito.Mockito;
+import org.mockito.MockedStatic;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.QueueConsumerTestConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
@@ -22,7 +22,6 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
-import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.TestingUtils;
@@ -40,10 +39,6 @@ import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
@@ -59,23 +54,24 @@ import java.util.regex.Pattern;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.argThat;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.doNothing;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
+//import static org.mockito.Mockito.*;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class})
-@PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
+@RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = QueueConsumerTestConfig.class)
 @Transactional
 public class QueueConsumerTest {
+    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
+    private MockedStatic<Users> mockedUsers;
+    private MockedStatic<XFTManager> mockedXFTManager;
+    private MockedStatic<UriParserUtils> mockedUriParserUtils;
     private UserI mockUser;
     private String buildDir;
     private String archiveDir;
@@ -99,7 +95,6 @@ public class QueueConsumerTest {
     private final String REAL_IMAGE = "busybox:latest";
 
     @Autowired private CommandService mockCommandService;
-    @Autowired private ContainerEntityService mockContainerEntityService;
     @Autowired private CommandResolutionService mockCommandResolutionService;
     @Autowired private ContainerService containerService;
     @Autowired private DockerControlApi mockDockerControlApi;
@@ -119,6 +114,11 @@ public class QueueConsumerTest {
         final String hostEnv = System.getenv("DOCKER_HOST");
         final String certPathEnv = System.getenv("DOCKER_CERT_PATH");
         final String tlsVerify = System.getenv("DOCKER_TLS_VERIFY");
+
+        mockedWorkflowUtils = mockStatic(WorkflowUtils.class);
+        mockedUsers = mockStatic(Users.class);
+        mockedXFTManager = mockStatic(XFTManager.class);
+        mockedUriParserUtils = mockStatic(UriParserUtils.class);
 
         final boolean useTls = tlsVerify != null && tlsVerify.equals("1");
         final String certPath;
@@ -162,18 +162,12 @@ public class QueueConsumerTest {
         // Mock the user management service
         when(mockUserManagementServiceI.getUser(FAKE_USER)).thenReturn(mockUser);
 
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        mockStatic(UriParserUtils.class);
-
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
         mockAliasToken.setAlias(FAKE_ALIAS);
         mockAliasToken.setSecret(FAKE_SECRET);
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         buildDir = folder.newFolder().getAbsolutePath();
@@ -197,7 +191,7 @@ public class QueueConsumerTest {
                 .commandLine("echo hello world")
                 .addRawInputValue(INPUT_NAME, INPUT_VALUE)
                 .build();
-        mockConfiguredCommand = Mockito.mock(ConfiguredCommand.class);
+        mockConfiguredCommand = mock(ConfiguredCommand.class);
         when(mockCommandService.getWrapper(WRAPPER_ID)).thenReturn(COMMAND_WRAPPER);
         when(mockCommandService.retrieveWrapper(WRAPPER_ID)).thenReturn(COMMAND_WRAPPER);
         when(mockCommandService.getAndConfigure(WRAPPER_ID)).thenReturn(mockConfiguredCommand);
@@ -210,21 +204,20 @@ public class QueueConsumerTest {
                 mockUser,
                 fakeWorkflow.getWorkflowId().toString()
         )).thenReturn(RESOLVED_COMMAND);
-
-        // Use powermock to mock out the static method XFTManager.isInitialized()
-        mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-
-        // Also mock out workflow operations to return our fake workflow object
-        mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class, "save", any(PersistentWorkflowI.class), isNull(EventMetaI.class));
+        mockedWorkflowUtils.when(() -> WorkflowUtils.save(any(PersistentWorkflowI.class), isNull(EventMetaI.class)))
+                .thenAnswer(invocationOnMock -> null);
     }
 
     @After
     public void cleanup() throws Exception {
         fakeWorkflow = new FakeWorkflow();
+        mockedUriParserUtils.closeOnDemand();
+        mockedXFTManager.closeOnDemand();
+        mockedUsers.closeOnDemand();
+        mockedWorkflowUtils.closeOnDemand();
     }
 
     @Test
@@ -238,7 +231,7 @@ public class QueueConsumerTest {
         when(mockCommandResolutionService.resolve(
                 eq(mockConfiguredCommand),
                 argThat(TestingUtils.isMapWithEntry(INPUT_NAME, badInputValue)),
-                isNull(String.class),
+                isNull(),
                 eq(mockUser),
                 eq(fakeWorkflow.getWorkflowId().toString())
         )).thenThrow(new CommandResolutionException(exceptionMessage));

@@ -10,6 +10,7 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
@@ -20,8 +21,10 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
 import org.nrg.containers.model.container.auto.Container;
@@ -47,14 +50,16 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @Slf4j
 @RunWith(Enclosed.class)
 public class ContainerLogTest {
+    @ExtendWith(MockitoExtension.class)
     @Ignore
+    @MockitoSettings(strictness = Strictness.WARN)
     @RunWith(JUnit4.class)
     public static class Base {
 
@@ -69,22 +74,20 @@ public class ContainerLogTest {
             }
         };
 
-        @Rule public MockitoRule rule = MockitoJUnit.rule();
-
         @Rule public TemporaryFolder temp = new TemporaryFolder(new File(System.getProperty("java.io.tmpdir")));
 
-        @Mock public ContainerControlApi containerControlApi;
-        @Mock public ContainerEntityService containerEntityService;
-        @Mock public CommandResolutionService commandResolutionService;
-        @Mock public CommandService commandService;
-        @Mock public AliasTokenService aliasTokenService;
-        @Mock public SiteConfigPreferences siteConfigPreferences;
-        @Mock public ContainerFinalizeService containerFinalizeService;
-        @Mock public XnatAppInfo xnatAppInfo;
-        @Mock public CatalogService catalogService;
-        @Mock public OrchestrationService orchestrationService;
-        @Mock public NrgEventServiceI eventService;
-        @Mock public ThreadPoolExecutorFactoryBean executorFactoryBean;
+        public ContainerControlApi containerControlApi = Mockito.mock(ContainerControlApi.class);
+        public ContainerEntityService containerEntityService = Mockito.mock(ContainerEntityService.class);
+        public CommandResolutionService commandResolutionService = Mockito.mock(CommandResolutionService.class);
+        public CommandService commandService = Mockito.mock(CommandService.class);
+        public AliasTokenService aliasTokenService = Mockito.mock(AliasTokenService.class);
+        public SiteConfigPreferences siteConfigPreferences = Mockito.mock(SiteConfigPreferences.class);
+        public ContainerFinalizeService containerFinalizeService = Mockito.mock(ContainerFinalizeService.class);
+        public XnatAppInfo xnatAppInfo = Mockito.mock(XnatAppInfo.class);
+        public CatalogService catalogService = Mockito.mock(CatalogService.class);
+        public OrchestrationService orchestrationService = Mockito.mock(OrchestrationService.class);
+        public NrgEventServiceI eventService = Mockito.mock(NrgEventServiceI.class);
+        public ThreadPoolExecutorFactoryBean executorFactoryBean  = new ThreadPoolExecutorFactoryBean();
 
         public final ObjectMapper mapper = new ObjectMapper();
 

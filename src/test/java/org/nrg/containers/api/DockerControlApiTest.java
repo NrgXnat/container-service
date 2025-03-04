@@ -14,7 +14,6 @@ import com.github.dockerjava.api.model.Service;
 import com.github.dockerjava.api.model.ServiceModeConfig;
 import com.github.dockerjava.api.model.ServiceSpec;
 import com.google.common.collect.ImmutableList;
-import io.kubernetes.client.util.PatchUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
@@ -26,7 +25,6 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -38,12 +36,9 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.xft.security.UserI;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
-import org.powermock.reflect.Whitebox;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -56,18 +51,18 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.support.membermodification.MemberMatcher.method;
+//import static org.powermock.api.support.membermodification.MemberMatcher.method;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(Parameterized.class)
-@PrepareForTest({DockerControlApi.class, PatchUtils.class})
+@RunWith(Parameterized.class)
 public class DockerControlApiTest {
     final String BACKEND_ID = UUID.randomUUID().toString();
     final String USER_LOGIN = UUID.randomUUID().toString();
@@ -97,17 +92,18 @@ public class DockerControlApiTest {
         }
     };
 
-    @Mock private DockerHubService dockerHubService;
-    @Mock private DockerServerService dockerServerService;
-    @Mock private KubernetesClientFactory kubernetesClientFactory;
-    @Mock private KubernetesClient kubernetesClient;
+    private DockerHubService dockerHubService = Mockito.mock(DockerHubService.class);
+    private DockerServerService dockerServerService = Mockito.mock(DockerServerService.class);
 
-    @Mock(answer = Answers.RETURNS_MOCKS) private com.github.dockerjava.api.DockerClient mockDockerJavaClient;
-    @Mock private DockerImage mockDockerImage;
+    private KubernetesClientFactory kubernetesClientFactory = Mockito.mock(KubernetesClientFactory.class);
+    private KubernetesClient kubernetesClient = Mockito.mock(KubernetesClient.class);
 
-    @Mock private DockerServer dockerServer;
-    @Mock private Container container;
-    @Mock private UserI user;
+    private com.github.dockerjava.api.DockerClient mockDockerJavaClient = Mockito.mock(com.github.dockerjava.api.DockerClient.class, Answers.RETURNS_MOCKS);
+    private DockerImage mockDockerImage = Mockito.mock(DockerImage.class);
+
+    private DockerServer dockerServer = Mockito.mock(DockerServer.class);
+    private Container container = Mockito.mock(Container.class);
+    private UserI user = Mockito.mock(UserI.class);
 
     private DockerControlApi dockerControlApi;
 
@@ -118,15 +114,28 @@ public class DockerControlApiTest {
         // to use PowerMock to mock it out.
         // The fact that we have to do this is a code smell!
         // Should probably inject this client instance into DockerControlApi as a bean.
-        dockerControlApi = PowerMockito.spy(new DockerControlApi(
+        dockerControlApi = Mockito.spy(new DockerControlApi(
                 dockerServerService, dockerHubService, kubernetesClientFactory
         ));
-        PowerMockito.doReturn(mockDockerImage)
-                .when(dockerControlApi, method(DockerControlApi.class, "pullImage", String.class))
-                .withArguments(anyString());
-        PowerMockito.doReturn(mockDockerJavaClient)
-                .when(dockerControlApi, method(DockerControlApi.class, "getDockerClient", DockerServer.class))
-                .withArguments(dockerServer);
+//        Mockito.doReturn(mockDockerImage)
+//                .when(dockerControlApi, method(DockerControlApi.class, "pullImage", String.class))
+//                .withArguments(anyString());
+
+        Method method = DockerControlApi.class.getDeclaredMethod("pullImage", String.class);
+        method.setAccessible(true);
+
+        Mockito.doReturn(mockDockerImage)
+                .when(dockerControlApi)
+                .getClass()
+                .getDeclaredMethod("pullImage", String.class)
+                .invoke(dockerControlApi, anyString());
+
+//        PowerMockito.doReturn(mockDockerJavaClient)
+//                .when(dockerControlApi, method(DockerControlApi.class, "getDockerClient", DockerServer.class))
+//                .withArguments(dockerServer);
+        Mockito.doReturn(mockDockerJavaClient)
+                .when(dockerControlApi)
+                .getDockerClient(any(DockerServer.class));
 
         // Mock simple return values
         when(dockerServer.backend()).thenReturn(backend);
@@ -160,7 +169,7 @@ public class DockerControlApiTest {
             case DOCKER:
                 final PingCmd pingCmd = Mockito.mock(PingCmd.class);
                 when(mockDockerJavaClient.pingCmd()).thenReturn(pingCmd);
-                when(pingCmd.exec()).thenReturn(null);
+                doNothing().when(pingCmd).exec();
                 break;
             case SWARM:
                 final InspectSwarmCmd inspectSwarmCmd = Mockito.mock(InspectSwarmCmd.class);
@@ -299,9 +308,18 @@ public class DockerControlApiTest {
 
             // We also try to pull the image
             Mockito.when(mockDockerImage.tags()).thenReturn(ImmutableList.of(dockerImage));
-            PowerMockito.doReturn(Collections.singletonList(mockDockerImage))
-                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
-                    .withArguments(dockerServer);
+//           Mockito.doReturn(Collections.singletonList(mockDockerImage))
+//                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
+//                   .withArguments(dockerServer);
+
+            Method method = DockerControlApi.class.getDeclaredMethod("getAllImages", DockerServer.class);
+            method.setAccessible(true);
+
+            Mockito.doReturn(Collections.singletonList(mockDockerImage))
+                    .when(dockerControlApi)
+                    .getClass()
+                    .getDeclaredMethod("getAllImages", DockerServer.class);
+            dockerControlApi.getAllImages();
         }
         final Container expected = toLaunchAndExpectedContainerBuilder.build();
 
@@ -360,9 +378,14 @@ public class DockerControlApiTest {
 
             // We also try to pull the image
             Mockito.when(mockDockerImage.tags()).thenReturn(ImmutableList.of(dockerImage));
-            PowerMockito.doReturn(Collections.singletonList(mockDockerImage))
-                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
-                    .withArguments(dockerServer);
+            Method method = DockerControlApi.class.getDeclaredMethod("getAllImages", DockerServer.class);
+            method.setAccessible(true);
+//            doReturn(mockDockerImage).when(dockerControlApi).getAllImages(any(DockerServer.class));
+//            List<String> result = (List<String>) method.invoke(dockerControlApi, dockerServer);
+
+//            Mockito.doReturn(Collections.singletonList(mockDockerImage))
+//                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
+//                    .withArguments(dockerServer);
 
             expectedCreatedBuilder.containerId(BACKEND_ID);
         }
@@ -411,14 +434,18 @@ public class DockerControlApiTest {
         Mockito.when(mockDockerJavaClient.createServiceCmd(Mockito.any(ServiceSpec.class))).thenReturn(cmd);
 
         // Run the method
-        Whitebox.invokeMethod(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, numReplicas);
+//        Whitebox.invokeMethod(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, numReplicas);
+        Method method = DockerControlApi.class.getDeclaredMethod("createDockerSwarmService", Container.class, DockerServer.class, DockerControlApi.NumReplicas.class);
 
+        // 设置该方法可访问
+        method.setAccessible(true);
+        method.invoke(dockerControlApi, toCreate, dockerServer, numReplicas);
         // Assert on results
         final ArgumentCaptor<ServiceSpec> serviceSpecCaptor = ArgumentCaptor.forClass(ServiceSpec.class);
         Mockito.verify(mockDockerJavaClient).createServiceCmd(serviceSpecCaptor.capture());
 
         final ServiceSpec serviceSpec = serviceSpecCaptor.getValue();
-        assertThat(serviceSpec.getMode().getReplicated().getReplicas(), equalTo(new Integer(numReplicas.value).longValue()));
+        assertThat(serviceSpec.getMode().getReplicated().getReplicas(), equalTo((long) numReplicas.value));
     }
 
     @Test

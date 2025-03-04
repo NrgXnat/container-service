@@ -2,6 +2,7 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.mockito.Mockito;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
@@ -9,6 +10,7 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.mail.services.MailService;
+import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.context.annotation.Bean;
@@ -82,6 +84,11 @@ public class JmsConfig {
         ActiveMQConnectionFactory mq = new ActiveMQConnectionFactory("vm://localhost?broker.persistent=false");
         mq.setTrustAllPackages(true);
         return new CachingConnectionFactory(mq);
+    }
+
+    @Bean
+    public NrgPreferenceService nrgPreferenceService() {
+        return Mockito.mock(NrgPreferenceService.class);
     }
 
     private DefaultJmsListenerContainerFactory defaultFactory(ConnectionFactory connectionFactory,

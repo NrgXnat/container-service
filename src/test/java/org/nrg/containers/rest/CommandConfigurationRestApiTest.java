@@ -39,9 +39,9 @@ import java.io.File;
 
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -189,7 +189,7 @@ public class CommandConfigurationRestApiTest {
                         eq(configPath),
                         eq(commandConfigurationInternalJson),
                         eq(Scope.Site),
-                        isNull(String.class)))
+                        isNull()))
                 .thenReturn(null);
 
         final MockHttpServletRequestBuilder request =
@@ -211,7 +211,7 @@ public class CommandConfigurationRestApiTest {
                         eq(ContainerConfigService.TOOL_ID),
                         eq(configPath),
                         eq(Scope.Site),
-                        isNull(String.class)
+                        isNull()
                 ))
                 .thenReturn(mockConfig);
 
@@ -239,7 +239,7 @@ public class CommandConfigurationRestApiTest {
                         eq(ContainerConfigService.TOOL_ID),
                         eq(configPath),
                         eq(Scope.Site),
-                        isNull(String.class)
+                        isNull()
                 ))
                 .thenReturn(mockConfig);
         doNothing().when(mockConfigService).delete(mockConfig);
@@ -336,7 +336,7 @@ public class CommandConfigurationRestApiTest {
                         eq(ContainerConfigService.TOOL_ID),
                         eq(configPath),
                         eq(Scope.Site),
-                        isNull(String.class)
+                        isNull()
                 ))
                 .thenReturn(mockConfig);
 
@@ -366,7 +366,7 @@ public class CommandConfigurationRestApiTest {
                         eq(ContainerConfigService.TOOL_ID),
                         eq(configPath),
                         eq(Scope.Site),
-                        isNull(String.class)
+                        isNull()
                 ))
                 .thenReturn(mockConfig);
 

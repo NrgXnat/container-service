@@ -25,11 +25,9 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
-import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
+import org.mockito.InjectMocks;
 import org.mockito.Mockito;
-import org.mockito.internal.util.reflection.Whitebox;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.DockerControlApi;
@@ -51,11 +49,10 @@ import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.archive.CatalogService;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareOnlyThisForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.List;
@@ -75,24 +72,25 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PrepareOnlyThisForTest(DockerControlApi.class)
+//@PrepareOnlyThisForTest(DockerControlApi.class)
 public class SecretsTest {
     private final static Answer RETURN_SELF = InvocationOnMock::getMock;
 
-    @Mock private SystemPropertySecretSource.ValueObtainer valueObtainer;
-    @Mock private CommandService commandService;
-    @Mock private DockerServerService dockerServerService;
-    @Mock private SiteConfigPreferences siteConfigPreferences;
-    @Mock private DockerService dockerService;
-    @Mock private CatalogService catalogService;
-    @Mock private UserDataCache userDataCache;
-    @Mock private KubernetesClientImpl kubernetesClient;
-    @Mock private DockerServerBase.DockerServer dockerServer;
+    private SystemPropertySecretSource.ValueObtainer valueObtainer = Mockito.mock(SystemPropertySecretSource.ValueObtainer.class);
+    private CommandService commandService = Mockito.mock(CommandService.class);
+    private DockerServerService dockerServerService = Mockito.mock(DockerServerService.class);
+    private SiteConfigPreferences siteConfigPreferences = Mockito.mock(SiteConfigPreferences.class);
+    private DockerService dockerService = Mockito.mock(DockerService.class);
+    private CatalogService catalogService =Mockito.mock(CatalogService.class);
+    private UserDataCache userDataCache = Mockito.mock(UserDataCache.class);
+    private KubernetesClientImpl kubernetesClient = Mockito.mock(KubernetesClientImpl.class);
+    private DockerServerBase.DockerServer dockerServer = Mockito.mock(DockerServerBase.DockerServer.class);
 
-    @Mock private UserI user;
+    private UserI user = Mockito.mock(UserI.class);
     private Backend backend = null;
     private String userId;
 
@@ -224,10 +222,17 @@ public class SecretsTest {
         backend = Backend.KUBERNETES;
 
         final String namespace = RandomStringUtils.randomAlphabetic(5);
-        Whitebox.setInternalState(kubernetesClient, "namespace", namespace);
+        // Whitebox.setInternalState(kubernetesClient, "namespace", namespace);
+        Field namespaceField = kubernetesClient.getClass().getDeclaredField("namespace");
+        namespaceField.setAccessible(true);  // Allow access to private fields
+        namespaceField.set(kubernetesClient, namespace);
 
         final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
-        Whitebox.setInternalState(kubernetesClient, "batchApi", batchApi);
+        // Whitebox.setInternalState(kubernetesClient, "batchApi", batchApi);
+        Field batchApiField = kubernetesClient.getClass().getDeclaredField("batchApi");
+        batchApiField.setAccessible(true);  // Allow access to private fields
+        batchApiField.set(batchApi, namespace);
+
 
         // Create secret value and objects
         final String secretValue = RandomStringUtils.randomAlphanumeric(32);
@@ -255,8 +260,8 @@ public class SecretsTest {
         // In real life the backend would return the job spec we sent in + a bunch of info about what got created.
         // But we don't need any of that extra stuff, we only want to see the spec we made.
         // We return exactly the same job spec we sent in, as if the backend responded after having done nothing at all.
-        Mockito.when(batchApi.createNamespacedJob(Mockito.eq(namespace), Mockito.any(V1Job.class), Mockito.isNull(String.class), Mockito.isNull(String.class), Mockito.isNull(String.class), Mockito.isNull(String.class)))
-                .thenAnswer((Answer<V1Job>) invocation -> invocation.getArgumentAt(1, V1Job.class));
+        Mockito.when(batchApi.createNamespacedJob(Mockito.eq(namespace), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer((Answer<V1Job>) invocation -> invocation.getArgument(1, V1Job.class));
 
         // Call method under test
         Mockito.when(kubernetesClient.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, null, null))
@@ -265,7 +270,7 @@ public class SecretsTest {
 
         // Capture call to backend api mock
         final ArgumentCaptor<V1Job> jobArgumentCaptor = ArgumentCaptor.forClass(V1Job.class);
-        Mockito.verify(batchApi).createNamespacedJob(Mockito.eq(namespace), jobArgumentCaptor.capture(), Mockito.isNull(String.class), Mockito.isNull(String.class), Mockito.isNull(String.class), Mockito.isNull(String.class));
+        Mockito.verify(batchApi).createNamespacedJob(Mockito.eq(namespace), jobArgumentCaptor.capture(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
         final V1Job job = jobArgumentCaptor.getValue();
 
         // Extract container spec
@@ -315,13 +320,17 @@ public class SecretsTest {
                 .build();
 
         // Class under test
-        final DockerControlApi dockerControlApi = PowerMockito.mock(DockerControlApi.class);
+        final DockerControlApi dockerControlApi = Mockito.spy(DockerControlApi.class);
 
         // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
-        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
+//        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
+//        Mockito.doReturn(dockerClient).when(dockerControlApi)
+//                .getDockerClient(any(DockerServerBase.DockerServer.class));
+        when(dockerControlApi.getDockerClient()).thenReturn(dockerClient);
 
-        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
+        //        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
+        when(dockerServerService.getServer()).thenReturn(dockerServer);
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
@@ -333,8 +342,19 @@ public class SecretsTest {
         Mockito.when(dockerClient.createServiceCmd(Mockito.any(ServiceSpec.class))).thenReturn(cmd);
 
         // Call method under test
-        PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
-        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
+//        PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
+        Method method = DockerControlApi.class.getDeclaredMethod("createDockerSwarmService", Container.class, DockerServerBase.DockerServer.class, DockerControlApi.NumReplicas.class );
+        method.setAccessible(true);
+
+        Mockito.doCallRealMethod().when(dockerControlApi);
+        method.invoke(dockerControlApi, toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
+//        Mockito.doCallRealMethod().when(dockerControlApi)
+//                .getClass()
+//                .getDeclaredMethod("createDockerSwarmService", Container.class, DockerServerBase.DockerServer.class, DockerControlApi.NumReplicas.class)
+//                .invoke(dockerControlApi, toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
+
+//        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
+        Mockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
         dockerControlApi.create(toCreate, user);
 
         // Capture call to backend api mock
@@ -376,13 +396,18 @@ public class SecretsTest {
                 .build();
 
         // Class under test
-        final DockerControlApi dockerControlApi = PowerMockito.mock(DockerControlApi.class);
+        final DockerControlApi dockerControlApi = Mockito.mock(DockerControlApi.class);
 
         // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
-        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
 
-        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
+//        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
+        Mockito.doReturn(dockerClient).when(dockerControlApi)
+                .getDockerClient(any(DockerServerBase.DockerServer.class));
+
+//        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
+        when(dockerServerService.getServer()).thenReturn(dockerServer);
+
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
@@ -398,8 +423,14 @@ public class SecretsTest {
         Mockito.when(dockerClient.createContainerCmd(dockerImage)).thenReturn(cmd);
 
         // Call method under test
-        PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerContainer", toCreate, dockerServer);
-        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
+//        PowerMockito.doCallRealMethod().when(dockerControlApi, "crxeateDockerContainer", toCreate, dockerServer);
+        Method method = DockerControlApi.class.getDeclaredMethod("createDockerContainer", CreateContainerCmd.class, DockerServerBase.DockerServer.class);
+        method.setAccessible(true);
+        Mockito.doCallRealMethod().when(dockerControlApi);
+        method.invoke(dockerControlApi, toCreate, dockerServer);
+
+//        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
+        Mockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
         dockerControlApi.create(toCreate, user);
 
         // Capture call to backend api mock

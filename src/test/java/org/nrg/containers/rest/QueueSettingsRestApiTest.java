@@ -18,7 +18,6 @@ import org.nrg.xdat.security.services.RoleServiceI;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.security.UserI;
-import org.powermock.reflect.Whitebox;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
@@ -35,6 +34,7 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.util.NestedServletException;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -42,13 +42,10 @@ import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -137,9 +134,13 @@ public class QueueSettingsRestApiTest {
 
         mockMvc.perform(request).andExpect(status().isOk());
 
+        Field concurrencyField = factory.getClass().getDeclaredField("concurrency");
+        concurrencyField.setAccessible(true);
+        String concurrencyValue = (String) concurrencyField.get(factory);
+
         assertThat(queuePrefsBean.getIntegerValue(minParam), is(Integer.parseInt(VALID_MIN)));
         assertThat(queuePrefsBean.getIntegerValue(maxParam), is(Integer.parseInt(VALID_MAX)));
-        assertThat((String) Whitebox.getInternalState(factory, "concurrency"),
+        assertThat(concurrencyValue,
                 is(VALID_MIN + "-" + VALID_MAX));
 
         params = new HashMap<>();
@@ -153,15 +154,17 @@ public class QueueSettingsRestApiTest {
                 .with(testSecurityContext());
 
         mockMvc.perform(request).andExpect(status().isOk());
-
+        concurrencyValue = (String) concurrencyField.get(factory);
         assertThat(queuePrefsBean.getIntegerValue(minParam), is(Integer.parseInt(VALID_MIN_ALT)));
         assertThat(queuePrefsBean.getIntegerValue(maxParam), is(Integer.parseInt(VALID_MAX_ALT)));
-        assertThat((String) Whitebox.getInternalState(factory, "concurrency"),
+        assertThat(concurrencyValue,
                 is(VALID_MIN_ALT + "-" + VALID_MAX_ALT));
     }
 
     public void testInvalidSet(DefaultJmsListenerContainerFactory factory, String minParam, String maxParam) throws Exception {
-        String prevState = Whitebox.getInternalState(factory, "concurrency");
+        Field concurrencyField = factory.getClass().getDeclaredField("concurrency");
+        concurrencyField.setAccessible(true);
+        String prevState = (String) concurrencyField.get(factory);
         Map<String, String> params = new HashMap<>();
         params.put(minParam, INVALID_MIN);
         params.put(maxParam, INVALID_MAX);
@@ -184,8 +187,7 @@ public class QueueSettingsRestApiTest {
 
         assertThat(queuePrefsBean.getIntegerValue(minParam), is(Integer.parseInt(ContainersConfig.QUEUE_MIN_CONCURRENCY_DFLT)));
         assertThat(queuePrefsBean.getIntegerValue(maxParam), is(Integer.parseInt(ContainersConfig.QUEUE_MAX_CONCURRENCY_DFLT)));
-        assertThat((String) Whitebox.getInternalState(factory, "concurrency"),
-                is(prevState));
+        assertThat((String) concurrencyField.get(factory), is(prevState));
     }
 
     public void checkBeanValue(Map<String, Object> expectedPrefMap) throws Exception {
@@ -274,10 +276,15 @@ public class QueueSettingsRestApiTest {
         // Make sure bean is actually updated
         checkBeanValue(altMap); // Get the QueuePrefsBean bean as it is - without hitting the prefs service
 
+        Field concurrencyField = finalizingQueueListenerFactory.getClass().getDeclaredField("concurrency");
+        concurrencyField.setAccessible(true);
         // Make sure concurrencies are also updated
-        assertThat((String) Whitebox.getInternalState(finalizingQueueListenerFactory, "concurrency"),
+        assertThat((String) concurrencyField.get(finalizingQueueListenerFactory),
                 is(VALID_MIN + "-" + VALID_MAX));
-        assertThat((String) Whitebox.getInternalState(stagingQueueListenerFactory, "concurrency"),
+
+        concurrencyField = stagingQueueListenerFactory.getClass().getDeclaredField("concurrency");
+        concurrencyField.setAccessible(true);
+        assertThat((String) concurrencyField.get(stagingQueueListenerFactory),
                 is(VALID_MIN_ALT + "-" + VALID_MAX_ALT));
     }
 }
