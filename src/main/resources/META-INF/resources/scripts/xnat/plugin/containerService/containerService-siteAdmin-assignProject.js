@@ -90,7 +90,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         };
 
         var projectsTable = XNAT.table({
-            className: 'projects-table  data-table fixed-header selectable scrollable-table',
+            className: 'projects-table xnat-table data-table fixed-header clean',
             style: {
                 width: 'auto'
             }
@@ -216,9 +216,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             projectsTable.td({
                 classes: columnIds[2]
             }, e.id);
-            projectsTable.td({
-                classes: columnIds[3]
-            }, e.investigator ? e.investigator : "");
         });
         $form.empty().prepend(projectsTable.table);
         assignProjectlauncher.container = $form;
@@ -263,7 +260,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             },
             buttons: [{
                 label: 'Save',
-                isDefault: false,
+                isDefault: true,
                 close: true,
                 action: function(obj) {
                     let $panel = obj.$modal.find('.panel'),
@@ -322,7 +319,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 async: false,
                 dataType: 'json',
                 success: function(data) {
-                    projectsList = data;
+                    projectsList = data.sort((a,b) => { return (a.name < b.name) ? -1 : 1});
                 },
                 error: function(e) {
                     errorHandler(e);
