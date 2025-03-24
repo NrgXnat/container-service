@@ -2368,8 +2368,7 @@ public class ContainerServiceImpl implements ContainerService {
             final ImmutableMap<String, String> containerLabels = preparedToLaunch.containerLabels();
             Map<String, String> additionalContainerLabels = new HashMap<>();
             if (workflow.getDataType() != null) {
-                final String dataTypeSingularName = ElementSecurity.GetSingularDescription(workflow.getDataType());
-                additionalContainerLabels.put("XNAT_DATATYPE", dataTypeSingularName);
+                additionalContainerLabels.put("XNAT_DATATYPE", ElementSecurity.GetSingularDescription(workflow.getDataType()));
             }
             if (workflow.getExternalid() != null) {
                 additionalContainerLabels.put("XNAT_PROJECT", workflow.getExternalid());

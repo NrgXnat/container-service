@@ -109,7 +109,12 @@ public class CommandServiceImpl implements CommandService {
 
     @Override
     public void delete(final long id) {
-        delete(retrieve(id));
+        Command cmd = retrieve(id);
+        if (cmd == null) {
+            log.debug("Command with id " + id + " does not exist");
+            return;
+        }
+        delete(cmd);
     }
 
     @Override
@@ -117,7 +122,6 @@ public class CommandServiceImpl implements CommandService {
         for (final CommandWrapper commandWrapper : command.xnatCommandWrappers()) {
             commandEntityService.deleteWrapper(commandWrapper.id());
         }
-
         commandEntityService.delete(command.id());
     }
 

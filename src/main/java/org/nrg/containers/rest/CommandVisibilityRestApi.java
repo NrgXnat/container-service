@@ -17,8 +17,10 @@ import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 
@@ -26,14 +28,14 @@ import static org.nrg.xdat.security.helpers.AccessLevel.*;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 
 import org.nrg.containers.security.ContainerManagerUserAuthorization;
-
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 
 @Slf4j
 @XapiRestController
 @Api("Command Visibility API for XNAT Container Service")
 public class CommandVisibilityRestApi extends AbstractXapiRestController {
-    private static final String JSON = MediaType.APPLICATION_JSON_UTF8_VALUE;
+    private static final String JSON = MediaType.APPLICATION_JSON_VALUE;
 
     private CommandService commandService;
 
@@ -53,7 +55,7 @@ public class CommandVisibilityRestApi extends AbstractXapiRestController {
         ContainerServicePermissionUtils.checkContainerManagerOrThrow(XDAT.getUserDetails());
         Command toUpdate = commandService.retrieve(id);
         if (toUpdate == null) {
-            throw new BadRequestException(String.format("The command identified by id {} does not exist.", id ));
+            throw new BadRequestException(String.format("The command identified by id %s does not exist.", id ));
         }
         commandService.update(toUpdate.toBuilder().visibility(visibility).build());
         //Public -> Private (no action wrt enabled projects)
@@ -63,6 +65,22 @@ public class CommandVisibilityRestApi extends AbstractXapiRestController {
         //Protected -> Private (no action wrt enabled projects; only change in visibility)
         //Protected -> Public (no action, continues to be enabled for the projects for which it was enabled when in Protected mode)
         return ResponseEntity.ok().build();
+    }
+
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(value = {NotFoundException.class})
+    public String handleNotFound(final Exception e) {
+        return e.getMessage();
+    }
+
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(value = {CommandValidationException.class})
+    public String handleInValid(final Exception e) {
+        if (e instanceof CommandValidationException)  {
+            return ((CommandValidationException)e).getErrors().toString();
+        } else {
+            return e.getMessage();
+        }
     }
 
 }
