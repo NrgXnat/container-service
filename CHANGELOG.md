@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.6.3
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.6.3/)
+* **Bugfix** [CS-989](https://radiologics.atlassian.net/browse/CS-989) Addresses container finalization errors on very large batch runs due to lack of status tracking in the finalization queue
+
 ## 3.6.2
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.2/)
 * **Bugfix** [CS-975](https://radiologics.atlassian.net/browse/CS-975) Queued messages failed on ActiveMQ due to improper configuration of class serialization
