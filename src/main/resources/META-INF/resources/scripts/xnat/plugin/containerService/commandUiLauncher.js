@@ -824,35 +824,35 @@ var XNAT = getObject(XNAT || {});
      */
 
      function formatInfo(key, val) {
-         return '<b>' + String(key).charAt(0).toUpperCase() + String(key).slice(1) + "</b>:" + val + '<br>';
+         if (Array.isArray(val)) val = val.join(', ');
+         return spawn('div.panel-element',[
+             spawn('label','<b>' + String(key).charAt(0).toUpperCase() + String(key).slice(1) + "</b>:"),
+             spawn('div.element-wrapper',{style: {'overflow':'break-word'}},val)
+         ]);
      }
 
-     function containerMetaDataButtonInfoText(commandMetadata) {
-        var commandMetadataContent = "";
-        if (commandMetadata === undefined || Object.keys(commandMetadata).length === 0) {
-            commandMetadataContent = "No metadata available";
-        } else {
+     function containerMetaDataButtonInfoText(commandMeta) {
+        var commandMetadataContent = [],
+            commandMetaKeys = ['command-name','command-description','image-name']
+            commandMetadata = commandMeta['command-metadata'] || {};
+
+        // populate core metadata for legacy command definitions
+         commandMetaKeys.forEach ((key) => {
+            if (commandMeta.hasOwnProperty(key)) {
+                var niceKey = (key).split('-').join(' ');
+                commandMetadataContent.push (formatInfo(niceKey,commandMeta[key]));
+            }
+        });
+
+        // populate additional metadata if available
+        if (Object.keys(commandMetadata).length > 0) {
             for (const key in commandMetadata) {
                 if (commandMetadata.hasOwnProperty(key)) {
-                    commandMetadataContent += `${formatInfo(key,commandMetadata[key])}`;
+                    commandMetadataContent.push (formatInfo(key,commandMetadata[key]));
                 }
             }
         }
-         return {
-             tag: 'span.tip.shadowed',
-             element: {
-                 style: {
-                     width: '350px',
-                     left: '-385px',
-                     top: '-75px',
-                     zIndex: 10000
-                 }
-             },
-             content: [
-                 `${commandMetadataContent}`
-             ],
-             filler: null
-         }
+        return spawn('div.panel',commandMetadataContent);
      }
 
     function launchContainer(configData,rootElement,wrapperId,targets,targetLabels,project){
@@ -866,19 +866,30 @@ var XNAT = getObject(XNAT || {});
             projectContainerLaunchUrl(projectContext,wrapperId,rootElement) :
             containerLaunchUrl(wrapperId,rootElement);
         var bulkLaunch = false;
-        var containerInfoText = containerMetaDataButtonInfoText(configData['meta']['command-metadata']);
-        var containerInfoIcon = spawn(
-                                        'span.tip_icon',
-                                          {
-                                              title: 'Container Info'
-                                          },
-                                          containerInfoText
-                                        );
+        var containerInfoText = containerMetaDataButtonInfoText(configData['meta']);
 
-        var formContent = [spawn('div',[spawn('div.pull-left',{style: { 'display': 'inline' }},'Please specify settings for this container.'),
-                           spawn('div',{style: { 'display': 'inline' }},
-                           [containerInfoIcon])])
-                         ];
+        var commandInfoButton = spawn('span.show-command-info',{
+            style: { 'cursor':'pointer' },
+            onclick: function(){
+                XNAT.dialog.open(
+                    {
+                        title: 'Command Metadata for '+configData['meta']['command-name'],
+                        width: 600,
+                        content: containerInfoText,
+                        buttons: [
+                            {
+                                label: 'OK',
+                                isDefault: true,
+                                close: true
+                            }
+                        ]
+                    }
+                )
+            }},
+            [ spawn('i.fa.fa-info-circle',{style: {'padding-right':'0.25em'}}),' Show Command Info' ]
+        );
+
+        var formContent = [spawn('div',[spawn('p','Please specify settings for this container.')])];
 
         if (targets) {
             // Bulk launch
@@ -943,6 +954,9 @@ var XNAT = getObject(XNAT || {});
                             $panel.prepend(spawn('div.warning',{style: { 'margin-bottom': '1em' }},msg));
                         });
                     }
+                },
+                footer: {
+                    content: commandInfoButton
                 },
                 buttons: [
                     {
