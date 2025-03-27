@@ -7,6 +7,7 @@ import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
@@ -33,9 +34,9 @@ public class ContainerFinalizingRequestListener {
 	@JmsListener(containerFactory = ContainersConfig.FINALIZING_QUEUE_LISTENER_FACTORY,
 				 destination = ContainerFinalizingRequest.DESTINATION)
 	public void onRequest(ContainerFinalizingRequest request)
-			throws UserNotFoundException, NotFoundException, UserInitException, ContainerException {
-		Container container = containerService.get(request.getId());
+			throws UserNotFoundException, NotFoundException, UserInitException, ContainerException, InsufficientPrivilegesException {
 		UserI user = userManagementServiceI.getUser(request.getUsername());
+		Container container = containerService.get(request.getId(), user);
 		if (log.isDebugEnabled()) {
 			log.debug("Consuming finalizing queue: count {}, exitcode {}, is successful {}, id {}, username {}, status {}",
 					  QueueUtils.count(request.getDestination()), request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(), container.status());

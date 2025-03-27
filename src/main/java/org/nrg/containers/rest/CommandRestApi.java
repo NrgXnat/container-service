@@ -5,8 +5,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.xapi.rest.AuthDelegate;
-import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.CommandValidationException;
@@ -18,6 +16,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.services.CommandService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
@@ -25,6 +24,9 @@ import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
+import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.exception.ElementNotFoundException;
@@ -37,20 +39,17 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
-import org.nrg.containers.utils.ContainerServicePermissionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.*;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
+import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
-import org.nrg.xdat.security.helpers.Permissions;
-import org.nrg.xdat.om.XnatProjectdata;
 
 @Slf4j
 @XapiRestController
@@ -79,14 +78,12 @@ public class CommandRestApi extends AbstractXapiRestController {
      */
     @XapiRequestMapping(value = {"/commands"}, params = {"!name", "!version", "!image", "!restrictToEnabledForSite"}, method = GET)
     @ApiOperation(value = "Get all Commands")
-    @ResponseBody
     public List<Command> getCommands() {
         return getCommands(false);
     }
 
     @XapiRequestMapping(value = {"/commands"}, method = GET)
     @ApiOperation(value = "Get Commands by criteria")
-    @ResponseBody
     public List<Command> getCommands(final @RequestParam(required = false) String name,
                                      final @RequestParam(required = false) String version,
                                      final @RequestParam(required = false) String image,
@@ -114,7 +111,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{id}"}, method = GET)
     @ApiOperation(value = "Get a Command by ID")
-    @ResponseBody
     public Command retrieveCommand(final @PathVariable long id) throws NotFoundException, UnauthorizedException {
         return filter(commandService.get(id));
     }
@@ -148,7 +144,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{id}"}, method = POST)
     @ApiOperation(value = "Update a Command")
-    @ResponseBody
     public ResponseEntity<Void> updateCommand(final @RequestBody Command command,
                                               final @PathVariable long id)
             throws NotFoundException, CommandValidationException, UnauthorizedException, BadRequestException {
@@ -186,7 +181,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperId}"}, method = POST)
     @ApiOperation(value = "Update a Command Wrapper")
-    @ResponseBody
     public ResponseEntity<Void> updateWrapper(final @RequestBody CommandWrapper commandWrapper,
                                               final @PathVariable long commandId,
                                               final @PathVariable long wrapperId)
@@ -211,7 +205,6 @@ public class CommandRestApi extends AbstractXapiRestController {
      */
     @XapiRequestMapping(value = {"/commands/available"}, params = {"project", "xsiType"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Commands available in given project context and XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands(final @RequestParam @Project String project,
                                                             final @RequestParam String xsiType)
             throws ElementNotFoundException {
@@ -220,7 +213,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/commands/available"}, params = {"xsiType"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Commands available in given project context and XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands2(final @PathVariable @Project String project,
                                                              final @RequestParam String xsiType)
             throws ElementNotFoundException {
@@ -229,7 +221,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType"}, method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Commands sitewide with given XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands(final @RequestParam String xsiType)
             throws ElementNotFoundException {
         final UserI userI = XDAT.getUserDetails();
@@ -328,8 +319,8 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     }
 
-    private List<Command> getCommands(final boolean restricToEnabledSiteWide) {
-        return getCommands(commandService.getAll(), restricToEnabledSiteWide);
+    private List<Command> getCommands(final boolean restrictToEnabledSiteWide) {
+        return getCommands(commandService.getAll(), restrictToEnabledSiteWide);
     }
 
 

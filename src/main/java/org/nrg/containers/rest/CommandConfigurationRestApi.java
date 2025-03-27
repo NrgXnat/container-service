@@ -5,45 +5,46 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.exceptions.*;
-import org.nrg.containers.utils.ContainerServicePermissionUtils;
-import org.nrg.xdat.security.helpers.AccessLevel;
-import org.nrg.xdat.security.services.PermissionsServiceI;
-import org.nrg.xft.utils.predicates.DataAccessPredicate;
-import org.nrg.xft.utils.predicates.ProjectAccessPredicate;
-import org.springframework.http.MediaType;
+import org.nrg.containers.exceptions.BadRequestException;
+import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.CommandValidationException;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.configuration.ProjectEnabledReport;
 import org.nrg.containers.security.ContainerManagerUserAuthorization;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerConfigService.CommandConfigurationException;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xapi.rest.AbstractXapiRestController;
+import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
+import org.nrg.xdat.security.helpers.AccessLevel;
+import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.security.UserI;
+import org.nrg.xft.utils.predicates.DataAccessPredicate;
+import org.nrg.xft.utils.predicates.ProjectAccessPredicate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.List;
 
+import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.nrg.xdat.security.helpers.AccessLevel.Delete;
 import static org.nrg.xdat.security.helpers.AccessLevel.Edit;
-import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -107,7 +108,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerManagerUserAuthorization.class)
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/config"}, method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get (site)")
-    @ResponseBody
     public CommandConfiguration getConfiguration(final @PathVariable long commandId,
                                                  final @PathVariable String wrapperName) throws NotFoundException {
         return commandService.getSiteConfiguration(commandId, wrapperName);
@@ -116,7 +116,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerManagerUserAuthorization.class)
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/config"}, method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get (site)")
-    @ResponseBody
     public CommandConfiguration getConfiguration(final @PathVariable long wrapperId) throws NotFoundException {
         return commandService.getSiteConfiguration(wrapperId);
     }
@@ -176,7 +175,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     // Get configuration for project + command wrapper
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/config"}, method = GET, restrictTo = Edit)
     @ApiOperation(value = "Get (project)")
-    @ResponseBody
     public CommandConfiguration getConfiguration(final @PathVariable @Project String project,
                                                  final @PathVariable long commandId,
                                                  final @PathVariable String wrapperName) throws NotFoundException {
@@ -185,7 +183,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/config"}, method = GET, restrictTo = Edit)
     @ApiOperation(value = "Get (project)")
-    @ResponseBody
     public CommandConfiguration getConfiguration(final @PathVariable @Project String project,
                                                  final @PathVariable long wrapperId) throws NotFoundException {
         return commandService.getProjectConfiguration(project, wrapperId);
@@ -220,7 +217,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerManagerUserAuthorization.class)
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/enabled"}, method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Is Enabled (site)")
-    @ResponseBody
     public Boolean isConfigurationEnabled(final @PathVariable long commandId,
                                           final @PathVariable String wrapperName)
             throws CommandConfigurationException, NotFoundException {
@@ -230,7 +226,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerManagerUserAuthorization.class)
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/enabled"}, method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Is Enabled (site)")
-    @ResponseBody
     public Boolean isConfigurationEnabled(final @PathVariable long wrapperId)
             throws CommandConfigurationException, NotFoundException {
         return commandService.isEnabledForSite(wrapperId);
@@ -294,7 +289,6 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/enabled"}, method = GET)
     @ApiOperation(value = "Is Enabled (project)")
-    @ResponseBody
     public ProjectEnabledReport isConfigurationEnabled(final @PathVariable @Project String project,
                                                                        final @PathVariable long wrapperId)
             throws CommandConfigurationException, NotFoundException, UnauthorizedException {
@@ -355,10 +349,9 @@ public class CommandConfigurationRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerManagerUserAuthorization.class)
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/projects"}, method = GET, produces = JSON, restrictTo = Authorizer)
     @ApiOperation(value = "Get a list of all projects which have enabled a particular  wrapper")
-    @ResponseBody
-    public ResponseEntity<List<String>> getProjectsEnabledFordWrapper(final @PathVariable long wrapperId)
+    public List<String> getProjectsEnabledFordWrapper(final @PathVariable long wrapperId)
             throws NotFoundException, CommandValidationException, org.nrg.containers.exceptions.UnauthorizedException {
-        return ResponseEntity.ok(commandService.getProjects(wrapperId, "enabled"));
+        return commandService.getProjects(wrapperId, "enabled");
     }
 
 

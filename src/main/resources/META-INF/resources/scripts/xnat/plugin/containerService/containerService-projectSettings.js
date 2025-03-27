@@ -53,7 +53,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     XNAT.plugin.containerService.commandList = commandList = [];
     XNAT.plugin.containerService.wrapperList = wrapperList = {};
-    XNAT.plugin.containerService.containerManagerUsersContact = containerManagerUsersContact = [];
 
     XNAT.plugin.containerService.errorHandler = errorHandler = function(e, title){
         console.log(e);
@@ -136,13 +135,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     };
 
     XNAT.plugin.containerService.getMailToContainerManager = getMailToContainerManager = function(command, wrapper) {
-        let emails = "";
-        if (XNAT.plugin.containerService.containerManagerUsersContact.length > 0) {
-          XNAT.plugin.containerService.containerManagerUsersContact.forEach((value, index, arr) => {
-              emails += value['email'] + ",";
-          });
-        }
-        return 'mailto:'+ emails.slice(0, -1) +'?subject=Project '+ getProjectId() + ' would like access to '+ command['name'] + ' Context: ' + wrapper['name'];
+        return "Please contact the Container Manager or the Site Admin to gain access to the command " +  command['name'] + " Context: " + wrapper['name'] + " for the Project " + getProjectId();
     };
 
     function commandUrl(appended){
@@ -167,11 +160,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var projectId = getProjectId();
         return csrfUrl('/xapi/projects/'+projectId+'/commands/'+commandId+'/wrappers/'+wrapperName+'/' + flag);
     }
-
-    function containerManagerRoleUrl(){
-        return csrfUrl('/xapi/users/contact/roles/ContainerManager');
-    }
-
 
     function refreshCommandWrapperList(wrapperId) {
         const wrapper = wrapperList[wrapperId];
@@ -238,21 +226,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
         });
     };
-
-    projCommandConfigManager.setContainerManagerContactDetails = function(){
-        XNAT.xhr.get({
-            url: containerManagerRoleUrl(),
-            success: function(data){
-                if (data) {
-                    XNAT.plugin.containerService.containerManagerUsersContact = data;
-                }
-            },
-            fail: function(e){
-                errorHandler(e);
-            }
-        });
-    };
-
 
     projConfigDefinition.table = function(config) {
 
@@ -547,9 +520,23 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
 
         function spawnContactContainerManager(command, wrapper) {
-            return spawn('a.btn.sm', {
-                href: XNAT.plugin.containerService.getMailToContainerManager(command, wrapper, false),
-                title: 'Request access'
+            return spawn('button.btn.sm',
+            {
+                onclick: function(e) {
+                          var text = XNAT.plugin.containerService.getMailToContainerManager(command, wrapper, false);
+                          XNAT.dialog.open({
+                                      width: 450,
+                                      title: 'Access to  ' + command['name'],
+                                      content: text,
+                                      buttons: [
+                                          {
+                                              label: 'OK',
+                                              isDefault: true,
+                                              close: true
+                                          }
+                                      ]
+                                  });
+           }
             }, [ spawn('i.fa.fa-envelope') ]);
         }
 
@@ -783,7 +770,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var $manager = $$(container||'div#proj-command-config-list-container');
 
         projCommandConfigManager.container = $manager;
-        projCommandConfigManager.setContainerManagerContactDetails();
 
         $manager.append(projCommandConfigManager.table({id: 'project-commands', className: '' }));
 

@@ -61,9 +61,11 @@ import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerFinalizeService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventServiceI;
+import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.om.WrkWorkflowdata;
@@ -307,8 +309,8 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
-    public List<Container> getAll() {
-        return toPojo(containerEntityService.getAll());
+    public List<Container> getAll(final UserI user) {
+        return toPojo(containerEntityService.getAll(), user);
     }
 
     @Override
@@ -327,24 +329,46 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     @Nonnull
-    public Container get(final long id) throws NotFoundException {
-        return toPojo(containerEntityService.get(id));
+    public Container get(final long id, final UserI user) throws NotFoundException, InsufficientPrivilegesException {
+        return checkAccess(containerEntityService.get(id), user);
     }
 
     @Override
     @Nonnull
-    public Container get(final String containerId) throws NotFoundException {
-        return toPojo(containerEntityService.get(containerId));
+    public Container get(final String containerId, final UserI user) throws NotFoundException, InsufficientPrivilegesException {
+        return checkAccess(containerEntityService.get(containerId), user);
+    }
+
+    private Container checkAccess(@Nonnull final ContainerEntity containerEntity, final UserI user) throws InsufficientPrivilegesException {
+        final Container container = toPojo(containerEntity);
+        if (!ContainerServicePermissionUtils.isUserOwnerOrAdmin(user, container)) {
+            throw new InsufficientPrivilegesException(String.format("User %s cannot access container %s", user.getLogin(), containerEntity.getId()));
+        }
+        return container;
     }
 
     @Override
-    public void delete(final long id) {
-        containerEntityService.delete(id);
+    public void delete(final long id, final UserI user) throws NotFoundException, InsufficientPrivilegesException{
+        try {
+            Container found = get(id, user); //lookup
+            containerEntityService.delete(id);
+        } catch (Exception e) {
+            log.debug("Could not delete " + id, e);
+            throw e;
+        }
     }
 
     @Override
-    public void delete(final String containerId) {
-        containerEntityService.delete(containerId);
+    public void delete(final String containerId, final UserI user) throws NotFoundException, InsufficientPrivilegesException {
+        try {
+            //Avoiding double lookup
+            ContainerEntity containerEntity = containerEntityService.get(containerId);
+            checkAccess(containerEntity, user);
+            containerEntityService.delete(containerEntity.getId());
+        } catch (Exception e) {
+            log.debug("Could not delete " + containerId, e);
+            throw e;
+        }
     }
 
     @Override
@@ -353,23 +377,23 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
-    public List<Container> getAll(final Boolean nonfinalized, final String project) {
-        return toPojo(containerEntityService.getAll(nonfinalized, project));
+    public List<Container> getAll(final Boolean nonfinalized, final String project, final UserI user) {
+        return toPojo(containerEntityService.getAll(nonfinalized, project), user);
     }
 
     @Override
-    public List<Container> getAll(final String project) {
-        return getAll(null, project);
+    public List<Container> getAll(final String project, final UserI user) {
+        return getAll(null, project, user);
     }
 
     @Override
-    public List<Container> getAll(final Boolean nonfinalized) {
-        return toPojo(containerEntityService.getAll(nonfinalized));
+    public List<Container> getAll(final Boolean nonfinalized, final UserI user) {
+        return toPojo(containerEntityService.getAll(nonfinalized), user);
     }
 
     @Override
     public Container getByName(String project, String name, Boolean nonfinalized) {
-        List<Container> all = getAll(nonfinalized, project);
+        List<Container> all = getAll(nonfinalized, project, null);
         for(Container container : all){
             if (container.containerName() != null && container.containerName().contentEquals(name)){
                 return container;
@@ -380,7 +404,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public Container getByName(String name, Boolean nonfinalized) {
-        List<Container> all = getAll(nonfinalized);
+        List<Container> all = getAll(nonfinalized, null);
         for(Container container : all){
             if (container.containerName() != null && container.containerName().contentEquals(name)){
                 return container;
@@ -483,7 +507,7 @@ public class ContainerServiceImpl implements ContainerService {
                     continue;
                 }
                 containerId = wrk.getComments();
-                Container containerOrService = get(containerId);
+                Container containerOrService = get(containerId, user);
                 log.info("Re-queuing waiting container workflow wfid {} containerId {}", wrk.getWorkflowId(),
                         containerId);
                 addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(WAITING,
@@ -492,6 +516,8 @@ public class ContainerServiceImpl implements ContainerService {
                 log.error("Unable to determine mod time for wfid {}", wrk.getWorkflowId());
             } catch (NotFoundException e) {
                 log.error("Unable to find container with service or container id {}", containerId);
+            } catch (InsufficientPrivilegesException isp) {
+                log.error("Unable to access container with service or container id {}", containerId);
             }
         }
     }
@@ -1189,12 +1215,12 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void consumeFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
                                 final Container container, final UserI userI)
-            throws ContainerException, NotFoundException {
+            throws ContainerException, NotFoundException, InsufficientPrivilegesException {
         try {
             addContainerHistoryItem(container, ContainerHistory.fromSystem(FINALIZING,
                     "Processing finished. Uploading files."), userI);
             log.debug("Finalizing containerOrService {}", container);
-            final Container containerOrServiceWithAddedEvent = get(container.databaseId());
+            final Container containerOrServiceWithAddedEvent = get(container.databaseId(), userI);
                 ContainerServiceImpl.this.finalize(containerOrServiceWithAddedEvent, userI, exitCodeString,
                         isSuccessfulStatus);
 
@@ -1265,8 +1291,8 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public void finalize(final String containerId, final UserI userI)
-            throws NotFoundException, ContainerException {
-        finalize(get(containerId), userI);
+            throws NotFoundException, ContainerException, InsufficientPrivilegesException {
+        finalize(get(containerId, userI), userI);
     }
 
     @Override
@@ -1526,7 +1552,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     public boolean canKill(String containerId, UserI userI) {
         try {
-            Container containerOrService = get(containerId);
+            Container containerOrService = get(containerId, null);
             verifyKillPermission(null, containerOrService, userI);
             // if verifyKillPermission doesn't throw UnauthorizedException, user has permission to kill
             return true;
@@ -1559,9 +1585,9 @@ public class ContainerServiceImpl implements ContainerService {
     public String kill(@Nullable String project, String containerId, UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException {
         // User who launched the container, all data admins, and project owners can terminate
-        Container containerOrService = get(containerId);
-        verifyKillPermission(project, containerOrService, userI);
         try {
+            Container containerOrService = get(containerId, null);
+            verifyKillPermission(project, containerOrService, userI);
             kill(containerOrService, userI);
             return containerOrService.containerOrServiceId();
         } catch (NoContainerServerException e) {
@@ -1570,6 +1596,8 @@ public class ContainerServiceImpl implements ContainerService {
         } catch (ContainerBackendException e) {
             throw (e instanceof DockerServerException) ? (DockerServerException) e :
                     new DockerServerException(e.getMessage(), e.getCause());
+        } catch (InsufficientPrivilegesException isp) {
+            throw new UnauthorizedException("User is not authorized to kill this container");
         }
     }
 
@@ -1586,29 +1614,30 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
-    public void writeLogsToZipStream(String containerId, OutputStream outputStream) throws NotFoundException, IOException {
-        final Container container = get(containerId);
+    public void writeLogsToZipStream(final String containerId, final OutputStream outputStream, final UserI user) throws NotFoundException, IOException {
+        try {
+            final Container container = get(containerId, user);
+            try (final ZipOutputStream zipStream = (outputStream instanceof ZipOutputStream ? (ZipOutputStream) outputStream : new ZipOutputStream(outputStream))) {
+                for (final LogType logType : EnumSet.allOf(LogType.class)) {
+                    final InputStream inputStream = getLogStream(container, logType);
+                    if (inputStream == null) {
+                        continue;
+                    }
+                    final ZipEntry entry = new ZipEntry(logType.logName());
+                    try {
+                        zipStream.putNextEntry(entry);
+                        IOUtils.copy(inputStream, zipStream);
+                    } catch (IOException e) {
+                        log.error("There was a problem writing {} to the zip.", logType, e);
+                        throw e;
+                    }
+                }
 
-        try (final ZipOutputStream zipStream = (outputStream instanceof ZipOutputStream ? (ZipOutputStream) outputStream : new ZipOutputStream(outputStream))) {
-            for (final LogType logType : EnumSet.allOf(LogType.class)){
-                final InputStream inputStream = getLogStream(container, logType);
-                if (inputStream == null) {
-                    continue;
-                }
-                final ZipEntry entry = new ZipEntry(logType.logName());
-                try {
-                    zipStream.putNextEntry(entry);
-                    IOUtils.copy(inputStream, zipStream);
-                } catch (IOException e) {
-                    log.error("There was a problem writing {} to the zip.", logType, e);
-                    throw e;
-                }
+            } catch (IOException e) {
+                log.error("There was a problem opening the zip stream.", e);
+                throw e;
             }
-
-        } catch (IOException e) {
-            log.error("There was a problem opening the zip stream.", e);
-            throw e;
-        }
+        } catch (InsufficientPrivilegesException ignore) {}
     }
 
     @Nullable
@@ -1637,23 +1666,23 @@ public class ContainerServiceImpl implements ContainerService {
 
 
     @Override
-    public ContainerLogPollResponse getLog(String containerId, LogType logType, String sinceTimestamp)
-            throws NotFoundException, IOException, BadRequestException {
+    public ContainerLogPollResponse getLog(final String containerId, final LogType logType, final String sinceTimestamp, final UserI user)
+            throws NotFoundException, IOException, BadRequestException, InsufficientPrivilegesException {
         OffsetDateTime since;
         if (StringUtils.isBlank(sinceTimestamp)) {
             since = null;
         } else {
             since = parseTimestamp(sinceTimestamp).orElseThrow(() -> new BadRequestException("Could not parse timestamp " + sinceTimestamp));
         }
-        return getLog(containerId, logType, since);
+        return getLog(containerId, logType, since, user);
     }
     @Override
-    public ContainerLogPollResponse getLog(String containerId, LogType logType, OffsetDateTime since)
-            throws NotFoundException, IOException {
+    public ContainerLogPollResponse getLog(final String containerId, final LogType logType, final OffsetDateTime since, final UserI user)
+            throws NotFoundException, IOException, InsufficientPrivilegesException {
 
         final OffsetDateTime queryTime = OffsetDateTime.now(UTC);
 
-        final Container container = get(containerId);
+        final Container container = get(containerId, user);
         boolean containerDone = container.statusIsTerminal();
         final String logPath = container.getLogPath(logType.logName());
 
@@ -2169,9 +2198,15 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Nonnull
+    private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList, final UserI user) {
+        return containerEntityList.stream().map(this::toPojo).filter(c -> ContainerServicePermissionUtils.isUserOwnerOrAdmin(user, c)).collect(Collectors.toList());
+    }
+
+    @Nonnull
     private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList) {
         return containerEntityList.stream().map(this::toPojo).collect(Collectors.toList());
     }
+
 
     @Nonnull
     private ContainerEntity fromPojo(@Nonnull final Container container) {

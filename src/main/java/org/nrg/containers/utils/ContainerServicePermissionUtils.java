@@ -6,6 +6,8 @@ import com.google.common.cache.LoadingCache;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.xdat.om.XnatImagescandata;
 import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.containers.model.xnat.XnatModelObject;
@@ -13,6 +15,7 @@ import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.schema.SchemaElement;
 import org.nrg.xdat.security.SecurityManager;
+import org.nrg.xdat.security.helpers.Groups;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.xft.ItemI;
@@ -102,6 +105,14 @@ public class ContainerServicePermissionUtils {
       return  Roles.checkRole(userI, ContainerUtils.CONTAINER_MANAGER_ROLE);
     }
 
+    public static Boolean isUserOwnerOrAdmin(UserI user, Container container){
+        if (null == user) { //skip checks for in-house maintenance tasks
+           return true;
+        }
+        return (Roles.checkRole(user, ContainerUtils.CONTAINER_MANAGER_ROLE) || Groups.hasAllDataAccess(user) ||
+                Permissions.isProjectOwner(user, container.project()) ||
+                user.getLogin().contentEquals(container.userId()));
+    }
 
     /**
      * Verify the user has permission to read + edit everything the wrapper requires.

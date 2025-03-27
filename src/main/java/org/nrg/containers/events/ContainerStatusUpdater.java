@@ -221,7 +221,7 @@ public class ContainerStatusUpdater implements Runnable {
                 }
                 try {
                     // Refresh service status etc. bc it could change while we're processing this list
-                    service = containerService.get(service.databaseId());
+                    service = containerService.get(service.databaseId(), null);
                     if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
                         log.debug("Service {} \"{}\" had workflow <> status mismatch", service.databaseId(), service.serviceId());
                     } else if (containerService.isFinalizing(service) ||

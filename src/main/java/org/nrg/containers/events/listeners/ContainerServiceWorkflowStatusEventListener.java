@@ -100,7 +100,7 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
         try {
             final Integer   userId             = event.getUserId();
             final String    containerId        = workflow.getComments();
-            final Container containerOrService = containerService.get(containerId);
+            final Container containerOrService = containerService.get(containerId, null);
             final long      wrapperId          = containerOrService.wrapperId();
             int             stepIdx            = Integer.parseInt(StringUtils.defaultIfBlank(workflow.getCurrentStepId(), "0"));
             final Command.CommandWrapper nextWrapper = orchestrationService.findNextWrapper(orchestrationId,

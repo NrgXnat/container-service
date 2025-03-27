@@ -16,6 +16,7 @@ import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.rest.ContainerLogPollResponse;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.security.UserI;
 
@@ -45,18 +46,18 @@ public interface ContainerService {
 
     PluginVersionCheck checkXnatVersion();
 
-    List<Container> getAll();
+    List<Container> getAll(final UserI user);
     Container retrieve(final long id);
     Container retrieve(final String containerId);
-    Container get(final long id) throws NotFoundException;
-    Container get(final String containerId) throws NotFoundException;
-    void delete(final long id);
-    void delete(final String containerId);
+    Container get(final long id, final UserI user) throws NotFoundException, InsufficientPrivilegesException;
+    Container get(final String containerId, final UserI user) throws NotFoundException, InsufficientPrivilegesException;
+    void delete(final long id, final UserI user) throws NotFoundException, InsufficientPrivilegesException;
+    void delete(final String containerId, final UserI user) throws NotFoundException, InsufficientPrivilegesException;
     void update(Container container);
 
-    List<Container> getAll(final Boolean nonfinalized, String project);
-    List<Container> getAll(String project);
-    List<Container> getAll(Boolean nonfinalized);
+    List<Container> getAll(final Boolean nonfinalized, final String project, final UserI user);
+    List<Container> getAll(final String project, final UserI user);
+    List<Container> getAll(final Boolean nonfinalized, final UserI user);
 
     Container getByName(String project, String name, final Boolean nonfinalized);
     Container getByName(String name, final Boolean nonfinalized);
@@ -108,19 +109,19 @@ public interface ContainerService {
     void processEvent(final ContainerEvent event);
     void processEvent(final ServiceTaskEvent event);
 
-    void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException;
-    void finalize(final Container container, final UserI userI) throws ContainerException;
-    void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException;
+    void finalize(final String containerId, final UserI userI) throws NotFoundException, ContainerException, InsufficientPrivilegesException;
+    void finalize(final Container container, final UserI userI) throws ContainerException, InsufficientPrivilegesException;
+    void finalize(Container notFinalized, UserI userI, String exitCode, boolean isSuccessfulStatus) throws ContainerException, InsufficientPrivilegesException;
 
     boolean canKill(final String containerId, final UserI userI);
     String kill(final String containerId, final UserI userI)
             throws NoDockerServerException, DockerServerException, NotFoundException, UnauthorizedException;
 
-    void writeLogsToZipStream(String containerId, OutputStream outputStream) throws NotFoundException, IOException;
-    ContainerLogPollResponse getLog(String containerId, LogType logType, String sinceTimestamp)
-            throws NotFoundException, IOException, BadRequestException;
-    ContainerLogPollResponse getLog(String containerId, LogType logType, OffsetDateTime since)
-            throws NotFoundException, IOException;
+    void writeLogsToZipStream(final String containerId, final OutputStream outputStream, final UserI user) throws NotFoundException, IOException;
+    ContainerLogPollResponse getLog(final String containerId, final LogType logType, final String sinceTimestamp, final UserI user)
+            throws NotFoundException, IOException, BadRequestException, InsufficientPrivilegesException;
+    ContainerLogPollResponse getLog(final String containerId, final LogType logType, final OffsetDateTime since, final UserI user)
+            throws NotFoundException, IOException, InsufficientPrivilegesException;
 
 	boolean isWaiting(Container containerOrService);
 	boolean isFinalizing(Container containerOrService);
@@ -137,7 +138,7 @@ public interface ContainerService {
                          final boolean isSuccessful,
                          final Container service,
                          final UserI userI)
-            throws ContainerException, NotFoundException;
+            throws ContainerException, NotFoundException, InsufficientPrivilegesException;
 
     /**
      * Restart a service through swarm

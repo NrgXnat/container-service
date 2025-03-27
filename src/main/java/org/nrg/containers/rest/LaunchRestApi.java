@@ -5,7 +5,14 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.exceptions.*;
+import org.nrg.containers.exceptions.BadRequestException;
+import org.nrg.containers.exceptions.CommandPreResolutionException;
+import org.nrg.containers.exceptions.CommandResolutionException;
+import org.nrg.containers.exceptions.CommandValidationException;
+import org.nrg.containers.exceptions.ContainerException;
+import org.nrg.containers.exceptions.DockerServerException;
+import org.nrg.containers.exceptions.NoDockerServerException;
+import org.nrg.containers.exceptions.UnauthorizedException;
 import org.nrg.containers.model.command.auto.LaunchReport;
 import org.nrg.containers.model.command.auto.LaunchUi;
 import org.nrg.containers.model.command.auto.ResolvedCommand.PartiallyResolvedCommand;
@@ -30,7 +37,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.io.IOException;
@@ -76,7 +82,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
      */
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/launch"}, method = GET)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getLaunchUi(final @PathVariable long wrapperId,
                                 final @RequestParam Map<String, String> allRequestParams)
             throws NotFoundException, CommandResolutionException, UnauthorizedException {
@@ -87,7 +92,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getLaunchUi(final @PathVariable long commandId,
                                 final @PathVariable String wrapperName,
                                 final @RequestParam Map<String, String> allRequestParams)
@@ -99,7 +103,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/launch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getLaunchUi(final @PathVariable @Project String project,
                                 final @PathVariable long wrapperId,
                                 final @RequestParam Map<String, String> allRequestParams)
@@ -111,7 +114,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/launch"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getLaunchUi(final @PathVariable @Project String project,
                                 final @PathVariable long commandId,
                                 final @PathVariable String wrapperName,
@@ -156,7 +158,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
      */
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/bulklaunch"}, method = GET)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getBulkLaunchUi(final @PathVariable long wrapperId,
                                     final @RequestParam("sampleTarget") String target,
                                     final @RequestParam("rootElement") String rootElement)
@@ -168,7 +169,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"}, method = GET)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getBulkLaunchUi(final @PathVariable long commandId,
                                     final @PathVariable String wrapperName,
                                     final @RequestParam("sampleTarget") String target,
@@ -182,7 +182,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/bulklaunch"}, method = GET,
             restrictTo = Read)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getBulkLaunchUi(final @PathVariable @Project String project,
                                     final @PathVariable long wrapperId,
                                     final @RequestParam("sampleTarget") String target,
@@ -196,7 +195,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/bulklaunch"},
             method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Bulk Launch UI for wrapper", notes = "DOES NOT WORK PROPERLY IN SWAGGER UI")
-    @ResponseBody
     public LaunchUi getBulkLaunchUi(final @PathVariable @Project String project,
                                     final @PathVariable long commandId,
                                     final @PathVariable String wrapperName,
@@ -380,7 +378,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch"},
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @PathVariable String rootElement,
@@ -392,7 +389,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/root/{rootElement}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable long wrapperId,
                                                     final @PathVariable String rootElement,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
@@ -404,7 +400,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch"},
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
@@ -418,7 +413,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/projects/{project}/wrappers/{wrapperId}/root/{rootElement}/bulklaunch"},
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulkLaunch(final @PathVariable @Project String project,
                                                     final @PathVariable long wrapperId,
                                                     final @PathVariable String rootElement,
@@ -533,7 +527,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
             notes = "Replaced by /commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
@@ -544,7 +537,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/wrappers/{wrapperId}/bulklaunch"}, method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
             notes = "Replaced by /wrappers/{wrapperId}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable long wrapperId,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
         return bulkLaunch(wrapperId, null, allRequestParams);
@@ -555,7 +547,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
             notes = "Replaced by /projects/{project}/commands/{commandId}/wrappers/{wrapperName}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable @Project String project,
                                                     final @PathVariable long commandId,
                                                     final @PathVariable String wrapperName,
@@ -569,7 +560,6 @@ public class LaunchRestApi extends AbstractXapiRestController {
             method = POST, consumes = {JSON})
     @ApiOperation(value = "Resolve a command from the variable values in the request body, and launch it",
             notes = "Replaced by /projects/{project}/wrappers/{wrapperId}/root/{rootElement}/bulklaunch including xsiType as rootElement parameter.")
-    @ResponseBody
     public LaunchReport.BulkLaunchReport bulklaunch2(final @PathVariable @Project String project,
                                                     final @PathVariable long wrapperId,
                                                     final @RequestBody Map<String, String> allRequestParams) throws IOException {
