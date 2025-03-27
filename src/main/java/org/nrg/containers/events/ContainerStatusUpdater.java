@@ -22,8 +22,10 @@ import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.security.helpers.Users;
+import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
+import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,7 @@ public class ContainerStatusUpdater implements Runnable {
     private final NrgEventServiceI eventService;
     private final XnatAppInfo xnatAppInfo;
     private final KubernetesClientFactory kubernetesClientFactory;
+    private final UserManagementServiceI userManagementServiceI;
 
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
@@ -55,12 +58,14 @@ public class ContainerStatusUpdater implements Runnable {
                                   final DockerServerService dockerServerService,
                                   final NrgEventServiceI eventService,
                                   final XnatAppInfo xnatAppInfo,
-                                  final KubernetesClientFactory kubernetesClientFactory) {
+                                  final KubernetesClientFactory kubernetesClientFactory,
+                                  final UserManagementServiceI userManagementServiceI) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.eventService = eventService;
         this.xnatAppInfo = xnatAppInfo;
+        this.userManagementServiceI = userManagementServiceI;
         this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
@@ -220,8 +225,9 @@ public class ContainerStatusUpdater implements Runnable {
                     log.debug("Checking for updates for service {} \"{}\".", service.databaseId(), service.serviceId());
                 }
                 try {
+                    final UserI  user    = userManagementServiceI.getUser(service.userId());
                     // Refresh service status etc. bc it could change while we're processing this list
-                    service = containerService.get(service.databaseId(), null);
+                    service = containerService.get(service.databaseId(), user);
                     if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
                         log.debug("Service {} \"{}\" had workflow <> status mismatch", service.databaseId(), service.serviceId());
                     } else if (containerService.isFinalizing(service) ||

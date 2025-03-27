@@ -106,9 +106,6 @@ public class ContainerServicePermissionUtils {
     }
 
     public static Boolean isUserOwnerOrAdmin(UserI user, Container container){
-        if (null == user) { //skip checks for in-house maintenance tasks
-           return true;
-        }
         return (Roles.checkRole(user, ContainerUtils.CONTAINER_MANAGER_ROLE) || Groups.hasAllDataAccess(user) ||
                 Permissions.isProjectOwner(user, container.project()) ||
                 user.getLogin().contentEquals(container.userId()));

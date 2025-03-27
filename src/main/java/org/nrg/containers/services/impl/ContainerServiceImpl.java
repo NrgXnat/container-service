@@ -330,13 +330,21 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     @Nonnull
     public Container get(final long id, final UserI user) throws NotFoundException, InsufficientPrivilegesException {
-        return checkAccess(containerEntityService.get(id), user);
+        return fetch(containerEntityService.get(id), user);
     }
 
     @Override
     @Nonnull
     public Container get(final String containerId, final UserI user) throws NotFoundException, InsufficientPrivilegesException {
-        return checkAccess(containerEntityService.get(containerId), user);
+        return fetch(containerEntityService.get(containerId), user);
+    }
+
+    private Container fetch(final ContainerEntity containerEntity, final UserI user) throws InsufficientPrivilegesException {
+        if (null == user) { //skip access check
+            return toPojo(containerEntity);
+        } else {
+            return checkAccess(containerEntity, user);
+        }
     }
 
     private Container checkAccess(@Nonnull final ContainerEntity containerEntity, final UserI user) throws InsufficientPrivilegesException {

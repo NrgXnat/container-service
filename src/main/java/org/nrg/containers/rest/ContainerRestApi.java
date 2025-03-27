@@ -205,6 +205,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                         .inputs(new ArrayList<>())
                         .outputs(new ArrayList<>())
                         .history(new ArrayList<>())
+                        .containerLabels(new HashMap<>())
                         .build();
     }
 

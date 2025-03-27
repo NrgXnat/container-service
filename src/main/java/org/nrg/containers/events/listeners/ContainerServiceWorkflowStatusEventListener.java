@@ -99,8 +99,9 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
         PersistentWorkflowI newWorkflow = null;
         try {
             final Integer   userId             = event.getUserId();
+            final UserI  user    = userManagementServiceI.getUser(userId);
             final String    containerId        = workflow.getComments();
-            final Container containerOrService = containerService.get(containerId, null);
+            final Container containerOrService = containerService.get(containerId, user);
             final long      wrapperId          = containerOrService.wrapperId();
             int             stepIdx            = Integer.parseInt(StringUtils.defaultIfBlank(workflow.getCurrentStepId(), "0"));
             final Command.CommandWrapper nextWrapper = orchestrationService.findNextWrapper(orchestrationId,
@@ -111,7 +112,6 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
 
             // Make a new workflow to track any issues
             final String project = workflow.getExternalid();
-            final UserI  user    = userManagementServiceI.getUser(userId);
             newWorkflow = containerService.createContainerWorkflow(workflow.getId(),
                                                                    workflow.getDataType(), nextWrapper.name(), project, user, workflow.getJobid(),
                                                                    orchestrationId, stepIdx + 1);
