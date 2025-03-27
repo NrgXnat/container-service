@@ -537,7 +537,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                                       ]
                                   });
            }
-            }, [ spawn('i.fa.fa-envelope') ]);
+            }, [ spawn('i.fa.fa-question-circle-o') ]);
         }
 
         function editConfigButton(command, wrapper, enabledForProject){
