@@ -2207,7 +2207,11 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Nonnull
     private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList, final UserI user) {
-        return containerEntityList.stream().map(this::toPojo).filter(c -> ContainerServicePermissionUtils.isUserOwnerOrAdmin(user, c)).collect(Collectors.toList());
+        if (null == user) {
+            return containerEntityList.stream().map(this::toPojo).collect(Collectors.toList());
+        } else {
+            return containerEntityList.stream().map(this::toPojo).filter(c -> ContainerServicePermissionUtils.isUserOwnerOrAdmin(user, c)).collect(Collectors.toList());
+        }
     }
 
     @Nonnull
