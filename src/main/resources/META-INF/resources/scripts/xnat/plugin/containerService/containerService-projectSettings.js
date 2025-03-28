@@ -53,6 +53,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     XNAT.plugin.containerService.commandList = commandList = [];
     XNAT.plugin.containerService.wrapperList = wrapperList = {};
+    XNAT.plugin.containerService.containerManagerUsersContact = containerManagerUsersContact = [];
 
     XNAT.plugin.containerService.errorHandler = errorHandler = function(e, title){
         console.log(e);
@@ -135,8 +136,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     };
 
     XNAT.plugin.containerService.getMailToContainerManager = getMailToContainerManager = function(command, wrapper) {
-        return "Please contact the Container Manager or the Site Admin to gain access to the command " +  command['name'] + " Context: " + wrapper['name'] + " for the Project " + getProjectId();
-    };
+            return "Please contact the Site Container Manager to gain access to the command " +  command['name'] + " Context: " + wrapper['name'] + " for the Project " + getProjectId();
+        };
 
     function commandUrl(appended){
         appended = isDefined(appended) ? appended : '';
@@ -160,6 +161,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var projectId = getProjectId();
         return csrfUrl('/xapi/projects/'+projectId+'/commands/'+commandId+'/wrappers/'+wrapperName+'/' + flag);
     }
+
 
     function refreshCommandWrapperList(wrapperId) {
         const wrapper = wrapperList[wrapperId];
@@ -768,11 +770,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     projCommandConfigManager.init = function(container){
         var $manager = $$(container||'div#proj-command-config-list-container');
-
         projCommandConfigManager.container = $manager;
-
         $manager.append(projCommandConfigManager.table({id: 'project-commands', className: '' }));
-
     };
 
     projCommandConfigManager.init();

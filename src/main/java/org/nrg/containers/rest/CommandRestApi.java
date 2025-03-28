@@ -299,9 +299,9 @@ public class CommandRestApi extends AbstractXapiRestController {
         return message;
     }
 
-    private List<Command> getCommands(final List<Command> commands, final boolean restricToEnabledSiteWide) {
+    private List<Command> getCommands(final List<Command> commands, final boolean restrictToEnabledSiteWide) {
         List<Command> strippedCommands = commands;
-        if (restricToEnabledSiteWide) {
+        if (restrictToEnabledSiteWide) {
             List<Command> restrictedCommands = new ArrayList<>();
             for (Command command: commands) {
                 for (final CommandWrapper wrapper : command.xnatCommandWrappers()) {
@@ -327,19 +327,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     private void checkContainerManagerOrThrow() throws UnauthorizedException {
         ContainerServicePermissionUtils.checkContainerManagerOrThrow(XDAT.getUserDetails());
-    }
-
-    private boolean checkValidProjectOrThrow(final UserI user, final String projectId) throws NrgRuntimeException {
-        final XnatProjectdata project = AutoXnatProjectdata.getXnatProjectdatasById(projectId, user, false);
-        if (null != project) {
-            return true;
-        } else {
-            final List<XnatProjectdata> matches = AutoXnatProjectdata.getXnatProjectdatasByField("xnat:projectData/aliases/alias/alias", projectId, user, false);
-            if (matches != null && !matches.isEmpty()) {
-                return true;
-            }
-        }
-        throw new NrgRuntimeException("Unable to identify project: " + projectId);
     }
 
     private List<Command> filter(final List<Command> allCommands) {
@@ -374,7 +361,7 @@ public class CommandRestApi extends AbstractXapiRestController {
                     return command;
                 } else if (command.isPrivateCommand()) {
                     for (final CommandWrapper wrapper : command.xnatCommandWrappers()) {
-                        List<String> projectsEnabledFor = commandService.getProjects(wrapper.id(), null);
+                        List<String> projectsEnabledFor = commandService.getProjects(wrapper.id(), "ENABLED");
                         if (!projectsEnabledFor.isEmpty()) {
                             boolean allowedToSee = false;
                             for (String projectId : projectsEnabledFor) {

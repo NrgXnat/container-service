@@ -7,15 +7,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.BadRequestException;
 import org.nrg.containers.model.CommandEventMapping;
-import org.nrg.containers.security.ContainerControlUserAuthorization;
 import org.nrg.containers.services.CommandEventMappingService;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
-import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xapi.rest.XapiRequestMapping;
+import org.nrg.xapi.rest.AuthDelegate;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -27,16 +26,18 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.nrg.containers.security.ContainerControlUserAuthorization;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 import static org.springframework.web.bind.annotation.RequestMethod.PUT;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 
 @Slf4j
 @XapiRestController
@@ -55,6 +56,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(method = GET)
     @ApiOperation(value = "Get all Command-Event Mappings")
+    @ResponseBody
     public List<CommandEventMapping> getMappings() {
         List<CommandEventMapping> mappings = commandEventMappingService.getAll();
         List<CommandEventMapping> mappingsCanRead = new ArrayList<CommandEventMapping>();
@@ -97,6 +99,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/{id}"}, method = GET)
     @ApiOperation(value = "Get a Command-Event-Mapping")
+    @ResponseBody
     public CommandEventMapping retrieve(final @PathVariable Long id) {
         try {
             CommandEventMapping mapping = commandEventMappingService.retrieve(id);
@@ -126,6 +129,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Enable a Command-Event Mapping",
             notes = "Use the event service to trigger commands based on events")
     @Deprecated
+    @ResponseBody
     public ResponseEntity<Void> enable(final @PathVariable Long id) throws NotFoundException {
         commandEventMappingService.enable(id);
 
@@ -137,6 +141,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Disable a Command-Event Mapping",
             notes = "Use the event service to trigger commands based on events")
     @Deprecated
+    @ResponseBody
     public ResponseEntity<Void> disable(final @PathVariable Long id) throws NotFoundException {
         commandEventMappingService.disable(id);
 
@@ -146,6 +151,7 @@ public class CommandEventMappingRestApi extends AbstractXapiRestController {
     @AuthDelegate(ContainerControlUserAuthorization.class)
     @XapiRequestMapping(value = {"/{id}/convert"}, method = POST, restrictTo = Authorizer)
     @ApiOperation(value = "Convert a Command-Event Automation item to an Event Service Subscription")
+    @ResponseBody
     public ResponseEntity<Void> convert(final @PathVariable Long id) throws Exception {
         commandEventMappingService.convert(id);
         return ResponseEntity.ok().build();

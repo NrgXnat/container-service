@@ -33,10 +33,9 @@ public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
                                                          final DockerServerService dockerServerService,
                                                          final NrgEventServiceI eventService,
                                                          @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
-                                                         final KubernetesClientFactory kubernetesClientFactory,
-                                                         final UserManagementServiceI userManagementServiceI) {
+                                                         final KubernetesClientFactory kubernetesClientFactory) {
         return new ContainerStatusUpdater(
-                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo, kubernetesClientFactory, userManagementServiceI
+                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo, kubernetesClientFactory
         );
     }
 

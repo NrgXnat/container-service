@@ -45,7 +45,6 @@ public class ContainerStatusUpdater implements Runnable {
     private final NrgEventServiceI eventService;
     private final XnatAppInfo xnatAppInfo;
     private final KubernetesClientFactory kubernetesClientFactory;
-    private final UserManagementServiceI userManagementServiceI;
 
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
@@ -58,14 +57,12 @@ public class ContainerStatusUpdater implements Runnable {
                                   final DockerServerService dockerServerService,
                                   final NrgEventServiceI eventService,
                                   final XnatAppInfo xnatAppInfo,
-                                  final KubernetesClientFactory kubernetesClientFactory,
-                                  final UserManagementServiceI userManagementServiceI) {
+                                  final KubernetesClientFactory kubernetesClientFactory) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.eventService = eventService;
         this.xnatAppInfo = xnatAppInfo;
-        this.userManagementServiceI = userManagementServiceI;
         this.kubernetesClientFactory = kubernetesClientFactory;
     }
 
@@ -225,9 +222,8 @@ public class ContainerStatusUpdater implements Runnable {
                     log.debug("Checking for updates for service {} \"{}\".", service.databaseId(), service.serviceId());
                 }
                 try {
-                    final UserI  user    = userManagementServiceI.getUser(service.userId());
                     // Refresh service status etc. bc it could change while we're processing this list
-                    service = containerService.get(service.databaseId(), user);
+                    service = containerService.get(service.databaseId());
                     if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
                         log.debug("Service {} \"{}\" had workflow <> status mismatch", service.databaseId(), service.serviceId());
                     } else if (containerService.isFinalizing(service) ||

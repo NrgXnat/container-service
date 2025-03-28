@@ -32,7 +32,6 @@ import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.AliasTokenService;
-import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
@@ -138,7 +137,7 @@ public class ContainerLogTest {
             when(containerEntityService.get(containerId)).thenReturn(containerEntity);
 
             // call method under test
-            final ContainerLogPollResponse response = containerService.getLog(containerId, logType, (OffsetDateTime) null, null);
+            final ContainerLogPollResponse response = containerService.getLog(containerId, logType, (OffsetDateTime) null);
 
             // make assertions
             assertThat(response, is(expected));
@@ -200,10 +199,10 @@ public class ContainerLogTest {
             final ContainerLogPollResponse expected2 = ContainerLogPollResponse.fromLive(message3, expectedTimestamp3);
 
             // Call method under test multiple times over a little while to collect "actual" logs
-            final ContainerLogPollResponse actual1 = containerService.getLog(containerId, logType, (String) null, null);
+            final ContainerLogPollResponse actual1 = containerService.getLog(containerId, logType, (String) null);
             assertThat(actual1, is(expected1));
 
-            final ContainerLogPollResponse actual2 = containerService.getLog(containerId, logType, actual1.getTimestamp(), null);
+            final ContainerLogPollResponse actual2 = containerService.getLog(containerId, logType, actual1.getTimestamp());
             assertThat(actual2, is(expected2));
         }
 

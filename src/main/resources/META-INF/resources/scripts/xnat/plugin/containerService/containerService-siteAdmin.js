@@ -1252,6 +1252,9 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             dataType: 'json',
             success: function(data){
                 if (data) {
+                    if (data.length && Array.isArray(data)) {
+                       data = data.sort(function(a,b){ return (a.name > b.name) ? 1 : -1; });
+                    }
                     return data;
                 }
                 callback.apply(this, arguments);
