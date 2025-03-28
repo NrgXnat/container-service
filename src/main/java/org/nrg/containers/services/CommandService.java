@@ -85,7 +85,6 @@ public interface CommandService {
                                              UserI userI) throws ElementNotFoundException;
     List<String> getProjects(long wrapperId, String status);
 
-
     void throwExceptionIfCommandExists(Command command) throws NrgRuntimeException;
 
     boolean xsiTypesMatch(final String xsiType, final Set<String> wrapperXsiTypes) throws ElementNotFoundException;

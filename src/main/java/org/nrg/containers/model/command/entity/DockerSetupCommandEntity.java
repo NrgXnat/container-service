@@ -15,6 +15,4 @@ public class DockerSetupCommandEntity extends CommandEntity {
     }
 
     public void setType(final CommandType type) {}
-
-
 }

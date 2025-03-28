@@ -167,13 +167,11 @@ public class ContainerRestApi extends AbstractXapiRestController {
         return ResponseEntity.noContent().build();
     }
 
-    @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Authenticated)
+    @AuthDelegate(ContainerManagerUserAuthorization.class)
+    @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Authorizer)
     @ApiOperation(value = "Finalize Container")
     public void finalize(final @PathVariable String id) throws NotFoundException, ContainerException, DockerServerException, NoDockerServerException, UnauthorizedException {
         final UserI userI = getSessionUser();
-        if(!isUserOwnerOrAdmin(userI, containerService.get(id))){
-            throw new UnauthorizedException(String.format("User %s cannot delete container %s", userI.getLogin(), id));
-        }
         containerService.finalize(id, userI);
     }
 

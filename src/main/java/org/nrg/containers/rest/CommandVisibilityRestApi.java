@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.*;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
 
 import org.nrg.containers.security.ContainerManagerUserAuthorization;
