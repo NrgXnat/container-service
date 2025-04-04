@@ -9,6 +9,7 @@ import org.nrg.containers.daos.OrchestrationProjectEntityDao;
 import org.nrg.containers.rest.CommandConfigurationRestApi;
 import org.nrg.containers.services.*;
 import org.nrg.containers.services.impl.*;
+import org.nrg.config.services.ConfigService;
 import org.nrg.framework.services.ContextService;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -17,6 +18,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.TestingAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -31,8 +33,11 @@ public class CommandConfigurationRestApiTestConfig extends WebSecurityConfigurer
     @Bean
     public CommandConfigurationRestApi commandConfigurationRestApi(final CommandService commandService,
                                                                    final UserManagementServiceI userManagementServiceI,
-                                                                   final RoleHolder roleHolder) {
-        return new CommandConfigurationRestApi(commandService, userManagementServiceI, roleHolder);
+                                                                   final RoleHolder roleHolder,
+                                                                   final PermissionsServiceI permissionService,
+                                                                   final NamedParameterJdbcTemplate template
+                                                                   ) {
+        return new CommandConfigurationRestApi(commandService, userManagementServiceI, roleHolder, permissionService, template);
     }
 
     @Bean

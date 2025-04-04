@@ -9,6 +9,7 @@ import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -75,6 +76,7 @@ import org.nrg.xdat.om.XnatResource;
 import org.nrg.xdat.om.XnatSubjectassessordata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.ElementSecurity;
 import org.nrg.xdat.security.helpers.Groups;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
@@ -667,7 +669,8 @@ public class ContainerServiceImpl implements ContainerService {
 
         try {
             log.info("Creating container from resolved command.");
-            final Container created = containerControlApi.create(preparedToLaunch, userI);
+            final ResolvedCommand preparedToCreate = appendToCommandLabels(preparedToLaunch, workflow, userI);
+            final Container created = containerControlApi.create(preparedToCreate, userI);
 
             if (workflow != null) {
                 // Update workflow with container information
@@ -2165,7 +2168,6 @@ public class ContainerServiceImpl implements ContainerService {
         return Container.create(containerEntity);
     }
 
-    @Nonnull
     private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList) {
         return containerEntityList.stream().map(this::toPojo).collect(Collectors.toList());
     }
@@ -2366,4 +2368,29 @@ public class ContainerServiceImpl implements ContainerService {
         }
         return messageBuilder.substring(0, messageBuilder.length() - 2);
     }
+
+    private ResolvedCommand appendToCommandLabels(final ResolvedCommand preparedToLaunch, final PersistentWorkflowI workflow, final UserI userI) {
+        if (workflow != null) {
+            final ImmutableMap<String, String> containerLabels = preparedToLaunch.containerLabels();
+            Map<String, String> additionalContainerLabels = new HashMap<>();
+            if (workflow.getDataType() != null) {
+                additionalContainerLabels.put("XNAT_DATATYPE", ElementSecurity.GetSingularDescription(workflow.getDataType()));
+            }
+            if (workflow.getExternalid() != null) {
+                additionalContainerLabels.put("XNAT_PROJECT", workflow.getExternalid());
+            }
+            if (!StringUtils.isEmpty(workflow.getId())) {
+                additionalContainerLabels.put("XNAT_ID", workflow.getId());
+            }
+            additionalContainerLabels.put("XNAT_USER_EMAIL", userI.getEmail());
+            additionalContainerLabels.put("XNAT_USER_ID", userI.getLogin());
+
+            if (containerLabels != null && !containerLabels.isEmpty()) {
+                additionalContainerLabels.putAll(containerLabels);
+            }
+            return preparedToLaunch.toBuilder().containerLabels(additionalContainerLabels).build();
+        }
+        return preparedToLaunch;
+    }
+
 }

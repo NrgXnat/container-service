@@ -133,7 +133,7 @@
 <div class="yui-skin-sam">
     <h1 class="edit_header1">Administer XNAT</h1>
 
-    #if($data.getSession().getAttribute("user").checkRole("Administrator"))
+    #if($data.getSession().getAttribute("user").checkRole("ContainerManager"))
         <h3>Container Service Setup</h3>
         <p><strong>Help: </strong> Data processing in XNAT can now be performed within a temporary container via the XNAT Container Service. In order to set up a process within XNAT, you must download the process image from an image host, and point XNAT to the container server where the image will be run.</p>
         <div class="form-group">
@@ -186,7 +186,7 @@
         </div>
 
     #else
-        <p>Only site administrators can view this page. </p>
+        <p>Only Container Managers can view this page. </p>
     #end
 
 </div>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.7.0
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.7.0/)
+* **New Feature** [CS-990](https://radiologics.atlassian.net/browse/CS-990): Added Container Manager Role, Added Container Visibility
+* **New Feature** [CS-980](https://radiologics.atlassian.net/browse/CS-990): Add tracking labels to command json
+* **Improvement** [CS-995](https://radiologics.atlassian.net/browse/CS-995): Removed unused library
+* **Bugfix** [CS-992](https://radiologics.atlassian.net/browse/CS-992): Fixed project table list
+
+
 ## 3.6.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.1/)
 * **Improvement** [CS-975](https://radiologics.atlassian.net/browse/CS-975)/[XNAT-8111](https://radiologics.atlassian.net/browse/XNAT-8111) Convert event handlers in CS to use JMS instead of executors

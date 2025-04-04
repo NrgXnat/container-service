@@ -16,6 +16,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandWrapper;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
 import org.nrg.containers.services.CommandService;
+import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgRuntimeException;
@@ -23,6 +24,9 @@ import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
+import org.nrg.xdat.om.XnatProjectdata;
+import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
+import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xft.exception.ElementNotFoundException;
@@ -35,13 +39,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.nrg.xdat.security.helpers.AccessLevel.*;
+import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
+import static org.nrg.xdat.security.helpers.AccessLevel.Read;
 import static org.springframework.web.bind.annotation.RequestMethod.DELETE;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
@@ -71,21 +76,20 @@ public class CommandRestApi extends AbstractXapiRestController {
     /*
     COMMAND CRUD
      */
-    @XapiRequestMapping(value = {"/commands"}, params = {"!name", "!version", "!image"}, method = GET)
+    @XapiRequestMapping(value = {"/commands"}, params = {"!name", "!version", "!image", "!restrictToEnabledForSite"}, method = GET)
     @ApiOperation(value = "Get all Commands")
-    @ResponseBody
     public List<Command> getCommands() {
-        return commandService.getAll();
+        return getCommands(false);
     }
 
     @XapiRequestMapping(value = {"/commands"}, method = GET)
     @ApiOperation(value = "Get Commands by criteria")
-    @ResponseBody
     public List<Command> getCommands(final @RequestParam(required = false) String name,
                                      final @RequestParam(required = false) String version,
-                                     final @RequestParam(required = false) String image) throws BadRequestException {
+                                     final @RequestParam(required = false) String image,
+                                     final @RequestParam(required = false) boolean restrictToEnabledForSite) throws BadRequestException {
         if (StringUtils.isBlank(name) && StringUtils.isBlank(version) && StringUtils.isBlank(image)) {
-            return getCommands();
+            return getCommands(restrictToEnabledForSite);
         }
 
         if (StringUtils.isBlank(name) && StringUtils.isNotBlank(version)) {
@@ -102,15 +106,13 @@ public class CommandRestApi extends AbstractXapiRestController {
         if (StringUtils.isNotBlank(image)) {
             properties.put("image", image);
         }
-
-        return commandService.findByProperties(properties);
+        return getCommands(commandService.findByProperties(properties), restrictToEnabledForSite);
     }
 
     @XapiRequestMapping(value = {"/commands/{id}"}, method = GET)
     @ApiOperation(value = "Get a Command by ID")
-    @ResponseBody
-    public Command retrieveCommand(final @PathVariable long id) throws NotFoundException {
-        return commandService.get(id);
+    public Command retrieveCommand(final @PathVariable long id) throws NotFoundException, UnauthorizedException {
+        return filter(commandService.get(id));
     }
 
     @XapiRequestMapping(value = {"/commands"}, method = POST, produces = JSON)
@@ -118,7 +120,7 @@ public class CommandRestApi extends AbstractXapiRestController {
     public ResponseEntity<Long> createCommand(final @RequestParam(value = "image", required=false) String image,
                                               final @RequestBody Command.CommandCreation command)
             throws BadRequestException, CommandValidationException, UnauthorizedException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         // The user may have sent IDs in their command, but we don't want them.
         // We must clean all the IDs before attempting to create.
         // For this, we use the "CommandCreation" object, which has
@@ -142,11 +144,10 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{id}"}, method = POST)
     @ApiOperation(value = "Update a Command")
-    @ResponseBody
     public ResponseEntity<Void> updateCommand(final @RequestBody Command command,
                                               final @PathVariable long id)
             throws NotFoundException, CommandValidationException, UnauthorizedException, BadRequestException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         commandService.update(command.id() == id ? command : command.toBuilder().id(id).build());
         return ResponseEntity.ok().build();
     }
@@ -154,7 +155,7 @@ public class CommandRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(value = {"/commands/{id}"}, method = DELETE)
     @ApiOperation(value = "Delete a Command", code = 204)
     public ResponseEntity<Void> delete(final @PathVariable long id) throws UnauthorizedException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         commandService.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -167,7 +168,7 @@ public class CommandRestApi extends AbstractXapiRestController {
     public ResponseEntity<Long> createWrapper(final @RequestBody Command.CommandWrapperCreation commandWrapperCreation,
                                               final @PathVariable long id)
             throws BadRequestException, CommandValidationException, NotFoundException, UnauthorizedException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         if (commandWrapperCreation == null) {
             throw new BadRequestException("The body of the request must be a CommandWrapper.");
         }
@@ -180,12 +181,11 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/{commandId}/wrappers/{wrapperId}"}, method = POST)
     @ApiOperation(value = "Update a Command Wrapper")
-    @ResponseBody
     public ResponseEntity<Void> updateWrapper(final @RequestBody CommandWrapper commandWrapper,
                                               final @PathVariable long commandId,
                                               final @PathVariable long wrapperId)
             throws NotFoundException, CommandValidationException, UnauthorizedException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         commandService.updateWrapper(commandId,
                 commandWrapper.id() == wrapperId ? commandWrapper : commandWrapper.toBuilder().id(wrapperId).build());
         return ResponseEntity.ok().build();
@@ -195,7 +195,7 @@ public class CommandRestApi extends AbstractXapiRestController {
     @ApiOperation(value = "Delete a Command Wrapper", code = 204)
     public ResponseEntity<Void> deleteWrapper(final @PathVariable long wrapperId)
             throws NotFoundException, UnauthorizedException {
-        checkAdminOrThrow();
+        checkContainerManagerOrThrow();
         commandService.deleteWrapper(wrapperId);
         return ResponseEntity.noContent().build();
     }
@@ -205,7 +205,6 @@ public class CommandRestApi extends AbstractXapiRestController {
      */
     @XapiRequestMapping(value = {"/commands/available"}, params = {"project", "xsiType"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Commands available in given project context and XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands(final @RequestParam @Project String project,
                                                             final @RequestParam String xsiType)
             throws ElementNotFoundException {
@@ -214,7 +213,6 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/projects/{project}/commands/available"}, params = {"xsiType"}, method = GET, restrictTo = Read)
     @ApiOperation(value = "Get Commands available in given project context and XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands2(final @PathVariable @Project String project,
                                                              final @RequestParam String xsiType)
             throws ElementNotFoundException {
@@ -223,26 +221,11 @@ public class CommandRestApi extends AbstractXapiRestController {
 
     @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType"}, method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Commands sitewide with given XSIType")
-    @ResponseBody
     public List<CommandSummaryForContext> availableCommands(final @RequestParam String xsiType)
             throws ElementNotFoundException {
         final UserI userI = XDAT.getUserDetails();
         //We can permit any user to make this REST call since available should note return any available commands for users without permissions.
         return commandService.available(xsiType, userI);
-    }
-
-    private void checkAdminOrThrow() throws UnauthorizedException {
-        checkAdminOrThrow(XDAT.getUserDetails());
-    }
-
-    private void checkAdminOrThrow(final UserI userI) throws UnauthorizedException {
-        if (!isAdmin(userI)) {
-            throw new UnauthorizedException(String.format("User %s is not an admin.", userI == null ? "" : userI.getLogin()));
-        }
-    }
-
-    private boolean isAdmin(final UserI userI) throws UnauthorizedException {
-        return getRoleHolder().isSiteAdmin(userI);
     }
 
     /*
@@ -315,4 +298,89 @@ public class CommandRestApi extends AbstractXapiRestController {
         log.debug(message);
         return message;
     }
+
+    private List<Command> getCommands(final List<Command> commands, final boolean restrictToEnabledSiteWide) {
+        List<Command> strippedCommands = commands;
+        if (restrictToEnabledSiteWide) {
+            List<Command> restrictedCommands = new ArrayList<>();
+            for (Command command: commands) {
+                for (final CommandWrapper wrapper : command.xnatCommandWrappers()) {
+                    try {
+                        if (commandService.isEnabledForSite(wrapper.id())) {
+                            restrictedCommands.add(command);
+                            break;
+                        }
+                    } catch(NotFoundException ignore) {}
+                }
+            }
+            strippedCommands = restrictedCommands;
+        }
+        return filter(strippedCommands);
+
+    }
+
+    private List<Command> getCommands(final boolean restrictToEnabledSiteWide) {
+        return getCommands(commandService.getAll(), restrictToEnabledSiteWide);
+    }
+
+
+
+    private void checkContainerManagerOrThrow() throws UnauthorizedException {
+        ContainerServicePermissionUtils.checkContainerManagerOrThrow(XDAT.getUserDetails());
+    }
+
+    private List<Command> filter(final List<Command> allCommands) {
+        final UserI sessionUser = XDAT.getUserDetails();
+        if (allCommands.isEmpty()) {
+            return allCommands;
+        }
+        List<Command> filteredCommands = new ArrayList<>();
+        try {
+            ContainerServicePermissionUtils.checkContainerManagerOrThrow(sessionUser);
+            filteredCommands = allCommands;
+        } catch (UnauthorizedException ue) {
+            for (Command command : allCommands) {
+                   if (filter(command) != null)
+                       filteredCommands.add(command);
+            }
+        } finally {
+            return filteredCommands;
+        }
+    }
+
+    private Command filter(final Command command) {
+        final UserI sessionUser = XDAT.getUserDetails();
+        if (command == null) {
+            return null;
+        }
+        try {
+            ContainerServicePermissionUtils.checkContainerManagerOrThrow(sessionUser);
+            return command;
+        } catch (UnauthorizedException ue) {
+                if (command.isPublicCommand() || command.isProtectedCommand()) {
+                    return command;
+                } else if (command.isPrivateCommand()) {
+                    for (final CommandWrapper wrapper : command.xnatCommandWrappers()) {
+                        List<String> projectsEnabledFor = commandService.getProjects(wrapper.id(), "ENABLED");
+                        if (!projectsEnabledFor.isEmpty()) {
+                            boolean allowedToSee = false;
+                            for (String projectId : projectsEnabledFor) {
+                                if (hasProjectAccess(sessionUser, projectId)) {
+                                    allowedToSee = true;
+                                    break;
+                                }
+                            }
+                            if (allowedToSee) return command;
+                        }
+
+                    }
+                }
+        }
+        return null;
+    }
+
+    private boolean hasProjectAccess(final UserI user, final String projectId) {
+        return Permissions.canReadProject(user, projectId);
+    }
+
 }
