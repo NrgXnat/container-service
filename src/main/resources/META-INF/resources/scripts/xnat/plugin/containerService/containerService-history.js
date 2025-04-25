@@ -509,9 +509,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 formattedVal = spawn('code', 'false');
             } else if (key === 'workflow-id') {
                 // Allow pulling up detailed workflow info (can contain addl info in details field)
-                var curid = '#wfmodal' + val;
-                formattedVal = spawn('a' + curid, {}, val);
-                $(document).on('click', curid, {wfid: val}, historyTable.workflowModal);
+                // var curid = '#wfmodal' + val;
+                formattedVal = spawn('a.wfmodal', { data: { 'wfid':val }}, val);
             } else {
                 formattedVal = spawn('code', val);
             }
@@ -636,6 +635,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             historyTable.findById(e);
         }
     });
+
+    // open workflow entry dialog on click of the workflow ID in the standard history dialog
+    $(document).off('click','.wfmodal').on('click', '.wfmodal', function(){
+        let wfid = $(this).data('wfid');
+        historyTable.workflowModal(wfid);
+    } );
 
     historyTable.init = historyTable.refresh = function (context) {
         if (context) {
