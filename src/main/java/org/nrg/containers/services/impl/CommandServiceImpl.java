@@ -485,7 +485,7 @@ public class CommandServiceImpl implements CommandService {
 
         return available;
     }
-
+    
     @Override
     @Nonnull
     public List<CommandSummaryForContext> available(final String xsiType,

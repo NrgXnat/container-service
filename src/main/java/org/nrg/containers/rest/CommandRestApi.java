@@ -44,6 +44,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -219,14 +220,29 @@ public class CommandRestApi extends AbstractXapiRestController {
         return commandService.available(project, xsiType, getSessionUser());
     }
 
-    @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType"}, method = GET, restrictTo = Authenticated)
+    @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType", "projects"}, method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Commands sitewide with given XSIType")
-    public List<CommandSummaryForContext> availableCommands(final @RequestParam String xsiType)
+    public List<CommandSummaryForContext> siteLevelAvailableCommands(final @RequestParam String xsiType, final @RequestParam(required=false) String projects)
             throws ElementNotFoundException {
         final UserI userI = XDAT.getUserDetails();
-        //We can permit any user to make this REST call since available should note return any available commands for users without permissions.
-        return commandService.available(xsiType, userI);
+        //We can permit any user to make this REST call since available should not return any available commands for users without permissions.
+        if (projects == null) {
+           return commandService.available(xsiType, userI);
+        } else {
+            String[] projectsArr = projects.split(",");
+            List<CommandSummaryForContext> commonCommands = new ArrayList<>();
+            for (String project : projectsArr) {
+                List<CommandSummaryForContext> projectCommands = commandService.available(project, xsiType, getSessionUser());
+                if (commonCommands.isEmpty()) {
+                    commonCommands.addAll(projectCommands);
+                } else {
+                    commonCommands = commonCommands.stream().filter(projectCommands::contains).collect(Collectors.toList());
+                }
+            }
+            return commonCommands;
+        }
     }
+
 
     /*
     EXCEPTION HANDLING

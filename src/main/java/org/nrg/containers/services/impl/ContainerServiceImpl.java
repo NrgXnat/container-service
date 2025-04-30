@@ -2009,7 +2009,7 @@ public class ContainerServiceImpl implements ContainerService {
 
             String project = workflow.getExternalid();
             if (StringUtils.isNotBlank(project) && workflow.getNextStepId() == null) {
-                // check if this is the start of an orchestrated sequence, WorkflowStatusEventOrchestrationListener will handle later steps
+                // check if this is the start of an orchestrated sequence, ContainerServiceWorkflowStatusEventListener will handle later steps
                 final Orchestration orchestration = getOrchestrationWhereWrapperIsFirst(project, resolvedCommand.wrapperId());
                 if (orchestration != null) {
                     workflow.setNextStepId(Long.toString(orchestration.getId()));

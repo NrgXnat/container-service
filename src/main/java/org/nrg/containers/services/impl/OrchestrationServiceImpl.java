@@ -83,7 +83,20 @@ public class OrchestrationServiceImpl implements OrchestrationService {
 
     @Override
     public OrchestrationProject getAvailableForProject(String project) {
-        return orchestrationEntityService.getAvailableForProject(project);
+        OrchestrationProject orchestrationProject =  orchestrationEntityService.getAvailableForProject(project);
+        List<Orchestration> orchestrations = orchestrationProject.getAvailableOrchestrations();
+        List<Orchestration> orchestrationsWithAllEnabledCommandsForProject = new ArrayList<>();
+        for (Orchestration orch : orchestrations) {
+            boolean allEnabled = orch.getWrapperIds().stream().allMatch(w -> containerConfigService.isEnabledForProject(project, w));
+            if (allEnabled) {
+                orchestrationsWithAllEnabledCommandsForProject.add(orch);
+            }
+        }
+        Long selectedOrchestrationId = null;
+        if (orchestrationProject.getSelectedOrchestrationId() != null && orchestrationsWithAllEnabledCommandsForProject.stream().anyMatch(o -> o.getId() == orchestrationProject.getSelectedOrchestrationId())) {
+            selectedOrchestrationId = orchestrationProject.getSelectedOrchestrationId();
+        }
+        return new OrchestrationProject(orchestrationsWithAllEnabledCommandsForProject, selectedOrchestrationId);
     }
 
     @Override
