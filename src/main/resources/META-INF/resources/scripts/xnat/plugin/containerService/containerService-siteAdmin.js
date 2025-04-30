@@ -2464,6 +2464,9 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
         }
 
     function manageProjectsButton(command, wrapper, title) {
+       if (command['visibility'] === "public") {
+         return spacer(1);
+       }
         return spawn('button.btn.btn-sm.edit', {
             onclick: function (e) {
                 e.preventDefault();
@@ -2645,7 +2648,6 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             var label = (wrapper.description.length) ?
                                 wrapper.description :
                                 wrapper.name;
-
                             ccmTable.tr({title: label, addClass: 'command-config-listing', data: {wrapperid: wrapper.id, commandid: command.id, name: wrapper.name, image: command.image, visibility: command.visibility}})
                                 .td([ viewLink(command, wrapper)]).addClass('name')
                                 .td([ spawn('span.truncate.truncate200', command.image ) ])
