@@ -21,6 +21,7 @@ import org.nrg.containers.jms.tasks.QueueManager;
 import org.nrg.framework.annotations.XnatPlugin;
 import org.nrg.framework.services.SerializerService;
 import org.nrg.mail.services.MailService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xnat.initialization.RootConfig;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -55,23 +56,26 @@ public class ContainersConfig {
 
     @Bean(name = FINALIZING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory finalizingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
+                                                                             final NotificationsPreferences notificationsPreferences,
                                                                              final MailService mailService,
                                                                              @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
     }
 
     @Bean(name = STAGING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory stagingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
+                                                                          final NotificationsPreferences notificationsPreferences,
                                                                           final MailService mailService,
                                                                           @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
     }
 
     @Bean(name = EVENT_HANDLING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory eventHandlingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
+                                                                                final NotificationsPreferences notificationsPreferences,
                                                                                 final MailService mailService,
                                                                                 @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
     }
 
     @Bean
@@ -152,11 +156,12 @@ public class ContainersConfig {
 
     private DefaultJmsListenerContainerFactory defaultFactory(final ConnectionFactory connectionFactory,
                                                               final SiteConfigPreferences siteConfigPreferences,
+                                                              final NotificationsPreferences notificationsPreferences,
                                                               final MailService mailService) {
         final DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setConcurrency(QUEUE_MIN_CONCURRENCY_DFLT + "-" + QUEUE_MAX_CONCURRENCY_DFLT);
-        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, mailService));
+        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, notificationsPreferences, mailService));
         return factory;
     }
 }

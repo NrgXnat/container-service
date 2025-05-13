@@ -9,6 +9,7 @@ import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.mail.services.MailService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.context.annotation.Bean;
@@ -86,10 +87,11 @@ public class JmsConfig {
 
     private DefaultJmsListenerContainerFactory defaultFactory(ConnectionFactory connectionFactory,
                                                               final SiteConfigPreferences siteConfigPreferences,
+                                                              final NotificationsPreferences notificationsPreferences,
                                                               final MailService mailService) {
         DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
-        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, mailService));
+        factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, notificationsPreferences, mailService));
         return factory;
     }
 }
