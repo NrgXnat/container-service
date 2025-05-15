@@ -2805,6 +2805,18 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     });
                 }
 
+                function spawnHaltOnCommandFailure(haltOnCommandFailure) {
+                  return   XNAT.ui.panel.input.switchbox({
+                               name: 'haltOnCommandFailure',
+                               label: 'Halt?',
+                               id: 'orchestration-haltOnCommandFailure',
+                               checked: arguments.length === 0 ? 'true' : haltOnCommandFailure,
+                               onText: "Halt on failure",
+                               offText: "Continue on failure",
+                               description: 'Halt downstream orchestration steps if an intermediate container fails'
+                     });
+                }
+
                 function setFirst(firstSel, prev) {
                     firstSel.find('option').prop('disabled', false);
                     firstSel.parents('div.element-wrapper').find('div.description').text(firstDesc);
@@ -2887,6 +2899,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 let wrappers = [];
                 if (o) {
                     panel.append(spawnNameInput(o.name));
+                    panel.append(spawnHaltOnCommandFailure(o.haltOnCommandFailure));
                     o.wrapperIds.forEach(function(wid, i){
                         wrappers.push(spawnWrapperSelect(i, wid));
                     });
@@ -2900,6 +2913,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     panel.find('#enabled-message').show();
                 } else {
                     panel.append(spawnNameInput());
+                    panel.append(spawnHaltOnCommandFailure());
                     wrappers.push(spawnWrapperSelect(0));
                     wrappers.push(spawnWrapperSelect(1));
                     panel.append(spawn('div#orchestrationWrappers', wrappers));
@@ -2926,6 +2940,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         const data = {
                             'name': panel.find('#orchestration-name').val(),
                             'enabled': true,
+                            'haltOnCommandFailure': panel.find('#orchestration-haltOnCommandFailure').is(':checked'),
                             'wrapperIds': []
                         };
                         data.wrapperIds = panel.find('select.orchestrationWrapperSelect').map(function() {

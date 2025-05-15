@@ -147,6 +147,20 @@ public class OrchestrationTest {
         assertEquals(ORCHESTRATION, o);
     }
 
+
+    @Test
+    @DirtiesContext
+    public void testSaveHaltOnCommandFailure() throws Exception {
+        Orchestration o = orchestrationService.createOrUpdate(ORCHESTRATION);
+        assertEquals(o.isHaltOnCommandFailure(), true);
+        assertThat(o.getId(), not(0L));
+        ORCHESTRATION.setId(o.getId());
+        assertEquals(ORCHESTRATION, o);
+        o.setHaltOnCommandFailure(false);
+        assertEquals(o.isHaltOnCommandFailure(), false);
+    }
+
+
     @Test
     @DirtiesContext
     public void testGetAll() throws Exception {
@@ -168,9 +182,11 @@ public class OrchestrationTest {
         String newName = "new name";
         o.setName(newName);
         o.setWrapperIds(newWrappers);
+        o.setHaltOnCommandFailure(false);
         Orchestration retrieved = orchestrationService.createOrUpdate(o);
         assertThat(retrieved.getName(), is(newName));
         assertThat(retrieved.getWrapperIds(), is(newWrappers));
+        assertEquals(o.isHaltOnCommandFailure(), false);
     }
 
     @Test

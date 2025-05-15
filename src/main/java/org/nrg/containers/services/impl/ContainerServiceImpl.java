@@ -602,8 +602,10 @@ public class ContainerServiceImpl implements ContainerService {
                         configuredCommand.id(), wrapper.id(), wrapper.name(), container.databaseId());
                 log.debug("Container for wfid {}: {}", workflowid, container);
             }
-        } catch (NotFoundException | CommandResolutionException | UnauthorizedException e) {
-            handleFailure(workflow, e, "Command resolution");
+        } catch (CommandResolutionException cre) {
+            handleFailure(workflow, cre, "Command resolution", "Submitted data does not match command resolution requirements. ");
+        } catch (NotFoundException  | UnauthorizedException e) {
+            handleFailure(workflow, e, "");
             log.error("Container command resolution failed for wfid {}.", workflowid, e);
         } catch (NoDockerServerException | DockerServerException | ContainerException | UnsupportedOperationException e) {
             handleFailure(workflow, e, "Container launch");
@@ -1776,17 +1778,33 @@ public class ContainerServiceImpl implements ContainerService {
     private void handleFailure(@Nullable PersistentWorkflowI workflow,
                                @Nullable final Exception source,
                                @Nullable String statusSuffix) {
+        handleFailure(workflow, source, statusSuffix, null);
+    }
+
+    /**
+     * Updates workflow status to Failed based on the exception if provided, appends ' (statusSuffix)' if provided or
+     * discernible from exception class
+     * @param workflow the workflow
+     * @param source the exception source
+     * @param statusSuffix optional suffix (will try to determine from exception class if not provided)
+     */
+    private void handleFailure(@Nullable PersistentWorkflowI workflow,
+                               @Nullable final Exception source,
+                               @Nullable String statusSuffix,
+                               @Nullable String detailsPrefix) {
         if (workflow == null) return;
 
-        String details = "";
-        if (source != null) {
-            String exceptionName = source.getClass().getName().replace("Exception$", "");
-            statusSuffix = StringUtils.defaultIfBlank(statusSuffix, exceptionName);
-            details = StringUtils.defaultIfBlank(source.getMessage(), exceptionName);
-        }
-        statusSuffix = StringUtils.isNotBlank(statusSuffix) ?  " (" + statusSuffix + ")" : "";
+        String exceptionName = (source != null)
+                ? source.getClass().getName().replace("Exception$", "")
+                : "";
+        String message = (source != null)
+                ? StringUtils.defaultIfBlank(source.getMessage(), exceptionName)
+                : "";
+        String suffix = StringUtils.defaultIfBlank(statusSuffix, exceptionName);
+        String formattedSuffix = StringUtils.isNotBlank(suffix) ? " (" + suffix + ")" : "";
+        String status = PersistentWorkflowUtils.FAILED + formattedSuffix;
+        String details = StringUtils.defaultString(detailsPrefix) + message;
 
-        String status = PersistentWorkflowUtils.FAILED + statusSuffix;
         updateWorkflow(workflow, status, details);
     }
 
