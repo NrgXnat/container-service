@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.9.2-SNAPSHOT"
+        vXnat = "1.9.2-RC-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -9,9 +9,9 @@ plugins {
     id "idea"
     id "java"
     id "maven-publish"
-    id "com.palantir.git-version" version "0.12.1"
-    id "io.spring.dependency-management" version "1.0.9.RELEASE"
-    id "io.franzbecker.gradle-lombok" version "4.0.0"
+    id "com.palantir.git-version" version "3.3.0"
+    id "io.spring.dependency-management" version "1.1.7"
+    id "io.franzbecker.gradle-lombok" version "5.0.0"
     id "net.linguica.maven-settings" version "0.5"
 }
 
