@@ -63,7 +63,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                str +=  '</b>';
              }
               if (val !== '') {
-                 str += ':'+val ;
+                 str += ': '+val;
                  str += '<br><br>';
               }
               return str;
@@ -1567,7 +1567,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             .th('<b>XNAT Actions</b>')
             .th('<b>Site-wide Config</b>')
             .th('<b>Version</b>')
-            .th('Visibility')
+            .th('<b>Visibility</b>')
             .th({html: '<b>Actions</b>' });
 
         // add master switch
@@ -2200,6 +2200,16 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                           label: 'OK',
                           isDefault: true,
                           close: true
+                      },
+                      {
+                          label: 'Edit Command',
+                          isDefault: false,
+                          close: true,
+                          action: function(){
+                              commandDefinition.getCommand(command.id).done(function(commandDef){
+                                  commandDefinition.dialog(commandDef, false);
+                              });
+                          }
                       }
                   ]
               });
