@@ -89,6 +89,53 @@ var XNAT = getObject(XNAT || {});
          $detailsDiv.append(table);
      }
 
+    XNAT.plugin.containerService.renderOrchestrationActivity = function(itemIds, workflows, detailsTag, total, steps) {
+            let workflowsOrganizedByElements = [];
+            for (let i = 0; i < itemIds.length; i++) {
+               let itemDetails = {};
+               itemDetails.itemId = itemIds[i];
+               itemDetails.steps = [];
+               workflowsOrganizedByElements[i] = itemDetails;
+            }
+
+            if (workflows) {
+                $.each(workflows, function(k, v) {
+                    let index = itemIds.indexOf(v['itemId']);
+                    let icon = '';
+                    if (v['status'].toLowerCase().includes('failed')) {
+                        icon = '<i class="fa-regular fa-circle-xmark"></i>';
+                        clazz = 'error';
+                    } else if (v['status'].toLowerCase() === 'complete') {
+                        icon = '<i class="fa-regular fa-square-check"></i>';
+                        clazz = 'success';
+                    } else if (v['status'].toLowerCase() === 'running') {
+                        icon = '<i class="fa-solid fa-person-running"></i>';
+                    } else {
+                        clazz = 'info';
+                    }
+                    let currentStepId = v['currentStepId'];
+                    if (currentStepId === null && steps === 1) {
+                       currentStepId = 0;
+                    }
+                    const onClick = 'XNAT.plugin.batchLaunch.viewWorkflowDetails(\''+k+'\',\'' + v['containerId'] + '\')';
+                    let hrefText = v['pipelineName'];
+                    let stepRowDetails = {
+                        itemId:v['itemId'],
+                        stepId:currentStepId,
+                        pipelineName:v['pipelineName'],
+                        onClick:onClick,
+                        hrefText:hrefText,
+                        icon:icon,
+                        status:v['status'],
+                        clazz:clazz
+                    };
+                    workflowsOrganizedByElements[index].steps[currentStepId] = stepRowDetails;
+                });
+            }
+            XNAT.plugin.containerService.buildStatusDisplay(detailsTag, total, steps, itemIds, workflowsOrganizedByElements);
+    }
+
+
     XNAT.plugin.containerService.updateBulkLaunchProgress = function(itemDivId, detailsTag, jsonobj, lastProgressIdx) {
         if (!lastProgressIdx) {
             lastProgressIdx = -1;
@@ -136,49 +183,32 @@ var XNAT = getObject(XNAT || {});
 
         let clazz;
         $progDiv.text(percentComplete + '% complete (' + successCount + ' succeeded, ' + failureCount + ' failed)');
-        let workflowsOrganizedByElements = [];
-        for (let i = 0; i < itemIds.length; i++) {
-           let itemDetails = {};
-           itemDetails.itemId = itemIds[i];
-           itemDetails.steps = [];
-           workflowsOrganizedByElements[i] = itemDetails;
-        }
 
-        if (workflows) {
-            $.each(workflows, function(k, v) {
-                let index = itemIds.indexOf(v['itemId']);
-                let icon = '';
-                if (v['status'].toLowerCase().includes('failed')) {
-                    icon = '<i class="fa-regular fa-circle-xmark"></i>';
-                    clazz = 'error';
-                } else if (v['status'].toLowerCase() === 'complete') {
-                    icon = '<i class="fa-regular fa-square-check"></i>';
-                    clazz = 'success';
-                } else if (v['status'].toLowerCase() === 'running') {
-                    icon = '<i class="fa-solid fa-person-running"></i>';
-                } else {
-                    clazz = 'info';
+        if (steps == 1) {
+              if (workflows) {
+                    $.each(workflows, function(k, v) {
+                        const wfid = 'wf' + k;
+                        const details = v['details'] ? ' (' + v['details'] + ')' : '';
+                        const message = '<a onclick="XNAT.plugin.batchLaunch.viewWorkflowDetails(\''+k+'\',\'' + v['containerId'] + '\')">'
+                            + v['itemId'] + '</a>: ' + v['pipelineName'] + ' ' + v['status'] + details;
+                        if (v['status'].toLowerCase().includes('failed')) {
+                            clazz = 'error';
+                        } else if (v['status'].toLowerCase() === 'complete') {
+                            clazz = 'success';
+                        } else {
+                            clazz = 'info';
+                        }
+                        let $wfDiv = $detailsDiv.find('#' + wfid);
+                        if ($wfDiv.length === 0) {
+                            $detailsDiv.append('<div id="' +wfid + '" class="prog ' + clazz + '">' + message + '</div>')
+                        } else {
+                            $wfDiv.html(message).removeClass('info').addClass(clazz);
+                        }
+                    });
                 }
-                let currentStepId = v['currentStepId'];
-                if (currentStepId === null && steps === 1) {
-                   currentStepId = 0;
-                }
-                const onClick = 'XNAT.plugin.batchLaunch.viewWorkflowDetails(\''+k+'\',\'' + v['containerId'] + '\')';
-                let hrefText = v['pipelineName'];
-                let stepRowDetails = {
-                    itemId:v['itemId'],
-                    stepId:currentStepId,
-                    pipelineName:v['pipelineName'],
-                    onClick:onClick,
-                    hrefText:hrefText,
-                    icon:icon,
-                    status:v['status'],
-                    clazz:clazz
-                };
-                workflowsOrganizedByElements[index].steps[currentStepId] = stepRowDetails;
-            });
+        } else {
+           XNAT.plugin.containerService.renderOrchestrationActivity(itemIds, workflows, detailsTag, total, steps);
         }
-        XNAT.plugin.containerService.buildStatusDisplay(detailsTag, total, steps, itemIds, workflowsOrganizedByElements);
         if (succeeded != null) {
             clazz = succeeded ? 'success' : 'error';
             //This hack is required some containers may be in Die or Finalizing state, we are only counting the ones which are Complete
