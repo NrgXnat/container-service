@@ -6,6 +6,7 @@ import org.nrg.xdat.security.XDATUser;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.services.UserRoleService;
+import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.initialization.tasks.AbstractInitializingTask;
 import org.nrg.xnat.initialization.tasks.InitializingTaskException;
@@ -38,7 +39,7 @@ public class AssignContainerManagerRoleToSiteAdminOnUpgrade extends AbstractInit
 
     @Override
     protected void callImpl() throws InitializingTaskException {
-        if (!appInfo.isInitialized() ) {
+        if (!appInfo.isInitialized() || !XFTManager.isComplete()) {
             throw new InitializingTaskException(InitializingTaskException.Level.RequiresInitialization);
         }
         final Map<String, Collection<String>> rolesAndUsers =  roleHolder.getRolesAndUsers();
