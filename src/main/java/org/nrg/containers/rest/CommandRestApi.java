@@ -24,8 +24,6 @@ import org.nrg.xapi.rest.AbstractXapiRestController;
 import org.nrg.xapi.rest.Project;
 import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.XDAT;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.base.auto.AutoXnatProjectdata;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -44,7 +42,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -232,11 +229,11 @@ public class CommandRestApi extends AbstractXapiRestController {
             String[] projectsArr = projects.split(",");
             List<CommandSummaryForContext> commonCommands = new ArrayList<>();
             for (String project : projectsArr) {
-                List<CommandSummaryForContext> projectCommands = commandService.available(project, xsiType, getSessionUser());
+                List<CommandSummaryForContext> projectCommands = commandService.available(project.trim(), xsiType, getSessionUser());
                 if (commonCommands.isEmpty()) {
                     commonCommands.addAll(projectCommands);
                 } else {
-                    commonCommands = commonCommands.stream().filter(projectCommands::contains).collect(Collectors.toList());
+                    commonCommands.retainAll(projectCommands);
                 }
             }
             return commonCommands;
