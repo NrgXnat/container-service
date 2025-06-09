@@ -7,6 +7,7 @@ import javax.jms.Destination;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.jetbrains.annotations.NotNull;
 import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.events.listeners.ContainerServiceWorkflowStatusEventListener;
 import org.nrg.containers.events.model.ContainerEvent;
@@ -30,6 +31,7 @@ import org.springframework.context.annotation.*;
 import org.springframework.context.annotation.ComponentScan.Filter;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
+import org.springframework.jms.listener.DefaultMessageListenerContainer;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.scheduling.config.TriggerTask;
 import org.springframework.scheduling.support.PeriodicTrigger;
@@ -51,23 +53,34 @@ public class ContainersConfig {
     public static final String QUEUE_MIN_CONCURRENCY_DFLT            = "10";
     public static final String QUEUE_MAX_CONCURRENCY_DFLT            = "20";
     public static final String FINALIZING_QUEUE_LISTENER_FACTORY     = "finalizingQueueListenerFactory";
+    public static final String FINALIZING_QUEUE_CONTAINER_ID         = "finalizingListener";
     public static final String STAGING_QUEUE_LISTENER_FACTORY        = "stagingQueueListenerFactory";
+    public static final String STAGING_QUEUE_CONTAINER_ID            = "stagingQueueListener";
     public static final String EVENT_HANDLING_QUEUE_LISTENER_FACTORY = "eventHandlingQueueListenerFactory";
+
+    private static final int NUMBER_OF_IDLE_RECEIVES_PER_TASK_LIMIT = 300;
+    private static final long ONE_SECOND_IN_MS = 1000L;
 
     @Bean(name = FINALIZING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory finalizingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                              final NotificationsPreferences notificationsPreferences,
                                                                              final MailService mailService,
+                                                                             final QueuePrefsBean queuePrefs,
                                                                              @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
+        final DefaultJmsListenerContainerFactory factory = defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
+        factory.setConcurrency(queuePrefs.getConcurrencyMinFinalizingQueue() + "-" + queuePrefs.getConcurrencyMaxFinalizingQueue());
+        return factory;
     }
 
     @Bean(name = STAGING_QUEUE_LISTENER_FACTORY)
     public DefaultJmsListenerContainerFactory stagingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                           final NotificationsPreferences notificationsPreferences,
                                                                           final MailService mailService,
+                                                                          final QueuePrefsBean queuePrefs,
                                                                           @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
+        final DefaultJmsListenerContainerFactory factory = defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
+        factory.setConcurrency(queuePrefs.getConcurrencyMinStagingQueue() + "-" + queuePrefs.getConcurrencyMaxStagingQueue());
+        return factory;
     }
 
     @Bean(name = EVENT_HANDLING_QUEUE_LISTENER_FACTORY)
@@ -158,7 +171,18 @@ public class ContainersConfig {
                                                               final SiteConfigPreferences siteConfigPreferences,
                                                               final NotificationsPreferences notificationsPreferences,
                                                               final MailService mailService) {
-        final DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
+        final DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory() {
+            @NotNull
+            @Override
+            protected DefaultMessageListenerContainer createContainerInstance() {
+                final DefaultMessageListenerContainer container = super.createContainerInstance();
+                // Allows container to scale down the number of consumers after 5 minutes of
+                // not receiving a message (300 * 1 second)
+                container.setIdleReceivesPerTaskLimit(NUMBER_OF_IDLE_RECEIVES_PER_TASK_LIMIT);
+                container.setReceiveTimeout(ONE_SECOND_IN_MS);
+                return container;
+            }
+        };
         factory.setConnectionFactory(connectionFactory);
         factory.setConcurrency(QUEUE_MIN_CONCURRENCY_DFLT + "-" + QUEUE_MAX_CONCURRENCY_DFLT);
         factory.setErrorHandler(new ContainerJmsErrorHandler(siteConfigPreferences, notificationsPreferences, mailService));
