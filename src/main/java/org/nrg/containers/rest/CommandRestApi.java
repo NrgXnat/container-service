@@ -217,7 +217,7 @@ public class CommandRestApi extends AbstractXapiRestController {
         return commandService.available(project, xsiType, getSessionUser());
     }
 
-    @XapiRequestMapping(value = {"/commands/available/site"}, params = {"xsiType", "projects"}, method = GET, restrictTo = Authenticated)
+    @XapiRequestMapping(value = {"/commands/available/site"}, method = GET, restrictTo = Authenticated)
     @ApiOperation(value = "Get Commands sitewide with given XSIType")
     public List<CommandSummaryForContext> siteLevelAvailableCommands(final @RequestParam String xsiType, final @RequestParam(required=false) String projects)
             throws ElementNotFoundException {
