@@ -2903,8 +2903,8 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 }
 
                 panel.append(spawn('div#enabled-message', {
-                    classes: 'panel-element ' + (enabled ? 'success' : 'warning'),
-                    style: 'display: none'
+                    classes: (enabled ? 'success' : 'warning'),
+                    style: 'display: none; margin: 1em 0;'
                 }, enabled ? enabledMsg : disabledMsg));
                 let wrappers = [];
                 if (o) {
