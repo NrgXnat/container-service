@@ -3,6 +3,7 @@ package org.nrg.containers.initialization.tasks;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.model.command.entity.CommandVisibility;
 import org.nrg.framework.orm.DatabaseHelper;
+import org.nrg.xft.schema.XFTManager;
 import org.nrg.xnat.initialization.tasks.AbstractInitializingTask;
 import org.nrg.xnat.initialization.tasks.InitializingTaskException;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -30,12 +31,13 @@ public class UpdateVisibilityOfExistingCommands extends AbstractInitializingTask
     @Override
     protected void callImpl() throws InitializingTaskException {
         try {
-            if (!appInfo.isInitialized()) {
+            if (!appInfo.isInitialized() || !XFTManager.isComplete()) {
                 throw new InitializingTaskException(InitializingTaskException.Level.RequiresInitialization);
             }
             jdbcTemplate.execute("UPDATE " + COMMAND_ENTITY_TABLE_NAME + " SET " + VISIBILITY_COLUMN + " = 0 where " + VISIBILITY_COLUMN + " is null");
             log.debug("Table " + COMMAND_ENTITY_TABLE_NAME + " updated. Set the " + VISIBILITY_COLUMN + " column value to " + CommandVisibility.PUBLIC_CONTAINER);
         } catch(Exception e) {
+            log.error("Encountered while setting visibility column value",e);
             throw new InitializingTaskException(InitializingTaskException.Level.Error);
         }
     }
