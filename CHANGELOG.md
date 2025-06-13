@@ -1,12 +1,19 @@
 # Changelog
 
-## 3.6.3
-[Released](https://bitbucket.org/xnatdev/container-service/src/3.6.3/)
-* **Bugfix** [CS-989](https://radiologics.atlassian.net/browse/CS-989) Addresses container finalization errors on very large batch runs due to lack of status tracking in the finalization queue
+## 3.7.0
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.7.0/)
+* **New Feature** [CS-980](https://radiologics.atlassian.net/browse/CS-990): Add tracking labels to command json
+* **New Feature** [CS-990](https://radiologics.atlassian.net/browse/CS-990): Added Container Manager Role, Added Container Visibility
+* **Improvement** [CS-986](https://radiologics.atlassian.net/browse/CS-986): Allow halt to orchestrations on midstream command failures
+* **Improvement** [CS-995](https://radiologics.atlassian.net/browse/CS-995): Removed duplicate jsonpath library
+* **Bugfix** [CS-599](https://radiologics.atlassian.net/browse/CS-599), [CS-1020](https://radiologics.atlassian.net/browse/CS-1020): Fixed JMS queue settings and appearance in Plugin Settings
+* **Bugfix** [CS-989](https://radiologics.atlassian.net/browse/CS-989): Fixed repeated queue entries for containers in "waiting" state
+* **Bugfix** [CS-998](https://radiologics.atlassian.net/browse/CS-998): Fixed display bug when reopening container history dialog 
+* **Bugfix** [CS-1001](https://radiologics.atlassian.net/browse/CS-1001): Use default Docker Swarm constraint values in event-launched containers
+* **Bugfix** [CS-1010](https://radiologics.atlassian.net/browse/CS-1010): Fixed calculation bug when tracking progress of orchestrations in activity monitor
+* **Bugfix** [CS-1023](https://radiologics.atlassian.net/browse/CS-1023), [CS-1025](https://radiologics.atlassian.net/browse/CS-1025): Fixed bugs in command availability for site-wide processing dashboard
+* **Bugfix** [CS-1029](https://radiologics.atlassian.net/browse/CS-1029): Fixed display bug in orchestration dialog
 
-## 3.6.2
-[Released](https://bitbucket.org/xnatdev/container-service/src/3.6.2/)
-* **Bugfix** [CS-975](https://radiologics.atlassian.net/browse/CS-975) Queued messages failed on ActiveMQ due to improper configuration of class serialization
 
 ## 3.6.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.1/)

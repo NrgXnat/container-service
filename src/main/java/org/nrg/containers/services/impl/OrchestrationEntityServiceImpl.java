@@ -1,6 +1,7 @@
 package org.nrg.containers.services.impl;
 
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.nrg.containers.daos.OrchestrationEntityDao;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.security.InvalidParameterException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -41,12 +43,12 @@ public class OrchestrationEntityServiceImpl extends AbstractHibernateEntityServi
         OrchestrationEntity oe;
         if (create) {
             oe = new OrchestrationEntity();
-            populate(oe, orchestration.getName(), wrapperList);
+            populate(oe, orchestration.getName(), orchestration.isHaltOnCommandFailure(), wrapperList);
             OrchestrationEntity created = create(oe);
             return created.toPojo();
         } else {
             oe = get(orchestration.getId());
-            populate(oe, orchestration.getName(), wrapperList);
+            populate(oe, orchestration.getName(), orchestration.isHaltOnCommandFailure(), wrapperList);
             oe.setEnabled(true);
             update(oe);
             return oe.toPojo();
@@ -171,9 +173,21 @@ public class OrchestrationEntityServiceImpl extends AbstractHibernateEntityServi
         return oe.isEnabled() && oe.getWrapperList().get(0).wrapperId() == firstWrapperId ? oe.toPojo() : null;
     }
 
+    @Override
+    @Transactional
+    public OrchestrationEntity get(long id) throws NotFoundException {
+        final OrchestrationEntity oe = retrieve(id);
+        if (oe == null) {
+            throw new NotFoundException("Could not find entity with ID " + id);
+        }
+        Hibernate.initialize(oe.getWrapperList());
+        return oe;
+    }
 
-    private void populate(OrchestrationEntity oe, String name, List<CommandWrapperEntity> wrapperList) {
+
+    private void populate(OrchestrationEntity oe, String name, boolean haltOnCommandFailure, List<CommandWrapperEntity> wrapperList) {
         oe.setName(name);
+        oe.setHaltOnCommandFailure(haltOnCommandFailure);
         oe.clearWrapperList();
         for (int i = 0; i < wrapperList.size(); i++) {
             OrchestratedWrapperEntity we;

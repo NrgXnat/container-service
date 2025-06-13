@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Strings;
@@ -17,6 +18,7 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandMountEntity;
 import org.nrg.containers.model.command.entity.CommandOutputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
+import org.nrg.containers.model.command.entity.CommandVisibility;
 import org.nrg.containers.model.command.entity.CommandWrapperDerivedInputEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperEntity;
 import org.nrg.containers.model.command.entity.CommandWrapperExternalInputEntity;
@@ -44,6 +46,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -79,6 +82,7 @@ public abstract class Command implements Serializable {
     @Nullable @JsonProperty("hash") public abstract String hash();
     @Nullable @JsonProperty("working-directory") public abstract String workingDirectory();
     @Nullable @JsonProperty("command-line") public abstract String commandLine();
+    @Nullable @JsonProperty("command-metadata") public abstract JsonNode commandMetadata();
     @Nullable @JsonProperty("override-entrypoint") public abstract Boolean overrideEntrypoint();
     @JsonProperty("mounts") public abstract ImmutableList<CommandMount> mounts();
     @JsonProperty("environment-variables") public abstract ImmutableMap<String, String> environmentVariables();
@@ -99,6 +103,8 @@ public abstract class Command implements Serializable {
     @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
     @Nullable @JsonProperty("ulimits") public abstract ImmutableMap<String, String> ulimits();
     @JsonProperty("secrets") public abstract List<Secret> secrets();
+    @JsonProperty("visibility") public abstract String visibility();
+
 
     @JsonCreator
     static Command create(@JsonProperty("id") final long id,
@@ -115,6 +121,7 @@ public abstract class Command implements Serializable {
                           @JsonProperty("hash") final String hash,
                           @JsonProperty("working-directory") final String workingDirectory,
                           @JsonProperty("command-line") final String commandLine,
+                          @JsonProperty("command-metadata") final JsonNode commandMetadata,
                           @JsonProperty("override-entrypoint") final Boolean overrideEntrypoint,
                           @JsonProperty("mounts") final List<CommandMount> mounts,
                           @JsonProperty("environment-variables") final Map<String, String> environmentVariables,
@@ -134,7 +141,8 @@ public abstract class Command implements Serializable {
                           @JsonProperty("gpus") final String gpus,
                           @JsonProperty("generic-resources") Map<String, String> genericResources,
                           @JsonProperty("ulimits") final Map<String, String> ulimits,
-                          @JsonProperty("secrets") final List<Secret> secrets) {
+                          @JsonProperty("secrets") final List<Secret> secrets,
+                          @JsonProperty("visibility") final String visibility) {
         return builder()
                 .id(id)
                 .name(name)
@@ -150,6 +158,7 @@ public abstract class Command implements Serializable {
                 .hash(hash)
                 .workingDirectory(workingDirectory)
                 .commandLine(commandLine)
+                .commandMetadata(commandMetadata)
                 .overrideEntrypoint(overrideEntrypoint)
                 .mounts(mounts == null ? Collections.emptyList() : mounts)
                 .environmentVariables(environmentVariables == null ? Collections.emptyMap() : environmentVariables)
@@ -170,6 +179,7 @@ public abstract class Command implements Serializable {
                 .genericResources(genericResources)
                 .ulimits(ulimits)
                 .secrets(secrets == null ? Collections.emptyList() : secrets)
+                .visibility(visibility == null ? CommandEntity.DEFAULT_VISIBILITY.getVisibilityType() : visibility)
                 .build();
     }
 
@@ -190,6 +200,7 @@ public abstract class Command implements Serializable {
                 .type(commandEntity.getType().getName())
                 .workingDirectory(commandEntity.getWorkingDirectory())
                 .commandLine(commandEntity.getCommandLine())
+                .commandMetadata(commandEntity.getCommandMetadata())
                 .overrideEntrypoint(commandEntity.getOverrideEntrypoint())
                 .reserveMemory(commandEntity.getReserveMemory())
                 .limitMemory(commandEntity.getLimitMemory())
@@ -224,7 +235,8 @@ public abstract class Command implements Serializable {
                                 .map(CommandWrapper::create)
                                 .collect(Collectors.toList()))
                 .secrets(commandEntity.getSecrets() == null ? Collections.emptyList() :
-                        new ArrayList<>(commandEntity.getSecrets()));
+                        new ArrayList<>(commandEntity.getSecrets()))
+                .visibility(commandEntity.getVisibilityType() == null ? CommandVisibility.PUBLIC_CONTAINER.getVisibilityType() : commandEntity.getVisibilityType().getVisibilityType());
 
         if (commandEntity.getType() == CommandType.DOCKER) {
             builder = builder.index(((DockerCommandEntity) commandEntity).getIndex())
@@ -270,6 +282,7 @@ public abstract class Command implements Serializable {
                 .hash(creation.hash())
                 .workingDirectory(creation.workingDirectory())
                 .commandLine(creation.commandLine())
+                .commandMetadata(creation.commandMetadata())
                 .overrideEntrypoint(creation.overrideEntrypoint())
                 .reserveMemory(creation.reserveMemory())
                 .limitMemory(creation.limitMemory())
@@ -293,7 +306,9 @@ public abstract class Command implements Serializable {
                                 .map(CommandWrapper::create)
                                 .collect(Collectors.toList())
                 )
-                .secrets(creation.secrets());
+                .secrets(creation.secrets())
+                .visibility(creation.visibility() == null ? CommandEntity.DEFAULT_VISIBILITY.getVisibilityType(): creation.visibility())
+                ;
     }
 
     /**
@@ -326,13 +341,32 @@ public abstract class Command implements Serializable {
                 .id(0L)
                 .name("")
                 .secrets(Collections.emptyList())
-                .type(CommandEntity.DEFAULT_TYPE.getName());
+                .type(CommandEntity.DEFAULT_TYPE.getName())
+                .visibility(CommandEntity.DEFAULT_VISIBILITY.getVisibilityType());
     }
+
+    @JsonIgnore
+    public boolean isPublicCommand() {
+        return visibility().toUpperCase(Locale.ROOT).equals(CommandVisibility.PUBLIC_CONTAINER.getVisibilityType().toUpperCase(Locale.ROOT));
+    }
+
+    @JsonIgnore
+    public boolean isPrivateCommand() {
+        return visibility().toUpperCase(Locale.ROOT).equals(CommandVisibility.PRIVATE_CONTAINER.getVisibilityType().toUpperCase(Locale.ROOT));
+    }
+
+    @JsonIgnore
+    public boolean isProtectedCommand() {
+        return visibility().toUpperCase(Locale.ROOT).equals(CommandVisibility.PROTECTED_CONTAINER.getVisibilityType().toUpperCase(Locale.ROOT));
+    }
+
+
 
     @Nonnull
     public List<String> validate() {
         final List<String> errors = new ArrayList<>();
         final List<String> commandTypeNames = CommandType.names();
+        final List<String> commandVisibility = CommandVisibility.visibilityTypes();
 
         if (StringUtils.isBlank(name())) {
             errors.add("Command name cannot be blank.");
@@ -356,7 +390,10 @@ public abstract class Command implements Serializable {
             errors.add(commandName + "Cannot validate command of type \"" + type() + "\". Known types: " +
                     StringUtils.join(commandTypeNames, ", "));
         }
-
+        if (visibility() != null && null == CommandVisibility.withVisibilityType(visibility())) {
+            errors.add(commandName + " has visibility set to an unknown value. Known types: " +
+                    StringUtils.join(commandVisibility, ", "));
+        }
         return errors;
     }
 
@@ -658,6 +695,8 @@ public abstract class Command implements Serializable {
 
         public abstract Builder commandLine(String commandLine);
 
+        public abstract Builder commandMetadata(JsonNode commandMetadata);
+
         public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
 
         public abstract Builder mounts(List<CommandMount> mounts);
@@ -720,7 +759,7 @@ public abstract class Command implements Serializable {
         public abstract Builder ulimits(Map<String, String> ulimits);
 
         public abstract Builder secrets(List<Secret> secrets);
-
+        public abstract Builder visibility(String visibility);
         public abstract Command build();
     }
 
@@ -1997,6 +2036,7 @@ public abstract class Command implements Serializable {
         @Nullable @JsonProperty("hash") public abstract String hash();
         @Nullable @JsonProperty("working-directory") public abstract String workingDirectory();
         @Nullable @JsonProperty("command-line") public abstract String commandLine();
+        @Nullable @JsonProperty("command-metadata") public abstract JsonNode commandMetadata();
         @Nullable @JsonProperty("override-entrypoint") public abstract Boolean overrideEntrypoint();
         @JsonProperty("mounts") public abstract ImmutableList<CommandMount> mounts();
         @JsonProperty("environment-variables") public abstract ImmutableMap<String, String> environmentVariables();
@@ -2017,6 +2057,7 @@ public abstract class Command implements Serializable {
         @Nullable @JsonProperty("generic-resources") public abstract ImmutableMap<String, String> genericResources();
         @Nullable @JsonProperty("ulimits") public abstract Map<String, String> ulimits();
         @JsonProperty("secrets") public abstract List<Secret> secrets();
+        @JsonProperty("visibility") public abstract String visibility();
 
         @JsonCreator
         static CommandCreation create(@JsonProperty("name") final String name,
@@ -2032,6 +2073,7 @@ public abstract class Command implements Serializable {
                                       @JsonProperty("hash") final String hash,
                                       @JsonProperty("working-directory") final String workingDirectory,
                                       @JsonProperty("command-line") final String commandLine,
+                                      @JsonProperty("command-metadata") final JsonNode commandMetadata,
                                       @JsonProperty("override-entrypoint") final Boolean overrideEntrypoint,
                                       @JsonProperty("mounts") final List<CommandMount> mounts,
                                       @JsonProperty("environment-variables") final Map<String, String> environmentVariables,
@@ -2051,9 +2093,10 @@ public abstract class Command implements Serializable {
                                       @JsonProperty("gpus") final String gpus,
                                       @JsonProperty("generic-resources") final ImmutableMap<String, String> genericResources,
                                       @JsonProperty("ulimits") final Map<String, String> ulimits,
-                                      @JsonProperty("secrets") final List<Secret> secrets) {
+                                      @JsonProperty("secrets") final List<Secret> secrets,
+                                      @JsonProperty("visibility") final String visibility) {
             return new AutoValue_Command_CommandCreation(name, label, description, version, schemaVersion, infoUrl, image,
-                    containerName, type, index, hash, workingDirectory, commandLine, overrideEntrypoint,
+                    containerName, type, index, hash, workingDirectory, commandLine, commandMetadata, overrideEntrypoint,
                     mounts == null ? ImmutableList.of() : ImmutableList.copyOf(mounts),
                     environmentVariables == null ? ImmutableMap.of() : ImmutableMap.copyOf(environmentVariables),
                     ports == null ? ImmutableMap.of() : ImmutableMap.copyOf(ports),
@@ -2062,7 +2105,9 @@ public abstract class Command implements Serializable {
                     commandWrapperCreations == null ? ImmutableList.of() : ImmutableList.copyOf(commandWrapperCreations),
                     reserveMemory, limitMemory, limitCpu, runtime, ipcMode,
                     autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits,
-                    secrets == null ? Collections.emptyList() : secrets);
+                    secrets == null ? Collections.emptyList() : secrets,
+                    visibility == null ? CommandVisibility.PUBLIC_CONTAINER.getVisibilityType() : visibility
+            );
         }
     }
 
@@ -2157,6 +2202,7 @@ public abstract class Command implements Serializable {
         @Nullable public abstract String hash();
         @Nullable public abstract String workingDirectory();
         @Nullable public abstract String commandLine();
+        @Nullable public abstract JsonNode commandMetadata();
         @Nullable public abstract Boolean overrideEntrypoint();
         public abstract ImmutableList<CommandMount> mounts();
         public abstract ImmutableMap<String, String> environmentVariables();
@@ -2177,6 +2223,7 @@ public abstract class Command implements Serializable {
         @Nullable public abstract ImmutableMap<String, String> genericResources();
         @Nullable public abstract ImmutableMap<String, String> ulimits();
         public abstract List<Secret> secrets();
+        public abstract String visibility();
 
         public static Builder initialize(final Command command) {
             return builder()
@@ -2192,6 +2239,7 @@ public abstract class Command implements Serializable {
                     .type(command.type())
                     .workingDirectory(command.workingDirectory())
                     .commandLine(command.commandLine())
+                    .commandMetadata(command.commandMetadata())
                     .overrideEntrypoint(command.overrideEntrypoint())
                     .environmentVariables(command.environmentVariables())
                     .mounts(command.mounts())
@@ -2211,7 +2259,8 @@ public abstract class Command implements Serializable {
                     .gpus(command.gpus())
                     .genericResources(command.genericResources())
                     .ulimits(command.ulimits())
-                    .secrets(command.secrets());
+                    .secrets(command.secrets())
+                    .visibility(command.visibility());
 
         }
 
@@ -2236,6 +2285,7 @@ public abstract class Command implements Serializable {
             public abstract Builder hash(String hash);
             public abstract Builder workingDirectory(String workingDirectory);
             public abstract Builder commandLine(String commandLine);
+            public abstract Builder commandMetadata(JsonNode commandMetadata);
             public abstract Builder overrideEntrypoint(Boolean overrideEntrypoint);
             public abstract Builder mounts(List<CommandMount> mounts);
             public abstract Builder environmentVariables(Map<String, String> environmentVariables);
@@ -2261,6 +2311,7 @@ public abstract class Command implements Serializable {
             public abstract Builder genericResources(Map<String, String> genericResources);
             public abstract Builder ulimits(Map<String, String> ulimits);
             public abstract Builder secrets(List<Secret> secrets);
+            public abstract Builder visibility(String visibility);
 
             public abstract ConfiguredCommand build();
         }

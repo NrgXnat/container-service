@@ -16,6 +16,7 @@ public class Orchestration {
     private List<Long> wrapperIds = new ArrayList<>();
     private String name;
     private boolean enabled;
+    private boolean haltOnCommandFailure = true;
 
     public Orchestration() {}
 
@@ -58,6 +59,15 @@ public class Orchestration {
         this.name = name;
     }
 
+    public boolean isHaltOnCommandFailure() {
+        return haltOnCommandFailure;
+    }
+
+    public void setHaltOnCommandFailure(boolean haltOnCommandFailure) {
+        this.haltOnCommandFailure = haltOnCommandFailure;
+    }
+
+
     @JsonIgnore
     @Override
     public boolean equals(Object o) {
@@ -66,6 +76,7 @@ public class Orchestration {
         Orchestration that = (Orchestration) o;
         return id == that.id &&
                 enabled == that.enabled &&
+                haltOnCommandFailure == that.haltOnCommandFailure &&
                 wrapperIds.equals(that.wrapperIds) &&
                 name.equals(that.name);
     }

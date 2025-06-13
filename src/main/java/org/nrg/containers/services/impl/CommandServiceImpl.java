@@ -109,7 +109,12 @@ public class CommandServiceImpl implements CommandService {
 
     @Override
     public void delete(final long id) {
-        delete(retrieve(id));
+        Command cmd = retrieve(id);
+        if (cmd == null) {
+            log.debug("Command with id " + id + " does not exist");
+            return;
+        }
+        delete(cmd);
     }
 
     @Override
@@ -117,7 +122,6 @@ public class CommandServiceImpl implements CommandService {
         for (final CommandWrapper commandWrapper : command.xnatCommandWrappers()) {
             commandEntityService.deleteWrapper(commandWrapper.id());
         }
-
         commandEntityService.delete(command.id());
     }
 
@@ -433,7 +437,7 @@ public class CommandServiceImpl implements CommandService {
         final boolean isSiteWide = StringUtils.isBlank(project);
 
         // Are they able to read the project at all?
-        if (!isSiteWide && !ContainerServicePermissionUtils.canReadProject(userI, project)) {
+        if (!isSiteWide  && !ContainerServicePermissionUtils.canReadProject(userI, project)) {
             log.debug("User \"{}\" cannot read project \"{}\"", userI.getUsername(), project);
             return Collections.emptyList();
         }
@@ -481,7 +485,7 @@ public class CommandServiceImpl implements CommandService {
 
         return available;
     }
-
+    
     @Override
     @Nonnull
     public List<CommandSummaryForContext> available(final String xsiType,
@@ -517,6 +521,16 @@ public class CommandServiceImpl implements CommandService {
     public boolean xsiTypesMatch(final @Nonnull String xsiType,
                                   final @Nonnull Set<String> wrapperXsiTypes) throws ElementNotFoundException {
         return ContainerServicePermissionUtils.xsiTypeEqualToOrInstanceOf(xsiType, wrapperXsiTypes);
+    }
+
+    /**
+     * Returns the project ids for which the wrapper identified by wrapperId has the status of status
+     * @param wrapperId Command wrapper Id
+     * @param status the status : enabled / disabled
+     * @return
+     */
+    public List<String> getProjects(final long wrapperId, final String status) {
+       return containerConfigService.getProjects(wrapperId, status);
     }
 
 

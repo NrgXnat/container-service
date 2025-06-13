@@ -9,6 +9,7 @@ import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -75,6 +76,7 @@ import org.nrg.xdat.om.XnatResource;
 import org.nrg.xdat.om.XnatSubjectassessordata;
 import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.ElementSecurity;
 import org.nrg.xdat.security.helpers.Groups;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
@@ -600,8 +602,10 @@ public class ContainerServiceImpl implements ContainerService {
                         configuredCommand.id(), wrapper.id(), wrapper.name(), container.databaseId());
                 log.debug("Container for wfid {}: {}", workflowid, container);
             }
-        } catch (NotFoundException | CommandResolutionException | UnauthorizedException e) {
-            handleFailure(workflow, e, "Command resolution");
+        } catch (CommandResolutionException cre) {
+            handleFailure(workflow, cre, "Command resolution", "Submitted data does not match command resolution requirements. ");
+        } catch (NotFoundException  | UnauthorizedException e) {
+            handleFailure(workflow, e, "");
             log.error("Container command resolution failed for wfid {}.", workflowid, e);
         } catch (NoDockerServerException | DockerServerException | ContainerException | UnsupportedOperationException e) {
             handleFailure(workflow, e, "Container launch");
@@ -667,7 +671,8 @@ public class ContainerServiceImpl implements ContainerService {
 
         try {
             log.info("Creating container from resolved command.");
-            final Container created = containerControlApi.create(preparedToLaunch, userI);
+            final ResolvedCommand preparedToCreate = appendToCommandLabels(preparedToLaunch, workflow, userI);
+            final Container created = containerControlApi.create(preparedToCreate, userI);
 
             if (workflow != null) {
                 // Update workflow with container information
@@ -1773,17 +1778,33 @@ public class ContainerServiceImpl implements ContainerService {
     private void handleFailure(@Nullable PersistentWorkflowI workflow,
                                @Nullable final Exception source,
                                @Nullable String statusSuffix) {
+        handleFailure(workflow, source, statusSuffix, null);
+    }
+
+    /**
+     * Updates workflow status to Failed based on the exception if provided, appends ' (statusSuffix)' if provided or
+     * discernible from exception class
+     * @param workflow the workflow
+     * @param source the exception source
+     * @param statusSuffix optional suffix (will try to determine from exception class if not provided)
+     */
+    private void handleFailure(@Nullable PersistentWorkflowI workflow,
+                               @Nullable final Exception source,
+                               @Nullable String statusSuffix,
+                               @Nullable String detailsPrefix) {
         if (workflow == null) return;
 
-        String details = "";
-        if (source != null) {
-            String exceptionName = source.getClass().getName().replace("Exception$", "");
-            statusSuffix = StringUtils.defaultIfBlank(statusSuffix, exceptionName);
-            details = StringUtils.defaultIfBlank(source.getMessage(), exceptionName);
-        }
-        statusSuffix = StringUtils.isNotBlank(statusSuffix) ?  " (" + statusSuffix + ")" : "";
+        String exceptionName = (source != null)
+                ? source.getClass().getName().replace("Exception$", "")
+                : "";
+        String message = (source != null)
+                ? StringUtils.defaultIfBlank(source.getMessage(), exceptionName)
+                : "";
+        String suffix = StringUtils.defaultIfBlank(statusSuffix, exceptionName);
+        String formattedSuffix = StringUtils.isNotBlank(suffix) ? " (" + suffix + ")" : "";
+        String status = PersistentWorkflowUtils.FAILED + formattedSuffix;
+        String details = StringUtils.defaultString(detailsPrefix) + message;
 
-        String status = PersistentWorkflowUtils.FAILED + statusSuffix;
         updateWorkflow(workflow, status, details);
     }
 
@@ -2006,7 +2027,7 @@ public class ContainerServiceImpl implements ContainerService {
 
             String project = workflow.getExternalid();
             if (StringUtils.isNotBlank(project) && workflow.getNextStepId() == null) {
-                // check if this is the start of an orchestrated sequence, WorkflowStatusEventOrchestrationListener will handle later steps
+                // check if this is the start of an orchestrated sequence, ContainerServiceWorkflowStatusEventListener will handle later steps
                 final Orchestration orchestration = getOrchestrationWhereWrapperIsFirst(project, resolvedCommand.wrapperId());
                 if (orchestration != null) {
                     workflow.setNextStepId(Long.toString(orchestration.getId()));
@@ -2165,7 +2186,6 @@ public class ContainerServiceImpl implements ContainerService {
         return Container.create(containerEntity);
     }
 
-    @Nonnull
     private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList) {
         return containerEntityList.stream().map(this::toPojo).collect(Collectors.toList());
     }
@@ -2366,4 +2386,29 @@ public class ContainerServiceImpl implements ContainerService {
         }
         return messageBuilder.substring(0, messageBuilder.length() - 2);
     }
+
+    private ResolvedCommand appendToCommandLabels(final ResolvedCommand preparedToLaunch, final PersistentWorkflowI workflow, final UserI userI) {
+        if (workflow != null) {
+            final ImmutableMap<String, String> containerLabels = preparedToLaunch.containerLabels();
+            Map<String, String> additionalContainerLabels = new HashMap<>();
+            if (workflow.getDataType() != null) {
+                additionalContainerLabels.put("XNAT_DATATYPE", ElementSecurity.GetSingularDescription(workflow.getDataType()));
+            }
+            if (workflow.getExternalid() != null) {
+                additionalContainerLabels.put("XNAT_PROJECT", workflow.getExternalid());
+            }
+            if (!StringUtils.isEmpty(workflow.getId())) {
+                additionalContainerLabels.put("XNAT_ID", workflow.getId());
+            }
+            additionalContainerLabels.put("XNAT_USER_EMAIL", userI.getEmail());
+            additionalContainerLabels.put("XNAT_USER_ID", userI.getLogin());
+
+            if (containerLabels != null && !containerLabels.isEmpty()) {
+                additionalContainerLabels.putAll(containerLabels);
+            }
+            return preparedToLaunch.toBuilder().containerLabels(additionalContainerLabels).build();
+        }
+        return preparedToLaunch;
+    }
+
 }

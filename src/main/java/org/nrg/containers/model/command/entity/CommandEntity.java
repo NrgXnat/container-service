@@ -4,7 +4,9 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.nrg.containers.model.command.entity.CommandVisibility;
 import org.hibernate.annotations.Type;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
@@ -38,6 +40,8 @@ import java.util.Objects;
 )
 public abstract class CommandEntity extends AbstractHibernateEntity {
     public static CommandType DEFAULT_TYPE = CommandType.DOCKER;
+    public static CommandVisibility DEFAULT_VISIBILITY = CommandVisibility.PUBLIC_CONTAINER;
+
     private String name;
     private String label;
     private String description;
@@ -48,6 +52,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private String containerName;
     private String workingDirectory;
     private String commandLine;
+    private JsonNode commandMetadata;
     private Boolean overrideEntrypoint;
     private List<CommandMountEntity> mounts;
     private Map<String, String> environmentVariables;
@@ -67,6 +72,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     private Map<String, String> genericResources;
     private Map<String, String> ulimits;
     private List<Secret> secrets;
+    private CommandVisibility visibility;
 
     @Nonnull
     public static CommandEntity fromPojo(@Nonnull final Command command) {
@@ -104,6 +110,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setContainerName(command.containerName());
         this.setWorkingDirectory(command.workingDirectory());
         this.setCommandLine(command.commandLine());
+        this.setCommandMetadata(command.commandMetadata());
         this.setOverrideEntrypoint(command.overrideEntrypoint());
         this.setEnvironmentVariables(command.environmentVariables());
         this.setReserveMemory(command.reserveMemory());
@@ -119,6 +126,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.setGenericResources(command.genericResources());
         this.setUlimits(command.ulimits());
         setSecrets(command.secrets());
+        this.setVisibilityType(CommandVisibility.withVisibilityType(command.visibility()));
+
 
         final List<CommandMountEntity> toRemoveMount = new ArrayList<>();
         final Map<String, Command.CommandMount> mountsByName = new HashMap<>();
@@ -218,6 +227,7 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
     @Transient
     public abstract CommandType getType();
 
+
     // @javax.persistence.Id
     // @GeneratedValue(strategy = GenerationType.TABLE)
     // // @Override
@@ -301,6 +311,16 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
 
     public void setCommandLine(final String commandLine) {
         this.commandLine = commandLine;
+    }
+
+    @Type(type = "jsonb")
+    @Column(columnDefinition = "jsonb")
+    public JsonNode getCommandMetadata() {
+        return commandMetadata;
+    }
+
+    public void setCommandMetadata(JsonNode def) {
+        commandMetadata = def;
     }
 
     public Boolean getOverrideEntrypoint() {
@@ -546,6 +566,15 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
         this.secrets = secrets == null ? new ArrayList<>() : secrets;
     }
 
+
+    public CommandVisibility getVisibilityType() {
+        return visibility;
+    }
+
+    public void setVisibilityType(final CommandVisibility visibility) {
+        this.visibility = visibility;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -580,12 +609,13 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 Objects.equals(this.gpus, that.gpus) &&
                 Objects.equals(this.genericResources, that.genericResources) &&
                 Objects.equals(this.ulimits, that.ulimits) &&
-                Objects.equals(this.secrets, that.secrets);
+                Objects.equals(this.secrets, that.secrets) &&
+                Objects.equals(this.visibility, that.visibility);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), name, label, description, version, schemaVersion, infoUrl, image, containerName, workingDirectory, commandLine, overrideEntrypoint, mounts, environmentVariables, inputs, outputs, commandWrapperEntities, reserveMemory, limitMemory, limitCpu, runtime, ipcMode, autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits, secrets);
+        return Objects.hash(super.hashCode(), name, label, description, version, schemaVersion, infoUrl, image, containerName, workingDirectory, commandLine, overrideEntrypoint, mounts, environmentVariables, inputs, outputs, commandWrapperEntities, reserveMemory, limitMemory, limitCpu, runtime, ipcMode, autoRemove, shmSize, network, containerLabels, gpus, genericResources, ulimits, secrets, visibility);
     }
 
     @Override
@@ -619,7 +649,8 @@ public abstract class CommandEntity extends AbstractHibernateEntity {
                 .add("gpus", gpus)
                 .add("generic-resources", genericResources)
                 .add("ulimits", ulimits)
-                .add("secrets", secrets);
+                .add("secrets", secrets)
+                .add("visibility", visibility);
     }
 
     @Override

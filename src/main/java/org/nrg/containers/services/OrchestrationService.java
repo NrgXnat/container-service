@@ -13,6 +13,9 @@ public interface OrchestrationService {
     Orchestration createOrUpdate(Orchestration orchestration) throws NotFoundException;
 
     @Nullable
+    Orchestration retrieve(final long orchestrationId) throws NotFoundException;
+
+    @Nullable
     Orchestration findWhereWrapperIsFirst(Orchestration.OrchestrationIdentifier oi);
 
     @Nullable
