@@ -6,6 +6,7 @@ import org.aspectj.lang.JoinPoint;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.authorization.AbstractXapiAuthorization;
 import org.nrg.xapi.exceptions.InsufficientPrivilegesException;
@@ -40,14 +41,14 @@ public class ContainerControlUserAuthorization extends AbstractXapiAuthorization
 
     /**
      * Tests whether the current user should be able to control a container. Authorized container control users
-     * include Site Admin, Project Owner, user with All Data Access, and user that launched container.
+     * include Container Manager, Project Owner, user with All Data Access, and user that launched container.
      * Derives container id(s) from @ContainerId annotation, or alternately the @WorkflowId annotation.
      * If no valid containerIds are found in @ContainerId or derived @WorkflowId comments, grant permission by default
      */
     protected boolean checkImpl(final AccessLevel accessLevel, final JoinPoint joinPoint, final UserI user, final HttpServletRequest request)
             throws InsufficientPrivilegesException {
 
-        if (Roles.isSiteAdmin(user) || ((XDATUser) user).isDataAccess() ||
+        if (Roles.checkRole(user, ContainerUtils.CONTAINER_MANAGER_ROLE) || ((XDATUser) user).isDataAccess() ||
                 isContainerController(user, getContainerIds(user, joinPoint))) {
             return true;
         }

@@ -14,11 +14,16 @@ import org.nrg.xdat.om.XnatSubjectdata;
 import org.nrg.xdat.schema.SchemaElement;
 import org.nrg.xdat.security.SecurityManager;
 import org.nrg.xdat.security.helpers.Permissions;
+import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.exception.ElementNotFoundException;
 import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.schema.Wrappers.GenericWrapper.GenericWrapperElement;
 import org.nrg.xft.security.UserI;
+import org.nrg.containers.exceptions.UnauthorizedException;
+import org.nrg.xdat.security.helpers.Roles;
+import org.nrg.containers.utils.ContainerUtils;
+import org.nrg.containers.exceptions.UnauthorizedException;
 
 import javax.annotation.Nonnull;
 import java.util.*;
@@ -85,6 +90,18 @@ public class ContainerServicePermissionUtils {
                 }
             });
 
+
+
+    public static void checkContainerManagerOrThrow(final UserI userI) throws UnauthorizedException {
+        if (!isContainerManager(userI)) {
+            throw new UnauthorizedException(String.format("User %s is not a Container Manager.", userI == null ? "" : userI.getLogin()));
+        }
+    }
+
+    public static boolean isContainerManager(final UserI userI)  {
+      return  Roles.checkRole(userI, ContainerUtils.CONTAINER_MANAGER_ROLE);
+    }
+
     /**
      * Verify the user has permission to read + edit everything the wrapper requires.
      * ...or at least put in our best effort to verify that.
@@ -142,6 +159,17 @@ public class ContainerServicePermissionUtils {
 
     public static boolean canReadProject(final UserI userI, final String project) {
         return canPerformActionOnXsiType(userI, project, XnatProjectdata.SCHEMA_ELEMENT_NAME, WrapperPermissionAction.READ, false);
+    }
+
+    public static boolean isCommandVisible(final Command command, final String project) {
+        if (command.isPublicCommand()) {
+            return true;
+        } else {
+            if (command.isPrivateCommand()) {
+
+            }
+        }
+        return true;
     }
 
     private static String resolveXsiType(final String xsiType) {

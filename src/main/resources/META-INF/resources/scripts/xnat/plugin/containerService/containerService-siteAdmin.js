@@ -11,11 +11,13 @@
  * Site-wide Admin UI functions for Container Services
  */
 
-console.log('containerServices-siteAdmin.js');
+console.log('containerService-siteAdmin.js');
 
 var XNAT = getObject(XNAT || {});
 XNAT.plugin = getObject(XNAT.plugin || {});
 XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
+XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = getObject(XNAT.plugin.containerService.assignProjectlauncher || {});
+
 
 (function(factory){
     if (typeof define === 'function' && define.amd) {
@@ -37,6 +39,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         restUrl = XNAT.url.restUrl,
         csrfUrl = XNAT.url.csrfUrl;
     let errorHandler;
+    var projectDataTypePluralName = XNAT.app.displayNames.plural.project;
+    var projectDataTypePluralNameLC = projectDataTypePluralName.toLowerCase();
+
+
 
     function spacer(width){
         return spawn('i.spacer', {
@@ -46,6 +52,27 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }
         })
     }
+
+         function formatInfo(key, val='', bold=false) {
+             var str = '';
+             if (bold) {
+               str +=  '<b>';
+             }
+             str += String(key).charAt(0).toUpperCase() + String(key).slice(1);
+             if (bold) {
+               str +=  '</b>';
+             }
+              if (val !== '') {
+                 str += ': '+val;
+                 str += '<br><br>';
+              }
+              return str;
+         }
+
+         function showVisibilityText(item) {
+               return formatInfo(item['visibility']);
+         }
+
 
     XNAT.plugin.containerService.errorHandler = errorHandler = function(e, title, closeAll){
         console.log(e);
@@ -71,6 +98,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             ]
         });
     }
+
+
+
 
     function csValidator(inputs){
         var errorMsg = [];
@@ -1222,6 +1252,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             dataType: 'json',
             success: function(data){
                 if (data) {
+                    if (data.length && Array.isArray(data)) {
+                       data = data.sort(function(a,b){ return (a.name > b.name) ? 1 : -1; });
+                    }
                     return data;
                 }
                 callback.apply(this, arguments);
@@ -1485,6 +1518,31 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         }
     };
 
+    commandListManager.filterCommandList = filterCommandList = function(){
+        // check all active filters
+        var clmTable = $(document).find('table.enabled-commands'),
+            commandFilterKey = clmTable.find('input.filter-name').val().toLowerCase() || false,
+            visibilityFilterKey = clmTable.find('input.filter-visibility').val().toLowerCase() || false;
+
+        var rowsToFilter = $(clmTable).find('tr.enabled-commands-listing');
+        if (!commandFilterKey &&  !visibilityFilterKey) {
+            rowsToFilter.removeClass('hidden');
+        } else {
+            rowsToFilter.each(function(){
+                // show this row only if filters are empty or have values matching the command or container
+                var showRow = (
+                    ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
+                    ($(this).data('visibility').toLowerCase().indexOf(visibilityFilterKey) >= 0 || !visibilityFilterKey ))
+
+                if (showRow) {
+                    $(this).removeClass('hidden')
+                } else {
+                    $(this).addClass('hidden')
+                }
+            })
+        }
+    }
+
 
     // create table for listing commands
     commandListManager.table = function(image){
@@ -1509,14 +1567,48 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             .th('<b>XNAT Actions</b>')
             .th('<b>Site-wide Config</b>')
             .th('<b>Version</b>')
-            .th({ width: 180, html: '<b>Actions</b>' });
+            .th('<b>Visibility</b>')
+            .th({html: '<b>Actions</b>' });
+
+        // add master switch
+        clmTable.tr({ addClass: 'header-row', 'style': { 'background-color': '#f3f3f3' }})
+            .td([ spawn('div',[filterCommandLabel()]) ])
+            .td()
+            .td()
+            .td()
+            .td([ spawn('div',[filterVisibility()]) ])
+            .td();
+
+        function filterCommandLabel(){
+            return spawn('input', {
+                addClass: 'filter-data filter-name',
+                type: 'text',
+                title: 'Filter on the command name',
+                placeholder: 'Filter by Command',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.commandListManager.filterCommandList
+                })
+        }
+
+
+        function filterVisibility(){
+            return spawn('input', {
+                addClass: 'filter-data filter-visibility',
+                type: 'text',
+                title: 'Filter on command visibility',
+                placeholder: 'Filter by Visibility',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.commandListManager.filterCommandList
+                })
+        }
+
 
         function viewLink(item, text){
             return spawn('a.link|href=#!', {
                 onclick: function(e){
                     e.preventDefault();
                     commandDefinition.getCommand(item.id).done(function(commandDef){
-                        commandDefinition.dialog(commandDef, false);
+                       configInfo.dialog(commandDef, text, false);
                     });
                 }
             }, [['b', text]]);
@@ -1533,28 +1625,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             }, '<i class="fa fa-pencil" title="Edit Command"></i>');
         }
 
-        function enabledCheckbox(item){
-            var enabled = !!item.enabled;
-            var ckbox = spawn('input.command-enabled', {
-                type: 'checkbox',
-                checked: enabled,
-                value: enabled,
-                data: { name: item.name },
-                onchange: function(){
-                    /*    // save the status when clicked
-                     var checkbox = this;
-                     enabled = checkbox.checked;
-                     */
-                }
-            });
-
-            return spawn('div.center', [
-                spawn('label.switchbox|title=' + item.name, [
-                    ckbox,
-                    ['span.switchbox-outer', [['span.switchbox-inner']]]
-                ])
-            ]);
-        }
 
         function deleteCommandButton(item){
             return spawn('button.btn.sm.delete', {
@@ -1582,7 +1652,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 title: 'Delete Command'
             }, [ spawn('i.fa.fa-trash') ]);
-        }
+            }
 
         commandListManager.getAll(imageName).done(function(data) {
             if (data.length) {
@@ -1601,12 +1671,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     } else {
                         xnatActions = 'N/A';
                     }
-                    clmTable.tr({title: command.name, data: {id: command.id, name: command.name, image: command.image}})
-                        .td([viewLink(command, command.name)]).addClass('name')
+                    clmTable.tr({title: command.name, addClass: 'enabled-commands-listing',  data: {id: command.id, name: command.name, image: command.image, visibility: command.visibility }})
+                        .td([viewLink(command, command.name), ]).addClass('name')
                         .td(xnatActions)
                         .td('N/A')
                         .td(command.version)
-                        .td([ spawn('div.center', [viewCommandButton(command), spacer(10), deleteCommandButton(command)]) ]);
+                        .td([ spawn('span.center', showVisibilityText(command)) ])
+                        .td({style: {'white-space':'nowrap'}},[ spawn('div.center', [viewCommandButton(command), spacer(4),configVisibility.containerVisibilityButton(command), spacer(4),  deleteCommandButton(command)]) ]);
                 }
 
             } else {
@@ -1678,15 +1749,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     imageListManager.init = function(container){
         var $manager = $$(container||'div#image-list-container');
-
-        // function newCommandButton() {
-        //     return spawn('button.btn.sm',{
-        //         html: 'New Command',
-        //         onclick: function(){
-        //             commandDefinition.dialog(null,true)
-        //         }
-        //     });
-        // }
 
         function deleteCommandList(image){
             content = spawn('div',[
@@ -1935,7 +1997,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     console.log('commandConfigManagement.js');
 
     var commandConfigManager,
-        configDefinition;
+        configDefinition, configInfo, configVisibility;
 
     XNAT.plugin.containerService.commandConfigManager = commandConfigManager =
         getObject(XNAT.plugin.containerService.commandConfigManager || {});
@@ -1943,11 +2005,23 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     XNAT.plugin.containerService.configDefinition = configDefinition =
         getObject(XNAT.plugin.containerService.configDefinition || {});
 
+    XNAT.plugin.containerService.configInfo = configInfo =
+        getObject(XNAT.plugin.containerService.configInfo || {});
+
+    XNAT.plugin.containerService.configVisibility = configVisibility =
+        getObject(XNAT.plugin.containerService.configVisibility || {});
 
     function configUrl(command,wrapperName,appended){
         appended = isDefined(appended) ? '?' + appended : '';
         if (!command || !wrapperName) return false;
         return csrfUrl('/xapi/commands/'+command+'/wrappers/'+wrapperName+'/config' + appended);
+    }
+
+    function visibilityUrl(command,visibility){
+        if (!command) return false;
+        var commandId = command['id'];
+        var appended =  '/visibility/' + visibility;
+        return csrfUrl('/xapi/command/'+ command + appended);
     }
 
     function configEnableUrl(commandObj,wrapperObj,flag){
@@ -1959,6 +2033,8 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     function deleteWrapperUrl(id){
         return csrfUrl('/xapi/wrappers/'+id);
     }
+
+
 
     commandConfigManager.getCommands = commandConfigManager.getAll = function(callback){
 
@@ -2104,6 +2180,131 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
     };
 
 
+   configInfo.dialog = function(command, text) {
+      var commandMetadataContent = "";
+      var commandMetadata = command['command-metadata'];
+      for (const key in commandMetadata) {
+                if (commandMetadata.hasOwnProperty(key)) {
+                    commandMetadataContent += `${formatInfo(key, commandMetadata[key], true)}`;
+                }
+      }
+      if (commandMetadataContent === "") {
+         commandMetadataContent = "No metadata available for " + text
+      }
+      XNAT.dialog.open({
+                  width: 450,
+                  title: 'Information about ' + text,
+                  content: commandMetadataContent,
+                  buttons: [
+                      {
+                          label: 'OK',
+                          isDefault: true,
+                          close: true
+                      },
+                      {
+                          label: 'Edit Command',
+                          isDefault: false,
+                          close: true,
+                          action: function(){
+                              commandDefinition.getCommand(command.id).done(function(commandDef){
+                                  commandDefinition.dialog(commandDef, false);
+                              });
+                          }
+                      }
+                  ]
+              });
+   }
+
+    configVisibility.containerVisibilityButton = function(item){
+        return spawn('button.btn.sm', {
+            onclick: function(e){
+                e.preventDefault();
+                configVisibility.dialog(item,  false);
+            },
+            title: 'Modify command visibility'
+        }, [ spawn('i.fa.fa-eye') ]);
+    }
+
+
+   configVisibility.showVisibilityHelpText = function(visibilityType) {
+      var helpText = "";
+      switch(visibilityType) {
+        case 'public':
+          helpText = 'The container would be visible to all project owners. <br> A project owner can enable a public container on their project.';
+          break;
+        case 'private':
+           helpText = 'The Container Manager can enable the private container for a project.';
+          break;
+        case 'protected':
+           helpText = 'The container would be visible to all project owners but they can be enabled for the project only by the Container Manager.';
+          break;
+      }
+      return spawn('span', helpText);
+   }
+
+   configVisibility.options = function(command) {
+    var existingCommandVisibility = command['visibility'];
+    var command_id = command['id'];
+      const visibilityAttributes = ["public", "private", "protected"];
+      let vLen = visibilityAttributes.length;
+      var spawnedArray = [];
+      for (let i = 0; i < vLen; i++) {
+        var visibilityStr = visibilityAttributes[i];
+        spawnedArray.push(
+           spawn('p',[spawn('input.config-enabled.wrapper-enable', {
+                           type: 'radio',
+                           checked: (visibilityStr === existingCommandVisibility ? 'checked' : ''),
+                           value: visibilityStr ,
+                           id: 'visibility-'+command_id,
+                           name: 'visibility',
+                           data: { visibility: visibilityStr, command: command_id }
+                           }
+                ), spawn('label', formatInfo(visibilityAttributes[i],'',true)), spawn('p', [configVisibility.showVisibilityHelpText(visibilityStr)])])
+         );
+      }
+      return spawnedArray;
+   }
+
+  configVisibility.dialog = function(command) {
+     var commandId = command['id'];
+       XNAT.dialog.open({
+          title: 'Modify command visibility',
+          content: spawn('div',[
+              spawn('div', configVisibility.options(command))
+          ]),
+          buttons: [
+              {
+                  label: 'Modify',
+                  close: true,
+                  isDefault: true,
+                  action: function () {
+                      // POST the updated command config
+                      var selectedVisibility = $("input[type='radio'][name='visibility']:checked").val();
+                      XNAT.xhr.postJSON({
+                          url: visibilityUrl(commandId,selectedVisibility),
+                          success: function() {
+                              imageListManager.refreshTable();
+                              commandConfigManager.refreshTable();
+                              XNAT.ui.banner.top(1000, '<b>"' + command['name'] + '"</b> updated.', 'success');
+                              XNAT.dialog.closeAll();
+                          },
+                          fail: function(e){
+                              errorHandler(e, 'Could Not Update Command Visibility Definition');
+                          }
+                      });
+              }},
+              {
+                  label: 'Cancel',
+                  action: function(){
+                      XNAT.dialog.closeAll();
+                  }
+              }
+          ]
+      });
+   }
+
+
+
     configDefinition.dialog = function(commandId,wrapperName){
         // get command definition
         configDefinition.getConfig(commandId,wrapperName)
@@ -2205,21 +2406,23 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
     };
 
-    commandConfigManager.filterCommandList = filterCommandList = function(){
+    commandConfigManager.filterCommandConfigList = filterCommandConfigList = function(){
         // check all active filters
         var ccmTable = $(document).find('table.sitewide-command-configs'),
             commandFilterKey = ccmTable.find('input.filter-commandlabel').val().toLowerCase() || false,
             containerFilterKey = ccmTable.find('input.filter-container').val().toLowerCase() || false;
+            visibilityFilterKey = ccmTable.find('input.filter-visibility').val().toLowerCase() || false;
 
         var rowsToFilter = $(ccmTable).find('tr.command-config-listing');
-        if (!commandFilterKey && !containerFilterKey) {
+        if (!commandFilterKey && !containerFilterKey && !visibilityFilterKey) {
             rowsToFilter.removeClass('hidden');
         } else {
             rowsToFilter.each(function(){
                 // show this row only if filters are empty or have values matching the command or container
                 var showRow = (
                     ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
-                    ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ));
+                    ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ) &&
+                    ($(this).data('visibility').toLowerCase().indexOf(visibilityFilterKey) >= 0 || !visibilityFilterKey ))
 
                 if (showRow) {
                     $(this).removeClass('hidden')
@@ -2247,13 +2450,15 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             .th({ addClass: 'left', html: '<b>XNAT Command Label</b>' })
             .th('<b>Container</b>')
             .th('<b>Enabled</b>')
-            .th({ width: 170, html: '<b>Actions</b>' });
+            .th('<b>Visibility</b>')
+            .th({html: '<b>Actions</b>' });
 
         // add master switch
         ccmTable.tr({ addClass: 'header-row', 'style': { 'background-color': '#f3f3f3' }})
             .td([ spawn('div',[filterCommandLabel()]) ])
             .td([ spawn('div',[filterContainer()]) ])
             .td([ spawn('div',[masterCommandCheckbox()]) ])
+            .td([ spawn('div',[filterVisibility()]) ])
             .td();
 
         function viewLink(item, wrapper){
@@ -2263,18 +2468,33 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             return spawn('a.link|href=#!', {
                 onclick: function(e){
                     e.preventDefault();
-                    configDefinition.dialog(item.id, wrapper.name, false);
+                    configInfo.dialog(item,  wrapper.name, false);
                 }
             }, [['b', label]]);
         }
+
+    function manageProjectsButton(command, wrapper, title) {
+       if (command['visibility'] === "public") {
+         return spacer(1);
+       }
+        return spawn('button.btn.btn-sm.edit', {
+            onclick: function (e) {
+                e.preventDefault();
+                assignProjectlauncher.assignProject(command, wrapper, command.image);
+            },
+            title: "Manage which " + projectDataTypePluralNameLC + " are associated with " + title
+        }, [ spawn('i.fa.fa-list') ]);
+    }
+
 
         function editConfigButton(item,wrapper){
             return spawn('button.btn.sm', {
                 onclick: function(e){
                     e.preventDefault();
                     configDefinition.dialog(item.id, wrapper.name, false);
-                }
-            }, 'Set Defaults');
+                },
+                title: 'Set defaults'
+            }, [ spawn('i.fa.fa-pencil') ]);
         }
 
         function deleteConfigButton(wrapper){
@@ -2388,7 +2608,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 title: 'Filter on the command label',
                 placeholder: 'Filter by Command',
                 style: { width: 'calc(100% - 12px)'},
-                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandList
+                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandConfigList
                 })
         }
 
@@ -2399,9 +2619,21 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 title: 'Filter on the container name',
                 placeholder: 'Filter by Container',
                 style: { width: 'calc(100% - 12px)'},
-                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandList
+                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandConfigList
                 })
         }
+
+        function filterVisibility(){
+            return spawn('input', {
+                addClass: 'filter-data filter-visibility',
+                type: 'text',
+                title: 'Filter on the container visibility',
+                placeholder: 'Filter by Visibility',
+                style: { width: 'calc(100% - 12px)'},
+                onkeyup: XNAT.plugin.containerService.commandConfigManager.filterCommandConfigList
+                })
+        }
+
 
         commandConfigManager.getAll().done(function(data) {
             wrapperList = {};
@@ -2426,12 +2658,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                             var label = (wrapper.description.length) ?
                                 wrapper.description :
                                 wrapper.name;
-
-                            ccmTable.tr({title: label, addClass: 'command-config-listing', data: {wrapperid: wrapper.id, commandid: command.id, name: wrapper.name, image: command.image}})
-                                .td([ viewLink(command, wrapper) ]).addClass('name')
+                            ccmTable.tr({title: label, addClass: 'command-config-listing', data: {wrapperid: wrapper.id, commandid: command.id, name: wrapper.name, image: command.image, visibility: command.visibility}})
+                                .td([ viewLink(command, wrapper)]).addClass('name')
                                 .td([ spawn('span.truncate.truncate200', command.image ) ])
                                 .td([ spawn('div', [enabledCheckbox(command,wrapper)]) ])
-                                .td([ spawn('div.center', [editConfigButton(command,wrapper), spacer(10), deleteConfigButton(wrapper)]) ]);
+                                .td([ spawn('span.center', showVisibilityText(command)) ])
+                                .td({style: {'white-space':'nowrap'}}, [ spawn('div.center', [editConfigButton(command,wrapper), spacer(4), manageProjectsButton(command, wrapper, label), spacer(4), deleteConfigButton(wrapper) ])]);
                         }
                     }
                 }
@@ -2478,7 +2710,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         var $manager = $$(container||'div#command-config-list-container');
 
         commandConfigManager.container = $manager;
-
+        assignProjectlauncher.init();
         $manager.append(commandConfigManager.table());
     };
 
@@ -2583,6 +2815,18 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     });
                 }
 
+                function spawnHaltOnCommandFailure(haltOnCommandFailure) {
+                  return   XNAT.ui.panel.input.switchbox({
+                               name: 'haltOnCommandFailure',
+                               label: 'Halt?',
+                               id: 'orchestration-haltOnCommandFailure',
+                               checked: arguments.length === 0 ? 'true' : haltOnCommandFailure,
+                               onText: "Halt on failure",
+                               offText: "Continue on failure",
+                               description: 'Halt downstream orchestration steps if an intermediate container fails'
+                     });
+                }
+
                 function setFirst(firstSel, prev) {
                     firstSel.find('option').prop('disabled', false);
                     firstSel.parents('div.element-wrapper').find('div.description').text(firstDesc);
@@ -2659,12 +2903,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 }
 
                 panel.append(spawn('div#enabled-message', {
-                    classes: 'panel-element ' + (enabled ? 'success' : 'warning'),
-                    style: 'display: none'
+                    classes: (enabled ? 'success' : 'warning'),
+                    style: 'display: none; margin: 1em 0;'
                 }, enabled ? enabledMsg : disabledMsg));
                 let wrappers = [];
                 if (o) {
                     panel.append(spawnNameInput(o.name));
+                    panel.append(spawnHaltOnCommandFailure(o.haltOnCommandFailure));
                     o.wrapperIds.forEach(function(wid, i){
                         wrappers.push(spawnWrapperSelect(i, wid));
                     });
@@ -2678,6 +2923,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                     panel.find('#enabled-message').show();
                 } else {
                     panel.append(spawnNameInput());
+                    panel.append(spawnHaltOnCommandFailure());
                     wrappers.push(spawnWrapperSelect(0));
                     wrappers.push(spawnWrapperSelect(1));
                     panel.append(spawn('div#orchestrationWrappers', wrappers));
@@ -2704,6 +2950,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                         const data = {
                             'name': panel.find('#orchestration-name').val(),
                             'enabled': true,
+                            'haltOnCommandFailure': panel.find('#orchestration-haltOnCommandFailure').is(':checked'),
                             'wrapperIds': []
                         };
                         data.wrapperIds = panel.find('select.orchestrationWrapperSelect').map(function() {

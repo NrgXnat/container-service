@@ -18,6 +18,8 @@ serverSetupPanel:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-history.js"
         commandAutomationScript:
             tag: script|src="~/scripts/xnat/plugin/containerService/commandAutomation.js"
+        csSiteAdminManageProjectsScripts:
+            tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin-assignProject.js"
         csSiteAdminScripts:
             tag: script|src="~/scripts/xnat/plugin/containerService/containerService-siteAdmin.js"
         jqueryUi:
@@ -233,11 +235,18 @@ queueSettingsForm:
     id: queue-settings-form
     contentType: json
     method: POST
-    element:
-        style:
-            padding: 20px 0
     action: "/xapi/jms_queues"
     contents:
+        restartNote:
+            tag: div.warning
+            contents:
+                "Changing JMS concurrency settings requires restarting the message listener container(s). Messages that are currently being processed will complete normally, but no new messages will be processed during the restart period. The container(s) will resume processing with the new concurrency settings once fully restarted. Changes may take a few moments to take effect."
+        scaleDownNote:
+            tag: div.warning
+            element:
+                style: "margin: 5px 0 10px 0;"
+            contents:
+                "Changing the minimum concurrency will not immediately reduce active consumers if the current thread count still falls between the new minimum and maximum. However, consumers will automatically scale down to the new minimum over time during periods of low message activity."
         stagingQueueMin:
             kind: panel.input.text
             name: concurrencyMinStagingQueue
@@ -291,6 +300,7 @@ siteSettings:
     name: containerAdminPage
     label: Administer Container Service
     meta:
+        restricted: ContainerManager
         tabGroups:
             containerServiceTabGroup: Container Service
     contains: tabs

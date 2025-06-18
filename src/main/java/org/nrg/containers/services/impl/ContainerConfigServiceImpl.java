@@ -17,6 +17,12 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -142,6 +148,45 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
         return StringUtils.isBlank(project) ? isEnabledForSite(wrapperId) : isEnabledForProject(project, wrapperId);
     }
 
+    @Override
+    public List<String> getProjects(final long wrapperId, final String status) {
+        final String path = String.format(WRAPPER_CONFIG_PATH_TEMPLATE, wrapperId);
+        if (status == null || (!status.equalsIgnoreCase("ENABLED") &&  !status.equalsIgnoreCase("DISABLED"))) {
+            return Collections.emptyList();
+        }
+        final List<Configuration> configurations = configService.getConfigsByTool(TOOL_ID);
+        if (Objects.isNull(configurations)) {
+            return Collections.emptyList();
+        } else {
+            Predicate<Configuration> isSamePath = c -> c.getPath().equals(path);
+            Predicate<Configuration> isProjectScope = c -> c.getScope().equals(Scope.Project);
+            List<String> possibleProjects =   configurations.stream()
+                                                .filter(isProjectScope.and(isSamePath))
+                                                .filter(Objects::nonNull)
+                                                .map(c -> c.getEntityId())
+                                                .distinct()
+                                                .collect(Collectors.toList());
+            List<String>  projectsByStatus = new ArrayList<>();
+            for (String pId : possibleProjects) {
+                CommandConfigurationInternal configurationInternal = getCommandConfiguration(Scope.Project, pId, wrapperId);
+                if (configurationInternal != null) {
+                    if (status == null) {
+                        projectsByStatus.add(pId);
+                    } else {
+                            Boolean enabledStatus = configurationInternal.enabled();
+                            if (enabledStatus && status.equalsIgnoreCase("ENABLED")) {
+                                projectsByStatus.add(pId);
+                            } else if (!enabledStatus && status.equalsIgnoreCase("DISABLED")){
+                                projectsByStatus.add(pId);
+                            }
+                    }
+                }
+            }
+            return projectsByStatus;
+        }
+    }
+
+
     private void setCommandEnabled(final Boolean enabled, final Scope scope, final String project, final long wrapperId, final String username, final String reason) throws CommandConfigurationException {
         final CommandConfigurationInternal alreadyExists = getCommandConfiguration(scope, project, wrapperId);
         final CommandConfigurationInternal toSet =
@@ -194,6 +239,8 @@ public class ContainerConfigServiceImpl implements ContainerConfigService {
         final CommandConfigurationInternal commandConfigurationInternal = getCommandConfiguration(scope, project, wrapperId);
         return commandConfigurationInternal == null ? false : commandConfigurationInternal.enabled();
     }
+
+
 
     @Nullable
     private CommandConfigurationInternal getCommandConfiguration(final Scope scope, final String project, final long wrapperId) {

@@ -16,6 +16,8 @@ import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.security.ContainerControlUserAuthorization;
 import org.nrg.containers.security.ContainerId;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.utils.ContainerUtils;
+import org.nrg.xdat.security.helpers.Roles;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xapi.rest.AbstractXapiRestController;
@@ -39,6 +41,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.nrg.containers.security.ContainerManagerUserAuthorization;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -50,7 +53,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.nrg.containers.services.ContainerService.XNAT_PASS;
-import static org.nrg.xdat.security.helpers.AccessLevel.Admin;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 import static org.nrg.xdat.security.helpers.AccessLevel.Read;
@@ -134,7 +136,8 @@ public class ContainerRestApi extends AbstractXapiRestController {
                 scrubProtectedData(container);
     }
 
-    @XapiRequestMapping(value = "/container/name/{name}", method = GET, restrictTo = Admin)
+    @AuthDelegate(ContainerManagerUserAuthorization.class)
+    @XapiRequestMapping(value = "/container/name/{name}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Containers by database name")
     @ResponseBody
     public Container getByName(final @PathVariable String name,
@@ -164,9 +167,10 @@ public class ContainerRestApi extends AbstractXapiRestController {
         return ResponseEntity.noContent().build();
     }
 
-    @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Admin)
+    @AuthDelegate(ContainerManagerUserAuthorization.class)
+    @XapiRequestMapping(value = "/containers/{id}/finalize", method = POST, produces = JSON, restrictTo = Authorizer)
     @ApiOperation(value = "Finalize Container")
-    public void finalize(final @PathVariable String id) throws NotFoundException, ContainerException, DockerServerException, NoDockerServerException {
+    public void finalize(final @PathVariable String id) throws NotFoundException, ContainerException, DockerServerException, NoDockerServerException, UnauthorizedException {
         final UserI userI = getSessionUser();
         containerService.finalize(id, userI);
     }
@@ -200,7 +204,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
     }
 
     private Boolean isUserOwnerOrAdmin(UserI user, Container container){
-        return (Groups.isSiteAdmin(user) || Groups.hasAllDataAccess(user) ||
+        return (Roles.checkRole(user, ContainerUtils.CONTAINER_MANAGER_ROLE) || Groups.hasAllDataAccess(user) ||
                 Permissions.isProjectOwner(user, container.project()) ||
                 user.getLogin().contentEquals(container.userId()));
     }
@@ -222,6 +226,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                         .inputs(new ArrayList<>())
                         .outputs(new ArrayList<>())
                         .history(new ArrayList<>())
+                        .containerLabels(new HashMap<>())
                         .build();
     }
 
@@ -277,6 +282,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
     private static String getAttachmentDisposition(final String name, final String extension) {
         return String.format(ATTACHMENT_DISPOSITION, name, extension);
     }
+
 
     @ResponseStatus(value = HttpStatus.NOT_FOUND)
     @ExceptionHandler(value = {NotFoundException.class})

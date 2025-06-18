@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
+import org.springframework.jms.config.JmsListenerEndpointRegistry;
 import org.springframework.security.authentication.TestingAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -40,9 +41,8 @@ public class QueueSettingsRestApiTestConfig extends WebSecurityConfigurerAdapter
 
     @Bean
     public QueuePrefsBean queuePrefsBean(final NrgPreferenceService fakePrefsService,
-                                         final DefaultJmsListenerContainerFactory finalizingQueueListenerFactory,
-                                         final DefaultJmsListenerContainerFactory stagingQueueListenerFactory) {
-        return new QueuePrefsBean(fakePrefsService, finalizingQueueListenerFactory, stagingQueueListenerFactory);
+                                         final JmsListenerEndpointRegistry registry) {
+        return new QueuePrefsBean(fakePrefsService, registry);
     }
 
     @Bean

@@ -17,6 +17,8 @@ import com.jayway.jsonpath.spi.mapper.MappingException;
 import lombok.extern.slf4j.Slf4j;
 import org.ahocorasick.trie.Emit;
 import org.ahocorasick.trie.Trie;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -71,17 +73,12 @@ import org.nrg.containers.services.DockerService;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.xdat.XDAT;
-import org.nrg.xdat.om.XnatProjectdata;
-import org.nrg.xdat.om.base.BaseXnatExperimentdata;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
-import org.nrg.xft.exception.DBPoolException;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
-import org.nrg.xnat.exceptions.InvalidArchiveStructure;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.URIManager.ArchiveItemURI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
@@ -105,7 +102,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -274,6 +270,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
     }
 
+    @SuppressWarnings("LoggingSimilarMessage")
     private class CommandResolutionHelper {
 
         private final CommandWrapper commandWrapper;
@@ -393,8 +390,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Resolving input tree with root input \"{}\".", rootNode.input().name());
                 final ResolvedInputTreeNode<? extends Input> resolvedRootNode =
                         resolveNode(rootNode, null, resolvedInputValuesByReplacementKey, resolveFully);
-                if (resolveFully && resolvedRootNode.input().type().equals("file") && resolvedRootNode.valuesAndChildren().get(0).resolvedValue().value().isEmpty()) {
-                    log.debug("Root input \"{}\" is a file without a specified value. Skipping.");
+                if (resolveFully && resolvedRootNode.input().type().equals("file") && StringUtils.isBlank(resolvedRootNode.valuesAndChildren().get(0).resolvedValue().value())) {
+                    log.debug("Root input \"{}\" is a file without a specified value. Skipping.", resolvedRootNode.input().name());
                     continue;
                 }
                 log.debug("Done resolving input tree with root input \"{}\".", rootNode.input().name());
@@ -428,6 +425,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .commandName(command.name())
                     .commandLabel(command.label())
                     .commandDescription(command.description())
+                    .commandMetadata(command.commandMetadata())
                     .image(command.image())
                     .type(command.type())
                     .overrideEntrypoint(command.overrideEntrypoint() == null ? Boolean.FALSE : command.overrideEntrypoint())
@@ -671,7 +669,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
          * Determine depth needed for json serialization of input
          * @param typesMap  the current map
          * @param input     the input
-         * @param childToParentsMap child input name -> list of parents (parent, grandparent, etc)
+         * @param childToParentsMap child input name -> list of parents (parent, grandparent, etc.)
          */
         private void addTypeDependencies(Map<String, Set<String>> typesMap,
                                          CommandWrapperInput input,
@@ -743,7 +741,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         }
 
         /**
-         * Get all parents (parent, grandparent, etc) for input
+         * Get all parents (parent, grandparent, etc.) for input
          *
          * @param childToParentsMap map input name -> parent names
          * @param input             the input
@@ -758,7 +756,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 if (input.parentIsAboveInHierarchy(parent)) {
                     // We only need to add load type dependencies from parents who are above us in the tree
                     // (project > subject > session > [assessor/scan] > resource > file); we don't need to pass
-                    // loadtypes back down the tree
+                    // load types back down the tree
                     if (parent instanceof CommandWrapperDerivedInput) {
                         getParents(childToParentsMap, (CommandWrapperDerivedInput) parent, inputsByName);
                         parents.addAll(childToParentsMap.get(parent.name()));
@@ -1605,8 +1603,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                                    final boolean loadFiles)
                 throws CommandResolutionException, UnauthorizedException {
             if (log.isDebugEnabled()) {
-                log.debug("Resolving input \"" + preresolvedInputNode.input().name() + "\"" +
-                        (parentValue == null ? "" : " for parent value \"" + parentValue.value() + "\"") + ".");
+                log.debug("Resolving input \"{}\"{}.", preresolvedInputNode.input().name(), parentValue == null ? "" : " for parent value \"" + parentValue.value() + "\"");
             }
             final ResolvedInputTreeNode<? extends Input> thisNode =
                     ResolvedInputTreeNode.create(preresolvedInputNode);
@@ -1721,7 +1718,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 }
             } else {
                 String message = "Input \"" + node.input().name() + "\" ";
-                if (resolvedValueAndChildren.size() == 0) {
+                if (resolvedValueAndChildren.isEmpty()) {
                     // This node has no values, so we can't add any uniquely resolved values to the map
                     message += "could not be resolved for this item. You might check the JSONPath matchers in " +
                             "command.json and confirm that this item has " + node.input().type() + " data.";
@@ -1733,7 +1730,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 if (resolveFully && node.input().required()) {
                     // we're resolving for real, throw exception
                     throw new CommandResolutionException(message);
-                } else if (node.input() instanceof CommandWrapperDerivedInput && node.input().required() && resolvedValueAndChildren.size() == 0) {
+                } else if (node.input() instanceof CommandWrapperDerivedInput && node.input().required() && resolvedValueAndChildren.isEmpty()) {
                     //we're in pre-resolve, but we will never find matching data for this input
                     throw new CommandPreResolutionException("The following required fields cannot be resolved using the provided data: " + node.input().name());
                 }else {
@@ -1885,7 +1882,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 } catch (Throwable e) {
                     log.error("Error while attempting to parse:\n{} \nwith XMLPath\n {}", jsonPathSearchResult, parser, e);
                 }
-                // Xpath failed for some reason, maybe this is a regular expresion.
+                // Xpath failed for some reason, maybe this is a regular expression.
                 if (result == null){
                     try {
                         Matcher matcher = Pattern.compile(parser).matcher(jsonPathSearchResult);
@@ -2213,7 +2210,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.debug("{}", commandOutput);
 
             final List<CommandWrapperOutput> commandOutputHandlers = wrapperOutputsByHandledCommandOutputName.get(commandOutput.name());
-            if (commandOutputHandlers == null || commandOutputHandlers.size() == 0) {
+            if (CollectionUtils.isEmpty(commandOutputHandlers)) {
                 throw new CommandResolutionException(String.format("No wrapper output handler was configured to handle command output \"%s\".", commandOutput.name()));
             }
             log.debug("Found {} Output Handlers for Command output \"{}\".", commandOutputHandlers.size(), commandOutput.name());
@@ -2235,7 +2232,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 //   B. That input object is upload-to-able
                 final ResolvedInputValue parentInputResolvedValue = getInputValueByName(commandOutputHandler.targetName(), resolvedInputTrees);
                 if (parentInputResolvedValue != null) {
-                    // If we are here, we know the target is an input and we have its value.
+                    // If we are here, we know the target is an input, and we have its value.
                     log.debug("Handler \"{}\"'s target is input \"{}\". Checking if the input's value makes a legit target.", commandOutputHandler.name(), commandOutputHandler.targetName());
 
                     // Next check that the handler target input's value is an XNAT object
@@ -2280,7 +2277,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     log.debug("User has permission to create an output {} in project {}", commandOutputHandler.type(), project);
                 } else {
                     // If we are here, either the output handler is uploading to another output,
-                    // or its target is just wrong and we can't find anything
+                    // or its target is just wrong, and we can't find anything
 
                     log.debug("Handler \"{}\"'s target \"{}\" is not an input with a unique value. Is it another output handler?", commandOutputHandler.name(), commandOutputHandler.targetName());
 
@@ -2696,7 +2693,6 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             return xnatModelObject;
         }
 
-        @Nonnull
         private boolean resolveMountPathForModelObject(@Nonnull CommandMount commandMount, @Nonnull XnatModelObject xnatModelObject, StringBuilder mountPath) throws CommandResolutionException {
             boolean isBuildPath = false;
             String currentMountPath;
@@ -2761,8 +2757,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     copyLocalFiles(srcPath, currentMountPath, srcIsFile);
                 }
             }
-            //Adding the mount path to the input string builder so as to be able to return both the mount path itself
-            //and whether we're working with a build directory or an archive directory. Definitely a hack but I don't
+            //Adding the mount path to the input string builder to be able to return both the mount path itself
+            //and whether we're working with a build directory or an archive directory. Definitely a hack, but I don't
             //think it should introduce any issues.
             mountPath.delete(0, mountPath.length()).append(currentMountPath);
             return isBuildPath;
@@ -2803,16 +2799,16 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         /**
          * Resolves a templated string by replacing its template substrings.
-         *
+         * <p>
          * Many fields in the command definition may contain templated strings. These
          * strings are allowed to contain placeholder values, which are intended to be replaced
          * by real values at resolution time.
-         *
+         * <p>
          * A templatized string may draw its value from anywhere in the command or wrapper by encoding the
          * value that it needs as a JSONPath expression. This JSONPath expression will be extracted from
          * the templatized string, used to search through the command or wrapper, and the result replaced into
          * the templatized string. See {@link #resolveJsonpathSubstring(String)}.
-         *
+         * <p>
          * If the templatized string needs a command or wrapper input value, then the full JSONPath search
          * syntax is not required. Simply use the input's replacement key (by default the input's name
          * pre- and postfixed by '#' characters) as the template, and this method will replace it
@@ -2831,7 +2827,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.trace("Template is blank.");
                 return template;
             }
-            if (valuesMap == null || valuesMap.size() == 0) {
+            if (MapUtils.isEmpty(valuesMap)) {
                 log.trace("No template replacement values found.");
                 return template;
             }
@@ -2872,7 +2868,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         /**
          * Checks an input string for a JSONPath substring, extracts it,
          * and uses it to search the command or wrapper for the value.
-         *
+         * <p>
          * The JSONPath search string can search through the runtime values of the command or the command wrapper
          * (as far as they are determined).
          * The JSONPath substrings should be surrounded by caret characters ('^')
@@ -3028,7 +3024,19 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                     constraint.attribute(), value, constraint.values());
                         }
                     } else {
-                        log.debug("Skipping constraint {}. No user selected value.", constraint.attribute());
+                        final List<String> values = constraint.values();
+                        if (CollectionUtils.isNotEmpty(values)) {
+                            String resolvedConstraint = constraint.asStringConstraint(values.get(0));
+                            if (resolvedConstraint != null) {
+                                resolvedConstraints.add(resolvedConstraint);
+                                log.debug("Resolved user-settable constraint \"{}\" from default constraint values", resolvedConstraint);
+                            } else {
+                                log.error("Skipping constraint {}. Value {} from the constraint's allowed values {} was invalid, which shouldn't happen",
+                                          constraint.attribute(), value, constraint.values());
+                            }
+                        } else {
+                            log.debug("Skipping constraint {}. No user-selected or default value found.", constraint.attribute());
+                        }
                     }
                 } else {
                     // Always add non-user-settable constraints (with default value)
@@ -3115,6 +3123,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         } catch (IOException e) {
             throw new CommandResolutionException("Could not create build directory", e);
         }
+        //noinspection ResultOfMethodCallIgnored
         created.toFile().setWritable(true);
         return buildDir;
     }

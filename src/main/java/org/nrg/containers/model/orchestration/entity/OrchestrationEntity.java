@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class OrchestrationEntity extends AbstractHibernateEntity {
     private String name;
+    private boolean haltOnCommandFailure = true;
     private List<OrchestratedWrapperEntity> wrapperList = new ArrayList<>();
     private List<OrchestrationProjectEntity> projects = new ArrayList<>();
 
@@ -26,6 +27,16 @@ public class OrchestrationEntity extends AbstractHibernateEntity {
     public void setName(String name) {
         this.name = name;
     }
+
+    @NotNull
+    public boolean isHaltOnCommandFailure() {
+        return haltOnCommandFailure;
+    }
+
+    public void setHaltOnCommandFailure(boolean halt) {
+        this.haltOnCommandFailure = halt;
+    }
+
 
     @OneToMany(mappedBy = "orchestrationEntity",
             cascade = CascadeType.ALL,
@@ -83,6 +94,7 @@ public class OrchestrationEntity extends AbstractHibernateEntity {
         orchestration.setId(getId());
         orchestration.setName(getName());
         orchestration.setEnabled(isEnabled());
+        orchestration.setHaltOnCommandFailure(isHaltOnCommandFailure());
         orchestration.setWrapperIds(wrapperList.stream()
                 .map(OrchestratedWrapperEntity::wrapperId)
                 .collect(Collectors.toList()));

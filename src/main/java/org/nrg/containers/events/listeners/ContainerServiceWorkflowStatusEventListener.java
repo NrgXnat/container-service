@@ -7,9 +7,11 @@ import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.utils.ContainerUtils;
+import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.om.XnatImagesessiondata;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -65,8 +67,24 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
                  destination = QUEUE)
     public void onRequest(final WorkflowStatusEvent event) {
         final PersistentWorkflowI workflow = event.getWorkflow();
-        if (workflow.getStatus().equals(PersistentWorkflowUtils.COMPLETE) && workflow.getNextStepId() != null) {
-            processCompletedWorkflowWithNextStep(event, workflow);
+        if (workflow.getNextStepId() != null) {
+            boolean process = false;
+            if (workflow.getStatus().equals(PersistentWorkflowUtils.COMPLETE)) {
+                process = true;
+            } else if (workflow.getStatus().startsWith(PersistentWorkflowUtils.FAILED)) {
+                final String orchestrationIdStr = workflow.getNextStepId();
+                try {
+                    Orchestration orchestration = orchestrationService.retrieve(Long.parseLong(orchestrationIdStr));
+                    if (null != orchestration && !orchestration.isHaltOnCommandFailure()) {
+                        process = true;
+                    }
+                } catch(NotFoundException | NumberFormatException e) {
+                    log.debug("Orchestration {} could not be found from workflow {}", orchestrationIdStr, workflow.getId(), e);
+                }
+            }
+            if (process) {
+                processNextStep(event, workflow);
+            }
         }
 
         final String entityType = event.getEntityType();
@@ -93,7 +111,7 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
         }
     }
 
-    private void processCompletedWorkflowWithNextStep(final WorkflowStatusEvent event, final PersistentWorkflowI workflow) {
+    private void processNextStep(final WorkflowStatusEvent event, final PersistentWorkflowI workflow) {
         final long orchestrationId = Long.parseLong(workflow.getNextStepId());
 
         PersistentWorkflowI newWorkflow = null;

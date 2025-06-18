@@ -83,6 +83,7 @@ public interface CommandService {
                                              UserI userI) throws ElementNotFoundException;
     List<CommandSummaryForContext> available(String xsiType,
                                              UserI userI) throws ElementNotFoundException;
+    List<String> getProjects(long wrapperId, String status);
 
     void throwExceptionIfCommandExists(Command command) throws NrgRuntimeException;
 

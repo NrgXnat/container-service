@@ -1,5 +1,6 @@
 package org.nrg.containers.jms.preferences;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.config.ContainersConfig;
 import org.nrg.prefs.annotations.NrgPreference;
@@ -8,13 +9,16 @@ import org.nrg.prefs.beans.AbstractPreferenceBean;
 import org.nrg.prefs.exceptions.InvalidPreferenceName;
 import org.nrg.prefs.exceptions.UnknownToolId;
 import org.nrg.prefs.services.NrgPreferenceService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
+import org.springframework.jms.config.JmsListenerEndpointRegistry;
+import org.springframework.jms.listener.DefaultMessageListenerContainer;
+import org.springframework.jms.listener.MessageListenerContainer;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @NrgPreferenceBean(toolId = "jms-queue",
@@ -22,8 +26,7 @@ import java.util.Objects;
         description = "Concurrency preferences for Container Service JMS Queues")
 public class QueuePrefsBean extends AbstractPreferenceBean {
 
-    private final DefaultJmsListenerContainerFactory finalizingQueueListenerFactory;
-    private final DefaultJmsListenerContainerFactory stagingQueueListenerFactory;
+    private final JmsListenerEndpointRegistry jmsListenerEndpointRegistry;
 
     private final int minConcurrencyDflt = Integer.parseInt(ContainersConfig.QUEUE_MIN_CONCURRENCY_DFLT);
     private final int maxConcurrencyDflt = Integer.parseInt(ContainersConfig.QUEUE_MAX_CONCURRENCY_DFLT);
@@ -34,24 +37,30 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
     private static final String maxStagingPrefName = makePrefNameFromQueueAndBound(Queue.Staging, Bound.Max);
 
     private final HashSet<Queue> needsUpdate;
-    private HashMap<QueueBound, Integer> desiredPrefs;
+    private final HashMap<QueueBound, Integer> desiredPrefs;
+    private final ExecutorService executorService = Executors.newFixedThreadPool(1);
 
     private enum Bound {
         Min,
         Max
     }
+
+    @Getter
     private enum Queue {
-        Staging,
-        Finalizing
+        Staging(ContainersConfig.STAGING_QUEUE_CONTAINER_ID),
+        Finalizing(ContainersConfig.FINALIZING_QUEUE_CONTAINER_ID);
+
+        private final String listenerContainerId;
+
+        Queue(final String listenerContainerId) {
+            this.listenerContainerId = listenerContainerId;
+        }
     }
 
-    @Autowired
     public QueuePrefsBean(final NrgPreferenceService preferenceService,
-                          final DefaultJmsListenerContainerFactory finalizingQueueListenerFactory,
-                          final DefaultJmsListenerContainerFactory stagingQueueListenerFactory) {
+                          final JmsListenerEndpointRegistry jmsListenerEndpointRegistry) {
         super(preferenceService);
-        this.finalizingQueueListenerFactory = finalizingQueueListenerFactory;
-        this.stagingQueueListenerFactory = stagingQueueListenerFactory;
+        this.jmsListenerEndpointRegistry = jmsListenerEndpointRegistry;
         this.needsUpdate = new HashSet<>();
 
         // Populate "cache"
@@ -122,17 +131,43 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
         throw new InvalidPreferenceName("Unable to find preference " + prefName);
     }
 
-    private DefaultJmsListenerContainerFactory getFactoryForQueue(Queue queue) {
-        DefaultJmsListenerContainerFactory factory = null;
-        switch (queue) {
-            case Staging:
-                factory = stagingQueueListenerFactory;
-                break;
-            case Finalizing:
-                factory = finalizingQueueListenerFactory;
-                break;
+    private void setConcurrencyForQueue(final Queue queue, final int minConsumers, final int maxMaxConsumers) {
+        final String containerId = queue.getListenerContainerId();
+        final MessageListenerContainer listenerContainer = jmsListenerEndpointRegistry.getListenerContainer(containerId);
+
+        if (listenerContainer == null) {
+            log.warn("No container found with ID {}. Will not configure concurrency.", containerId);
+            return;
         }
-        return factory;
+
+        if (!(listenerContainer instanceof DefaultMessageListenerContainer)) {
+            log.warn("Container with ID {} is not a DefaultMessageListenerContainer. Will not configure concurrency.", containerId);
+            return;
+        }
+
+        final DefaultMessageListenerContainer defaultMessageListenerContainer = (DefaultMessageListenerContainer) listenerContainer;
+        executorService.submit(() -> {
+            try {
+                log.debug("Stopping listener container {}", containerId);
+                defaultMessageListenerContainer.stop(() -> {
+                    try {
+                        final String concurrencyString = minConsumers + "-" + maxMaxConsumers;
+                        log.debug("Setting concurrency for listener container {} to {}", containerId, concurrencyString);
+                        defaultMessageListenerContainer.setConcurrency(concurrencyString);
+
+                        log.debug("Initializing listener container {}", containerId);
+                        defaultMessageListenerContainer.initialize();
+
+                        log.debug("Starting listener container {}", containerId);
+                        defaultMessageListenerContainer.start();
+                    } catch (Exception e) {
+                        log.error("An unexpected error occurred attempting to reconfigure listener container: {}", containerId, e);
+                    }
+                });
+            } catch (Exception e) {
+                log.error("An unexpected error occurred attempting to stop listener container: {}", containerId, e);
+            }
+        });
     }
 
     private synchronized void setDesiredPref(QueueBound qb, Integer value) {
@@ -171,7 +206,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
 
     /**
      * Public-facing method to batch-update preferences
-     *
+     * <p>
      * Performs validation before saving values / updating factory concurrency
      *
      * @param prefs map of preferences
@@ -189,6 +224,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
 
     /**
      * Validate user-settable preferences (ensure min <= max) and then update prefs in db and update concurrency of factory
+     *
      * @throws InvalidPreferenceName for invalid values
      */
     private synchronized void validatePrefsAndUpdateListenerFactories(boolean refresh) throws InvalidPreferenceName {
@@ -222,10 +258,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
             // Update values in db (and in bean, so can't skip on refresh)
             qbMin.invokeSetter(min);
             qbMax.invokeSetter(max);
-
-            // Update factory concurrency
-            DefaultJmsListenerContainerFactory factory = getFactoryForQueue(queue);
-            factory.setConcurrency(min + "-" + max);
+            setConcurrencyForQueue(queue, min, max);
         }
 
         // Clear needsUpdate regardless of whether update occurred or was rejected
@@ -277,6 +310,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
     public Integer getConcurrencyMinFinalizingQueue() {
         return getIntegerValue(minFinalizingPrefName);
     }
+
     public void setConcurrencyMinFinalizingQueue(Integer value) throws InvalidPreferenceName {
         setIntegerValue(value, minFinalizingPrefName);
     }
@@ -285,6 +319,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
     public Integer getConcurrencyMaxFinalizingQueue() {
         return getIntegerValue(maxFinalizingPrefName);
     }
+
     public void setConcurrencyMaxFinalizingQueue(Integer value) throws InvalidPreferenceName {
         setIntegerValue(value, maxFinalizingPrefName);
     }
@@ -294,6 +329,7 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
     public Integer getConcurrencyMinStagingQueue() {
         return getIntegerValue(minStagingPrefName);
     }
+
     public void setConcurrencyMinStagingQueue(Integer value) throws InvalidPreferenceName {
         setIntegerValue(value, minStagingPrefName);
     }
@@ -302,8 +338,8 @@ public class QueuePrefsBean extends AbstractPreferenceBean {
     public Integer getConcurrencyMaxStagingQueue() {
         return getIntegerValue(maxStagingPrefName);
     }
+
     public void setConcurrencyMaxStagingQueue(Integer value) throws InvalidPreferenceName {
         setIntegerValue(value, maxStagingPrefName);
     }
-
 }

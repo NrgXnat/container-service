@@ -16,19 +16,20 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class ContainerStagingRequestListener {
-    private final ContainerService       containerService;
+    private final ContainerService containerService;
     private final UserManagementServiceI userManagementServiceI;
 
     @Autowired
     public ContainerStagingRequestListener(ContainerService containerService,
                                            UserManagementServiceI userManagementServiceI) {
-        this.containerService       = containerService;
+        this.containerService = containerService;
         this.userManagementServiceI = userManagementServiceI;
     }
 
 
-    @JmsListener(containerFactory = ContainersConfig.STAGING_QUEUE_LISTENER_FACTORY,
-                 destination = ContainerStagingRequest.DESTINATION)
+    @JmsListener(id = ContainersConfig.STAGING_QUEUE_CONTAINER_ID,
+            containerFactory = ContainersConfig.STAGING_QUEUE_LISTENER_FACTORY,
+            destination = ContainerStagingRequest.DESTINATION)
     public void onRequest(final ContainerStagingRequest request) {
         UserI user;
         try {
@@ -43,13 +44,13 @@ public class ContainerStagingRequestListener {
             count = Integer.toString(QueueUtils.count(request.getDestination()));
         }
         log.debug("Consuming staging queue: count {}, project {}, wrapperId {}, commandId {}, wrapperName {}, " +
-                  "inputValues {}, username {}, workflowId {}", count, request.getProject(),
-                  request.getWrapperId(), request.getCommandId(), request.getWrapperName(),
-                  request.getInputValues(), request.getUsername(), request.getWorkflowId());
+                        "inputValues {}, username {}, workflowId {}", count, request.getProject(),
+                request.getWrapperId(), request.getCommandId(), request.getWrapperName(),
+                request.getInputValues(), request.getUsername(), request.getWorkflowId());
 
         containerService.consumeResolveCommandAndLaunchContainer(request.getProject(), request.getWrapperId(),
-                                                                 request.getCommandId(), request.getWrapperName(), request.getInputValues(),
-                                                                 user, request.getWorkflowId());
+                request.getCommandId(), request.getWrapperName(), request.getInputValues(),
+                user, request.getWorkflowId());
     }
 
 }

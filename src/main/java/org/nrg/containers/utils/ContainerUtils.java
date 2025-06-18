@@ -19,6 +19,8 @@ public class ContainerUtils {
     public static final int MIB_TO_BYTES = KIB_TO_BYTES * KIB_TO_BYTES;
     public static final double NANO = 1e9;
 
+    public static final String CONTAINER_MANAGER_ROLE = "ContainerManager";
+
     public static final int SECONDS_PER_MINUTE = 60;
     public static final int MINUTES_PER_HOUR = 60;
     public static final int HOURS_PER_DAY = 24;
@@ -27,6 +29,7 @@ public class ContainerUtils {
 
     public static final String KUBERNETES_FAILED_STATUS = "Failed";
     public static final String CS_SHARED_PROJECT_STRING = "container-service";
+
 
     public enum TerminalState {
         COMPLETE("Complete"),
