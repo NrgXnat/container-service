@@ -2,16 +2,21 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.mockito.Mockito;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.framework.configuration.ConfigPaths;
+import org.nrg.framework.utilities.OrderedProperties;
 import org.nrg.mail.services.MailService;
+import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
+import org.nrg.xdat.services.DataTypeAwareEventService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.EnableJms;
@@ -25,6 +30,12 @@ import javax.jms.Destination;
 @Configuration
 @EnableJms
 public class JmsConfig {
+
+    @Bean
+    public NotificationsPreferences notificationsPreferences() {
+        return Mockito.mock(NotificationsPreferences.class);
+    }
+
     @Bean
     public ContainerStagingRequestListener containerStagingRequestListener(ContainerService containerService,
                                                                            UserManagementServiceI mockUserManagementServiceI) {
@@ -55,22 +66,25 @@ public class JmsConfig {
     @Bean(name = "finalizingQueueListenerFactory")
     public DefaultJmsListenerContainerFactory finalizingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                              final MailService mockMailService,
-                                                                             final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mockMailService);
+                                                                             final ConnectionFactory connectionFactory,
+                                                                             final NotificationsPreferences notificationsPreferences) {
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mockMailService);
     }
 
     @Bean(name = "stagingQueueListenerFactory")
     public DefaultJmsListenerContainerFactory stagingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                           final MailService mockMailService,
-                                                                          final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mockMailService);
+                                                                          final ConnectionFactory connectionFactory,
+                                                                          final NotificationsPreferences notificationsPreferences) {
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mockMailService);
     }
 
     @Bean(name = "eventHandlingQueueListenerFactory")
     public DefaultJmsListenerContainerFactory eventHandlingQueueListenerFactory(final SiteConfigPreferences siteConfigPreferences,
                                                                                 final MailService mailService,
-                                                                                final ConnectionFactory connectionFactory) {
-        return defaultFactory(connectionFactory, siteConfigPreferences, mailService);
+                                                                                final ConnectionFactory connectionFactory,
+                                                                                final NotificationsPreferences notificationsPreferences) {
+        return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
     }
 
     @Bean

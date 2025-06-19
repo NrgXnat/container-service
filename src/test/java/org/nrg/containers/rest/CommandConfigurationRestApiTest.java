@@ -54,14 +54,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @WebAppConfiguration
 @ContextConfiguration(classes = CommandConfigurationRestApiTestConfig.class)
 public class CommandConfigurationRestApiTest {
-    private UserI mockAdmin;
+    private UserI mockContainerManager;
     private Authentication authentication;
     private MockMvc mockMvc;
     private CommandConfiguration commandConfiguration;
@@ -94,19 +93,21 @@ public class CommandConfigurationRestApiTest {
     @Rule public TemporaryFolder folder = new TemporaryFolder(new File("/tmp"));
 
     @Before
+    //CS-1031
     public void setup() throws Exception {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).apply(springSecurity()).build();
 
         // Mock the userI
-        mockAdmin = Mockito.mock(UserI.class);
-        when(mockAdmin.getLogin()).thenReturn(FAKE_USERNAME);
-        when(mockAdmin.getPassword()).thenReturn(FAKE_PASSWORD);
-        when(mockRoleService.isSiteAdmin(mockAdmin)).thenReturn(true);
+        mockContainerManager = Mockito.mock(UserI.class);
+        when(mockContainerManager.getLogin()).thenReturn(FAKE_USERNAME);
+        when(mockContainerManager.getPassword()).thenReturn(FAKE_PASSWORD);
+        when(mockRoleService.checkRole(mockContainerManager, "ContainerManager")).thenReturn(true);
+        when(mockRoleService.checkRole(mockContainerManager, "Privileged")).thenReturn(true);
 
-        authentication = new TestingAuthenticationToken(mockAdmin, FAKE_PASSWORD);
+        authentication = new TestingAuthenticationToken(mockContainerManager, FAKE_PASSWORD);
 
         // Mock the user management service
-        when(mockUserManagementServiceI.getUser(FAKE_USERNAME)).thenReturn(mockAdmin);
+        when(mockUserManagementServiceI.getUser(FAKE_USERNAME)).thenReturn(mockContainerManager);
 
         // Command and wrapper
         final long commandId = 0L;

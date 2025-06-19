@@ -8,6 +8,7 @@ import org.nrg.containers.rest.QueueSettingsRestApiTest;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.SerializerService;
 import org.nrg.prefs.services.NrgPreferenceService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -32,6 +33,13 @@ import javax.jms.ConnectionFactory;
 @EnableWebSecurity
 @Import({RestApiTestConfig.class, ObjectMapperConfig.class})
 public class QueueSettingsRestApiTestConfig extends WebSecurityConfigurerAdapter {
+
+    @Bean
+    public JmsListenerEndpointRegistry jmsListenerEndpointRegistry() {
+        return Mockito.mock(JmsListenerEndpointRegistry.class);
+    }
+
+
     @Bean
     public QueueSettingsRestApi queueSettingsRestApi(QueuePrefsBean queuePrefsBean,
                                                      final UserManagementServiceI mockUserManagementServiceI,

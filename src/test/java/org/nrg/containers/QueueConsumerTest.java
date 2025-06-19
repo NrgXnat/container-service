@@ -155,6 +155,7 @@ public class QueueConsumerTest {
         // Mock the userI
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
+        when(mockUser.getEmail()).thenReturn("unittest@xnat.org");
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -229,12 +230,14 @@ public class QueueConsumerTest {
 
     @Test
     @DirtiesContext
+    //CS-1031
     public void testCommandResolutionException() throws Exception {
         final Map<String, String> input = new HashMap<>();
         final String badInputValue = "a bad value";
         input.put(INPUT_NAME, badInputValue);
 
         final String exceptionMessage = "uh oh - bad input!";
+        final String exceptionMessageReturned = "Submitted data does not match command resolution requirements. " + exceptionMessage;
         when(mockCommandResolutionService.resolve(
                 eq(mockConfiguredCommand),
                 argThat(TestingUtils.isMapWithEntry(INPUT_NAME, badInputValue)),
@@ -247,11 +250,12 @@ public class QueueConsumerTest {
         containerService.consumeResolveCommandAndLaunchContainer(null, WRAPPER_ID, 0L,
                 null, input, mockUser, fakeWorkflow.getWorkflowId().toString());
         assertThat(fakeWorkflow.getStatus(), is(expectedWorkflowStatus));
-        assertThat(fakeWorkflow.getDetails(), is(exceptionMessage));
+        assertThat(fakeWorkflow.getDetails(), is(exceptionMessageReturned));
     }
 
     @Test
     @DirtiesContext
+    //CS-1031 and PR Commit 9fd443a
     public void testContainerLaunchException() throws Exception {
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         final String exceptionMessage = "uh oh - issue launching container!";

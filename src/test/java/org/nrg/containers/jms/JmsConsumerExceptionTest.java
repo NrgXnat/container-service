@@ -147,6 +147,7 @@ public class JmsConsumerExceptionTest {
 
     @Test
     @DirtiesContext
+    //CS-1031
     public void testStagingConsumeFailure() throws Exception {
         // setup jmsTemplate to throw exception
         String exceptionMsg = "my tricky exception message";
