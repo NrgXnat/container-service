@@ -231,7 +231,7 @@ public class SecretsTest {
         // Whitebox.setInternalState(kubernetesClient, "batchApi", batchApi);
         Field batchApiField = kubernetesClient.getClass().getDeclaredField("batchApi");
         batchApiField.setAccessible(true);  // Allow access to private fields
-        batchApiField.set(batchApi, namespace);
+        batchApiField.set(kubernetesClient, batchApi);
 
 
         // Create secret value and objects
