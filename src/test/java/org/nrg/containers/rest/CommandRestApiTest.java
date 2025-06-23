@@ -12,6 +12,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 import org.nrg.config.services.ConfigService;
 import org.nrg.containers.config.CommandRestApiTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -76,6 +77,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ContextConfiguration(classes = CommandRestApiTestConfig.class)
 public class CommandRestApiTest {
     private Authentication ADMIN_AUTH;
+    private Authentication CONTAINER_MANAGER_AUTH;
     private Authentication NONADMIN_AUTH;
     private MockMvc mockMvc;
 
@@ -112,6 +114,7 @@ public class CommandRestApiTest {
     };
 
     @Before
+    //CS-1031
     public void setup() throws Exception {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).apply(springSecurity()).build();
 
@@ -130,6 +133,16 @@ public class CommandRestApiTest {
         when(mockRoleService.isSiteAdmin(admin)).thenReturn(true);
         when(mockUserManagementServiceI.getUser(adminUsername)).thenReturn(admin);
         ADMIN_AUTH = new TestingAuthenticationToken(admin, adminPassword);
+
+        final UserI containerManager = Mockito.mock(UserI.class);
+        final String cManagerUsername = "containerManager";
+        final String cManagerPassword = "cmanager-pass";
+        when(containerManager.getLogin()).thenReturn(cManagerUsername);
+        when(containerManager.getPassword()).thenReturn(cManagerPassword);
+        when(mockRoleService.checkRole(containerManager, "ContainerManager")).thenReturn(true);
+        when(mockRoleService.checkRole(containerManager, "Privileged")).thenReturn(true);
+        CONTAINER_MANAGER_AUTH = new TestingAuthenticationToken(containerManager, cManagerPassword);
+
 
         final UserI nonAdmin = mock(UserI.class);
         final String nonAdminUsername = "non-admin";
@@ -260,7 +273,7 @@ public class CommandRestApiTest {
         final MockHttpServletRequestBuilder request =
                 post(path).content(commandJson)
                         .contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
@@ -289,7 +302,7 @@ public class CommandRestApiTest {
         // No 'Content-type' header
         final MockHttpServletRequestBuilder noContentType =
                 post(path).content(commandJson)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
         mockMvc.perform(noContentType)
@@ -300,7 +313,7 @@ public class CommandRestApiTest {
                 post(path).content(commandJson)
                         .contentType(JSON)
                         .accept(XML)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
         mockMvc.perform(badAccept)
@@ -310,7 +323,7 @@ public class CommandRestApiTest {
         final String blankCommand = "{\"type\": \"docker\"}";
         final MockHttpServletRequestBuilder blankCommandRequest =
                 post(path).content(blankCommand).contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
         final String blankCommandResponse =
@@ -339,7 +352,7 @@ public class CommandRestApiTest {
         final String path = String.format(pathTemplate, command.id());
 
         final MockHttpServletRequestBuilder request = delete(path)
-                .with(authentication(ADMIN_AUTH))
+                .with(authentication(CONTAINER_MANAGER_AUTH))
                 .with(csrf())
                 .with(testSecurityContext());
 
@@ -370,7 +383,7 @@ public class CommandRestApiTest {
         final MockHttpServletRequestBuilder request =
                 post(path).content(commandWrapperJson)
                         .contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
@@ -407,7 +420,7 @@ public class CommandRestApiTest {
         final String blankWrapper = "{}";
         final MockHttpServletRequestBuilder blankCommandRequest =
                 post(path).content(blankWrapper).contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
         final String blankCommandResponse =
@@ -448,7 +461,7 @@ public class CommandRestApiTest {
         final MockHttpServletRequestBuilder request =
                 post(path).content(mapper.writeValueAsString(updates))
                         .contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
@@ -484,7 +497,7 @@ public class CommandRestApiTest {
 
         final MockHttpServletRequestBuilder request =
                 delete(path)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
@@ -512,7 +525,7 @@ public class CommandRestApiTest {
         final MockHttpServletRequestBuilder request =
                 post(path).content(commandJson)
                         .contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
@@ -543,7 +556,7 @@ public class CommandRestApiTest {
 
         final MockHttpServletRequestBuilder badInputTypeCommandRequest =
                 post(path).content(badInputTypeJson).contentType(JSON)
-                        .with(authentication(ADMIN_AUTH))
+                        .with(authentication(CONTAINER_MANAGER_AUTH))
                         .with(csrf())
                         .with(testSecurityContext());
 
