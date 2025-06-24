@@ -70,8 +70,13 @@ dependencies {
 
     compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
 
-    implementAndInclude "com.github.docker-java:docker-java-core:${vDockerJava}"
-    implementAndInclude "com.github.docker-java:docker-java-transport-okhttp:${vDockerJava}"
+    implementAndInclude ("com.github.docker-java:docker-java-core:${vDockerJava}") {
+        exclude group: "org.bouncycastle"
+    }
+    implementAndInclude ("com.github.docker-java:docker-java-transport-okhttp:${vDockerJava}"){
+        exclude group: "org.bouncycastle"
+
+    }
 
     implementAndInclude ("io.kubernetes:client-java:${vKubernetesClient}") {
         exclude group: "com.google.code.gson"
@@ -81,7 +86,7 @@ dependencies {
         exclude group: "org.apache.commons", module: "commons-compress"
         exclude group: "org.apache.commons", module: "commons-lang3"
         exclude group: "org.slf4j"
-//        exclude group: "org.bouncycastle"
+        exclude group: "org.bouncycastle"
         exclude group: "org.yaml", module: "snakeyaml"
         exclude group: "com.squareup.okhttp3", module: "okhttp" // Included via docker-java-transport-okhttp
     }
@@ -196,8 +201,8 @@ dependencies {
     testImplementation "org.testcontainers:testcontainers:1.19.0"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
-    testImplementation 'org.bouncycastle:bcprov-jdk15on:1.70'
-    implementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
+    testImplementation 'org.bouncycastle:bcprov-jdk18on'
+    testImplementation 'org.bouncycastle:bcpkix-jdk18on'
 
 
 }
