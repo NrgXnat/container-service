@@ -161,6 +161,7 @@ public class CommandLaunchIntegrationTest {
     private UserI mockUser;
 
     private final String FAKE_USER = "mockUser";
+    private final String FAKE_EMAIL = "mock@xnat.org";
     private final String FAKE_ALIAS = "alias";
     private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
@@ -211,6 +212,7 @@ public class CommandLaunchIntegrationTest {
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
         when(mockUser.getUsername()).thenReturn(FAKE_USER);
+        when(mockUser.getEmail()).thenReturn(FAKE_EMAIL);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
