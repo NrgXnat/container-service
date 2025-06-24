@@ -60,7 +60,7 @@ configurations {
     all {
         resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
 
-        exclude group: "org.bouncycastle"
+//        exclude group: "org.bouncycastle"
     }
 }
 
@@ -81,7 +81,7 @@ dependencies {
         exclude group: "org.apache.commons", module: "commons-compress"
         exclude group: "org.apache.commons", module: "commons-lang3"
         exclude group: "org.slf4j"
-        exclude group: "org.bouncycastle"
+//        exclude group: "org.bouncycastle"
         exclude group: "org.yaml", module: "snakeyaml"
         exclude group: "com.squareup.okhttp3", module: "okhttp" // Included via docker-java-transport-okhttp
     }
@@ -193,8 +193,13 @@ dependencies {
     testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
     testImplementation "org.powermock:powermock-api-mockito:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
+    testImplementation "org.testcontainers:testcontainers:1.19.0"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
+    testImplementation 'org.bouncycastle:bcprov-jdk15on:1.70'
+    implementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
+
+
 }
 
 test {
