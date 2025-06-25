@@ -2,6 +2,7 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.mockito.Mockito;
+import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
@@ -44,6 +45,11 @@ public class MockJmsConfig {
     @Bean(name = ContainerFinalizingRequest.DESTINATION)
     public Destination containerFinalizingRequest() {
         return new ActiveMQQueue(ContainerFinalizingRequest.DESTINATION);
+    }
+
+    @Bean(name = ContainerEvent.QUEUE)
+    public Destination containerEventQueue() {
+        return new ActiveMQQueue(ContainerEvent.QUEUE);
     }
 
     @SuppressWarnings("unchecked")
