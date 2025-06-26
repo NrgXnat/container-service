@@ -2,6 +2,8 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.mockito.Mockito;
+import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.jms.listeners.ContainerEventRequestListener;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
@@ -46,17 +48,30 @@ public class MockJmsConfig {
         return new ActiveMQQueue(ContainerFinalizingRequest.DESTINATION);
     }
 
+    @Bean
+    public ContainerEventRequestListener containerEventRequestListener(ContainerService containerService,
+                                                                       UserManagementServiceI mockUserManagementServiceI) {
+        return new ContainerEventRequestListener(containerService);
+    }
+
+    @Bean(name = ContainerEvent.QUEUE)
+    public Destination containerEventQueue() {
+        return new ActiveMQQueue(ContainerEvent.QUEUE);
+    }
+
     @SuppressWarnings("unchecked")
     @Bean
     public JmsTemplate mockJmsTemplate(Destination containerStagingRequest,
                                        final ContainerStagingRequestListener containerStagingRequestListener,
                                        Destination containerFinalizingRequest,
                                        final ContainerFinalizingRequestListener containerFinalizingRequestListener,
+                                       Destination containerEventQueue,
+                                       final ContainerEventRequestListener containerEventRequestListener,
                                        ExecutorService executorService) {
         JmsTemplate mockJmsTemplate = Mockito.mock(JmsTemplate.class);
         doAnswer(
                 invocation -> {
-                    Object[] args = invocation.getArguments();
+                    Object[]                args    = invocation.getArguments();
                     ContainerStagingRequest request = (ContainerStagingRequest) args[1];
                     executorService.submit(() -> {
                         try {
@@ -67,11 +82,11 @@ public class MockJmsConfig {
                     });
                     return null;
                 }
-        ).when(mockJmsTemplate).convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
+                ).when(mockJmsTemplate).convertAndSend(eq(containerStagingRequest), any(ContainerStagingRequest.class), any(MessagePostProcessor.class));
 
         doAnswer(
                 invocation -> {
-                    Object[] args = invocation.getArguments();
+                    Object[]                   args    = invocation.getArguments();
                     ContainerFinalizingRequest request = (ContainerFinalizingRequest) args[1];
                     executorService.submit(() -> {
                         try {
@@ -82,11 +97,27 @@ public class MockJmsConfig {
                     });
                     return null;
                 }
-        ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
+                ).when(mockJmsTemplate).convertAndSend(eq(containerFinalizingRequest), any(ContainerFinalizingRequest.class), any(MessagePostProcessor.class));
+
+        doAnswer(
+                invocation -> {
+                    Object[]       args    = invocation.getArguments();
+                    ContainerEvent request = (ContainerEvent) args[1];
+                    executorService.submit(() -> {
+                        try {
+                            containerEventRequestListener.onRequest(request);
+                        } catch (Exception e) {
+                            // ignored
+                        }
+                    });
+                    return null;
+                }
+                ).when(mockJmsTemplate).convertAndSend(eq(containerEventQueue), any(ContainerEvent.class), any(MessagePostProcessor.class));
 
         // Mock counts
         doReturn(0).when(mockJmsTemplate).browse(eq(ContainerStagingRequest.DESTINATION), (BrowserCallback<Integer>) any(BrowserCallback.class));
         doReturn(0).when(mockJmsTemplate).browse(eq(ContainerFinalizingRequest.DESTINATION), (BrowserCallback<Integer>) any(BrowserCallback.class));
+        doReturn(0).when(mockJmsTemplate).browse(eq(ContainerEvent.QUEUE), (BrowserCallback<Integer>) any(BrowserCallback.class));
 
         return mockJmsTemplate;
     }

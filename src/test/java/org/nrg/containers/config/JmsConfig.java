@@ -2,6 +2,11 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.nrg.containers.events.listeners.ContainerServiceWorkflowStatusEventListener;
+import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.ScanArchiveEventToLaunchCommands;
+import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.events.model.SessionMergeOrArchiveEvent;
 import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
@@ -30,15 +35,15 @@ public class JmsConfig {
         return new ContainerStagingRequestListener(containerService, mockUserManagementServiceI);
     }
 
-    @Bean(name = ContainerStagingRequest.DESTINATION)
-    public Destination containerStagingRequest() {
-        return new ActiveMQQueue(ContainerStagingRequest.DESTINATION);
-    }
-
     @Bean
     public ContainerFinalizingRequestListener containerFinalizingRequestListener(ContainerService containerService,
                                                                                  UserManagementServiceI mockUserManagementServiceI) {
         return new ContainerFinalizingRequestListener(containerService, mockUserManagementServiceI);
+    }
+
+    @Bean(name = ContainerStagingRequest.DESTINATION)
+    public Destination containerStagingRequest() {
+        return new ActiveMQQueue(ContainerStagingRequest.DESTINATION);
     }
 
     @Bean(name = ContainerFinalizingRequest.DESTINATION)
@@ -46,9 +51,9 @@ public class JmsConfig {
         return new ActiveMQQueue(ContainerFinalizingRequest.DESTINATION);
     }
 
-    @Bean(name = "eventHandlingRequest")
-    public Destination eventHandlingRequest() {
-        return new ActiveMQQueue("eventHandlingRequest");
+    @Bean(name = ContainerEvent.QUEUE)
+    public Destination containerEventQueue() {
+        return new ActiveMQQueue(ContainerEvent.QUEUE);
     }
 
     @Bean(name = "finalizingQueueListenerFactory")

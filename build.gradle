@@ -60,7 +60,7 @@ configurations {
     all {
         resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
 
-        exclude group: "org.bouncycastle"
+        // exclude group: "org.bouncycastle"
     }
 }
 
