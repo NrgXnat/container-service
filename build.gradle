@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.9.2-RC-SNAPSHOT"
+        vXnat = "1.9.2"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -16,7 +16,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.7.0"
+version "3.7.1-RC-SNAPSHOT"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
