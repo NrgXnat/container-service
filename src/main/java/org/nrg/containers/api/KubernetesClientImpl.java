@@ -49,49 +49,55 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static io.kubernetes.client.util.Config.SERVICEACCOUNT_CA_PATH;
+
 import org.springframework.http.HttpStatus;
+
 import static org.nrg.containers.utils.ContainerUtils.SECONDS_PER_WEEK;
 
 @Slf4j
 public class KubernetesClientImpl implements KubernetesClient {
     // Format: (label)(comparator)(value)
     //  comparator can be != or ==
-    private static final String LABEL_CAPTURE_GROUP = "label";
-    private static final String COMPARATOR_CAPTURE_GROUP = "comparator";
-    private static final String VALUE_CAPTURE_GROUP = "value";
-    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(node\\.labels\\.)?(?<" + LABEL_CAPTURE_GROUP +">.+?)(?<" + COMPARATOR_CAPTURE_GROUP + ">!=|==)(?<" + VALUE_CAPTURE_GROUP +">.+?)");
+    private static final String            LABEL_CAPTURE_GROUP      = "label";
+    private static final String            COMPARATOR_CAPTURE_GROUP = "comparator";
+    private static final String            VALUE_CAPTURE_GROUP      = "value";
+    private static final Predicate<String> NOT_K8S_LABEL_PATTERN        = Pattern.compile("^$|^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$").asPredicate().negate();
+    private static final String            K8S_REPLACE_PATTERN      = "[^A-Za-z0-9\\-.]";
 
-    public static final int JOB_TIME_TO_LIVE_WEEKS = 1;  // Clean up lingering jobs + pods + logs after one week
-    public static final int JOB_TIME_TO_LIVE_SECS = JOB_TIME_TO_LIVE_WEEKS * SECONDS_PER_WEEK;
-    public static final int JOB_BACKOFF_LIMIT = 0;  // No retries
-    public static final String POD_RESTART_POLICY = "Never";
+    public static final Pattern SWARM_CONSTRAINT_PATTERN = Pattern.compile("(node\\.labels\\.)?(?<" + LABEL_CAPTURE_GROUP + ">.+?)(?<" + COMPARATOR_CAPTURE_GROUP + ">!=|==)(?<" + VALUE_CAPTURE_GROUP + ">.+?)");
+
+    public static final int    JOB_TIME_TO_LIVE_WEEKS = 1;  // Clean up lingering jobs + pods + logs after one week
+    public static final int    JOB_TIME_TO_LIVE_SECS  = JOB_TIME_TO_LIVE_WEEKS * SECONDS_PER_WEEK;
+    public static final int    JOB_BACKOFF_LIMIT      = 0;  // No retries
+    public static final String POD_RESTART_POLICY     = "Never";
 
     public static final String CONTAINER_CREATING = "ContainerCreating";
 
-    private final ExecutorService executorService;
+    private final ExecutorService  executorService;
     private final NrgEventServiceI eventService;
 
-    private ApiClient apiClient;
-    private CoreV1Api coreApi;
-    private BatchV1Api batchApi;
-    private String namespace;
+    private ApiClient          apiClient;
+    private CoreV1Api          coreApi;
+    private BatchV1Api         batchApi;
+    private String             namespace;
     private KubernetesInformer kubernetesInformer = null;
 
 
     public KubernetesClientImpl(
             final ExecutorService executorService,
             final NrgEventServiceI eventService
-    ) throws IOException, NoContainerServerException {
+                               ) throws IOException, NoContainerServerException {
         this.executorService = executorService;
-        this.eventService = eventService;
+        this.eventService    = eventService;
 
-        ApiClient apiClient = null;
-        String namespace = null;
+        ApiClient        apiClient  = null;
+        String           namespace  = null;
         final KubeConfig kubeConfig = KubernetesConfiguration.loadStandard(true);
         if (kubeConfig != null) {
             apiClient = ClientBuilder.kubeconfig(kubeConfig).build();
@@ -120,10 +126,10 @@ public class KubernetesClientImpl implements KubernetesClient {
             loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
             apiClient.setHttpClient(
                     apiClient.getHttpClient()
-                            .newBuilder()
-                            .addInterceptor(loggingInterceptor)
-                            .build()
-            );
+                             .newBuilder()
+                             .addInterceptor(loggingInterceptor)
+                             .build()
+                                   );
         }
 
         setBackendClient(apiClient);
@@ -139,8 +145,8 @@ public class KubernetesClientImpl implements KubernetesClient {
     @Override
     public void setBackendClient(ApiClient apiClient) {
         this.apiClient = apiClient;
-        coreApi = new CoreV1Api(apiClient);
-        batchApi = new BatchV1Api(apiClient);
+        coreApi        = new CoreV1Api(apiClient);
+        batchApi       = new BatchV1Api(apiClient);
 
         restart();
     }
@@ -260,8 +266,8 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Labels
         final Map<String, String> labels = toCreate.containerLabels() == null ?
-                new HashMap<>() :
-                new HashMap<>(toCreate.containerLabels());
+                                           new HashMap<>() :
+                                           new HashMap<>(toCreate.containerLabels());
         // TODO add helpful labels. Things like command and wrapper IDs, maybe workflow id if we have one, etc.
         //  Or maybe those could be annotations?
 
@@ -274,24 +280,24 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Mounts
         final List<Container.ContainerMount> ourMounts = toCreate.mounts();
-        final List<V1VolumeMount> mounts = new ArrayList<>();
-        final List<V1Volume> volumes = new ArrayList<>();
+        final List<V1VolumeMount>            mounts    = new ArrayList<>();
+        final List<V1Volume>                 volumes   = new ArrayList<>();
         if (ourMounts != null && !ourMounts.isEmpty()) {
             if (StringUtils.isNotBlank(ourMounts.get(0).mountPvcName())) {
                 Set<V1Volume> volumesSet = new HashSet<>();
                 for (final Container.ContainerMount mount : ourMounts) {
                     volumesSet.add(new V1VolumeBuilder()
-                            .withName(mount.mountPvcName())
-                            .withNewPersistentVolumeClaim()
-                            .withClaimName(mount.mountPvcName())
-                            .endPersistentVolumeClaim()
-                            .build());
+                                           .withName(mount.mountPvcName())
+                                           .withNewPersistentVolumeClaim()
+                                           .withClaimName(mount.mountPvcName())
+                                           .endPersistentVolumeClaim()
+                                           .build());
                     mounts.add(new V1VolumeMountBuilder()
-                            .withName(mount.mountPvcName())
-                            .withMountPath(mount.containerPath())
-                            .withSubPath(mount.containerHostPath())
-                            .withReadOnly(!mount.writable())
-                            .build());
+                                       .withName(mount.mountPvcName())
+                                       .withMountPath(mount.containerPath())
+                                       .withSubPath(mount.containerHostPath())
+                                       .withReadOnly(!mount.writable())
+                                       .build());
                 }
                 volumes.addAll(volumesSet);
             } else {
@@ -301,16 +307,16 @@ public class KubernetesClientImpl implements KubernetesClient {
                     // We assume that all mounts we make are already available on all worker nodes,
                     //  which implies we can mount the files we want at a host path.
                     volumes.add(new V1VolumeBuilder()
-                            .withName(mount.name())
-                            .withNewHostPath()
-                            .withPath(mount.xnatHostPath())
-                            .endHostPath()
-                            .build());
+                                        .withName(mount.name())
+                                        .withNewHostPath()
+                                        .withPath(mount.xnatHostPath())
+                                        .endHostPath()
+                                        .build());
                     mounts.add(new V1VolumeMountBuilder()
-                            .withName(mount.name())
-                            .withMountPath(mount.containerPath())
-                            .withReadOnly(!mount.writable())
-                            .build());
+                                       .withName(mount.name())
+                                       .withMountPath(mount.containerPath())
+                                       .withReadOnly(!mount.writable())
+                                       .build());
                 }
             }
         }
@@ -321,18 +327,18 @@ public class KubernetesClientImpl implements KubernetesClient {
         if (shmSize != null && shmSize > 0) {
             final String shmVolName = "shm";
             volumes.add(new V1VolumeBuilder()
-                    .withName(shmVolName)
-                    .withNewEmptyDir()
-                    .withMedium("Memory")
-                    .withNewSizeLimit(String.valueOf(shmSize))
-                    .endEmptyDir()
-                    .build()
-            );
+                                .withName(shmVolName)
+                                .withNewEmptyDir()
+                                .withMedium("Memory")
+                                .withNewSizeLimit(String.valueOf(shmSize))
+                                .endEmptyDir()
+                                .build()
+                       );
             mounts.add(new V1VolumeMountBuilder()
-                    .withMountPath("/dev/shm")
-                    .withName(shmVolName)
-                    .build()
-            );
+                               .withMountPath("/dev/shm")
+                               .withName(shmVolName)
+                               .build()
+                      );
         }
 
         // Command line and args
@@ -341,10 +347,10 @@ public class KubernetesClientImpl implements KubernetesClient {
         if (toCreate.overrideEntrypointNonnull()) {
             // Run their command line as a script through a shell
             command = Arrays.asList("/bin/sh", "-c");
-            args = Collections.singletonList(toCreate.commandLine());
+            args    = Collections.singletonList(toCreate.commandLine());
         } else {
             // Run their command line as args (tokenized and split) through the image's entrypoint
-            args = ShellSplitter.shellSplit(toCreate.commandLine());
+            args    = ShellSplitter.shellSplit(toCreate.commandLine());
             command = null;
         }
 
@@ -365,11 +371,11 @@ public class KubernetesClientImpl implements KubernetesClient {
         if (toCreate.limitCpu() != null) {
             resourceRequirementsBuilder.addToLimits("cpu", new Quantity(String.valueOf(toCreate.limitCpu())));
         }
-        if (toCreate.genericResources()!=null) {
+        if (toCreate.genericResources() != null) {
             final String gpuNumber = toCreate.genericResources().get("gpu");
             if (StringUtils.isNotEmpty(gpuNumber)) {
                 if (StringUtils.isNotEmpty(gpuVendor)) {
-                    resourceRequirementsBuilder.addToLimits(gpuVendor.toLowerCase() + ".com/gpu", new Quantity(String.valueOf(gpuNumber)));
+                    resourceRequirementsBuilder.addToLimits(gpuVendor.toLowerCase() + ".com/gpu", new Quantity(gpuNumber));
                 } else {
                     log.error("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
                     throw new ContainerException("When the value of the GPU vendor in the Kubernetes cluster is empty or null, the GPU resource cannot be requested.");
@@ -397,15 +403,36 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Environment variables
         final List<V1EnvVar> envVars = containerPropertiesWithSecretValues.environmentVariables()
-                .entrySet().stream()
-                .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
-                .collect(Collectors.toList());
+                                                                          .entrySet().stream()
+                                                                          .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
+                                                                          .collect(Collectors.toList());
 
+final Map<String, String> cleanedLabels = labels.entrySet().stream()
+                                                .peek(entry -> {
+                                                    String  value   = entry.getValue();
+                                                    boolean cleaned = false;
+                                                    // Kubernetes labels can only contain A-z, 0-9, -, and . characters, so if we find anything else...
+                                                    if (NOT_K8S_LABEL_PATTERN.test(value)) {
+                                                        // ...replace it with a dash.
+                                                        value = value.replaceAll(K8S_REPLACE_PATTERN, "-");
+                                                        cleaned = true;
+                                                    }
+                                                    if (value.length() > 63) {
+                                                        // ...and if the value is too long, truncate it.
+                                                        value = value.substring(0, 60) + "...");
+                                                        cleaned = true;
+                                                    }
+                                                    if (cleaned) {
+                                                        log.info("Label {} for container {} was cleaned to {}", entry.getKey(), name, value);
+                                                        entry.setValue(value);
+                                                    }
+                                                })
+                                                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         // Build job
         V1Job job = new V1JobBuilder()
                 .withNewMetadata()
                 .withGenerateName(name)  // Container name used as job name prefix
-                .withLabels(labels)
+                .withLabels(cleanedLabels)
                 .endMetadata()
                 .withNewSpec()
                 .withTtlSecondsAfterFinished(JOB_TIME_TO_LIVE_SECS)
@@ -413,7 +440,7 @@ public class KubernetesClientImpl implements KubernetesClient {
                 .withSuspend(suspend)
                 .withNewTemplate()
                 .withNewMetadata()
-                .withLabels(labels)
+                .withLabels(cleanedLabels)
                 .endMetadata()
                 .withNewSpec()
                 .withAffinity(affinity)
@@ -440,24 +467,24 @@ public class KubernetesClientImpl implements KubernetesClient {
             log.trace("Creating kubernetes job: {}", job);
         } else if (log.isDebugEnabled()) {
             log.debug("Creating kubernetes job:" +
-                            "\n\timage {}" +
-                            "\n\tcommand \"{}\"" +
-                            "\n\tworking directory \"{}\"" +
-                            "\n\tcontainerUser \"{}\"" +
-                            "\n\tvolumes [{}]" +
-                            "\n\texposed ports: {}",
-                    toCreate.dockerImage(),
-                    toCreate.commandLine(),
-                    toCreate.workingDirectory(),
-                    containerUserId,
-                    StringUtils.join(toCreate.bindMountStrings(), ", "),
-                    StringUtils.join(toCreate.portStrings(), ", "));
+                      "\n\timage {}" +
+                      "\n\tcommand \"{}\"" +
+                      "\n\tworking directory \"{}\"" +
+                      "\n\tcontainerUser \"{}\"" +
+                      "\n\tvolumes [{}]" +
+                      "\n\texposed ports: {}",
+                      toCreate.dockerImage(),
+                      toCreate.commandLine(),
+                      toCreate.workingDirectory(),
+                      containerUserId,
+                      StringUtils.join(toCreate.bindMountStrings(), ", "),
+                      StringUtils.join(toCreate.portStrings(), ", "));
         }
 
         try {
             job = batchApi.createNamespacedJob(namespace, job, null, null, null, null);
-            final V1ObjectMeta meta = job.getMetadata();
-            final String jobName = meta == null ? null : meta.getName();
+            final V1ObjectMeta meta    = job.getMetadata();
+            final String       jobName = meta == null ? null : meta.getName();
             log.debug("Created job {}", jobName);
             return jobName;
         } catch (ApiException e) {
@@ -508,17 +535,17 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Group the constraints by unique key, operator pairs and collect the values into a list.
         final Map<ConstraintKey, List<String>> constraintMap = parsedConstraints.stream()
-                .collect(Collectors.groupingBy(ParsedConstraint::asKey,
-                        Collectors.mapping(ParsedConstraint::value, Collectors.toList())));
+                                                                                .collect(Collectors.groupingBy(ParsedConstraint::asKey,
+                                                                                                               Collectors.mapping(ParsedConstraint::value, Collectors.toList())));
 
         // Create a match expression for each grouped constraint
         final List<V1NodeSelectorRequirement> matchExpressions = constraintMap.entrySet().stream()
-                .map(entry -> new V1NodeSelectorRequirementBuilder()
-                        .withKey(entry.getKey().label)
-                        .withOperator(entry.getKey().operator)
-                        .withValues(entry.getValue())
-                        .build()
-                ).collect(Collectors.toList());
+                                                                              .map(entry -> new V1NodeSelectorRequirementBuilder()
+                                                                                      .withKey(entry.getKey().label)
+                                                                                      .withOperator(entry.getKey().operator)
+                                                                                      .withValues(entry.getValue())
+                                                                                      .build()
+                                                                                  ).collect(Collectors.toList());
 
         // Build the rest of the affinity infrastructure around the match expressions
         return new V1AffinityBuilder()
@@ -539,9 +566,9 @@ public class KubernetesClientImpl implements KubernetesClient {
         final String value;
 
         ParsedConstraint(String label, String operator, String value) {
-            this.label = label;
+            this.label    = label;
             this.operator = operator;
-            this.value = value;
+            this.value    = value;
         }
 
         static ParsedConstraint fromComparator(String label, String comparator, String value) {
@@ -570,14 +597,18 @@ public class KubernetesClientImpl implements KubernetesClient {
         final String operator;
 
         ConstraintKey(String label, String operator) {
-            this.label = label;
+            this.label    = label;
             this.operator = operator;
         }
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
             ConstraintKey that = (ConstraintKey) o;
             return Objects.equals(label, that.label) && Objects.equals(operator, that.operator);
         }
@@ -617,7 +648,7 @@ public class KubernetesClientImpl implements KubernetesClient {
                     () -> batchApi.patchNamespacedJobCall(jobName, namespace, patch, null, null, null, null, null, null),
                     V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
                     batchApi.getApiClient()
-            );
+                            );
         } catch (ApiException e) {
             log.error("Could not start job {}: message \"{}\" code {} body {}", jobName, e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not start job " + jobName, e);
@@ -646,6 +677,6 @@ public class KubernetesClientImpl implements KubernetesClient {
     public enum Propagation {
         Orphan,
         Background,
-        Foreground;
+        Foreground
     }
 }
