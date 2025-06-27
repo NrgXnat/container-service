@@ -419,7 +419,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
                                                     }
                                                     if (value.length() > 63) {
                                                         // ...and if the value is too long, truncate it.
-                                                        value = value.substring(0, 60) + "...");
+                                                        value = value.substring(0, 60) + "...";
                                                         cleaned = true;
                                                     }
                                                     if (cleaned) {
