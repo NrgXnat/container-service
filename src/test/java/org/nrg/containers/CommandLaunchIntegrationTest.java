@@ -12,11 +12,9 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
@@ -24,6 +22,7 @@ import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.ArgumentMatcher;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
@@ -36,12 +35,7 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerMount;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
-import org.nrg.containers.model.xnat.FakeWorkflow;
-import org.nrg.containers.model.xnat.Project;
-import org.nrg.containers.model.xnat.Resource;
-import org.nrg.containers.model.xnat.Scan;
-import org.nrg.containers.model.xnat.Session;
-import org.nrg.containers.model.xnat.XnatModelObject;
+import org.nrg.containers.model.xnat.*;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
@@ -62,7 +56,6 @@ import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
-import org.nrg.xft.event.EventMetaI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
@@ -76,11 +69,6 @@ import org.nrg.xnat.helpers.uri.archive.impl.ResourcesExptURI;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
@@ -91,65 +79,45 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
-import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.hasItemInArray;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.argThat;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.nrg.containers.services.ContainerService.XNAT_EVENT_ID;
-import static org.nrg.containers.services.ContainerService.XNAT_HOST;
-import static org.nrg.containers.services.ContainerService.XNAT_PASS;
-import static org.nrg.containers.services.ContainerService.XNAT_USER;
-import static org.nrg.containers.services.ContainerService.XNAT_WORKFLOW_ID;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.nrg.containers.services.ContainerService.*;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.doNothing;
-import static org.powermock.api.mockito.PowerMockito.doReturn;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(Parameterized.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class, Session.class, ContainerServicePermissionUtils.class,
-        org.nrg.xnat.utils.FileUtils.class})
-@PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
+@RunWith(Parameterized.class)
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Parameterized.UseParametersRunnerFactory(SpringJUnit4ClassRunnerFactory.class)
 @Transactional
 public class CommandLaunchIntegrationTest {
+
+    private MockedStatic<ContainerServicePermissionUtils> mockedContainerServicePermissionUtils;
+
+    private MockedStatic<Session> mockedSession;
+
+    private MockedStatic<XDATServlet> mockedXDATServlet;
+
+    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
+
+    private MockedStatic<Users> mockedUsers;
+
+    private MockedStatic<XFTManager> mockedXFTManager;
+
+    private MockedStatic<UriParserUtils> mockedUriParserUtils;
 
     @Parameterized.Parameters(name = "backend={0}")
     public static Collection<Backend> backend() {
@@ -218,18 +186,12 @@ public class CommandLaunchIntegrationTest {
         // Mock the user management service
         when(mockUserManagementServiceI.getUser(FAKE_USER)).thenReturn(mockUser);
 
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        mockStatic(UriParserUtils.class);
-
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
         mockAliasToken.setAlias(FAKE_ALIAS);
         mockAliasToken.setSecret(FAKE_SECRET);
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         final String buildDir = folder.newFolder().getAbsolutePath();
@@ -238,35 +200,22 @@ public class CommandLaunchIntegrationTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
-
-        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
-        mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-        mockStatic(XDATServlet.class);
-        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
+        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
+        mockedXDATServlet.when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
 
         // Also mock out workflow operations to return our fake workflow object
         fakeWorkflow = new FakeWorkflow();
-        mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class, "save", any(PersistentWorkflowI.class), isNull(EventMetaI.class));
-        PowerMockito.spy(PersistentWorkflowUtils.class);
-        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(FakeWorkflow.defaultEventId),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
+        doNothing().when(WorkflowUtils.class);
+        Mockito.spy(PersistentWorkflowUtils.class);
+        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class);
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
-
-        // We can't load the XFT item in the session, so don't try
-        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
-        mockStatic(Session.class);
-        when(Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+        mockedSession.when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
                 .thenReturn(null);
-
-        // Permissions checks
-        mockStatic(ContainerServicePermissionUtils.class);
-        when(ContainerServicePermissionUtils.canCreateOutputObject(
+        mockedContainerServicePermissionUtils.when(() -> ContainerServicePermissionUtils.canCreateOutputObject(
                 eq(mockUser), any(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)
         )).thenReturn(true);
 
@@ -315,6 +264,28 @@ public class CommandLaunchIntegrationTest {
         executorService.shutdown();
     }
 
+    @BeforeEach
+    void setUpStaticMocks() {
+        mockedContainerServicePermissionUtils = mockStatic(ContainerServicePermissionUtils.class);
+        mockedSession = mockStatic(Session.class);
+        mockedXDATServlet = mockStatic(XDATServlet.class);
+        mockedWorkflowUtils = mockStatic(WorkflowUtils.class);
+        mockedUsers = mockStatic(Users.class);
+        mockedXFTManager = mockStatic(XFTManager.class);
+        mockedUriParserUtils = mockStatic(UriParserUtils.class);
+    }
+
+    @AfterEach
+    void tearDownStaticMocks() {
+        mockedUriParserUtils.closeOnDemand();
+        mockedXFTManager.closeOnDemand();
+        mockedUsers.closeOnDemand();
+        mockedWorkflowUtils.closeOnDemand();
+        mockedXDATServlet.closeOnDemand();
+        mockedSession.closeOnDemand();
+        mockedContainerServicePermissionUtils.closeOnDemand();
+    }
+
     @Test
     @DirtiesContext
     public void testFakeReconAll() throws Exception {
@@ -345,7 +316,7 @@ public class CommandLaunchIntegrationTest {
         final String sessionJson = mapper.writeValueAsString(session);
         final ArchivableItem mockSesItem = mock(ArchivableItem.class);
         final ExptURI mockUriObject = mock(ExptURI.class);
-        when(UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockUriObject);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockSesItem);
 
         final String t1Scantype = "T1_TEST_SCANTYPE";
@@ -467,11 +438,8 @@ public class CommandLaunchIntegrationTest {
         // Create the mock objects we will need in order to verify permissions
         final ArchivableItem mockProjectItem = mock(ArchivableItem.class);
         final ExptURI mockUriObject = mock(ExptURI.class);
-        when(UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockProjectItem);
-
-        // Mock util method for shared file paths
-        PowerMockito.mockStatic(org.nrg.xnat.utils.FileUtils.class);
         when(org.nrg.xnat.utils.FileUtils.getAllSharedPaths(project.getId(), mockUser, false, false, true, false))
                 .thenReturn(Collections.emptyMap());
 
@@ -624,7 +592,7 @@ public class CommandLaunchIntegrationTest {
         final ArchivableItem mockItem = mock(ArchivableItem.class);
         final ResourcesExptURI mockUriObject = mock(ResourcesExptURI.class);
         String uri = "/archive" + resourceInput.getUri();
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
         fakeWorkflow.setId(uri);
         ResourceData mockRD = mock(ResourceData.class);
@@ -642,12 +610,12 @@ public class CommandLaunchIntegrationTest {
         FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
         setupWrapupWorkflow.setWfid(111);
         setupWrapupWorkflow.setEventId(2);
-        doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
-        when(WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
+        doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class
+        );
+        mockedWorkflowUtils.when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
                 .thenReturn(setupWrapupWorkflow);
 
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
                 .thenReturn(setupWrapupWorkflow);
 
         // Time to launch this thing
@@ -767,7 +735,7 @@ public class CommandLaunchIntegrationTest {
         final ArchivableItem mockSessionItem = mock(ArchivableItem.class);
         final ExptURI mockUriObject = mock(ExptURI.class);
         String uri = "/archive" + sessionInput.getUri();
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockSessionItem);
         String id = "id";
         String xsiType = "type";
@@ -783,12 +751,12 @@ public class CommandLaunchIntegrationTest {
         FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
         setupWrapupWorkflow.setWfid(111);
         setupWrapupWorkflow.setEventId(2);
-        doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
-        when(WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
+        doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class
+        );
+        mockedWorkflowUtils.when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
                 .thenReturn(setupWrapupWorkflow);
 
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
                 .thenReturn(setupWrapupWorkflow);
 
         // Time to launch this thing
@@ -1104,15 +1072,15 @@ public class CommandLaunchIntegrationTest {
         final ExptURI mockSesUri = mock(ExptURI.class);
         final ExptScanURI mockScanUri = mock(ExptScanURI.class);
         final String uri = "/archive" + session.getUri() + "/scans/scanNew";
-        when(UriParserUtils.getArchiveUri(mockScanItem)).thenReturn(uri);
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockScanUri);
-        when(UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockSesUri);
+        mockedUriParserUtils.when(() -> UriParserUtils.getArchiveUri(mockScanItem)).thenReturn(uri);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockScanUri);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockSesUri);
         when(mockScanUri.getSecurityItem()).thenReturn(mockSessionItem);
         when(mockSesUri.getSecurityItem()).thenReturn(mockSessionItem);
 
         ArgumentMatcher<File> matchesXml = new ArgumentMatcher<File>() {
             @Override
-            public boolean matches(Object arg) {
+            public boolean matches(File arg) {
                 if (!(arg instanceof File)) {
                     return false;
                 }
@@ -1126,7 +1094,7 @@ public class CommandLaunchIntegrationTest {
         };
         ArgumentMatcher<List<File>> matchesFileList = new ArgumentMatcher<List<File>>() {
             @Override
-            public boolean matches(Object arg) {
+            public boolean matches(List<File> arg) {
                 if (!(arg instanceof List)) {
                     return false;
                 }
@@ -1228,15 +1196,15 @@ public class CommandLaunchIntegrationTest {
         final ExptURI mockSesUri = mock(ExptURI.class);
         final ExptAssessorURI mockAssessorUri = mock(ExptAssessorURI.class);
         final String uri = "/archive" + session.getUri() + "/assessors/assessorNew";
-        when(UriParserUtils.getArchiveUri(mockAssessorItem)).thenReturn(uri);
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockAssessorUri);
-        when(UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockSesUri);
+        mockedUriParserUtils.when(() -> UriParserUtils.getArchiveUri(mockAssessorItem)).thenReturn(uri);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockAssessorUri);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI("/archive" + session.getUri())).thenReturn(mockSesUri);
         when(mockAssessorUri.getSecurityItem()).thenReturn(mockSessionItem);
         when(mockSesUri.getSecurityItem()).thenReturn(mockSessionItem);
 
         ArgumentMatcher<File> matchesXml = new ArgumentMatcher<File>() {
             @Override
-            public boolean matches(Object arg) {
+            public boolean matches(File arg) {
                 if (!(arg instanceof File)) {
                     return false;
                 }
@@ -1250,7 +1218,7 @@ public class CommandLaunchIntegrationTest {
         };
         ArgumentMatcher<List<File>> matchesFileList = new ArgumentMatcher<List<File>>() {
             @Override
-            public boolean matches(Object arg) {
+            public boolean matches(List<File> arg) {
                 if (!(arg instanceof List)) {
                     return false;
                 }
@@ -1345,7 +1313,7 @@ public class CommandLaunchIntegrationTest {
         // Create the mock objects we will need in order to verify permissions
         final ArchivableItem mockProjectItem = mock(ArchivableItem.class);
         final ExptURI mockUriObject = mock(ExptURI.class);
-        when(UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
+        mockedUriParserUtils.when(() -> UriParserUtils.parseURI("/archive" + project.getUri())).thenReturn(mockUriObject);
         when(mockUriObject.getSecurityItem()).thenReturn(mockProjectItem);
 
         final Map<String, String> runtimeValues = Collections.singletonMap("project", projectJson);

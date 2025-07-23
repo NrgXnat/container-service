@@ -61,6 +61,7 @@ import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
+import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.user.XnatUserProvider;
@@ -91,7 +92,7 @@ import java.util.concurrent.ExecutorService;
 
 @Configuration
 @EnableTransactionManagement
-@Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class})
+@Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class, MockJmsConfig.class})
 public class IntegrationTestConfig {
     /*
     Control API and dependencies + Events
@@ -340,4 +341,10 @@ public class IntegrationTestConfig {
     public ResourceTransactionManager transactionManager(final SessionFactory sessionFactory) throws Exception {
         return new HibernateTransactionManager(sessionFactory);
     }
+
+    @Bean
+    public NrgPreferenceService nrgPreferenceService() {
+        return Mockito.mock(NrgPreferenceService.class);
+    }
+
 }

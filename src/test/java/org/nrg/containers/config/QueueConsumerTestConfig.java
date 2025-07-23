@@ -33,9 +33,11 @@ import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
 import org.nrg.mail.services.impl.SpringBasedMailServiceImpl;
+import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.services.AliasTokenService;
+import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -192,6 +194,11 @@ public class QueueConsumerTestConfig {
     @Bean
     public SiteConfigPreferences siteConfigPreferences() {
         return Mockito.mock(SiteConfigPreferences.class);
+    }
+
+    @Bean
+    public NrgPreferenceService fakePrefsService() {
+        return Mockito.mock(NrgPreferenceService.class);
     }
 
     @Bean

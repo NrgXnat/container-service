@@ -390,20 +390,37 @@ public class OrchestrationTest {
 
     @Test
     @DirtiesContext
+    //CS-1031
     public void testGetAvailableForProject() throws Exception {
         Orchestration o = orchestrationService.createOrUpdate(ORCHESTRATION);
 
+        //Test no orchestration is availble if individual wrappers are not enabled for the project
         OrchestrationProject op = orchestrationService.getAvailableForProject(PROJECT);
+        assertNull(op.getSelectedOrchestrationId());
+        assertThat(op.getAvailableOrchestrations(), hasSize(0));
+
+        //Enable the individual wrappers for the project
+        commandService.enableForProject(PROJECT, o.getWrapperIds().get(0), user.getUsername(), "test");
+        commandService.enableForProject(PROJECT, o.getWrapperIds().get(1), user.getUsername(), "test");
+        op = orchestrationService.getAvailableForProject(PROJECT);
         assertNull(op.getSelectedOrchestrationId());
         assertThat(op.getAvailableOrchestrations(), hasSize(1));
         assertThat(op.getAvailableOrchestrations().get(0).isEnabled(), is(true));
 
+        //Enable the Orchestration for the project
+        orchestrationService.setProjectOrchestration(PROJECT, o.getId(), user);
+        op = orchestrationService.getAvailableForProject(PROJECT);
+        assertNotNull(op.getSelectedOrchestrationId());
+        assertThat(op.getAvailableOrchestrations().get(0).isEnabled(), is(true));
+
+        //Disable the Orchestration at the site, will disable the project orchestration
         orchestrationService.setEnabled(o.getId(), false, user);
         op = orchestrationService.getAvailableForProject(PROJECT);
         assertNull(op.getSelectedOrchestrationId());
         assertThat(op.getAvailableOrchestrations(), hasSize(1));
         assertThat(op.getAvailableOrchestrations().get(0).isEnabled(), is(false));
 
+        //Enable the Orchestration at the site, Project level Orchestration has to be re-enabled
         orchestrationService.setEnabled(o.getId(), true, user);
         orchestrationService.setProjectOrchestration(PROJECT, o.getId(), user);
         op = orchestrationService.getAvailableForProject(PROJECT);
