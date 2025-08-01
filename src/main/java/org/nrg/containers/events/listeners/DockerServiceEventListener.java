@@ -7,7 +7,6 @@ import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.services.ContainerService;
-import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.helpers.Users;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.annotation.JmsListener;
@@ -37,6 +36,7 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
      *
      * @deprecated This should be used only for unit testing.
      */
+    @Deprecated
     @SuppressWarnings("DeprecatedIsStillUsed")
     public DockerServiceEventListener(final EventBus eventBus,
                                       final ContainerService containerService) {

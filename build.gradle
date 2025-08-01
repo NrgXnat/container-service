@@ -9,16 +9,17 @@ plugins {
     id "idea"
     id "java"
     id "maven-publish"
-    id "com.palantir.git-version" version "3.3.0"
-    id "io.spring.dependency-management" version "1.1.7"
+    id "com.palantir.git-version" version "4.0.0"
     id "io.franzbecker.gradle-lombok" version "5.0.0"
+    id "io.spring.dependency-management" version "1.1.7"
     id "net.linguica.maven-settings" version "0.5"
-    id("org.openrewrite.rewrite") version("7.0.4")
-
+    id "org.openrewrite.rewrite" version "7.0.4"
+    id "org.nrg.xnat.build.xnat-data-builder" version "${vXnat}"
 }
 
-group "org.nrg.xnatx.plugins"
-version "3.8.0-SNAPSHOT"
+group = "org.nrg.xnatx.plugins"
+version = "3.8.0-SNAPSHOT"
+description = "XNAT Plugin for launching and managing containers."
 
 java {
     withSourcesJar()
@@ -34,9 +35,18 @@ def vAwaitility = "2.0.0"
 
 repositories {
     mavenLocal()
-    maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
-    maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
+    maven { url = "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
+    maven { url = "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
     mavenCentral()
+}
+
+// Use this configuration to put dependencies into the fat jar
+configurations {
+    implementation.extendsFrom(implementAndInclude)
+    configureEach {
+        resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
+        exclude group: "org.bouncycastle"
+    }
 }
 
 dependencyManagement {
@@ -58,16 +68,6 @@ def vGson = dependencyManagement.importedProperties["gson.version"]
 def vJackson = dependencyManagement.importedProperties["jackson.version"]
 def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
 def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
-
-// Use this configuration to put dependencies into the fat jar
-configurations {
-    implementation.extendsFrom(implementAndInclude)
-    all {
-        resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
-
-        exclude group: "org.bouncycastle"
-    }
-}
 
 tasks.withType(Test).configureEach {
 //        jvmArgs("--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED")
@@ -215,8 +215,6 @@ dependencies {
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
     testImplementation "commons-net:commons-net"
-//    testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
-//    testImplementation "org.powermock:powermock-api-mockito2:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
@@ -272,23 +270,30 @@ try {
     isCleanTag = false
 }
 
-ext.gitManifest = manifest {
-    attributes "Application-Name": pluginAppName,
-            "Build-Date": buildDate,
-            "Build-Number": buildNumber,
-            "Implementation-Version": project.version,
-            "Implementation-Sha": gitHash,
-            "Implementation-Sha-Full": gitHashFull,
-            "Implementation-Commit": commitDistance,
-            "Implementation-LastTag": lastTag,
-            "Implementation-Branch": branchName,
-            "Implementation-CleanTag": isCleanTag,
-            "Implementation-Dirty": isDirty
+tasks.withType(Jar).configureEach {
+    manifest {
+        attributes "Application-Name": project.description,
+                "Build-Date": buildDate,
+                "Build-Number": buildNumber,
+                "Implementation-Version": project.version,
+                "Implementation-Sha": gitHash,
+                "Implementation-Sha-Full": gitHashFull,
+                "Implementation-Commit": commitDistance,
+                "Implementation-LastTag": lastTag,
+                "Implementation-Branch": branchName,
+                "Implementation-CleanTag": isCleanTag,
+                "Implementation-Dirty": isDirty
+    }
 }
 
-task fatJar(type: Jar) {
-    zip64 true
-    archiveClassifier.set("fat")
+lombok {
+    version = dependencyManagement.importedProperties["lombok.version"] as String
+    sha256 = dependencyManagement.importedProperties["lombok.checksum"] as String
+}
+
+tasks.register("fatJar", Jar) {
+    zip64 = true
+    archiveClassifier = "fat"
     from {
         configurations.implementAndInclude.collect { it.isDirectory() ? it : zipTree(it) }
     } {
@@ -296,10 +301,7 @@ task fatJar(type: Jar) {
         exclude "META-INF/*.DSA"
         exclude "META-INF/*.RSA"
     }
-    duplicatesStrategy "exclude"
-    manifest {
-        from gitManifest
-    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     with jar
 }
 
@@ -308,10 +310,7 @@ sourceSets.main.java {
     exclude "*/AutoValue.java"
 }
 
-jar{
-    manifest {
-        from gitManifest
-    }
+jar {
     doLast {
         if (!gradle.taskGraph.hasTask(":fatJar")) {
             logger.warn 'WARNING: You should generally run fatJar instead of jar task for this plugin'
@@ -319,28 +318,11 @@ jar{
     }
 }
 
-task sourceJar(type: Jar, dependsOn: classes) {
-    archiveClassifier.set("sources")
-    manifest {
-        from gitManifest
-    }
-    from sourceSets.main.allSource
-}
-
-task javadocJar(type: Jar, dependsOn: javadoc) {
-    archiveClassifier.set("javadoc")
-    manifest {
-        from gitManifest
-    }
-    from javadoc.destinationDir
-}
-
 publishing {
     publications {
         mavenJava(MavenPublication) {
             artifacts {
-                artifact sourceJar
-                artifact javadocJar
+                artifact sourcesJar
                 artifact fatJar
             }
 
@@ -381,18 +363,9 @@ publishing {
     }
     repositories {
         maven {
-            if (project.version.endsWith("-SNAPSHOT")) {
-                url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot-local"
-            } else {
-                url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
-            }
+            url = "https://nrgxnat.jfrog.io/nrgxnat/libs-${project.version.endsWith("-SNAPSHOT") ? "snapshot" : "release"}-local"
             // The value for name must match <id> in ~/.m2/settings.xml
             name = "XNAT_Artifactory"
         }
     }
 }
-
-def propertyWithDefault(def String property, def Object value) {
-    hasProperty(property) ? getProperty(property) : value
-}
-

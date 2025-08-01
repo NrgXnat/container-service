@@ -29,6 +29,7 @@ public class ContainerEventListener implements Consumer<Event<ContainerEvent>> {
      *
      * @deprecated This should be used only for unit testing.
      */
+    @Deprecated
     @SuppressWarnings("DeprecatedIsStillUsed")
     public ContainerEventListener(final EventBus eventBus,
                                   final ContainerService containerService) {

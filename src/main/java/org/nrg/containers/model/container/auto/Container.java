@@ -153,7 +153,7 @@ public abstract class Container implements Serializable {
     @JsonIgnore
     @Nonnull
     public Long nanoCpus() {
-        return (new Double(NANO * instanceOrDefault(limitCpu(), 0D))).longValue();
+        return (long) (NANO * instanceOrDefault(limitCpu(), 0D));
     }
 
     @JsonIgnore
