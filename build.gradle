@@ -21,8 +21,11 @@ group "org.nrg.xnatx.plugins"
 version "3.8.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = 21
-    targetCompatibility = 21
+    withSourcesJar()
+    withJavadocJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 def vMockito = "5.7.0"

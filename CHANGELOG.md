@@ -1,7 +1,14 @@
 # Changelog
 
+## 3.7.1
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.7.1/)
+
+* **Bugfix** [CS-1036](https://radiologics.atlassian.net/browse/CS-1036): Commands with spaces in their names could not be run in Kubernetes environment
+
+
 ## 3.7.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.0/)
+
 * **New Feature** [CS-980](https://radiologics.atlassian.net/browse/CS-990): Add tracking labels to command json
 * **New Feature** [CS-990](https://radiologics.atlassian.net/browse/CS-990): Added Container Manager Role, Added Container Visibility
 * **Improvement** [CS-986](https://radiologics.atlassian.net/browse/CS-986): Allow halt to orchestrations on midstream command failures
@@ -17,6 +24,7 @@
 
 ## 3.6.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.1/)
+
 * **Improvement** [CS-975](https://radiologics.atlassian.net/browse/CS-975)/[XNAT-8111](https://radiologics.atlassian.net/browse/XNAT-8111) Convert event handlers in CS to use JMS instead of executors
 * **Bugfix** [CS-985](https://radiologics.atlassian.net/browse/CS-985) Call to /xapi/docker/images failing in 3.6.0 in Kubernetes environments
 
