@@ -240,13 +240,7 @@ queueSettingsForm:
         restartNote:
             tag: div.warning
             contents:
-                "Changing JMS concurrency settings requires restarting the message listener container(s). Messages that are currently being processed will complete normally, but no new messages will be processed during the restart period. The container(s) will resume processing with the new concurrency settings once fully restarted. Changes may take a few moments to take effect."
-        scaleDownNote:
-            tag: div.warning
-            element:
-                style: "margin: 5px 0 10px 0;"
-            contents:
-                "Changing the minimum concurrency will not immediately reduce active consumers if the current thread count still falls between the new minimum and maximum. However, consumers will automatically scale down to the new minimum over time during periods of low message activity."
+                "Changing JMS concurrency settings requires a Tomcat restart to take effect"
         stagingQueueMin:
             kind: panel.input.text
             name: concurrencyMinStagingQueue

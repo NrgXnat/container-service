@@ -5,8 +5,11 @@ import org.nrg.containers.jms.preferences.QueuePrefsBean;
 import org.nrg.containers.model.xnat.FakePrefsService;
 import org.nrg.containers.jms.rest.QueueSettingsRestApi;
 import org.nrg.containers.rest.QueueSettingsRestApiTest;
+import org.nrg.framework.configuration.ConfigPaths;
 import org.nrg.framework.services.ContextService;
+import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.framework.services.SerializerService;
+import org.nrg.framework.utilities.OrderedProperties;
 import org.nrg.prefs.services.NrgPreferenceService;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.services.RoleHolder;
@@ -41,8 +44,10 @@ public class QueueSettingsRestApiTestConfig extends WebSecurityConfigurerAdapter
 
     @Bean
     public QueuePrefsBean queuePrefsBean(final NrgPreferenceService fakePrefsService,
-                                         final JmsListenerEndpointRegistry registry) {
-        return new QueuePrefsBean(fakePrefsService, registry);
+                                         final NrgEventServiceI eventService,
+                                         final ConfigPaths configPaths,
+                                         final OrderedProperties initPrefs) {
+        return new QueuePrefsBean(fakePrefsService, eventService, configPaths, initPrefs);
     }
 
     @Bean
