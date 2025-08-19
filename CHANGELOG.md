@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.7.2
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.7.2/)
+
+* **Bugfix** [CS-1037](https://radiologics.atlassian.net/browse/CS-1037): Disabling dynamic changes to JMS listener concurrency for staging and finalizing queues to prevent messages from getting lost
+
 ## 3.7.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.1/)
 
