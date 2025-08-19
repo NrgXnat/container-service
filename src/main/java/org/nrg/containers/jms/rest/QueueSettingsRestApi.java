@@ -18,9 +18,7 @@ import org.nrg.xapi.rest.XapiRequestMapping;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -35,7 +33,7 @@ import static org.nrg.xdat.security.helpers.AccessLevel.Authorizer;
 @Api("JMS Queue Settings API")
 @Slf4j
 public class QueueSettingsRestApi extends AbstractXapiRestController {
-    private QueuePrefsBean queuePrefsBean;
+    private final QueuePrefsBean queuePrefsBean;
 
     @Autowired
     public QueueSettingsRestApi(QueuePrefsBean queuePrefsBean,
@@ -52,8 +50,8 @@ public class QueueSettingsRestApi extends AbstractXapiRestController {
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(produces = {MediaType.APPLICATION_JSON_VALUE}, method = RequestMethod.GET, restrictTo = Authorizer)
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> getQueueSettings() {
-        return new ResponseEntity<>((Map<String, Object>) queuePrefsBean, HttpStatus.OK);
+    public Map<String, Object> getQueueSettings() {
+        return queuePrefsBean;
     }
 
     @AuthDelegate(ContainerManagerUserAuthorization.class)
@@ -65,18 +63,15 @@ public class QueueSettingsRestApi extends AbstractXapiRestController {
     @XapiRequestMapping(consumes = {MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.APPLICATION_JSON_VALUE},
             method = RequestMethod.POST, restrictTo = Authorizer)
     @ResponseBody
-    public ResponseEntity<Void> setQueueSettings(@ApiParam(value = "The map of queue settings" +
-            " properties to be set.", required = true) @RequestBody final Map<String, Integer> properties)
-            throws ClientException, ServerException {
+    public void setQueueSettings(@ApiParam(value = "The map of queue settings properties to be set.", required = true)
+                                 @RequestBody final Map<String, String> properties) throws ClientException, ServerException {
         try {
-            queuePrefsBean.setPreferences(properties);
+            queuePrefsBean.setBatch(properties);
         } catch (InvalidPreferenceName e) {
             throw new ClientException(e.getMessage());
         } catch (Exception e) {
             throw new ServerException(e.getMessage());
         }
-        return new ResponseEntity<>(HttpStatus.OK);
     }
-
 }
 

@@ -1,10 +1,6 @@
 package org.nrg.containers.config;
 
-import java.util.concurrent.TimeUnit;
-
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.jetbrains.annotations.NotNull;
@@ -25,10 +21,13 @@ import org.nrg.mail.services.MailService;
 import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xnat.initialization.RootConfig;
-import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.ComponentScan.Filter;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.listener.DefaultMessageListenerContainer;
@@ -36,7 +35,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.scheduling.config.TriggerTask;
 import org.springframework.scheduling.support.PeriodicTrigger;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import javax.jms.ConnectionFactory;
+import javax.jms.Destination;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @EnableJms
@@ -89,18 +90,6 @@ public class ContainersConfig {
                                                                                 final MailService mailService,
                                                                                 @Qualifier("springConnectionFactory") final ConnectionFactory connectionFactory) {
         return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
-    }
-
-    @Bean
-    public TriggerTask refreshQueueListenerConcurrencies(final XnatAppInfo xnatAppInfo,
-                                                         final QueuePrefsBean queuePrefsBean) {
-        // Shadow servers will need to periodically refresh their prefs beans from the db to pick up any
-        // API changes made on the tomcat server
-        final Runnable updatePrefsFromDb = queuePrefsBean.getRefresher(xnatAppInfo.isPrimaryNode());
-        return new TriggerTask(
-                updatePrefsFromDb,
-                new PeriodicTrigger(10L, TimeUnit.SECONDS)
-        );
     }
 
     @Bean(name = ContainerStagingRequest.DESTINATION)
