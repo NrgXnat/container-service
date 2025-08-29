@@ -1385,7 +1385,14 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     isDefault: true,
                     action: function(){
                         var editorContent = _editor.getValue().code;
-                        // editorContent = JSON.stringify(editorContent).replace(/\r?\n|\r/g,' ');
+                         try {
+                              JSON.parse(editorContent);
+                         } catch(error) {
+                            if (error instanceof SyntaxError) {
+                                XNAT.ui.dialog.message('Please fix errors in command json');
+                                return false;
+                            }
+                         }
 
                         var url = commandUrl('/'+sanitizedVars['id']);
 
@@ -1482,7 +1489,14 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         close: false,
                         action: function(){
                             var editorContent = _editor.getValue().code;
-                            commandDef = JSON.parse(editorContent);
+                            try {
+                              commandDef = JSON.parse(editorContent);
+                            } catch(error) {
+                                if (error instanceof SyntaxError) {
+                                    XNAT.ui.dialog.message('Please fix errors in command json.');
+                                    return false;
+                                }
+                            }
 
                             if (commandDef.image === undefined || commandDef.image.length === 0) {
                                 XNAT.ui.dialog.message('Error: This command definition does not specify an image and cannot be saved.');
