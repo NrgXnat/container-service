@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.7.3
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.7.3/)
+
+### Bugfixes
+* [CS-1029](https://radiologics.atlassian.net/browse/CS-1029): Fixed message display alignment in orchestration dialog due to CSS conflict
+* [CS-1031](https://radiologics.atlassian.net/browse/CS-1031): Fixed unit test failures related to orchestration visibility, container labels, workflow status updates, and permission changes
+* [CS-1039](https://radiologics.atlassian.net/browse/CS-1039): Disabled Save button in Command JSON editor when ACE editor validation errors are present
+* [CS-1040](https://radiologics.atlassian.net/browse/CS-1040): Fixed container workflow statuses becoming delayed or stuck in non-terminal states during large batch jobs by disabling KubernetesInformer resync and improving pod deletion handling
+* [CS-1043](https://radiologics.atlassian.net/browse/CS-1043): Fixed Kubernetes log polling errors by ensuring API call is not issued when sinceSeconds parameter is less than 1
+
 ## 3.7.2
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.2/)
 
