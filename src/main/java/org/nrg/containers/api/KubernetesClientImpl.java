@@ -213,14 +213,21 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Our since value is a timestamp, but the kubernetes API wants a relative "seconds before now"
         final OffsetDateTime now = OffsetDateTime.now();
-        if (since != null && !since.isBefore(now)) {
-            // This can happen when the UI is streaming logs.
-            // It will get the logs and ask for more in less than a second.
-            // The API doesn't allow us to get logs with more precision than one second,
-            //  so we can treat this as if no logs were created in the interval.
-            return null;
+        final Integer sinceRelative;
+        if (since == null) {
+            // null means get all available logs (no time filter)
+            sinceRelative = null;
+        } else {
+            final long secondsBetween = ChronoUnit.SECONDS.between(since, now);
+            if (secondsBetween < 1) {
+                // This can happen when the UI is streaming logs.
+                // It will get the logs and ask for more in less than a second.
+                // The API doesn't allow us to get logs with more precision than one second,
+                //  so we can treat this as if no logs were created in the interval.
+                return null;
+            }
+            sinceRelative = Math.toIntExact(secondsBetween);
         }
-        final Integer sinceRelative = since == null ? null : Math.toIntExact(ChronoUnit.SECONDS.between(now, since));
 
         try {
             return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);

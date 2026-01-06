@@ -34,7 +34,7 @@ import java.util.concurrent.ExecutorService;
 
 @Slf4j
 public class KubernetesInformerImpl implements KubernetesInformer {
-    private static final int RESYNC_PERIOD_MILLISECONDS = 10000;
+    private static final int RESYNC_DISABLED = 0;
 
     private final SharedInformerFactory sharedInformerFactory;
     private volatile boolean isStarted;
@@ -70,7 +70,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                                 params.watch,
                                 null
                         ),
-                V1Job.class, V1JobList.class, RESYNC_PERIOD_MILLISECONDS);
+                V1Job.class, V1JobList.class, RESYNC_DISABLED);
         jobLister = new Lister<>(jobInformer.getIndexer(), namespace);
 
         SharedIndexInformer<V1Pod> podInformer = sharedInformerFactory.sharedIndexInformerFor(
@@ -89,15 +89,9 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                                 params.watch,
                                 null
                         ),
-                V1Pod.class, V1PodList.class, RESYNC_PERIOD_MILLISECONDS);
+                V1Pod.class, V1PodList.class, RESYNC_DISABLED);
         podInformer.addEventHandler(new PodEventHandler(eventService));
         podLister = new Lister<>(podInformer.getIndexer(), namespace);
-
-        if (log.isTraceEnabled()) {
-            podInformer.addEventHandler(new LoggingResourceEventHandler<>());
-            jobInformer.addEventHandler(new LoggingResourceEventHandler<>());
-        }
-
         isStarted = false;
     }
 
@@ -142,28 +136,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     @Override
     public V1Pod getPod(final String name) {
         return podLister.get(name);
-    }
-
-    static class LoggingResourceEventHandler<T extends KubernetesObject> implements ResourceEventHandler<T> {
-        @Override
-        public void onAdd(T obj) {
-            log.trace("Added {} {}\n{}", obj.getKind(), obj.getMetadata().getName(), obj);
-        }
-
-        @Override
-        public void onUpdate(T oldObj, T newObj) {
-            if (newObj.getMetadata().getResourceVersion().equals(oldObj.getMetadata().getResourceVersion())) {
-                // Nothing changed. Informer just periodically rebuilds its internal cache.
-                log.trace("Recached {} {}", newObj.getKind(), newObj.getMetadata().getName());
-            } else {
-                log.trace("Updated {} {}\n{}", newObj.getKind(), newObj.getMetadata().getName(), newObj);
-            }
-        }
-
-        @Override
-        public void onDelete(T obj, boolean deletedFinalStateUnknown) {
-            log.trace("Deleted {} {}", obj.getKind(), obj.getMetadata().getName());
-        }
     }
 
     static class PodEventHandler implements ResourceEventHandler<V1Pod> {
@@ -264,31 +236,65 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             final V1ObjectMeta oldMeta = oldObj.getMetadata();
             final V1ObjectMeta newMeta = newObj.getMetadata();
             if (oldMeta == null || newMeta == null) {
-                log.debug("Pod updated. No metadata?");
+                log.debug("Pod {} onUpdate skipped due to missing metadata. oldMeta={}, newMeta={}",
+                        objName(newObj), oldObj.getMetadata(), newObj.getMetadata());
                 return;
             }
+
+            final String newPhase = newObj.getStatus() != null && newObj.getStatus().getPhase() != null
+                    ? newObj.getStatus().getPhase() : "<unknown>";
+
+            final String oldPhase = oldObj.getStatus() != null && oldObj.getStatus().getPhase() != null
+                    ? oldObj.getStatus().getPhase() : "<unknown>";
+
             final String oldVersion = oldMeta.getResourceVersion();
             final String newVersion = newMeta.getResourceVersion();
-            if (newVersion == null || newVersion.equals(oldVersion)) {
-                // recache, nothing changed
-                log.trace("Pod {} recached", objName(newObj));
+
+            if (newVersion == null) {
+                log.debug("Exiting onUpdate because Pod {} resourceVersion is null", objName(newObj));
+                return;
+            } else if (newVersion.equals(oldVersion)) {
+                log.debug("Exiting onUpdate because Pod {} resourceVersion unchanged.  newObject(phase={}, resourceVersion={}); oldObject(phase={}, resourceVersion={}). Skipping onUpdate",
+                        objName(newObj), newPhase, newVersion, oldPhase, oldVersion);
                 return;
             }
 
             final KubernetesStatusChangeEvent oldEvent = createEvent(oldObj);
             final KubernetesStatusChangeEvent newEvent = createEvent(newObj);
             if (newEvent.equals(oldEvent)) {
-                log.debug("Pod {} updated, but derived event has not changed. Not throwing repeat event.", objName(newObj));
+                log.debug("Pod {} onUpdate, but derived event has not changed. Not triggering additional XNAT event. newObject(phase={}, resourceVersion={}); oldObject(phase={}, resourceVersion={})",
+                        objName(newObj), newPhase, newVersion, oldPhase, oldVersion);
                 return;
             }
 
-            log.debug("Pod {} updated", newEvent.getPodName());
+            log.debug("Pod {} onUpdate (phase={}, resourceVersion={})", objName(newObj), newPhase, newVersion);
             triggerEvent(newEvent);
         }
 
         @Override
         public void onDelete(V1Pod obj, boolean deletedFinalStateUnknown) {
-            // ignored
+            final V1ObjectMeta meta = obj.getMetadata();
+            final String resourceVersion = meta != null && meta.getResourceVersion() != null
+                    ? meta.getResourceVersion() : "<unknown>";
+            final String podStatus = obj.getStatus() != null && obj.getStatus().getPhase() != null
+                    ? obj.getStatus().getPhase() : "<unknown>";
+
+            log.debug("Pod {} onDelete (phase={}, resourceVersion={}, deletedFinalStateUnknown={})",
+                    objName(obj), podStatus, resourceVersion, deletedFinalStateUnknown);
+
+            final KubernetesPodPhase podPhase = KubernetesPodPhase.fromString(podStatus);
+            if (podPhase != null && podPhase.isTerminal()) {
+                return; // podPhase is terminal so deletion was expected
+            }
+
+            log.error("Pod was deleted unexpectedly. Last known pod phase was: {}", podStatus);
+            triggerEvent(
+                    createEvent(obj).toBuilder()
+                            .podPhase(KubernetesPodPhase.FAILED)
+                            .exitCode(1)
+                            .podPhaseReason("Pod was deleted unexpectedly. Last known pod phase: " + podStatus)
+                            .containerStateReason(null)
+                            .build());
         }
     }
 }
