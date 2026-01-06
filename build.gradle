@@ -45,7 +45,7 @@ dependencyManagement {
     }
 }
 
-def vDockerJava = "3.4.0.1"
+def vDockerJava = "3.7.0.1"
 def vAutoValue = "1.3"
 def vKubernetesClient = "15.0.+"
 def vPowerMock = "1.7.0"
