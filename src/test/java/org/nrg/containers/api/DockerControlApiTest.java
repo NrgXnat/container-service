@@ -363,7 +363,7 @@ public class DockerControlApiTest {
             expectedCreatedBuilder.serviceId(BACKEND_ID);
         } else if (backend == Backend.KUBERNETES) {
             when(kubernetesClient.createJob(
-                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO), any(String.class), any(String.class)
+                    any(Container.class), eq(DockerControlApi.NumReplicas.ZERO), any(), any()
             )).thenReturn(BACKEND_ID);
 
             expectedCreatedBuilder.serviceId(BACKEND_ID);
@@ -476,12 +476,15 @@ public class DockerControlApiTest {
         final ServiceSpec serviceSpec = Mockito.mock(ServiceSpec.class);
         final ServiceSpec updatedSpec = Mockito.mock(ServiceSpec.class);
         final Service service = Mockito.mock(Service.class);
+        final com.github.dockerjava.api.model.ResourceVersion resourceVersion = Mockito.mock(com.github.dockerjava.api.model.ResourceVersion.class);
         final InspectServiceCmd inspectServiceCmd = Mockito.mock(InspectServiceCmd.class, Mockito.RETURNS_DEEP_STUBS);
         final UpdateServiceCmd updateServiceCmd = Mockito.mock(UpdateServiceCmd.class, Mockito.RETURNS_DEEP_STUBS);
         when(mockDockerJavaClient.inspectServiceCmd(BACKEND_ID)).thenReturn(inspectServiceCmd);
         when(mockDockerJavaClient.updateServiceCmd(BACKEND_ID, updatedSpec)).thenReturn(updateServiceCmd);
         when(inspectServiceCmd.exec()).thenReturn(service);
         when(service.getSpec()).thenReturn(serviceSpec);
+        when(service.getVersion()).thenReturn(resourceVersion);
+        when(resourceVersion.getIndex()).thenReturn(1L);
         when(serviceSpec.withMode(any(ServiceModeConfig.class))).thenReturn(updatedSpec);
 
         // Run the test

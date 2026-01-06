@@ -89,6 +89,8 @@ public class SecretsTest {
     private UserDataCache userDataCache = Mockito.mock(UserDataCache.class);
     private KubernetesClientImpl kubernetesClient = Mockito.mock(KubernetesClientImpl.class);
     private DockerServerBase.DockerServer dockerServer = Mockito.mock(DockerServerBase.DockerServer.class);
+    private org.nrg.containers.services.DockerHubService dockerHubService = Mockito.mock(org.nrg.containers.services.DockerHubService.class);
+    private org.nrg.containers.api.KubernetesClientFactory kubernetesClientFactory = Mockito.mock(org.nrg.containers.api.KubernetesClientFactory.class);
 
     private UserI user = Mockito.mock(UserI.class);
     private Backend backend = null;
@@ -320,17 +322,25 @@ public class SecretsTest {
                 .build();
 
         // Class under test
-        final DockerControlApi dockerControlApi = Mockito.spy(DockerControlApi.class);
+        final DockerControlApi dockerControlApi = Mockito.spy(new DockerControlApi(dockerServerService, dockerHubService, kubernetesClientFactory));
 
         // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
 //        PowerMockito.doReturn(dockerClient).when(dockerControlApi, "getDockerClient", dockerServer);
-//        Mockito.doReturn(dockerClient).when(dockerControlApi)
-//                .getDockerClient(any(DockerServerBase.DockerServer.class));
-        when(dockerControlApi.getDockerClient()).thenReturn(dockerClient);
+        Mockito.doReturn(dockerClient).when(dockerControlApi)
+                .getDockerClient(any(DockerServerBase.DockerServer.class));
 
         //        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
         when(dockerServerService.getServer()).thenReturn(dockerServer);
+
+        // Mock authConfig - return a valid DockerHub so authConfig doesn't need to access config
+        final org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub mockDockerHub = Mockito.mock(org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub.class);
+        when(mockDockerHub.url()).thenReturn("docker.io");
+        when(mockDockerHub.username()).thenReturn("");
+        when(mockDockerHub.password()).thenReturn("");
+        when(mockDockerHub.token()).thenReturn("");
+        when(mockDockerHub.email()).thenReturn("");
+        when(dockerHubService.getByUrl(any())).thenReturn(mockDockerHub);
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
@@ -342,19 +352,6 @@ public class SecretsTest {
         Mockito.when(dockerClient.createServiceCmd(Mockito.any(ServiceSpec.class))).thenReturn(cmd);
 
         // Call method under test
-//        PowerMockito.doCallRealMethod().when(dockerControlApi, "createDockerSwarmService", toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
-        Method method = DockerControlApi.class.getDeclaredMethod("createDockerSwarmService", Container.class, DockerServerBase.DockerServer.class, DockerControlApi.NumReplicas.class );
-        method.setAccessible(true);
-
-        Mockito.doCallRealMethod().when(dockerControlApi);
-        method.invoke(dockerControlApi, toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
-//        Mockito.doCallRealMethod().when(dockerControlApi)
-//                .getClass()
-//                .getDeclaredMethod("createDockerSwarmService", Container.class, DockerServerBase.DockerServer.class, DockerControlApi.NumReplicas.class)
-//                .invoke(dockerControlApi, toCreate, dockerServer, DockerControlApi.NumReplicas.ZERO);
-
-//        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
-        Mockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
         dockerControlApi.create(toCreate, user);
 
         // Capture call to backend api mock
@@ -396,7 +393,7 @@ public class SecretsTest {
                 .build();
 
         // Class under test
-        final DockerControlApi dockerControlApi = Mockito.mock(DockerControlApi.class);
+        final DockerControlApi dockerControlApi = Mockito.spy(new DockerControlApi(dockerServerService, dockerHubService, kubernetesClientFactory));
 
         // Mock out DockerControlApi#getDockerClient(dockerServer)
         final DockerClient dockerClient = Mockito.mock(DockerClient.class);
@@ -408,6 +405,32 @@ public class SecretsTest {
 //        PowerMockito.doReturn(dockerServer).when(dockerControlApi, "getServer");
         when(dockerServerService.getServer()).thenReturn(dockerServer);
 
+        // Mock authConfig - return a valid DockerHub so authConfig doesn't need to access config
+        final org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub mockDockerHub2 = Mockito.mock(org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub.class);
+        when(mockDockerHub2.url()).thenReturn("docker.io");
+        when(mockDockerHub2.username()).thenReturn("");
+        when(mockDockerHub2.password()).thenReturn("");
+        when(mockDockerHub2.token()).thenReturn("");
+        when(mockDockerHub2.email()).thenReturn("");
+        when(dockerHubService.getByUrl(any())).thenReturn(mockDockerHub2);
+
+        // Mock listImagesCmd for getAllImages call
+        final com.github.dockerjava.api.command.ListImagesCmd listImagesCmd = Mockito.mock(com.github.dockerjava.api.command.ListImagesCmd.class);
+        when(dockerClient.listImagesCmd()).thenReturn(listImagesCmd);
+        when(listImagesCmd.exec()).thenReturn(java.util.Collections.emptyList());
+
+        // Mock pullImageCmd for pullImage call
+        final com.github.dockerjava.api.command.PullImageCmd pullImageCmd = Mockito.mock(com.github.dockerjava.api.command.PullImageCmd.class);
+        final com.github.dockerjava.api.command.PullImageResultCallback pullCallback = Mockito.mock(com.github.dockerjava.api.command.PullImageResultCallback.class);
+        when(dockerClient.pullImageCmd(any(String.class))).thenReturn(pullImageCmd);
+        when(pullImageCmd.start()).thenReturn(pullCallback);
+        when(pullCallback.awaitCompletion()).thenReturn(pullCallback);
+
+        // Mock inspectImageCmd for getImageById call
+        final com.github.dockerjava.api.command.InspectImageCmd inspectImageCmd = Mockito.mock(com.github.dockerjava.api.command.InspectImageCmd.class);
+        final com.github.dockerjava.api.command.InspectImageResponse inspectImageResponse = Mockito.mock(com.github.dockerjava.api.command.InspectImageResponse.class);
+        when(dockerClient.inspectImageCmd(any(String.class))).thenReturn(inspectImageCmd);
+        when(inspectImageCmd.exec()).thenReturn(inspectImageResponse);
 
         // Mock out backend call to create service
         final String containerId = RandomStringUtils.randomAlphanumeric(5);
@@ -423,14 +446,6 @@ public class SecretsTest {
         Mockito.when(dockerClient.createContainerCmd(dockerImage)).thenReturn(cmd);
 
         // Call method under test
-//        PowerMockito.doCallRealMethod().when(dockerControlApi, "crxeateDockerContainer", toCreate, dockerServer);
-        Method method = DockerControlApi.class.getDeclaredMethod("createDockerContainer", CreateContainerCmd.class, DockerServerBase.DockerServer.class);
-        method.setAccessible(true);
-        Mockito.doCallRealMethod().when(dockerControlApi);
-        method.invoke(dockerControlApi, toCreate, dockerServer);
-
-//        PowerMockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
-        Mockito.doCallRealMethod().when(dockerControlApi).create(toCreate, user);
         dockerControlApi.create(toCreate, user);
 
         // Capture call to backend api mock

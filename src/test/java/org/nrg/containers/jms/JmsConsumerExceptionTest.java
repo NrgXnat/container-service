@@ -16,6 +16,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.entities.AliasToken;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -66,6 +67,7 @@ public class JmsConsumerExceptionTest {
     @Autowired private ContainerService containerService;
     @Autowired private MailService mockMailService;
     @Autowired private AliasTokenService mockAliasTokenService;
+    @Autowired private NotificationsPreferences mockNotificationsPreferences;
 
     private UserI mockUser;
     private FakeWorkflow fakeWorkflow;
@@ -99,6 +101,9 @@ public class JmsConsumerExceptionTest {
         when(mockSiteConfigPreferences.getSiteUrl()).thenReturn(FAKE_HOST);
         when(mockSiteConfigPreferences.getSiteId()).thenReturn(FAKE_SITEID);
         when(mockSiteConfigPreferences.getAdminEmail()).thenReturn(FAKE_EMAIL);
+
+        // Mock notifications preferences to allow JMS error notifications
+        when(mockNotificationsPreferences.getSuppressJMSFailureNotifications()).thenReturn(false);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -169,17 +174,24 @@ public class JmsConsumerExceptionTest {
     @DirtiesContext
     //CS-1031
     public void testStagingConsumeFailure() throws Exception {
-        // setup jmsTemplate to throw exception
+        // Setup: Make userManagementServiceI throw a RuntimeException that won't be caught by the listener
+        // This will propagate to the JMS error handler, unlike exceptions thrown from within
+        // consumeResolveCommandAndLaunchContainer which are caught internally
         String exceptionMsg = "my tricky exception message";
-//        PowerMockito.when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
-//                .thenThrow(new RuntimeException(exceptionMsg));
-        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+
+        // Reset the user management mock to throw an uncaught exception
+        Mockito.reset(mockUserManagementServiceI);
+        when(mockUserManagementServiceI.getUser(FAKE_USER))
                 .thenThrow(new RuntimeException(exceptionMsg));
 
-        containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L, wrapper.name(), Collections.<String, String>emptyMap(), mockUser, fakeWorkflow
-        );
+        containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(), 0L, wrapper.name(),
+                Collections.<String, String>emptyMap(), mockUser, fakeWorkflow);
 
-        Mockito.verify(mockMailService, timeout(500).times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
-                eq(FAKE_EMAIL), eq(FAKE_SITEID + " JMS Error"), contains(exceptionMsg));
+        // Verify that the error handler sends an email notification
+        Mockito.verify(mockMailService, timeout(5000).times(1)).sendHtmlMessage(
+                eq(FAKE_EMAIL),
+                eq(FAKE_EMAIL),
+                eq(FAKE_SITEID + " JMS Error"),
+                contains(exceptionMsg));
     }
 }

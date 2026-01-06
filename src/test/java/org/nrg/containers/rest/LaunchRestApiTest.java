@@ -53,6 +53,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -185,7 +186,7 @@ public class LaunchRestApiTest {
 
         // Mock queuing
         when(mockContainerService.createContainerWorkflow(eq(FAKE_XNAT_ID), eq(FAKE_ROOT), eq(WRAPPER_NAME),
-                eq(""), eq(mockAdmin), any(String.class), any(Long.class), anyInt()))
+                eq(""), eq(mockAdmin), any(String.class), anyLong(), anyInt()))
                 .thenReturn(mockWorkflow);
 
         // We have to match any resolved command because spring will add a csrf token to the inputs. I don't know how to get that token in advance.
@@ -204,7 +205,7 @@ public class LaunchRestApiTest {
         );
 
         when(mockContainerService.launchContainer(
-                anyString(), any(Long.class), anyString(), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                any(), anyLong(), any(), eq(WRAPPER_ID), eq(FAKE_ROOT),
                 any(Map.class), any(UserI.class))
         ).thenReturn(report);
 
@@ -231,7 +232,7 @@ public class LaunchRestApiTest {
         );
 
         when(mockContainerService.launchContainer(
-                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                any(), anyLong(), any(), eq(WRAPPER_ID), eq(FAKE_ROOT),
                 any(Map.class), any(UserI.class))
         ).thenReturn(report);
 
@@ -275,7 +276,7 @@ public class LaunchRestApiTest {
                 .build();
 
         when(mockContainerService.bulkLaunch(
-                any(String.class), any(Long.class), any(String.class), eq(WRAPPER_ID), eq(FAKE_ROOT),
+                any(), anyLong(), any(), eq(WRAPPER_ID), eq(FAKE_ROOT),
                 anyMap(), any(UserI.class)
         )).thenReturn(report);
 
@@ -326,7 +327,7 @@ public class LaunchRestApiTest {
                 .commandName(COMMAND_NAME)
                 .image(IMAGE)
                 .build();
-        when(mockCommandResolutionService.preResolve(eq(project), any(long.class), any(String.class), eq(WRAPPER_ID), anyMap(), eq(mockAdmin)))
+        when(mockCommandResolutionService.preResolve(eq(project), anyLong(), any(), eq(WRAPPER_ID), anyMap(), eq(mockAdmin)))
                 .thenReturn(partiallyResolvedCommand);
 
         final LaunchUi expectedLaunchUi = LaunchUi.create(partiallyResolvedCommand,
