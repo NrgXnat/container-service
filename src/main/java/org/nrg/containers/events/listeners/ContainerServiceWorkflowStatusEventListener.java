@@ -98,11 +98,19 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
         if (SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.containsKey(eventId)) {
             try {
                 final UserI user = Users.getUser(event.getUserId());
+                final String entityId = event.getEntityId();
+                if (StringUtils.isBlank(entityId)) {
+                    log.warn("No entity ID found for workflow {}: {}", event.getWorkflow().getWorkflowId(), event);
+                    return;
+                }
+                final XnatImagesessiondata session = XnatImagesessiondata.getXnatImagesessiondatasById(entityId, user, true);
+                if (session == null) {
+                    log.warn("No session found with ID {} for workflow {}: {}", entityId, event.getWorkflow().getWorkflowId(), event);
+                    return;
+                }
                 QueueUtils.sendJmsRequest(template,
                                           SessionMergeOrArchiveEvent.QUEUE,
-                                          SessionMergeOrArchiveEvent.create(XnatImagesessiondata.getXnatImagesessiondatasById(event.getEntityId(), user, true),
-                                                                            user,
-                                                                            SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.get(eventId)));
+                                          SessionMergeOrArchiveEvent.create(session, user, SessionArchiveListenerAndCommandLauncher.WORKFLOW_TO_EVENT_ID.get(eventId)));
             } catch (UserNotFoundException e) {
                 log.warn("The specified user was not found: {}", event.getUserId());
             } catch (UserInitException e) {

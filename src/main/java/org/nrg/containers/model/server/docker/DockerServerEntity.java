@@ -19,6 +19,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private Boolean pullImagesOnXnatInit;
     private String containerUser;
     private List<DockerServerEntitySwarmConstraint> swarmConstraints = new ArrayList<>();
+    private List<DockerServerEntityKubernetesToleration> kubernetesTolerations = new ArrayList<>();
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
     private boolean statusEmailEnabled = true;
@@ -80,6 +81,30 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         for (final DockerServerEntitySwarmConstraint constraintEntity : toRemove) {
             this.removeSwarmConstraint(constraintEntity);
         }
+
+        final Map<String, DockerServerBase.KubernetesToleration> pojoTolerationsToAdd = new HashMap<>();
+        List<DockerServerBase.KubernetesToleration> pojoTolerations = dockerServer.kubernetesTolerations();
+        pojoTolerations = pojoTolerations == null ? Collections.emptyList() : pojoTolerations;
+        for (final DockerServerBase.KubernetesToleration toleration : pojoTolerations) {
+            pojoTolerationsToAdd.put(tolerationCompositeKey(toleration.key(), toleration.operator(), toleration.effect()), toleration);
+        }
+        final List<DockerServerEntityKubernetesToleration> tolerationsToRemove = new ArrayList<>();
+        for (final DockerServerEntityKubernetesToleration tolerationEntity : this.kubernetesTolerations) {
+            String key = tolerationCompositeKey(tolerationEntity.getTolerationKey(), tolerationEntity.getOperator(), tolerationEntity.getEffect());
+            if (pojoTolerationsToAdd.containsKey(key)) {
+                tolerationEntity.update(pojoTolerationsToAdd.get(key));
+                pojoTolerationsToAdd.remove(key);
+            } else {
+                tolerationsToRemove.add(tolerationEntity);
+            }
+        }
+        for (final DockerServerBase.KubernetesToleration toleration : pojoTolerationsToAdd.values()) {
+            this.addKubernetesToleration(DockerServerEntityKubernetesToleration.fromPojo(toleration));
+        }
+        for (final DockerServerEntityKubernetesToleration tolerationEntity : tolerationsToRemove) {
+            this.removeKubernetesToleration(tolerationEntity);
+        }
+
         return this;
     }
 
@@ -199,6 +224,39 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         swarmConstraint.setDockerServerEntity(null);
     }
 
+    @OneToMany(mappedBy = "dockerServerEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    public List<DockerServerEntityKubernetesToleration> getKubernetesTolerations() {
+        return kubernetesTolerations;
+    }
+
+    public void setKubernetesTolerations(final List<DockerServerEntityKubernetesToleration> kubernetesTolerations) {
+        this.kubernetesTolerations = kubernetesTolerations == null ?
+                Collections.emptyList() : kubernetesTolerations;
+        for (final DockerServerEntityKubernetesToleration toleration : this.kubernetesTolerations) {
+            toleration.setDockerServerEntity(this);
+        }
+    }
+
+    public void addKubernetesToleration(final DockerServerEntityKubernetesToleration toleration) {
+        if (toleration == null || this.kubernetesTolerations.contains(toleration)) {
+            return;
+        }
+        this.kubernetesTolerations.add(toleration);
+        toleration.setDockerServerEntity(this);
+    }
+
+    public void removeKubernetesToleration(final DockerServerEntityKubernetesToleration toleration) {
+        if (toleration == null || !this.kubernetesTolerations.contains(toleration)) {
+            return;
+        }
+        this.kubernetesTolerations.remove(toleration);
+        toleration.setDockerServerEntity(null);
+    }
+
+    private static String tolerationCompositeKey(String key, String operator, String effect) {
+        return (key == null ? "" : key) + "|" + (operator == null ? "" : operator) + "|" + (effect == null ? "" : effect);
+    }
+
     @Column(columnDefinition = "boolean default true")
     public boolean isAutoCleanup() {
         return autoCleanup;
@@ -287,6 +345,30 @@ public class DockerServerEntity extends AbstractHibernateEntity {
             }
         }
 
+        boolean tolEqual = this.kubernetesTolerations == null && that.kubernetesTolerations == null;
+        if (!tolEqual) {
+            tolEqual = true;
+            if (this.kubernetesTolerations == null || that.kubernetesTolerations == null ||
+                    this.kubernetesTolerations.size() != that.kubernetesTolerations.size()) {
+                tolEqual = false;
+            } else {
+                for (DockerServerEntityKubernetesToleration t : this.kubernetesTolerations) {
+                    if (!that.kubernetesTolerations.contains(t)) {
+                        tolEqual = false;
+                        break;
+                    }
+                }
+                if (tolEqual) {
+                    for (DockerServerEntityKubernetesToleration t : that.kubernetesTolerations) {
+                        if (!this.kubernetesTolerations.contains(t)) {
+                            tolEqual = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         return backend == that.backend &&
                 Objects.equals(this.name, that.name) &&
                 Objects.equals(this.host, that.host) &&
@@ -305,7 +387,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.archivePathTranslation, that.archivePathTranslation) &&
                 Objects.equals(this.buildPathTranslation, that.buildPathTranslation) &&
                 Objects.equals(this.combinedPathTranslation, that.combinedPathTranslation) &&
-                constrEqual;
+                constrEqual &&
+                tolEqual;
     }
 
     @Override
@@ -313,7 +396,7 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         return Objects.hash(name, host, certPath, lastEventCheckTime, backend, pathTranslationXnatPrefix,
                 pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
                 maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
-                archivePathTranslation, buildPathTranslation, combinedPathTranslation);
+                archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations);
     }
 
 }

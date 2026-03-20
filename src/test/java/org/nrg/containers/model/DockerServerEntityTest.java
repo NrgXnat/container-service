@@ -13,7 +13,9 @@ import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerSwarmConstraint;
+import org.nrg.containers.model.server.docker.DockerServerBase.KubernetesToleration;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
+import org.nrg.containers.model.server.docker.DockerServerEntityKubernetesToleration;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.services.DockerServerEntityService;
 import org.nrg.containers.services.DockerServerService;
@@ -62,6 +64,25 @@ public class DockerServerEntityTest {
             .name("TestKubernetes")
             .build();
     private final static DockerServerEntity K8S_ENTITY = DockerServerEntity.create(K8S);
+
+    private final static KubernetesToleration TOLERATION_EQUAL = KubernetesToleration.builder()
+            .id(0L)
+            .key("workload.type")
+            .operator("Equal")
+            .value("cs")
+            .effect("NoSchedule")
+            .build();
+    private final static KubernetesToleration TOLERATION_EXISTS = KubernetesToleration.builder()
+            .id(0L)
+            .key("dedicated")
+            .operator("Exists")
+            .build();
+    private final static DockerServer K8S_WITH_TOLERATIONS = DockerServer.builder()
+            .backend(Backend.KUBERNETES)
+            .name("TestKubernetesTolerations")
+            .kubernetesTolerations(Arrays.asList(TOLERATION_EQUAL, TOLERATION_EXISTS))
+            .build();
+    private final static DockerServerEntity K8S_WITH_TOLERATIONS_ENTITY = DockerServerEntity.create(K8S_WITH_TOLERATIONS);
 
     private final static DockerServer SWARM_NO_CONSTRAINTS = DockerServer.builder()
             .backend(Backend.SWARM)
@@ -121,6 +142,12 @@ public class DockerServerEntityTest {
                 DockerServerSwarmConstraint.class), is(NOT_SETTABLE));
         assertThat(mapper.readValue(mapper.writeValueAsString(SETTABLE),
                 DockerServerSwarmConstraint.class), is(SETTABLE));
+        assertThat(mapper.readValue(mapper.writeValueAsString(K8S_WITH_TOLERATIONS),
+                DockerServer.class), is(K8S_WITH_TOLERATIONS));
+        assertThat(mapper.readValue(mapper.writeValueAsString(TOLERATION_EQUAL),
+                KubernetesToleration.class), is(TOLERATION_EQUAL));
+        assertThat(mapper.readValue(mapper.writeValueAsString(TOLERATION_EXISTS),
+                KubernetesToleration.class), is(TOLERATION_EXISTS));
     }
 
     @Test
@@ -160,6 +187,24 @@ public class DockerServerEntityTest {
         TestingUtils.commitTransaction();
         DockerServerEntity retrievedUpdatedEntity = dockerServerEntityService.retrieve(retrievedEntity.getId());
         assertThat(retrievedEntity, is(retrievedUpdatedEntity));
+
+        // Test tolerations
+        DockerServerEntity k8sTolEntity = dockerServerEntityService.create(K8S_WITH_TOLERATIONS_ENTITY);
+        TestingUtils.commitTransaction();
+        DockerServerEntity retrievedK8sTolEntity = dockerServerEntityService.retrieve(k8sTolEntity.getId());
+        assertThat(retrievedK8sTolEntity, is(k8sTolEntity));
+
+        List<DockerServerEntityKubernetesToleration> tolerationList = retrievedK8sTolEntity.getKubernetesTolerations();
+        assertThat(tolerationList, Matchers.hasSize(2));
+        assertThat(tolerationList.get(0).getDockerServerEntity(), is(k8sTolEntity));
+        assertThat(tolerationList.get(1).getDockerServerEntity(), is(k8sTolEntity));
+
+        retrievedK8sTolEntity.update(K8S);
+        assertThat(retrievedK8sTolEntity, is(not(k8sTolEntity)));
+        dockerServerEntityService.update(retrievedK8sTolEntity);
+        TestingUtils.commitTransaction();
+        DockerServerEntity retrievedUpdatedK8sTolEntity = dockerServerEntityService.retrieve(retrievedK8sTolEntity.getId());
+        assertThat(retrievedK8sTolEntity, is(retrievedUpdatedK8sTolEntity));
     }
 
     @Test
@@ -241,9 +286,32 @@ public class DockerServerEntityTest {
                             .collect(Collectors.toList()));
                 }
 
+                // Overwrite toleration IDs (matched by key|operator|effect composite key)
+                List<KubernetesToleration> serverTolerations = server.kubernetesTolerations();
+                List<KubernetesToleration> actualTolerations = actual.kubernetesTolerations();
+                if (actualTolerations != null && serverTolerations != null) {
+                    Map<String, KubernetesToleration> serverTolerationsByKey =
+                            serverTolerations.stream()
+                                    .collect(Collectors.toMap(
+                                            t -> tolerationCompositeKey(t.key(), t.operator(), t.effect()),
+                                            Function.identity()));
+
+                    actualWithSameIdBuilder.kubernetesTolerations(actualTolerations.stream()
+                            .map(t -> {
+                                KubernetesToleration serverToleration = serverTolerationsByKey.get(
+                                        tolerationCompositeKey(t.key(), t.operator(), t.effect()));
+                                return serverToleration == null ? null : t.toBuilder().id(serverToleration.id()).build();
+                            })
+                            .collect(Collectors.toList()));
+                }
+
                 return server.equals(actualWithSameIdBuilder.build());
             }
         };
+    }
+
+    private static String tolerationCompositeKey(String key, String operator, String effect) {
+        return (key == null ? "" : key) + "|" + (operator == null ? "" : operator) + "|" + (effect == null ? "" : effect);
     }
 }
 

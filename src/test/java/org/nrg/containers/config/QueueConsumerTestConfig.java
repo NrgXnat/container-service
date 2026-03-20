@@ -45,6 +45,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import reactor.Environment;
@@ -52,6 +53,9 @@ import reactor.bus.EventBus;
 import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
+import java.io.IOException;
+
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Configuration
 @EnableTransactionManagement
 @Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class})
@@ -75,8 +79,10 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
-    public Environment env() {
-        return Environment.initializeIfEmpty().assignErrorJournal();
+    public Environment env() throws IOException {
+        try (final Environment environment = Environment.initializeIfEmpty()) {
+            return environment.assignErrorJournal();
+        }
     }
 
     @Bean
@@ -95,17 +101,18 @@ public class QueueConsumerTestConfig {
     }
 
     @Bean
-    public ContainerEventListener containerEventListener(final EventBus eventBus,
-                                                         final ContainerService containerService) {
-        //noinspection deprecation
-        return new ContainerEventListener(eventBus, containerService);
+    public ContainerEventListener containerEventListener(final ContainerService containerService) {
+        return new ContainerEventListener(containerService);
     }
 
     @Bean
-    public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
-                                                           final ContainerService containerService) {
-        //noinspection deprecation
-        return new DockerServiceEventListener(eventBus, containerService);
+    public JmsTemplate jmsTemplate() {
+        return Mockito.mock(JmsTemplate.class);
+    }
+
+    @Bean
+    public DockerServiceEventListener serviceEventListener(final EventBus eventBus, final ContainerService containerService, final JmsTemplate template) {
+        return new DockerServiceEventListener(eventBus, containerService, template);
     }
 
     @Bean
@@ -150,20 +157,17 @@ public class QueueConsumerTestConfig {
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
-                                             final NrgEventService mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
-        return new ContainerServiceImpl(mockDockerControlApi, mockContainerEntityService,
-                commandResolutionService, mockCommandService, aliasTokenService, siteConfigPreferences,
-                containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
+        return new ContainerServiceImpl(mockDockerControlApi, mockContainerEntityService, commandResolutionService, mockCommandService,
+                                        aliasTokenService, siteConfigPreferences, containerFinalizeService, mockXnatAppInfo,
+                                        catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean);
     }
 
+    @SuppressWarnings("unused")
     @Bean
     public DockerControlApi mockDockerControlApi(final DockerServerService dockerServerService,
-                                                 final CommandLabelService commandLabelService,
-                                                 final NrgEventService eventService) {
-        //return Mockito.spy(new DockerControlApi(dockerServerService, commandLabelService, eventService));
+                                                 final CommandLabelService commandLabelService) {
         return Mockito.mock(DockerControlApi.class);
     }
 

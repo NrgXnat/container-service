@@ -104,6 +104,9 @@ public abstract class DockerServerBase implements Serializable {
     @Nullable
     public abstract String combinedPathTranslation();
 
+    @Nullable @JsonProperty("kubernetes-tolerations")
+    public abstract ImmutableList<KubernetesToleration> kubernetesTolerations();
+
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
         private static final long serialVersionUID = 3879071283219400186L;
@@ -131,14 +134,15 @@ public abstract class DockerServerBase implements Serializable {
                                           @JsonProperty("combined-pvc-name") final String combinedPvcName,
                                           @JsonProperty("archive-path-translation") final String archivePathTranslation,
                                           @JsonProperty("build-path-translation") final String buildPathTranslation,
-                                          @JsonProperty("combined-path-translation") final String combinedPathTranslation) {
+                                          @JsonProperty("combined-path-translation") final String combinedPathTranslation,
+                                          @Nullable @JsonProperty("kubernetes-tolerations") final List<KubernetesToleration> kubernetesTolerations) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
             }
             return create(id, name, host, certPath, backend, null, pathTranslationXnatPrefix,
                     pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
                     maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
-                    archivePathTranslation, buildPathTranslation, combinedPathTranslation);
+                    archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations);
         }
 
         public static DockerServer create(final String name,
@@ -169,7 +173,8 @@ public abstract class DockerServerBase implements Serializable {
                                           final String combinedPvcName,
                                           final String archivePathTranslation,
                                           final String buildPathTranslation,
-                                          final String combinedPathTranslation) {
+                                          final String combinedPathTranslation,
+                                          final List<KubernetesToleration> kubernetesTolerations) {
             return builder()
                     .id(id == null ? 0L : id)
                     .name(StringUtils.isBlank(name) ? host : name)
@@ -192,6 +197,7 @@ public abstract class DockerServerBase implements Serializable {
                     .archivePathTranslation(archivePathTranslation)
                     .buildPathTranslation(buildPathTranslation)
                     .combinedPathTranslation(combinedPathTranslation)
+                    .kubernetesTolerations(kubernetesTolerations)
                     .build();
         }
 
@@ -200,6 +206,9 @@ public abstract class DockerServerBase implements Serializable {
             List<DockerServerSwarmConstraint> swarmConstraints = dockerServerEntity.getSwarmConstraints() == null ?
                     null :
                     dockerServerEntity.getSwarmConstraints().stream().map(DockerServerSwarmConstraint::create).collect(Collectors.toList());
+            List<KubernetesToleration> kubernetesTolerations = dockerServerEntity.getKubernetesTolerations() == null ?
+                    null :
+                    dockerServerEntity.getKubernetesTolerations().stream().map(KubernetesToleration::create).collect(Collectors.toList());
             return create(
                     dockerServerEntity.getId(),
                     dockerServerEntity.getName(),
@@ -221,7 +230,8 @@ public abstract class DockerServerBase implements Serializable {
                     dockerServerEntity.getCombinedPvcName(),
                     dockerServerEntity.getArchivePathTranslation(),
                     dockerServerEntity.getBuildPathTranslation(),
-                    dockerServerEntity.getCombinedPathTranslation());
+                    dockerServerEntity.getCombinedPathTranslation(),
+                    kubernetesTolerations);
         }
 
         public static DockerServer create(final DockerServerPrefsBean dockerServerPrefsBean) {
@@ -240,6 +250,7 @@ public abstract class DockerServerBase implements Serializable {
                     null,
                     null,
                     true,
+                    null,
                     null,
                     null,
                     null,
@@ -273,7 +284,8 @@ public abstract class DockerServerBase implements Serializable {
                             this.combinedPvcName(),
                             this.archivePathTranslation(),
                             this.buildPathTranslation(),
-                            this.combinedPathTranslation()
+                            this.combinedPathTranslation(),
+                            this.kubernetesTolerations()
                     );
         }
 
@@ -299,7 +311,8 @@ public abstract class DockerServerBase implements Serializable {
                     .combinedPvcName(null)
                     .archivePathTranslation(null)
                     .buildPathTranslation(null)
-                    .combinedPathTranslation(null);
+                    .combinedPathTranslation(null)
+                    .kubernetesTolerations(Collections.emptyList());
         }
 
         public abstract Builder toBuilder();
@@ -337,6 +350,22 @@ public abstract class DockerServerBase implements Serializable {
                 // Docker + Swarm must have a host configured
                 if (StringUtils.isBlank(host())) {
                     errors.add("Host cannot be empty for " + backend() + " server setting");
+                }
+            }
+
+            List<KubernetesToleration> tolerations = kubernetesTolerations();
+            if (tolerations != null) {
+                for (final KubernetesToleration toleration : tolerations) {
+                    final String op = toleration.operator();
+                    if (!"Equal".equals(op) && !"Exists".equals(op)) {
+                        errors.add("Toleration operator must be \"Equal\" or \"Exists\"");
+                    }
+                    if ("Equal".equals(op) && StringUtils.isBlank(toleration.value())) {
+                        errors.add("Toleration value is required when operator is \"Equal\"");
+                    }
+                    if (!"Exists".equals(op) && StringUtils.isBlank(toleration.key())) {
+                        errors.add("Toleration key is required unless operator is \"Exists\"");
+                    }
                 }
             }
 
@@ -379,6 +408,7 @@ public abstract class DockerServerBase implements Serializable {
             public abstract Builder archivePathTranslation(String archivePathTranslation);
             public abstract Builder buildPathTranslation(String buildPathTranslation);
             public abstract Builder combinedPathTranslation(String combinedPathTranslation);
+            public abstract Builder kubernetesTolerations(List<KubernetesToleration> kubernetesTolerations);
             public abstract DockerServer build();
         }
     }
@@ -414,6 +444,7 @@ public abstract class DockerServerBase implements Serializable {
                                                   @JsonProperty("archive-path-translation") final String archivePathTranslation,
                                                   @JsonProperty("build-path-translation") final String buildPathTranslation,
                                                   @JsonProperty("combined-path-translation") final String combinedPathTranslation,
+                                                  @Nullable @JsonProperty("kubernetes-tolerations") final List<KubernetesToleration> kubernetesTolerations,
                                                   @JsonProperty("ping") final Boolean ping) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
@@ -423,7 +454,7 @@ public abstract class DockerServerBase implements Serializable {
                     pathTranslationXnatPrefix, pathTranslationDockerPrefix, pullImagesOnXnatInit,
                     user, autoCleanup, swarmConstraints, maxConcurrentFinalizingJobs, statusEmailEnabled,
                     gpuVendor, archivePvcName, buildPvcName, combinedPvcName, archivePathTranslation, buildPathTranslation,
-                    combinedPathTranslation, ping);
+                    combinedPathTranslation, kubernetesTolerations, ping);
         }
 
         public static DockerServerWithPing create(final Long id,
@@ -447,6 +478,7 @@ public abstract class DockerServerBase implements Serializable {
                                                   final String archivePathTranslation,
                                                   final String buildPathTranslation,
                                                   final String combinedPathTranslation,
+                                                  final List<KubernetesToleration> kubernetesTolerations,
                                                   final Boolean ping) {
             return builder()
                     .id(id == null ? 0L : id)
@@ -470,6 +502,7 @@ public abstract class DockerServerBase implements Serializable {
                     .archivePathTranslation(archivePathTranslation)
                     .buildPathTranslation(buildPathTranslation)
                     .combinedPathTranslation(combinedPathTranslation)
+                    .kubernetesTolerations(kubernetesTolerations)
                     .ping(ping != null && ping)
                     .build();
         }
@@ -498,6 +531,7 @@ public abstract class DockerServerBase implements Serializable {
                     dockerServer.archivePathTranslation(),
                     dockerServer.buildPathTranslation(),
                     dockerServer.combinedPathTranslation(),
+                    dockerServer.kubernetesTolerations(),
                     ping
             );
         }
@@ -525,7 +559,8 @@ public abstract class DockerServerBase implements Serializable {
                     .combinedPvcName(null)
                     .archivePathTranslation(null)
                     .buildPathTranslation(null)
-                    .combinedPathTranslation(null);
+                    .combinedPathTranslation(null)
+                    .kubernetesTolerations(Collections.emptyList());
         }
 
         public abstract Builder toBuilder();
@@ -553,6 +588,7 @@ public abstract class DockerServerBase implements Serializable {
             public abstract Builder archivePathTranslation(String archivePathTranslation);
             public abstract Builder buildPathTranslation(String buildPathTranslation);
             public abstract Builder combinedPathTranslation(String combinedPathTranslation);
+            public abstract Builder kubernetesTolerations(List<KubernetesToleration> kubernetesTolerations);
             public abstract Builder ping(Boolean ping);
 
             public abstract DockerServerWithPing build();
@@ -628,6 +664,61 @@ public abstract class DockerServerBase implements Serializable {
         }
     }
 
+    @AutoValue
+    public static abstract class KubernetesToleration implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        @JsonProperty("id") public abstract long id();
+        @Nullable @JsonProperty("key") public abstract String key();
+        @JsonProperty("operator") public abstract String operator();
+        @Nullable @JsonProperty("value") public abstract String value();
+        @Nullable @JsonProperty("effect") public abstract String effect();
+
+        @JsonCreator
+        public static KubernetesToleration create(@JsonProperty("id") final long id,
+                                                   @JsonProperty("key") final String key,
+                                                   @JsonProperty("operator") final String operator,
+                                                   @JsonProperty("value") final String value,
+                                                   @JsonProperty("effect") final String effect) {
+            return builder()
+                    .id(id)
+                    .key(key)
+                    .operator(operator)
+                    .value(value)
+                    .effect(effect)
+                    .build();
+        }
+
+        public static KubernetesToleration create(DockerServerEntityKubernetesToleration entity) {
+            if (entity == null) return null;
+            return builder()
+                    .id(entity.getId())
+                    .key(entity.getTolerationKey())
+                    .operator(entity.getOperator())
+                    .value(entity.getValue())
+                    .effect(entity.getEffect())
+                    .build();
+        }
+
+        public static Builder builder() {
+            return new AutoValue_DockerServerBase_KubernetesToleration.Builder()
+                    .id(0L);
+        }
+
+        public abstract Builder toBuilder();
+
+        @AutoValue.Builder
+        public static abstract class Builder {
+            public abstract Builder id(long id);
+            public abstract Builder key(String key);
+            public abstract Builder operator(String operator);
+            public abstract Builder value(String value);
+            public abstract Builder effect(String effect);
+
+            public abstract KubernetesToleration build();
+        }
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -651,7 +742,8 @@ public abstract class DockerServerBase implements Serializable {
                 Objects.equals(this.combinedPvcName(), that.combinedPvcName()) &&
                 Objects.equals(this.archivePathTranslation(), that.archivePathTranslation()) &&
                 Objects.equals(this.buildPathTranslation(), that.buildPathTranslation()) &&
-                Objects.equals(this.combinedPathTranslation(), that.combinedPathTranslation());
+                Objects.equals(this.combinedPathTranslation(), that.combinedPathTranslation()) &&
+                Objects.equals(this.kubernetesTolerations(), that.kubernetesTolerations());
     }
 
     @Override
@@ -660,7 +752,8 @@ public abstract class DockerServerBase implements Serializable {
                 pathTranslationXnatPrefix(), pathTranslationDockerPrefix(), pullImagesOnXnatInit(),
                 containerUser(), autoCleanup(), swarmConstraints(), maxConcurrentFinalizingJobs(),
                 statusEmailEnabled(), gpuVendor(), archivePvcName(), buildPvcName(), combinedPvcName(),
-                archivePathTranslation(), buildPathTranslation(), combinedPathTranslation());
+                archivePathTranslation(), buildPathTranslation(), combinedPathTranslation(),
+                kubernetesTolerations());
     }
 
 }

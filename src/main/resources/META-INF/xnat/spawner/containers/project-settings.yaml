@@ -76,7 +76,6 @@ projectCommandHistoryPanel:
                     tag: div#command-history-container.data-table-wrapper.clean
                     contents: Loading history entries...
 
-
 projectSettings:
     kind: tabs
     name: projectSettingsPage

@@ -11,6 +11,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -63,7 +64,8 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventServiceI;
+import org.nrg.framework.exceptions.NrgServiceError;
+import org.nrg.framework.exceptions.NrgServiceRuntimeException;
 import org.nrg.xdat.XDAT;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.om.WrkWorkflowdata;
@@ -93,7 +95,6 @@ import org.nrg.xft.exception.XFTInitException;
 import org.nrg.xft.search.CriteriaCollection;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
-import org.nrg.xnat.event.model.BulkLaunchEvent;
 import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -121,10 +122,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -154,10 +155,13 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SE
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT;
 import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SUBJECT_ASSESSOR;
 
+@SuppressWarnings("LoggingSimilarMessage")
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
     private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.5";
+
+    public static final String FAILED_CONTAINER_MESSAGE_TEMPLATE = "db id %d, %s id %s";
     public static final String WAITING = "Waiting";
     public static final String _WAITING = "_Waiting";
     public static final String FINALIZING = "Finalizing";
@@ -186,7 +190,6 @@ public class ContainerServiceImpl implements ContainerService {
     private final OrchestrationService orchestrationService;
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
-    private final NrgEventServiceI eventService;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -202,7 +205,6 @@ public class ContainerServiceImpl implements ContainerService {
                                 final XnatAppInfo xnatAppInfo,
                                 final CatalogService catalogService,
                                 final OrchestrationService orchestrationService,
-                                final NrgEventServiceI eventService,
                                 final ObjectMapper mapper,
                                 @Qualifier("containerServiceThreadPoolExecutorFactoryBean")
                                     final ThreadPoolExecutorFactoryBean containerServiceThreadPoolExecutorFactoryBean) {
@@ -216,7 +218,6 @@ public class ContainerServiceImpl implements ContainerService {
         this.xnatAppInfo = xnatAppInfo;
         this.catalogService = catalogService;
         this.orchestrationService = orchestrationService;
-        this.eventService = eventService;
         this.mapper = mapper;
         this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
 
@@ -226,6 +227,7 @@ public class ContainerServiceImpl implements ContainerService {
     private void buildCache() {
         CacheLoader<OrchestrationIdentifier, Optional<Orchestration>> loader = new CacheLoader<OrchestrationIdentifier, Optional<Orchestration>>() {
             @Override
+            @Nonnull
             public Optional<Orchestration> load(@Nonnull OrchestrationIdentifier oi) {
                 return Optional.ofNullable(orchestrationService.findWhereWrapperIsFirst(oi));
             }
@@ -236,7 +238,7 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public PluginVersionCheck checkXnatVersion(){
         String xnatVersion = getXnatVersion();
-        Boolean compatible = isVersionCompatible(xnatVersion, MIN_XNAT_VERSION_REQUIRED);
+        Boolean compatible = isVersionCompatible(xnatVersion);
         return PluginVersionCheck.builder()
                 .compatible(compatible)
                 .xnatVersionDetected(xnatVersion)
@@ -255,40 +257,39 @@ public class ContainerServiceImpl implements ContainerService {
         return null;
     }
 
-    private Boolean isVersionCompatible(String currentVersion, String minRequiredVersion){
+    private Boolean isVersionCompatible(final String currentVersion) {
         // TODO need some tests for this - JF 2022-03-09
-        try{
+        try {
             if(Strings.isNullOrEmpty(currentVersion)){
                 log.error("Unknown XNAT version.");
                 return false;
             }
-            log.debug("XNAT Version " + currentVersion + " found.");
+            log.debug("XNAT Version {} found.", currentVersion);
             Pattern pattern = Pattern.compile("([0-9]+)[.]([0-9]+)[.]?([0-9]*)");
-            Matcher reqMatcher =        pattern.matcher(minRequiredVersion);
+            Matcher reqMatcher =        pattern.matcher(MIN_XNAT_VERSION_REQUIRED);
             Matcher curMatcher =        pattern.matcher(currentVersion);
             if(reqMatcher.find() && curMatcher.find()) {
-                Integer requiredMajor = Integer.valueOf(reqMatcher.group(1) != null ? reqMatcher.group(1) : "0");
-                Integer requiredFeature = Integer.valueOf(reqMatcher.group(2) != null ? reqMatcher.group(2) : "0");
-                Integer requiredBug = Integer.valueOf(reqMatcher.group(1) != null ? reqMatcher.group(3) : "0");
-
-                Integer currentMajor = Integer.valueOf(curMatcher.group(1) != null ? curMatcher.group(1) : "0");
-                Integer currentFeature = Integer.valueOf(curMatcher.group(2) != null ? curMatcher.group(2) : "0");
-                Integer currentBug = Integer.valueOf(curMatcher.group(1) != null ? curMatcher.group(3) : "0");
+                int requiredMajor   = reqMatcher.group(1) != null ? Integer.parseInt(reqMatcher.group(1)) : 0;
+                int requiredFeature = reqMatcher.group(2) != null ? Integer.parseInt(reqMatcher.group(2)) : 0;
+                int requiredBug     = reqMatcher.group(1) != null ? Integer.parseInt(reqMatcher.group(3)) : 0;
+                int currentMajor    = curMatcher.group(1) != null ? Integer.parseInt(curMatcher.group(1)) : 0;
+                int currentFeature  = curMatcher.group(2) != null ? Integer.parseInt(curMatcher.group(2)) : 0;
+                int currentBug      = curMatcher.group(1) != null ? Integer.parseInt(curMatcher.group(3)) : 0;
 
                 if (currentMajor < requiredMajor) {
-                    log.error("Required XNAT Version: " + minRequiredVersion + "+.  Found XNAT Version: " + currentVersion + ".");
+                    log.error("Required XNAT Version: {}+.  Found XNAT Version: {}.", MIN_XNAT_VERSION_REQUIRED, currentVersion);
                     return false;
                 } else if (currentMajor > requiredMajor) {
                     return true;
                 } else {
                     if (currentFeature < requiredFeature) {
-                        log.error("Required XNAT Version: " + minRequiredVersion + "+.  Found XNAT Version: " + currentVersion + ".");
+                        log.error("Required XNAT Version: {}+.  Found XNAT Version: {}.", MIN_XNAT_VERSION_REQUIRED, currentVersion);
                         return false;
                     } else if (currentFeature > requiredFeature) {
                         return true;
                     } else {
                         if (currentBug < requiredBug) {
-                            log.error("Required XNAT Version: " + minRequiredVersion + "+.  Found XNAT Version: " + currentVersion + ".");
+                            log.error("Required XNAT Version: {}+.  Found XNAT Version: {}.", MIN_XNAT_VERSION_REQUIRED, currentVersion);
                             return false;
                         } else {
                             return true;
@@ -300,9 +301,9 @@ public class ContainerServiceImpl implements ContainerService {
                 return true;
             }
         } catch (Throwable e){
-            e.printStackTrace();
+            log.error("An unknown error occurred trying to get the XNAT version or compare it to the minimum required version.", e);
         }
-        log.error("Failed to parse current (" + currentVersion + ") or required (" + minRequiredVersion + ") version tags.");
+        log.error("Failed to parse current ({}) or required ({}) version tags.", currentVersion, MIN_XNAT_VERSION_REQUIRED);
         return false;
     }
 
@@ -412,12 +413,7 @@ public class ContainerServiceImpl implements ContainerService {
         final CriteriaCollection cc = new CriteriaCollection("AND");
         cc.addClause("wrk:workFlowData.justification", containerLaunchJustification);
         cc.addClause("wrk:workFlowData.status", status);
-        List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
-        if (workflows == null || workflows.size() == 0) {
-            log.info("No containers are in {} state", status);
-            return null;
-        }
-        return workflows;
+        return getContainerWorkflowsByCriteria(cc, user, Collections.singletonList(status));
     }
 
     @Nullable
@@ -429,9 +425,14 @@ public class ContainerServiceImpl implements ContainerService {
             cco.addClause("wrk:workFlowData.status", status);
         }
         cc.add(cco);
-        List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(cc, user, false);
-        if (workflows == null || workflows.size() == 0) {
-            log.info("No containers are in {} state", statuses);
+        return getContainerWorkflowsByCriteria(cc, user, statuses);
+    }
+
+    @Nullable
+    private List<WrkWorkflowdata> getContainerWorkflowsByCriteria(final CriteriaCollection criteria, final UserI user, final List<String> statuses) {
+        List<WrkWorkflowdata> workflows = WrkWorkflowdata.getWrkWorkflowdatasByField(criteria, user, false);
+        if (CollectionUtils.isEmpty(workflows)) {
+            log.info("No containers are in state: {}", String.join(", ", statuses));
             return null;
         }
         return workflows;
@@ -439,7 +440,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     private long getTimeSinceWorkflowMod(final WrkWorkflowdata wrk)
             throws ElementNotFoundException, FieldNotFoundException, XFTInitException, ParseException {
-        Date now = new Date();
+        Date now     = new Date();
         Date modTime = wrk.getItem().getMeta().getDateProperty("last_modified");
         return (now.getTime() - modTime.getTime()) / (60 * 60 * 1000 * 24);
     }
@@ -457,12 +458,12 @@ public class ContainerServiceImpl implements ContainerService {
                     continue;
                 }
                 // TODO ultimately we should re-queue this, but for now just fail it
-                log.info("Failing container workflow wfid {} because it was queued for more than 5 hours " +
+                log.info("Failing container workflow ID {} because it was queued for more than 5 hours " +
                         "and nothing remains in the staging queue", wrk.getWorkflowId());
                 updateWorkflow(wrk, PersistentWorkflowUtils.FAILED + " (Queue)",
                         "Workflow queued for more than 5 hours, needs relaunch");
             } catch (XFTInitException | ElementNotFoundException | FieldNotFoundException | ParseException e) {
-                log.error("Unable to determine mod time for wfid {}", wrk.getWorkflowId());
+                log.error("Unable to determine mod time for workflow ID {}", wrk.getWorkflowId());
             }
 
             containerFinalizeService.sendContainerStatusUpdateEmail(user, false, wrk.getPipelineName(),
@@ -484,14 +485,13 @@ public class ContainerServiceImpl implements ContainerService {
                 }
                 containerId = wrk.getComments();
                 Container containerOrService = get(containerId);
-                log.info("Re-queuing waiting container workflow wfid {} containerId {}", wrk.getWorkflowId(),
-                        containerId);
+                log.info("Re-queuing waiting container workflow ID {} container ID {}", wrk.getWorkflowId(), containerId);
                 addContainerHistoryItem(containerOrService, ContainerHistory.fromSystem(WAITING,
                         "Reset status from " + wrk.getStatus() + " to " + WAITING), user);
             } catch (XFTInitException | ElementNotFoundException| FieldNotFoundException | ParseException e) {
-                log.error("Unable to determine mod time for wfid {}", wrk.getWorkflowId());
+                log.error("Unable to determine mod time for workflow ID {}", wrk.getWorkflowId());
             } catch (NotFoundException e) {
-                log.error("Unable to find container with service or container id {}", containerId);
+                log.error("Unable to find container with service or container ID {}", containerId);
             }
         }
     }
@@ -578,7 +578,7 @@ public class ContainerServiceImpl implements ContainerService {
                                                         final UserI userI,
                                                         @Nullable final String workflowid) {
 
-        log.debug("consumeResolveCommandAndLaunchContainer wfid {}", workflowid);
+        log.debug("consumeResolveCommandAndLaunchContainer workflow ID {}", workflowid);
 
         PersistentWorkflowI workflow = null;
         if (workflowid != null) {
@@ -587,32 +587,32 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
         try {
-            log.debug("Configuring command for wfid {}", workflowid);
+            log.debug("Configuring command for workflow ID {}", workflowid);
             ConfiguredCommand configuredCommand = commandService.getAndConfigure(project, commandId, wrapperName, wrapperId);
 
-            log.debug("Resolving command for wfid {}", workflowid);
+            log.debug("Resolving command for workflow ID {}", workflowid);
             ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, inputValues, project, userI, workflowid);
 
             // Launch resolvedCommand
-            log.debug("Launching command for wfid {}", workflowid);
+            log.debug("Launching command for workflow ID {}", workflowid);
             Container container = launchResolvedCommand(resolvedCommand, userI, workflow);
             if (log.isInfoEnabled()) {
                 CommandWrapper wrapper = configuredCommand.wrapper();
-                log.info("Launched command for wfid {}: command {}, wrapper {} {}. Produced container {}.", workflowid,
+                log.info("Launched command for workflow ID {}: command {}, wrapper {} {}. Produced container {}.", workflowid,
                         configuredCommand.id(), wrapper.id(), wrapper.name(), container.databaseId());
-                log.debug("Container for wfid {}: {}", workflowid, container);
+                log.debug("Container for workflow ID {}: {}", workflowid, container);
             }
         } catch (CommandResolutionException cre) {
             handleFailure(workflow, cre, "Command resolution", "Submitted data does not match command resolution requirements. ");
         } catch (NotFoundException  | UnauthorizedException e) {
             handleFailure(workflow, e, "");
-            log.error("Container command resolution failed for wfid {}.", workflowid, e);
+            log.error("Container command resolution failed for workflow ID {}.", workflowid, e);
         } catch (NoDockerServerException | DockerServerException | ContainerException | UnsupportedOperationException e) {
             handleFailure(workflow, e, "Container launch");
-            log.error("Container launch failed for wfid {}.", workflowid, e);
+            log.error("Container launch failed for workflow ID {}.", workflowid, e);
         } catch (Exception e) {
             handleFailure(workflow, e, "Staging");
-            log.error("consumeResolveCommandAndLaunchContainer failed for wfid {}.", workflowid, e);
+            log.error("consumeResolveCommandAndLaunchContainer failed for workflow ID {}.", workflowid, e);
         }
     }
 
@@ -688,7 +688,7 @@ public class ContainerServiceImpl implements ContainerService {
                             .build()
             ), userI));
 
-            if (resolvedCommand.wrapupCommands().size() > 0) {
+            if (!resolvedCommand.wrapupCommands().isEmpty()) {
                 // Save wrapup containers in db
                 log.info("Creating wrapup container objects in database (not creating docker containers).");
                 for (final ResolvedCommand resolvedWrapupCommand : resolvedCommand.wrapupCommands()) {
@@ -699,7 +699,7 @@ public class ContainerServiceImpl implements ContainerService {
                 }
             }
 
-            if (resolvedCommand.setupCommands().size() > 0) {
+            if (!resolvedCommand.setupCommands().isEmpty()) {
                 log.info("Launching setup containers.");
                 for (final ResolvedCommand resolvedSetupCommand : resolvedCommand.setupCommands()) {
                     launchResolvedCommand(resolvedSetupCommand, userI, workflow, saved);
@@ -754,6 +754,7 @@ public class ContainerServiceImpl implements ContainerService {
                 .build();
         return toPojo(containerEntityService.create(fromPojo(toCreate)));
     }
+    @SuppressWarnings("UnusedReturnValue")
     @Nonnull
     private Container launchContainerFromDbObject(final Container toLaunch, final UserI userI)
             throws ContainerBackendException, NoContainerServerException, ContainerException {
@@ -1005,7 +1006,7 @@ public class ContainerServiceImpl implements ContainerService {
     private void doRestart(Container service, UserI userI)
             throws ContainerBackendException, NoContainerServerException, ContainerException {
 
-        if (!service.isSwarmService()) {
+        if (service.backend() != Backend.SWARM) {
             throw new ContainerException("Cannot restart non-swarm container");
         }
 
@@ -1050,7 +1051,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         log.info("Restarting service {} \"{}\"", service.databaseId(), service.serviceId());
 
-        if (!service.isSwarmService()) {
+        if (service.backend() != Backend.SWARM) {
             // Refuse to restart a non-swarm container
             return false;
         }
@@ -1113,7 +1114,7 @@ public class ContainerServiceImpl implements ContainerService {
 
         if (!request.inJMSQueue(getWorkflowStatus(userI, containerOrService))) {
             if (canFinalize(userI, containerOrService, request)) {
-                log.debug("Added to finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
+                log.debug("Added to finalizing queue: count {}, exitcode {}, is successful {}, id {}, username {}, status {}",
                         count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
                         containerOrService.status());
                 try {
@@ -1125,7 +1126,7 @@ public class ContainerServiceImpl implements ContainerService {
                 log.debug("Throttling finalizing queue container id {} must wait", request.getId());
             }
         } else {
-            log.debug("Already in finalizing queue: count {}, exitcode {}, issuccessfull {}, id {}, username {}, status {}",
+            log.debug("Already in finalizing queue: count {}, exitcode {}, is successful {}, id {}, username {}, status {}",
                     count, request.getExitCodeString(), request.isSuccessful(), request.getId(), request.getUsername(),
                     containerOrService.status());
         }
@@ -1291,7 +1292,7 @@ public class ContainerServiceImpl implements ContainerService {
         // If we find any, launch them.
         boolean launchedWrapupContainers = false;
         final List<Container> wrapupContainers = retrieveWrapupContainersForParent(databaseId);
-        if (wrapupContainers.size() > 0) {
+        if (!wrapupContainers.isEmpty()) {
             log.debug("Container {} is parent to {} wrapup containers.", databaseId, wrapupContainers.size());
             // Have these wrapup containers already been launched?
             // If they have container or service IDs, then we know they have been launched.
@@ -1328,12 +1329,12 @@ public class ContainerServiceImpl implements ContainerService {
         if (launchedWrapupContainers) {
             log.debug("Pausing finalization for container {} to wait for wrapup containers to finish.", databaseId);
             return;
-        } else if (wrapupContainers.size() > 0) {
+        } else if (!wrapupContainers.isEmpty()) {
             log.debug("All wrapup containers are complete.");
         }  // Nothing to log in the else clause where there aren't any wrapup containers
 
         // Once we are sure there are no wrapup containers left to launch, finalize
-        final String containerOrService = notFinalized.isSwarmService() ? "service" : "container";
+        final String containerOrService = notFinalized.backend() == Backend.SWARM ? "service" : "container";
         final String containerOrServiceId = notFinalized.containerOrServiceId();
         log.info("Finalizing Container {}, {} id {}.", databaseId, containerOrService, containerOrServiceId);
 
@@ -1370,7 +1371,7 @@ public class ContainerServiceImpl implements ContainerService {
         if (subtype.equals(DOCKER_SETUP.getName())) {
             log.debug("Container {} is a setup container for parent container {}. Checking whether parent needs a status change.", databaseId, parentDatabaseId);
             final List<Container> setupContainers = retrieveSetupContainersForParent(parentDatabaseId);
-            if (setupContainers.size() > 0) {
+            if (!setupContainers.isEmpty()) {
                 final Runnable startMainContainer = () -> {
                     // If none of the setup containers have failed and none of the exit codes are null,
                     // that means all the setup containers have succeeded.
@@ -1394,7 +1395,7 @@ public class ContainerServiceImpl implements ContainerService {
             log.debug("Container {} is a wrapup container for parent container {}.", databaseId, parentDatabaseId);
 
             final List<Container> wrapupContainersForParent = retrieveWrapupContainersForParent(parentDatabaseId);
-            if (wrapupContainersForParent.size() > 0) {
+            if (!wrapupContainersForParent.isEmpty()) {
                 final Runnable finalizeMainContainer = () -> {
                     // If none of the wrapup containers have failed and none of the exit codes are null,
                     // that means all the wrapup containers have succeeded.
@@ -1469,29 +1470,32 @@ public class ContainerServiceImpl implements ContainerService {
                 }
             }
 
-            final String failedContainerMessageTemplate = "db id %d, %s id %s";
             final String failedContainerMessage;
             if (failedExitCode.size() == 1) {
                 final Container failed = failedExitCode.get(0);
+                final boolean isSwarmService = failed.backend() == Backend.SWARM;
                 failedContainerMessage = "Failed " + setupOrWrapup + " container " +
-                        String.format(failedContainerMessageTemplate,
-                                failed.databaseId(), failed.isSwarmService() ? "service" : "container",
-                                failed.isSwarmService() ? failed.serviceId() : failed.containerId());
+                        String.format(FAILED_CONTAINER_MESSAGE_TEMPLATE,
+                                      failed.databaseId(), isSwarmService ? "service" : "container",
+                                isSwarmService ? failed.serviceId() : failed.containerId());
             } else {
+                final Container firstFailed               = failedExitCode.get(0);
+                final boolean   firstFailedIsSwarmService = firstFailed.backend() == Backend.SWARM;
                 final StringBuilder sb = new StringBuilder();
                 sb.append("Failed ");
                 sb.append(setupOrWrapup);
                 sb.append("containers: ");
-                sb.append(String.format(failedContainerMessageTemplate,
-                        failedExitCode.get(0).databaseId(),
-                        failedExitCode.get(0).isSwarmService() ? "service" : "container",
-                        failedExitCode.get(0).isSwarmService() ? failedExitCode.get(0).serviceId() : failedExitCode.get(0).containerId()));
+                sb.append(String.format(FAILED_CONTAINER_MESSAGE_TEMPLATE,
+                                        firstFailed.databaseId(),
+                                        firstFailedIsSwarmService ? "service" : "container",
+                                        firstFailedIsSwarmService ? firstFailed.serviceId() : firstFailed.containerId()));
                 for (int i = 1; i < failedExitCode.size(); i++) {
                     final Container failed = failedExitCode.get(i);
+                    final boolean   isSwarmService = failed.backend() == Backend.SWARM;
                     sb.append("; ");
-                    sb.append(String.format(failedContainerMessageTemplate,
-                            failed.databaseId(), failed.isSwarmService() ? "service" : "container",
-                            failed.isSwarmService() ? failed.serviceId() : failed.containerId()));
+                    sb.append(String.format(FAILED_CONTAINER_MESSAGE_TEMPLATE,
+                                            failed.databaseId(), isSwarmService ? "service" : "container",
+                            isSwarmService ? failed.serviceId() : failed.containerId()));
                 }
                 sb.append(".");
                 failedContainerMessage = sb.toString();
@@ -1674,8 +1678,7 @@ public class ContainerServiceImpl implements ContainerService {
         } catch (NoContainerServerException | ContainerBackendException ignored) {}
 
         if (StringUtils.isBlank(logContent)) {
-            final String datetimestamp = sinceOrDefault(since, queryTime).format(DATETIME_OUTPUT_FORMATTER);
-            return ContainerLogPollResponse.fromLive("", datetimestamp);
+            return ContainerLogPollResponse.fromLive("", sinceOrDefault(since, queryTime).format(DATETIME_OUTPUT_FORMATTER));
         }
 
         // The logs we fetched will have timestamps on each line.
@@ -1684,24 +1687,24 @@ public class ContainerServiceImpl implements ContainerService {
 
         // Scan through all matching datetime strings to find the last one
         //  (because there doesn't seem to be a way to find the last match more directly)
-        final Matcher datetimeMatch = DATETIME_AT_LINE_START.matcher(logContent);
-        String datetimestamp = null;
-        while (datetimeMatch.find()) {
-            datetimestamp = datetimeMatch.group(DATETIME_GROUP_NAME);
+        final Matcher dateTimeMatch = DATETIME_AT_LINE_START.matcher(logContent);
+        String dateTimeStamp = null;
+        while (dateTimeMatch.find()) {
+            dateTimeStamp = dateTimeMatch.group(DATETIME_GROUP_NAME);
         }
 
         // Shift timestamp forward by 1 second (minimum precision that the backend APIs offer)
         // to avoid getting the same log message again on the next call
         // NOTE: This means we may get unlucky and miss log lines that were produced < 1 second after the current most recent log message :(
-        final OffsetDateTime lastLogDatetime = parseTimestamp(datetimestamp)
-                .map(dateTime -> dateTime.plus(1L, ChronoUnit.SECONDS))
+        final OffsetDateTime lastLogDatetime = parseTimestamp(dateTimeStamp)
+                .map(dateTime -> dateTime.plusSeconds(1L))
                 .orElseGet(() -> sinceOrDefault(since, queryTime));  // Couldn't get a timestamp out of the logs, so fall back to what we do know;
 
-        // Format into datetimestamp
+        // Format into dateTimeStamp
         final String lastLogTimestamp = formatTimestamp(lastLogDatetime);
 
         // Strip the timestamps, leaving the logs behind
-        logContent = datetimeMatch.reset().replaceAll("");
+        logContent = dateTimeMatch.reset().replaceAll("");
 
         return ContainerLogPollResponse.fromLive(logContent, lastLogTimestamp);
     }
@@ -1711,22 +1714,22 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @VisibleForTesting
-    public static Optional<OffsetDateTime> parseTimestamp(final String datetimestamp) {
-        if (StringUtils.isBlank(datetimestamp)) {
+    public static Optional<OffsetDateTime> parseTimestamp(final String dateTimeStamp) {
+        if (StringUtils.isBlank(dateTimeStamp)) {
             return Optional.empty();
         }
         OffsetDateTime datetime = null;
         for (final DateTimeFormatter formatter : DATETIME_PARSING_FORMATTERS) {
             try {
-                datetime = formatter.parse(datetimestamp, OffsetDateTime::from);
-                log.debug("  DID   parse timestamp {} into object {} using formatter {}", datetimestamp, datetime, formatter);
+                datetime = formatter.parse(dateTimeStamp, OffsetDateTime::from);
+                log.debug("  DID   parse timestamp {} into object {} using formatter {}", dateTimeStamp, datetime, formatter);
                 break;
             } catch (DateTimeParseException ignored) {
-                log.debug("DID NOT parse timestamp {} using formatter {}", datetimestamp, formatter);
+                log.debug("DID NOT parse timestamp {} using formatter {}", dateTimeStamp, formatter);
             }
         }
         if (datetime == null) {
-            log.error("Could not parse timestamp {}", datetimestamp);
+            log.error("Could not parse timestamp {}", dateTimeStamp);
         }
         return Optional.ofNullable(datetime);
     }
@@ -1970,10 +1973,10 @@ public class ContainerServiceImpl implements ContainerService {
 
     /**
      * Updates a workflow with info from resolved command, creating the workflow if null
-     *
-     * This is a way for us to show the the container execution in the history table
+     * <p>
+     * This is a way for us to show the container execution in the history table
      * and as a workflow alert banner (where enabled) without any custom UI work.
-     *
+     * <p>
      * It is possible to create a workflow for the execution if the resolved command
      * has one external input which is an XNAT object. If it has zero external inputs,
      * there is no object on which we can "hang" the workflow, so to speak. If it has more
@@ -2037,7 +2040,7 @@ public class ContainerServiceImpl implements ContainerService {
 
             workflow.setStatus(PersistentWorkflowUtils.QUEUED);
             WorkflowUtils.save(workflow, workflow.buildEvent());
-            log.debug("Updated workflow {}.", workflow.getWorkflowId());
+            log.debug("Updated workflow {} to QUEUED.", workflow.getWorkflowId());
         } catch (Exception e) {
             log.error("Could not create/update workflow.", e);
         }
@@ -2078,7 +2081,7 @@ public class ContainerServiceImpl implements ContainerService {
         try {
             workflow.setComments(wrkFlowComment);
             WorkflowUtils.save(workflow, workflow.buildEvent());
-            log.debug("Updated workflow {}.", workflow.getWorkflowId());
+            log.debug("Updated workflow {} with comment: {}", workflow.getWorkflowId(), wrkFlowComment);
         } catch (Exception e) {
             log.error("Could not update workflow.", e);
         }
@@ -2144,7 +2147,7 @@ public class ContainerServiceImpl implements ContainerService {
                     xnatObjectToUseAsRoot = parentSession;
                     rootInputObject.scanId = scan.getIntegerId().toString();
                 } else {
-                    // Ok, nevermind, use the scan anyway. It's not a huge thing.
+                    // Ok, never mind, use the scan anyway. It's not a huge thing.
                     xnatObjectToUseAsRoot = inputValueXnatObject;
                 }
             } else {
@@ -2276,6 +2279,9 @@ public class ContainerServiceImpl implements ContainerService {
                 workflow = createContainerWorkflow(xnatIdOrUri, rootElement,
                         wrapperNameUse, StringUtils.defaultString(project, ""), userI,
                         bulkLaunchId, orchestrationId, 0);
+                if (workflow == null) {
+                    throw new NrgServiceRuntimeException(NrgServiceError.Unknown, "Unable to create workflow for container launch with ID/URI " + xnatIdOrUri + " with root element " + rootElement + " for wrapper " + wrapperNameUse);
+                }
                 workflowid = workflow.getWorkflowId().toString();
             }
 
@@ -2338,8 +2344,7 @@ public class ContainerServiceImpl implements ContainerService {
             pipelineName = StringUtils.defaultIfBlank(wrapperName, commandService.retrieveWrapper(wrapperId).name());
             steps = 1;
         }
-        eventService.triggerEvent(BulkLaunchEvent.initial(bulkLaunchId, userI.getID(), targets.size(), steps));
-        log.debug("Bulk launching on {} targets", targets.size());
+        log.debug("Bulk launching on {} targets ({} steps in orchestration)", targets.size(), steps);
 
         final LaunchReport.BulkLaunchReport.Builder reportBuilder = LaunchReport.BulkLaunchReport.builder()
                 .bulkLaunchId(bulkLaunchId).pipelineName(pipelineName);
@@ -2365,10 +2370,8 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
         if (failures > 0) {
-            // this should be super uncommon
-            eventService.triggerEvent(BulkLaunchEvent.executorServiceFailureCount(bulkLaunchId, userI.getID(), failures));
+            log.error("Bulk launch had {} failures out of {} targets. BulkLaunchId: {}", failures, targets.size(), bulkLaunchId);
         }
-
         return reportBuilder.build();
     }
 
@@ -2376,6 +2379,7 @@ public class ContainerServiceImpl implements ContainerService {
         return "bulk-" + userI.getLogin() + System.currentTimeMillis() + new Random().nextInt(1000);
     }
 
+    @SuppressWarnings("SameParameterValue")
     private String mapLogString(final String title, final Map<String, String> map) {
         final StringBuilder messageBuilder = new StringBuilder(title);
         for (Map.Entry<String, String> entry : map.entrySet()) {

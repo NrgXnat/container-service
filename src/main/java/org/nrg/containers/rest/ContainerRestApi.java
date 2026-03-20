@@ -15,6 +15,7 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.security.ContainerControlUserAuthorization;
 import org.nrg.containers.security.ContainerId;
+import org.nrg.containers.security.ContainerLogControlUserAuthorization;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.xdat.security.helpers.Roles;
@@ -230,7 +231,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                         .build();
     }
 
-    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @AuthDelegate(ContainerLogControlUserAuthorization.class)
     @XapiRequestMapping(value = "/containers/{containerId}/logs", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs",
             notes = "Return stdout and stderr logs as a zip")
@@ -243,7 +244,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
         response.setHeader(HttpHeaders.CONTENT_TYPE, ZIP);
     }
 
-    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @AuthDelegate(ContainerLogControlUserAuthorization.class)
     @XapiRequestMapping(value = "/containers/{containerId}/logs/{file}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody
@@ -260,7 +261,7 @@ public class ContainerRestApi extends AbstractXapiRestController {
                 .body(logContents);
     }
 
-    @AuthDelegate(ContainerControlUserAuthorization.class)
+    @AuthDelegate(ContainerLogControlUserAuthorization.class)
     @XapiRequestMapping(value = "/containers/{containerId}/logSince/{file}", method = GET, restrictTo = Authorizer)
     @ApiOperation(value = "Get Container logs", notes = "Return either stdout or stderr logs")
     @ResponseBody

@@ -7,7 +7,6 @@ import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.services.ContainerService;
-import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.helpers.Users;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.annotation.JmsListener;
@@ -24,7 +23,7 @@ import static reactor.bus.selector.Selectors.type;
 @Slf4j
 @Component
 public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEvent>> {
-    private final HashSet<Long>    currentlyProcessing = new HashSet<>();
+    private final HashSet<Long> currentlyProcessing = new HashSet<>();
 
     private final ContainerService containerService;
     private final JmsTemplate      template;
@@ -34,15 +33,7 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
      *
      * @param eventBus         The event bus
      * @param containerService The container service
-     *
-     * @deprecated This should be used only for unit testing.
      */
-    @SuppressWarnings("DeprecatedIsStillUsed")
-    public DockerServiceEventListener(final EventBus eventBus,
-                                      final ContainerService containerService) {
-        this(eventBus, containerService, null);
-    }
-
     @Autowired
     public DockerServiceEventListener(final EventBus eventBus,
                                       final ContainerService containerService,

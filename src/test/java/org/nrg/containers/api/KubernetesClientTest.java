@@ -2,12 +2,18 @@ package org.nrg.containers.api;
 
 import io.kubernetes.client.openapi.models.V1Affinity;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirement;
+import io.kubernetes.client.openapi.models.V1Toleration;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
+import org.nrg.containers.model.server.docker.DockerServerBase.KubernetesToleration;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertThat;
 
 @Slf4j
@@ -38,4 +44,44 @@ public class KubernetesClientTest {
         assertThat(nodeSelector.getOperator(), is(expectedKubernetesOperator));
         assertThat(nodeSelector.getValues(), is(Collections.singletonList(constraintValue)));
     }
+
+    @Test
+    public void testTolerationConversion() throws Exception {
+        // Test that KubernetesToleration POJOs are properly converted to V1Toleration objects
+        // by exercising the same logic used in KubernetesClientImpl.createJob
+
+        final KubernetesToleration equalToleration = KubernetesToleration.builder()
+                .id(0L)
+                .key("workload.type")
+                .operator("Equal")
+                .value("cs")
+                .effect("NoSchedule")
+                .build();
+
+        final KubernetesToleration existsToleration = KubernetesToleration.builder()
+                .id(0L)
+                .key("dedicated")
+                .operator("Exists")
+                .build();
+
+        List<KubernetesToleration> tolerations = Arrays.asList(equalToleration, existsToleration);
+
+        // Convert using the extracted static method
+        List<V1Toleration> v1Tolerations = KubernetesClientImpl.convertTolerations(tolerations);
+
+        assertThat(v1Tolerations, hasSize(2));
+
+        V1Toleration v1Equal = v1Tolerations.get(0);
+        assertThat(v1Equal.getKey(), is("workload.type"));
+        assertThat(v1Equal.getOperator(), is("Equal"));
+        assertThat(v1Equal.getValue(), is("cs"));
+        assertThat(v1Equal.getEffect(), is("NoSchedule"));
+
+        V1Toleration v1Exists = v1Tolerations.get(1);
+        assertThat(v1Exists.getKey(), is("dedicated"));
+        assertThat(v1Exists.getOperator(), is("Exists"));
+        assertThat(v1Exists.getValue(), is(nullValue()));
+        assertThat(v1Exists.getEffect(), is(nullValue()));
+    }
+
 }

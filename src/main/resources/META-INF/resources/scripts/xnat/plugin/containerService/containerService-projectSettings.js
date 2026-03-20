@@ -875,4 +875,6 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         $manager.empty();
         $manager.append(projCommandOrchestrationManager.table());
     };
+
+
 }));

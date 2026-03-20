@@ -22,7 +22,6 @@ import org.nrg.containers.services.CommandEventMappingService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.services.NrgEventServiceI;
-import org.nrg.xdat.XDAT;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.security.user.exceptions.UserInitException;
 import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
@@ -115,7 +114,7 @@ public class SessionArchiveListenerAndCommandLauncher implements Consumer<Event<
                     try {
                         sessionString = mapper.writeValueAsString(session);
                     } catch (JsonProcessingException e) {
-                        log.error(String.format("Could not serialize Session %s to json.", session), e);
+                        log.error("Could not serialize Session {} to json.", session, e);
                     }
                     inputValues.put("session", sessionString);
                     try {

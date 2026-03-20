@@ -1259,22 +1259,20 @@ var XNAT = getObject(XNAT || {});
      */
 
     launcher.containerMenuItems = containerMenuItems = [
-        {
-            text: 'Run Containers',
-            url: '#run',
-            submenu: {
-                id: 'containerSubmenuItems',
-                itemdata: [
-                ]
+            {
+                text: 'Run Containers',
+                url: '#run',
+                submenu: {
+                    id: 'containerSubmenuItems',
+                    itemdata: [
+                    ]
+                }
             }
-        }
-    ];
+        ];
 
     launcher.addMenuItem = function(command,commandSet){
         commandSet = commandSet || [];
-        var label = command['wrapper-name'];
-        if (command['wrapper-description']) if (command['wrapper-description'].length) label = command['wrapper-description'];
-        if (command['wrapper-label']) if (command['wrapper-label'].length) label = command['wrapper-label'];
+        var label = XNAT.plugin.containerService.launcher.getCommandLabel(command);
 
         if (command.enabled){
             commandSet.push(
@@ -1310,9 +1308,7 @@ var XNAT = getObject(XNAT || {});
     launcher.addYUIMenuItem = function(command){
         if (command.enabled) {
             var launcher = command.launcher || "default";
-            var label = command['wrapper-name'];
-            if (command['wrapper-description']) if (command['wrapper-description'].length) label = command['wrapper-description'];
-            if (command['wrapper-label']) if (command['wrapper-label'].length) label = command['wrapper-label'];
+            var label = XNAT.plugin.containerService.launcher.getCommandLabel(command);
 
             containerMenuItems[0].submenu.itemdata.push({
                 text: label,
@@ -1345,6 +1341,25 @@ var XNAT = getObject(XNAT || {});
         });
     }
 
+    launcher.getCommandLabel = function(command) {
+        var label = command['wrapper-name'];
+        if (command['wrapper-description']) if (command['wrapper-description'].length) label = command['wrapper-description'];
+        if (command['wrapper-label']) if (command['wrapper-label'].length) label = command['wrapper-label'];
+        return label;
+    }
+
+    launcher.sortCommands = function (commandA, commandB) {
+          let commandALabel = XNAT.plugin.containerService.launcher.getCommandLabel(commandA);
+          let commandBLabel = XNAT.plugin.containerService.launcher.getCommandLabel(commandB);
+          if (commandALabel < commandBLabel) {
+              return -1;
+          }
+          if (commandALabel > commandBLabel) {
+              return 1;
+          }
+          return 0;
+    }
+
     launcher.init = function() {
         // populate or hide the command launcher based on what's in context
         if (!projectId || !xsiType) {
@@ -1360,9 +1375,10 @@ var XNAT = getObject(XNAT || {});
                     return false;
                 } else {
                     var spawnedCommands = [];
-                    availableCommands.forEach(function (command) {
+                    availableCommands.sort(launcher.sortCommands);
+                     availableCommands.forEach(function (command) {
                         launcher.addYUIMenuItem(command);
-                    });
+                     });
                     launcher.createYUIMenu('actionsMenu',spawnedCommands);
                 }
 
@@ -1402,6 +1418,7 @@ var XNAT = getObject(XNAT || {});
 
                 // build menu of all commands
                 const spawnedCommands = [];
+                availableCommands.sort(launcher.sortCommands);
                 availableCommands.forEach(function(command) {
                     command.launcher = 'multiple-scans';
                     command.uri = '';
@@ -1420,7 +1437,9 @@ var XNAT = getObject(XNAT || {});
                 // add action menu to each scan listing
                 launcher.scanList.forEach(function(scan){
                     const scanCommands = [];
-                    typeCommandMap[scan.xsitype].forEach(function(command) {
+                    const commands = typeCommandMap[scan.xsitype];
+                    commands.sort(launcher.sortCommands);
+                    commands.forEach(function(command) {
                         command.launcher = 'single-scan';
                         command.uri = fullScanPath(scan.id);
                         launcher.addMenuItem(command, scanCommands);

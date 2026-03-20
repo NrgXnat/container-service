@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.8.0
+[Released](https://bitbucket.org/xnatdev/container-service/src/3.8.0/)
+
+### Bugfixes
+* [CS-999](https://radiologics.atlassian.net/browse/CS-999): Added filtering to display logic to hide disabled commands
+* [CS-1042](https://radiologics.atlassian.net/browse/CS-1042): Added support for extended permissions for project members
+* [CS-1044](https://radiologics.atlassian.net/browse/CS-1044): Added sorting by label for containers listed in Actions boxes
+* [CS-1047](https://radiologics.atlassian.net/browse/CS-1047): Converted some event handlers to use JMS directly
+* [CS-1049](https://radiologics.atlassian.net/browse/CS-1049): Fixed occasional null pointer exception
+* [CS-1053](https://radiologics.atlassian.net/browse/CS-1053): Added support for Kubernetes tolerations
+
 ## 3.7.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.3/)
 

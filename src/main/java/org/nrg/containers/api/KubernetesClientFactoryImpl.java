@@ -1,7 +1,7 @@
 package org.nrg.containers.api;
 
 import org.nrg.containers.exceptions.NoContainerServerException;
-import org.nrg.framework.services.NrgEventServiceI;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -10,14 +10,14 @@ import java.util.concurrent.ExecutorService;
 @Service
 public class KubernetesClientFactoryImpl implements KubernetesClientFactory {
     private final ExecutorService executorService;
-    private final NrgEventServiceI eventService;
+    private final JmsTemplate template;
 
     private volatile KubernetesClientImpl kubernetesClient = null;
 
     public KubernetesClientFactoryImpl(final ExecutorService executorService,
-                                       final NrgEventServiceI eventService) {
+                                       final JmsTemplate template) {
         this.executorService = executorService;
-        this.eventService = eventService;
+        this.template = template;
     }
 
     @Override
@@ -26,7 +26,7 @@ public class KubernetesClientFactoryImpl implements KubernetesClientFactory {
             synchronized (this) {
                 if (kubernetesClient == null) {
                     try {
-                        kubernetesClient = new KubernetesClientImpl(executorService, eventService);
+                        kubernetesClient = new KubernetesClientImpl(executorService, template);
                     } catch (IOException e) {
                         throw new NoContainerServerException("Could not create kubernetes client", e);
                     }

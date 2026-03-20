@@ -22,6 +22,8 @@ import io.kubernetes.client.openapi.models.V1ResourceRequirements;
 import io.kubernetes.client.openapi.models.V1ResourceRequirementsBuilder;
 import io.kubernetes.client.openapi.models.V1SecurityContext;
 import io.kubernetes.client.openapi.models.V1SecurityContextBuilder;
+import io.kubernetes.client.openapi.models.V1Toleration;
+import io.kubernetes.client.openapi.models.V1TolerationBuilder;
 import io.kubernetes.client.openapi.models.V1Volume;
 import io.kubernetes.client.openapi.models.V1VolumeBuilder;
 import io.kubernetes.client.openapi.models.V1VolumeMount;
@@ -37,11 +39,11 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
-import org.nrg.framework.services.NrgEventServiceI;
 
 import java.io.File;
 import java.io.IOException;
@@ -57,6 +59,7 @@ import java.util.stream.Collectors;
 import static io.kubernetes.client.util.Config.SERVICEACCOUNT_CA_PATH;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.jms.core.JmsTemplate;
 
 import static org.nrg.containers.utils.ContainerUtils.SECONDS_PER_WEEK;
 
@@ -79,8 +82,8 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     public static final String CONTAINER_CREATING = "ContainerCreating";
 
-    private final ExecutorService  executorService;
-    private final NrgEventServiceI eventService;
+    private final ExecutorService executorService;
+    private final JmsTemplate     template;
 
     private ApiClient          apiClient;
     private CoreV1Api          coreApi;
@@ -91,10 +94,10 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     public KubernetesClientImpl(
             final ExecutorService executorService,
-            final NrgEventServiceI eventService
+            final JmsTemplate template
                                ) throws IOException, NoContainerServerException {
         this.executorService = executorService;
-        this.eventService    = eventService;
+        this.template = template;
 
         ApiClient        apiClient  = null;
         String           namespace  = null;
@@ -165,7 +168,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     @Override
     public synchronized void start() {
         if (kubernetesInformer == null) {
-            kubernetesInformer = new KubernetesInformerImpl(namespace, apiClient, executorService, eventService);
+            kubernetesInformer = new KubernetesInformerImpl(namespace, apiClient, executorService, template);
         }
         kubernetesInformer.start();
     }
@@ -244,7 +247,8 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser, final String gpuVendor)
+    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser, final String gpuVendor,
+                            final List<DockerServerBase.KubernetesToleration> tolerations)
             throws ContainerBackendException, ContainerException {
         log.debug("Creating kubernetes job");
 
@@ -435,6 +439,9 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
                                                     }
                                                 })
                                                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        // Tolerations
+        final List<V1Toleration> v1Tolerations = convertTolerations(tolerations);
+
         // Build job
         V1Job job = new V1JobBuilder()
                 .withNewMetadata()
@@ -451,6 +458,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
                 .endMetadata()
                 .withNewSpec()
                 .withAffinity(affinity)
+                .withTolerations(v1Tolerations.isEmpty() ? null : v1Tolerations)
                 .withRestartPolicy(POD_RESTART_POLICY)
                 .withVolumes(volumes)
                 .addNewContainer()
@@ -527,7 +535,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
 
         // Translate the constraints into the kubernetes object format.
         // https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
-        // In the pod spec (yaml format) our constraints will translate to node affinity like so:
+        // In the pod spec (YAML format) our constraints will translate to node affinity like so:
         //
         // spec:
         //  affinity:
@@ -626,6 +634,28 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
         }
     }
 
+    @VisibleForTesting
+    public static List<V1Toleration> convertTolerations(final List<DockerServerBase.KubernetesToleration> tolerations) {
+        final List<V1Toleration> v1Tolerations = new ArrayList<>();
+        if (tolerations != null) {
+            for (final DockerServerBase.KubernetesToleration toleration : tolerations) {
+                V1TolerationBuilder tb = new V1TolerationBuilder()
+                        .withOperator(toleration.operator());
+                if (StringUtils.isNotBlank(toleration.key())) {
+                    tb.withKey(toleration.key());
+                }
+                if (StringUtils.isNotBlank(toleration.value())) {
+                    tb.withValue(toleration.value());
+                }
+                if (StringUtils.isNotBlank(toleration.effect())) {
+                    tb.withEffect(toleration.effect());
+                }
+                v1Tolerations.add(tb.build());
+            }
+        }
+        return v1Tolerations;
+    }
+
     private static String constraintComparatorToKubernetesOperator(final String comparator) {
         if (StringUtils.equals(comparator, "==")) {
             return "In";
@@ -647,7 +677,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
 
             // We use PatchUtils.patch here rather than directly calling
             // batchApi.patchNamespacedJob because the latter sets a header saying
-            // that the patch is formatted as a json patch, but we have formatted ours as
+            // that the patch is formatted as a JSON patch, but we have formatted ours as
             // a strategic merge patch.
             // PatchUtils.patch lets us set that header.
             PatchUtils.patch(

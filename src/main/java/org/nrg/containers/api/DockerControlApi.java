@@ -162,7 +162,7 @@ public class DockerControlApi implements ContainerControlApi {
         }
     }
 
-    private String pingServer(final DockerServer dockerServer) throws DockerServerException {
+    private String pingServer(final DockerServer dockerServer) throws DockerServerException, NoDockerServerException {
         final DockerClient client = getDockerClient(dockerServer);
         try {
             client.pingCmd().exec();
@@ -170,6 +170,12 @@ public class DockerControlApi implements ContainerControlApi {
         } catch (DockerException e) {
             log.trace("Failed to ping", e);
             throw new DockerServerException(e);
+        } catch (RuntimeException e) {
+            final Throwable cause = e.getCause();
+            if (cause instanceof IOException && StringUtils.contains("No such file or directory", cause.getMessage())) {
+                throw new NoDockerServerException("Tried to ping docker server, but got 'No such file or directory' error. This usually indicates that the Docker daemon is not running or the Docker socket is not accessible.");
+            }
+            throw e;
         }
         return "OK";
     }
@@ -466,7 +472,7 @@ public class DockerControlApi implements ContainerControlApi {
                 createdBuilder.containerId(containerId);
                 break;
             case KUBERNETES:
-                final String kubernetesJobId = getKubernetesClient().createJob(toCreate, NumReplicas.ZERO, server.containerUser(), server.gpuVendor());
+                final String kubernetesJobId = getKubernetesClient().createJob(toCreate, NumReplicas.ZERO, server.containerUser(), server.gpuVendor(), server.kubernetesTolerations());
                 createdBuilder.serviceId(kubernetesJobId);
                 break;
             default:
@@ -510,16 +516,7 @@ public class DockerControlApi implements ContainerControlApi {
 
             } else {
                 // One or both of hostPost and containerPort is blank.
-                final String message;
-                if (StringUtils.isBlank(containerPort)) {
-                    message = "Container port is blank.";
-                } else if (StringUtils.isNotBlank(hostPort)) {
-                    message = "Host port is blank";
-                } else {
-                    message = "Container and host ports are blank";
-                }
-                log.error(message);
-                throw new ContainerException(message);
+                return throwBlankPortContainerException(containerPort, hostPort);
             }
         }
 
@@ -561,31 +558,10 @@ public class DockerControlApi implements ContainerControlApi {
 
         final boolean overrideEntrypoint = toCreate.overrideEntrypointNonnull();
 
-        if (log.isDebugEnabled()) {
-            final String message = String.format(
-                    "Creating container:" +
-                            "\n\tserver %s %s" +
-                            "\n\timage %s" +
-                            "\n\tcommand \"%s\"" +
-                            "\n\tworking directory \"%s\"" +
-                            "\n\tcontainerUser \"%s\"" +
-                            "\n\tvolumes [%s]" +
-                            "\n\tenvironment variables [%s]" +
-                            "\n\texposed ports: {%s}",
-                    server.name(), server.host(),
-                    toCreate.dockerImage(),
-                    toCreate.commandLine(),
-                    toCreate.workingDirectory(),
-                    server.containerUser(),
-                    StringUtils.join(toCreate.bindMountStrings(), ", "),
-                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
-                    StringUtils.join(toCreate.portStrings(), ", ")
-            );
-            log.debug(message);
-        }
-        final DockerClient client = getDockerClient(server);
+        logContainerCreationMessage(toCreate, server);
 
         // Pull image before creating container
+        final DockerClient client = getDockerClient(server);
         try {
             if (getAllImages(server).stream()
                     .noneMatch(img -> img.tags().contains(toCreate.dockerImage()))) {
@@ -638,6 +614,7 @@ public class DockerControlApi implements ContainerControlApi {
      *                 Use 1 to "create" and "start" at the same time.
      * @return Docker swarm service ID
      */
+    @SuppressWarnings("SameParameterValue")
     private String createDockerSwarmService(final Container toCreate, final DockerServer server, final NumReplicas numReplicas)
             throws DockerServerException, ContainerException {
         log.debug("Creating a swarm service with {} replicas.", numReplicas.value);
@@ -662,16 +639,7 @@ public class DockerControlApi implements ContainerControlApi {
                 }
             } else {
                 // One or both of hostPost and containerPort is blank.
-                final String message;
-                if (StringUtils.isBlank(containerPort)) {
-                    message = "Container port is blank.";
-                } else if (StringUtils.isNotBlank(hostPort)) {
-                    message = "Host port is blank";
-                } else {
-                    message = "Container and host ports are blank";
-                }
-                log.error(message);
-                throw new ContainerException(message);
+                throwBlankPortContainerException(containerPort, hostPort);
             }
         }
 
@@ -774,29 +742,7 @@ public class DockerControlApi implements ContainerControlApi {
         final DockerClientConfig config = createDockerClientConfig(server);
         final AuthConfig authConfig = authConfig(toCreate.dockerImage(), config);
 
-        if (log.isDebugEnabled()) {
-            final String message = String.format(
-                    "Creating container:" +
-                            "\n\tserver %s %s" +
-                            "\n\timage %s" +
-                            "\n\tcommand \"%s\"" +
-                            "\n\tworking directory \"%s\"" +
-                            "\n\tcontainerUser \"%s\"" +
-                            "\n\tvolumes [%s]" +
-                            "\n\tenvironment variables [%s]" +
-                            "\n\texposed ports: {%s}",
-                    server.name(), server.host(),
-                    toCreate.dockerImage(),
-                    toCreate.commandLine(),
-                    toCreate.workingDirectory(),
-                    server.containerUser(),
-                    StringUtils.join(toCreate.bindMountStrings(), ", "),
-                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
-                    StringUtils.join(toCreate.portStrings(), ", ")
-            );
-            log.debug(message);
-        }
-
+        logContainerCreationMessage(toCreate, server);
         final DockerClient client = getDockerClient(server);
         try {
             return client.createServiceCmd(serviceSpec)
@@ -1322,5 +1268,43 @@ public class DockerControlApi implements ContainerControlApi {
         public String getLog() {
             return logBuilder.toString();
         }
+    }
+
+    private void logContainerCreationMessage(final Container toCreate, final DockerServer server) {
+        if (log.isDebugEnabled()) {
+            final String message = String.format(
+                    "Creating container:" +
+                    "\n\tserver %s %s" +
+                    "\n\timage %s" +
+                    "\n\tcommand \"%s\"" +
+                    "\n\tworking directory \"%s\"" +
+                    "\n\tcontainerUser \"%s\"" +
+                    "\n\tvolumes [%s]" +
+                    "\n\tenvironment variables [%s]" +
+                    "\n\texposed ports: {%s}",
+                    server.name(), server.host(),
+                    toCreate.dockerImage(),
+                    toCreate.commandLine(),
+                    toCreate.workingDirectory(),
+                    server.containerUser(),
+                    StringUtils.join(toCreate.bindMountStrings(), ", "),
+                    StringUtils.join(toCreate.environmentVariableStrings(), ", "),
+                    StringUtils.join(toCreate.portStrings(), ", ")
+                                                );
+            log.debug(message);
+        }
+    }
+
+    private String throwBlankPortContainerException(final String containerPort, final String hostPort) throws ContainerException {
+        final String message;
+        if (StringUtils.isBlank(containerPort)) {
+            message = "Container port is blank.";
+        } else if (StringUtils.isNotBlank(hostPort)) {
+            message = "Host port is blank";
+        } else {
+            message = "Container and host ports are blank";
+        }
+        log.error(message);
+        throw new ContainerException(message);
     }
 }

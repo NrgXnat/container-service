@@ -33,6 +33,7 @@ import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationEntity;
 import org.nrg.containers.model.orchestration.entity.OrchestrationProjectEntity;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
+import org.nrg.containers.model.server.docker.DockerServerEntityKubernetesToleration;
 import org.nrg.containers.model.server.docker.DockerServerEntitySwarmConstraint;
 import org.nrg.containers.secrets.SecretValueObtainer;
 import org.nrg.containers.secrets.SystemPropertySecretSource;
@@ -86,10 +87,12 @@ import reactor.core.Dispatcher;
 import reactor.core.dispatch.RingBufferDispatcher;
 
 import javax.sql.DataSource;
+import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Configuration
 @EnableTransactionManagement
 @Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class, MockJmsConfig.class})
@@ -121,8 +124,10 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public Environment env() {
-        return Environment.initializeIfEmpty().assignErrorJournal();
+    public Environment env() throws IOException {
+        try (final Environment environment = Environment.initializeIfEmpty()) {
+            return environment.assignErrorJournal();
+        }
     }
 
     @Bean
@@ -141,16 +146,12 @@ public class IntegrationTestConfig {
     }
 
     @Bean
-    public ContainerEventListener containerEventListener(final EventBus eventBus,
-                                                         final ContainerService containerService,
-                                                         final JmsTemplate template) {
-        return new ContainerEventListener(eventBus, containerService, template);
+    public ContainerEventListener containerEventListener(final ContainerService containerService) {
+        return new ContainerEventListener(containerService);
     }
 
     @Bean
-    public DockerServiceEventListener serviceEventListener(final EventBus eventBus,
-                                                           final ContainerService containerService,
-                                                           final JmsTemplate template) {
+    public DockerServiceEventListener serviceEventListener(final EventBus eventBus, final ContainerService containerService, final JmsTemplate template) {
         return new DockerServiceEventListener(eventBus, containerService, template);
     }
 
@@ -173,8 +174,8 @@ public class IntegrationTestConfig {
 
     @Bean
     public KubernetesClientFactory kubernetesClientFactory(final ExecutorService executorService,
-                                                           final NrgEventServiceI eventService) {
-        return new KubernetesClientFactoryImpl(executorService, eventService);
+                                                           final JmsTemplate template) {
+        return new KubernetesClientFactoryImpl(executorService, template);
     }
 
     /*
@@ -206,13 +207,11 @@ public class IntegrationTestConfig {
                                              @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
-                                             final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
-        return new ContainerServiceImpl(containerControlApi, containerEntityService,
-                commandResolutionService, commandService, aliasTokenService, siteConfigPreferences,
-                containerFinalizeService, mockXnatAppInfo, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
+        return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService, commandService,
+                                        aliasTokenService, siteConfigPreferences, containerFinalizeService, mockXnatAppInfo,
+                                        catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean
@@ -305,6 +304,7 @@ public class IntegrationTestConfig {
     /*
     Session factory
      */
+    @SuppressWarnings("deprecation")
     @Bean
     public LocalSessionFactoryBean sessionFactory(final DataSource dataSource, @Qualifier("hibernateProperties") final Properties properties) {
         final LocalSessionFactoryBean bean = new LocalSessionFactoryBean();
@@ -332,13 +332,14 @@ public class IntegrationTestConfig {
                 ContainerEntityInput.class,
                 ContainerEntityOutput.class,
                 ContainerEntityMount.class,
-                ContainerMountFilesEntity.class);
+                ContainerMountFilesEntity.class,
+                DockerServerEntityKubernetesToleration.class);
 
         return bean;
     }
 
     @Bean
-    public ResourceTransactionManager transactionManager(final SessionFactory sessionFactory) throws Exception {
+    public ResourceTransactionManager transactionManager(final SessionFactory sessionFactory) {
         return new HibernateTransactionManager(sessionFactory);
     }
 

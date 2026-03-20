@@ -47,7 +47,6 @@ public class CommandEventMapping extends AbstractHibernateEntity {
         this.projectId = projectId;
     }
 
-
     public String getSubscriptionUserName() {
         return subscriptionUserName;
     }

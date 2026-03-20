@@ -2,7 +2,6 @@ package org.nrg.containers.events.listeners;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.config.ContainersConfig;
@@ -31,6 +30,7 @@ import reactor.bus.Event;
 import reactor.bus.EventBus;
 import reactor.fn.Consumer;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -84,13 +84,13 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
 
                 if (subscriptionProjectId == null || subscriptionProjectId.isEmpty() || subscriptionProjectId.equals(eventProjectId)) {
 
-                    final Map<String, String> inputValues = Maps.newHashMap();
+                    final Map<String, String> inputValues = new HashMap<>();
 
                     String scanString = scan.getUri();
                     try {
                         scanString = mapper.writeValueAsString(scan);
                     } catch (JsonProcessingException e) {
-                        log.error(String.format("Could not serialize Scan %s to json.", scan), e);
+                        log.error("Could not serialize scan {} to JSON.", scan, e);
                     }
                     inputValues.put("scan", scanString);
                     try {
@@ -131,5 +131,4 @@ public class ScanArchiveListenerAndCommandLauncher implements Consumer<Event<Sca
             }
         }
     }
-
 }

@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.ContainerException;
@@ -14,6 +15,7 @@ import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
 import org.nrg.containers.exceptions.ServiceNotFoundException;
 import org.nrg.containers.exceptions.TaskNotFoundException;
+import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -26,6 +28,7 @@ import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Nonnull;
@@ -36,6 +39,7 @@ import java.util.List;
 @Slf4j
 @Component
 public class ContainerStatusUpdater implements Runnable {
+    private static final String SKIP_MESSAGE = "Skipping attempt to update status.";
 
     private final ContainerControlApi containerControlApi;
     private final ContainerService containerService;
@@ -43,6 +47,7 @@ public class ContainerStatusUpdater implements Runnable {
     private final NrgEventServiceI eventService;
     private final XnatAppInfo xnatAppInfo;
     private final KubernetesClientFactory kubernetesClientFactory;
+    private final JmsTemplate template;
 
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
@@ -55,13 +60,15 @@ public class ContainerStatusUpdater implements Runnable {
                                   final DockerServerService dockerServerService,
                                   final NrgEventServiceI eventService,
                                   final XnatAppInfo xnatAppInfo,
-                                  final KubernetesClientFactory kubernetesClientFactory) {
+                                  final KubernetesClientFactory kubernetesClientFactory,
+                                  final JmsTemplate template) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.eventService = eventService;
         this.xnatAppInfo = xnatAppInfo;
         this.kubernetesClientFactory = kubernetesClientFactory;
+        this.template = template;
     }
 
     @Override
@@ -93,7 +100,7 @@ public class ContainerStatusUpdater implements Runnable {
             haveLoggedXftInitFailure = false;
             haveLoggedNoServerInDb = false;
         } else if (updateReport.successful) {
-            if (updateReport.updateReports.size() > 0) {
+            if (!updateReport.updateReports.isEmpty()) {
                 log.trace("Updated status successfully.");
             }
             // Reset failure flags
@@ -114,11 +121,9 @@ public class ContainerStatusUpdater implements Runnable {
             return null;
         }
 
-        final String skipMessage = "Skipping attempt to update status.";
-
         if (!XFTManager.isInitialized() || !XDATServlet.isDatabasePopulateOrUpdateCompleted()) {
             if (!haveLoggedXftInitFailure) {
-                log.info("XFT is not initialized. " + skipMessage);
+                log.info("XFT is not initialized. {}", SKIP_MESSAGE);
                 haveLoggedXftInitFailure = true;
             }
             return null;
@@ -134,7 +139,7 @@ public class ContainerStatusUpdater implements Runnable {
         }
         if (dockerServer == null) {
             if (!haveLoggedNoServerInDb) {
-                log.info("No docker server has been defined (or enabled) in the database. " + skipMessage);
+                log.info("No docker server has been defined (or enabled) in the database. {}", SKIP_MESSAGE);
                 haveLoggedNoServerInDb = true;
                 haveLoggedXftInitFailure = false;
             }
@@ -143,7 +148,7 @@ public class ContainerStatusUpdater implements Runnable {
 
         if (!containerControlApi.canConnect()) {
             if (!haveLoggedDockerConnectFailure) {
-                log.info("Cannot ping docker server " + dockerServer.name() + ". " + skipMessage);
+                log.info("Cannot ping docker server {}. {}", dockerServer.name(), SKIP_MESSAGE);
                 haveLoggedDockerConnectFailure = true;
                 haveLoggedXftInitFailure = false;
                 haveLoggedNoServerInDb = false;
@@ -191,7 +196,7 @@ public class ContainerStatusUpdater implements Runnable {
                     continue;
                 }
                 log.debug("Throwing docker container event: {}", event);
-                eventService.triggerEvent(event);
+                QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, event);
             }
 
             dockerServerService.update(server.updateEventCheckTime(now));

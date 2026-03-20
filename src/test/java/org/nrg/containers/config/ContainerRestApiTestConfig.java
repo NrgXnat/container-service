@@ -12,7 +12,6 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.services.ContextService;
-import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.UserGroupServiceI;
 import org.nrg.xdat.security.services.PermissionsServiceI;
@@ -31,6 +30,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
+@SuppressWarnings("deprecation")
 @Configuration
 @EnableWebMvc
 @EnableWebSecurity
@@ -53,13 +53,11 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final ContainerFinalizeService containerFinalizeService,
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
-                                             final NrgEventServiceI mockNrgEventService,
                                              final ObjectMapper mapper,
                                              final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
-                commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
-                null, catalogService, mockOrchestrationService,
-                mockNrgEventService, mapper, threadPoolExecutorFactoryBean);
+                                        commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
+                                        null, catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean);
     }
 
     @Bean
@@ -100,7 +98,7 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
     }
 
     @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    protected void configure(AuthenticationManagerBuilder auth) {
         auth.authenticationProvider(new TestingAuthenticationProvider());
     }
 

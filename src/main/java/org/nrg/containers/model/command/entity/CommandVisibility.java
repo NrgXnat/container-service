@@ -6,7 +6,6 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-
 public enum  CommandVisibility {
 
     PUBLIC_CONTAINER("public"),
@@ -37,5 +36,4 @@ public enum  CommandVisibility {
         }
         return null;
     }
-
 }

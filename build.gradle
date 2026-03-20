@@ -18,7 +18,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.7.3-java21-RC-SNAPSHOT"
+version "3.8.0-java21-RC-SNAPSHOT"
 
 java {
     sourceCompatibility = 21

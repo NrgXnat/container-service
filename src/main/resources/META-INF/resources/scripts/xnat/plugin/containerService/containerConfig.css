@@ -70,3 +70,14 @@ div.swarm-constraint a.close{
     float: right;
     margin: 0 3px 0 0;
 }
+
+div.kubernetes-toleration {
+    border: 1px solid #ccc;
+    padding: 5px;
+    margin: 5px;
+    border-radius: 10px;
+}
+div.kubernetes-toleration a.close{
+    float: right;
+    margin: 0 3px 0 0;
+}

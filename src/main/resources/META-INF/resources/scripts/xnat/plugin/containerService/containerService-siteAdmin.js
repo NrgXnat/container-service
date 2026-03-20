@@ -212,6 +212,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             width: 600,
             beforeShow: function(obj){
                 containerHostManager.nconstraints = 0;
+                containerHostManager.ntolerations = 0;
                 var $formContainer = obj.$modal.find('.xnat-dialog-content');
                 $formContainer.addClass('panel');
                 obj.$modal.find('form').append(
@@ -285,7 +286,8 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 'by requiring jobs to match (or not match) provided node label values. ' +
                                 'See Kubernetes documentation on ' +
                                 '<a href="https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/" target="_blank">Assign[ing] Pods to Nodes using Node Affinity</a> ' +
-                                'for more information about allowed constraints.'),
+                                'for more information about allowed constraints.' +
+                                '<br><br><em>Use constraints to choose <strong>where</strong> jobs run; use tolerations (below) to allow jobs on otherwise-restricted nodes.</em>'),
                         ]),
                         spawn('div.host-type-settings.swarm.kubernetes',[
                             spawn('button.new-swarm-constraint.btn.btn-sm', {
@@ -293,6 +295,20 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 style: { 'margin-top': '0.75em' },
                                 onclick: function(){
                                     containerHostManager.addSwarmConstraint();
+                                    return false;
+                                }
+                            })
+                        ]),
+                        spawn('div.host-type-settings.kubernetes',[
+                            spawn('p.divider', '<strong>Tolerations (Optional)</strong>' +
+                                '<br> Use these settings to allow container jobs to be scheduled on nodes with matching ' +
+                                '<a href="https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/" target="_blank">taints</a>. ' +
+                                'This is useful for workload isolation when your nodes use taints to restrict which pods can run on them.'),
+                            spawn('button.new-kubernetes-toleration.btn.btn-sm', {
+                                html: 'Add Toleration',
+                                style: { 'margin-top': '0.75em' },
+                                onclick: function(){
+                                    containerHostManager.addKubernetesToleration();
                                     return false;
                                 }
                             })
@@ -427,7 +443,29 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     for (var i = 0; i < item['swarm-constraints'].length; i++) {
                         containerHostManager.addSwarmConstraint();
                     }
+                    if (item['kubernetes-tolerations']) {
+                        for (var i = 0; i < item['kubernetes-tolerations'].length; i++) {
+                            containerHostManager.addKubernetesToleration();
+                        }
+                    }
                     $formContainer.find('form').setValues(item);
+                    // Set toleration values that setValues may not handle
+                    if (item['kubernetes-tolerations']) {
+                        for (var i = 0; i < item['kubernetes-tolerations'].length; i++) {
+                            var t = item['kubernetes-tolerations'][i];
+                            $formContainer.find('input[name="kubernetes-tolerations['+i+']:key"]').val(t.key || '');
+                            $formContainer.find('input[name="kubernetes-tolerations['+i+']:value"]').val(t.value || '');
+                            $formContainer.find('input[name="kubernetes-tolerations['+i+']:operator"][value="'+t.operator+'"]').prop('checked', true);
+                            $formContainer.find('select[name="kubernetes-tolerations['+i+']:effect"]').val(t.effect || '');
+                            // Show/hide value field based on operator
+                            var $tolRow = $formContainer.find('div#kubernetes-toleration-'+i);
+                            if (t.operator === 'Exists') {
+                                $tolRow.find('.toleration-value-panel').hide();
+                            } else {
+                                $tolRow.find('.toleration-value-panel').show();
+                            }
+                        }
+                    }
                 }
 
                 containerHostManager.displaySettings(item.backend || false);
@@ -471,6 +509,21 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 if (pattern.test(containerUser)) passK8sValidation=true;
                             });
                             if (!passK8sValidation) errors = errors.concat('Validation error: Kubernetes mode expects an integer UID for the container user input')
+                        }
+
+                        // Validate tolerations
+                        if (hostType === 'kubernetes') {
+                            for (var ti = 0; ti < containerHostManager.ntolerations; ti++) {
+                                var tolOp = $form.find('input[name="kubernetes-tolerations['+ti+']:operator"]:checked').val();
+                                var tolVal = $form.find('input[name="kubernetes-tolerations['+ti+']:value"]').val();
+                                var tolKey = $form.find('input[name="kubernetes-tolerations['+ti+']:key"]').val();
+                                if (tolOp === 'Equal' && (!tolVal || !tolVal.trim())) {
+                                    errors.push('Toleration value is required when operator is "Equal"');
+                                }
+                                if (tolOp !== 'Exists' && (!tolKey || !tolKey.trim())) {
+                                    errors.push('Toleration key is required unless operator is "Exists"');
+                                }
+                            }
                         }
 
                         let pvc_type = $form.find('.pvc-selector').find('option:selected').val();
@@ -662,6 +715,77 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
 
         containerHostManager.nconstraints++;
         $('button.new-swarm-constraint').before($(element));
+    };
+
+    containerHostManager.addKubernetesToleration = function() {
+        var n = containerHostManager.ntolerations;
+        var element = spawn('div#kubernetes-toleration-'+n+'.kubernetes-toleration', [
+            spawn('a#close-toleration-'+n+'.close', {
+                html: '<i class="fa fa-close" title="Remove Toleration"/>',
+                onclick: function(){
+                    var idx = parseInt($(this).prop('id').replace('close-toleration-',''));
+                    $('div#kubernetes-toleration-'+idx).remove();
+                    for (var i = idx+1; i < containerHostManager.ntolerations; i++){
+                        $('div#kubernetes-toleration-'+i).find('input, select').each(function(){
+                            var name = $(this).attr('name');
+                            if (name) {
+                                $(this).attr('name', name.replace('kubernetes-tolerations['+i+']', 'kubernetes-tolerations['+(i-1)+']'));
+                            }
+                            var id = $(this).prop('id');
+                            if (id) {
+                                $(this).prop('id', id.replace(i, i-1));
+                            }
+                            if ($(this).data('name')) {
+                                $(this).data('name', $(this).data('name').replace('kubernetes-tolerations['+i+']', 'kubernetes-tolerations['+(i-1)+']'));
+                            }
+                        });
+                        $('div#kubernetes-toleration-'+i).prop('id', 'kubernetes-toleration-'+(i-1));
+                        $('a#close-toleration-'+i).prop('id', 'close-toleration-'+(i-1));
+                    }
+                    containerHostManager.ntolerations--;
+                    return false;
+                }
+            }),
+            XNAT.ui.panel.input.text({
+                name: 'kubernetes-tolerations['+n+']:key',
+                label: 'Key',
+                description: 'The taint key to match (required unless operator is Exists)'
+            }),
+            XNAT.ui.panel.input.radioGroup({
+                name: 'kubernetes-tolerations['+n+']:operator',
+                label: 'Operator',
+                items: {0: {label: 'Equal', value: 'Equal'}, 1: {label: 'Exists', value: 'Exists'}},
+                value: 'Equal',
+                onchange: function(){
+                    var $tolRow = $(this).closest('.kubernetes-toleration');
+                    if ($(this).val() === 'Exists') {
+                        $tolRow.find('.toleration-value-panel').hide();
+                    } else {
+                        $tolRow.find('.toleration-value-panel').show();
+                    }
+                }
+            }),
+            spawn('div.toleration-value-panel', [
+                XNAT.ui.panel.input.text({
+                    name: 'kubernetes-tolerations['+n+']:value',
+                    label: 'Value',
+                    description: 'The taint value to match (required when operator is Equal)'
+                })
+            ]),
+            XNAT.ui.panel.select.single({
+                name: 'kubernetes-tolerations['+n+']:effect',
+                label: 'Effect',
+                options: [
+                    { label: 'All Effects', value: '' },
+                    { label: 'NoSchedule', value: 'NoSchedule' },
+                    { label: 'PreferNoSchedule', value: 'PreferNoSchedule' },
+                    { label: 'NoExecute', value: 'NoExecute' }
+                ]
+            })
+        ]);
+
+        containerHostManager.ntolerations++;
+        $('button.new-kubernetes-toleration').before($(element));
     };
 
     // create table for Container Hosts
@@ -2861,14 +2985,15 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         if (!disabled && contexts.length > 0) {
                             disabled |= option.contexts.filter(c => contexts.includes(c)).length === 0
                         }
-
-                        formattedOptions.push(spawn('option',{
-                            value: option['wrapper-id'],
-                            data: { contexts: option.contexts.join(' ') },
-                            html: option.label,
-                            disabled: disabled,
-                            selected: wid && wid === option['wrapper-id']
-                        }));
+                         if (!disabled) {
+                            formattedOptions.push(spawn('option',{
+                                value: option['wrapper-id'],
+                                data: { contexts: option.contexts.join(' ') },
+                                html: option.label,
+                                disabled: disabled,
+                                selected: wid && wid === option['wrapper-id']
+                            }));
+                         }
                     });
                     return formattedOptions;
                 }

@@ -1,6 +1,7 @@
 package org.nrg.xnat.initialization.tasks;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoDockerServerException;
@@ -12,17 +13,18 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.nrg.xnat.initialization.tasks.InitializingTaskException.Level.RequiresInitialization;
+import static org.nrg.xnat.initialization.tasks.InitializingTaskException.Level.SingleNotice;
 
 @Slf4j
 @Component
 public class CheckDockerImagesArePresent extends AbstractInitializingTask {
-    private DockerService dockerService;
-    private CommandService commandService;
-    private ContainerControlApi containerControlApi;
+    private final DockerService       dockerService;
+    private final CommandService      commandService;
+    private final ContainerControlApi containerControlApi;
 
     @Autowired
     public CheckDockerImagesArePresent(final DockerService dockerService,
@@ -44,7 +46,14 @@ public class CheckDockerImagesArePresent extends AbstractInitializingTask {
         try {
             dockerServerWithPing = dockerService.getServer();
         } catch (NotFoundException e) {
-            throw new InitializingTaskException(RequiresInitialization);
+            throw new InitializingTaskException(SingleNotice);
+        } catch (RuntimeException e) {
+            final Throwable cause = e.getCause();
+            if (cause instanceof IOException && StringUtils.contains("No such file or directory", cause.getMessage())) {
+                log.info("Tried to ping docker server, but got 'No such file or directory' error. This usually indicates that the Docker daemon is not running or the Docker socket is not accessible.");
+                throw new InitializingTaskException(SingleNotice);
+            }
+            throw e;
         }
 
         final Boolean pullImagesOnXnatInit = dockerServerWithPing.pullImagesOnXnatInit();

@@ -22,10 +22,12 @@ import io.kubernetes.client.openapi.models.V1PodSpec;
 import io.kubernetes.client.openapi.models.V1PodStatus;
 import io.kubernetes.client.util.CallGeneratorParams;
 import lombok.extern.slf4j.Slf4j;
+import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.KubernetesContainerState;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
+import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
-import org.nrg.framework.services.NrgEventServiceI;
+import org.springframework.jms.core.JmsTemplate;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -45,7 +47,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     public KubernetesInformerImpl(final String namespace,
                                   final ApiClient apiClient,
                                   final ExecutorService executorService,
-                                  final NrgEventServiceI eventService) {
+                                  final JmsTemplate template) {
 
         // Required to set read timeout to zero (disabling timeout) so long-lived watches work
         apiClient.setReadTimeout(0);
@@ -90,7 +92,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                                 null
                         ),
                 V1Pod.class, V1PodList.class, RESYNC_DISABLED);
-        podInformer.addEventHandler(new PodEventHandler(eventService));
+        podInformer.addEventHandler(new PodEventHandler(template));
         podLister = new Lister<>(podInformer.getIndexer(), namespace);
         isStarted = false;
     }
@@ -139,10 +141,10 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     }
 
     static class PodEventHandler implements ResourceEventHandler<V1Pod> {
-        private final NrgEventServiceI eventService;
+        private final JmsTemplate template;
 
-        PodEventHandler(NrgEventServiceI eventService) {
-            this.eventService = eventService;
+        PodEventHandler(final JmsTemplate template) {
+            this.template = template;
         }
 
         private static KubernetesStatusChangeEvent createEvent(V1Pod pod) {
@@ -216,7 +218,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         private void triggerEvent(final KubernetesStatusChangeEvent event) {
             log.debug("Triggering event {}", event);
-            eventService.triggerEvent(event);
+            QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, event);
         }
 
         @Override

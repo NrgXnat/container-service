@@ -32,7 +32,6 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.rest.ContainerLogPollResponse;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.utils.ContainerUtils;
-import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -45,7 +44,6 @@ import java.nio.file.Files;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -61,33 +59,32 @@ public class ContainerLogTest {
     @Ignore
     @MockitoSettings(strictness = Strictness.WARN)
     @RunWith(JUnit4.class)
-    public static class Base {
+    public static class BaseTest {
 
         @Rule
         public TestRule watcher = new TestWatcher() {
             protected void starting(Description description) {
-                log.info("BEGINNING TEST " + description.getMethodName());
+                log.info("BEGINNING TEST {}", description.getMethodName());
             }
 
             protected void finished(Description description) {
-                log.info("ENDING TEST " + description.getMethodName());
+                log.info("ENDING TEST {}", description.getMethodName());
             }
         };
 
         @Rule public TemporaryFolder temp = new TemporaryFolder(new File(System.getProperty("java.io.tmpdir")));
 
-        public ContainerControlApi containerControlApi = Mockito.mock(ContainerControlApi.class);
-        public ContainerEntityService containerEntityService = Mockito.mock(ContainerEntityService.class);
-        public CommandResolutionService commandResolutionService = Mockito.mock(CommandResolutionService.class);
-        public CommandService commandService = Mockito.mock(CommandService.class);
-        public AliasTokenService aliasTokenService = Mockito.mock(AliasTokenService.class);
-        public SiteConfigPreferences siteConfigPreferences = Mockito.mock(SiteConfigPreferences.class);
-        public ContainerFinalizeService containerFinalizeService = Mockito.mock(ContainerFinalizeService.class);
-        public XnatAppInfo xnatAppInfo = Mockito.mock(XnatAppInfo.class);
-        public CatalogService catalogService = Mockito.mock(CatalogService.class);
-        public OrchestrationService orchestrationService = Mockito.mock(OrchestrationService.class);
-        public NrgEventServiceI eventService = Mockito.mock(NrgEventServiceI.class);
-        public ThreadPoolExecutorFactoryBean executorFactoryBean  = new ThreadPoolExecutorFactoryBean();
+        @Mock public ContainerControlApi containerControlApi;
+        @Mock public ContainerEntityService containerEntityService;
+        @Mock public CommandResolutionService commandResolutionService;
+        @Mock public CommandService commandService;
+        @Mock public AliasTokenService aliasTokenService;
+        @Mock public SiteConfigPreferences siteConfigPreferences;
+        @Mock public ContainerFinalizeService containerFinalizeService;
+        @Mock public XnatAppInfo xnatAppInfo;
+        @Mock public CatalogService catalogService;
+        @Mock public OrchestrationService orchestrationService;
+        @Mock public ThreadPoolExecutorFactoryBean executorFactoryBean;
 
         public final ObjectMapper mapper = new ObjectMapper();
 
@@ -105,14 +102,13 @@ public class ContainerLogTest {
                     xnatAppInfo,
                     catalogService,
                     orchestrationService,
-                    eventService,
                     mapper,
                     executorFactoryBean);
         }
     }
 
     @RunWith(JUnit4.class)
-    public static class NotParameterizedLogTest extends Base {
+    public static class NotParameterizedLogTest extends BaseTest {
         @Test
         public void testGetLogStreamFromFile() throws Exception {
             // setup
@@ -148,7 +144,7 @@ public class ContainerLogTest {
     }
 
     @RunWith(Parameterized.class)
-    public static class ParameterizedLogTest extends Base {
+    public static class ParameterizedLogTest extends BaseTest {
         @Parameter public DateTimeFormatter formatter;
 
         @Parameters(name="{index} formatter={0}")
@@ -181,13 +177,13 @@ public class ContainerLogTest {
             final int logLineNumChars = 80;
             final int logInterval = 50;
             final OffsetDateTime dt1 = OffsetDateTime.now();
-            final OffsetDateTime dt2 = dt1.plus(logInterval, ChronoUnit.SECONDS);
-            final OffsetDateTime dt3 = dt2.plus(logInterval, ChronoUnit.SECONDS);
+            final OffsetDateTime dt2 = dt1.plusSeconds(logInterval);
+            final OffsetDateTime dt3 = dt2.plusSeconds(logInterval);
             final String timestamp1 = formatter.format(dt1);
             final String timestamp2 = formatter.format(dt2);
             final String timestamp3 = formatter.format(dt3);
-            final OffsetDateTime shifted2 = dt2.plus(1L, ChronoUnit.SECONDS);
-            final OffsetDateTime shifted3 = dt3.plus(1L, ChronoUnit.SECONDS);
+            final OffsetDateTime shifted2 = dt2.plusSeconds(1L);
+            final OffsetDateTime shifted3 = dt3.plusSeconds(1L);
             final String expectedTimestamp2 = ContainerServiceImpl.formatTimestamp(shifted2);
             final String expectedTimestamp3 = ContainerServiceImpl.formatTimestamp(shifted3);
             final String message1 = "Message " + RandomStringUtils.randomAscii(logLineNumChars);
