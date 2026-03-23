@@ -61,6 +61,7 @@ configurations {
     implementation.extendsFrom(implementAndInclude)
     all {
         resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
+        resolutionStrategy.force "com.github.docker-java:docker-java-api:${vDockerJava}"
 
         exclude group: "org.bouncycastle"
     }
