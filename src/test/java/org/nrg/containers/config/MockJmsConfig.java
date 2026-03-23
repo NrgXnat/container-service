@@ -14,6 +14,7 @@ import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jms.core.BrowserCallback;
 import org.springframework.jms.core.JmsTemplate;
@@ -55,9 +56,9 @@ public class MockJmsConfig {
     @Bean
     @Primary
     public JmsTemplate mockJmsTemplate(Destination containerStagingRequest,
-                                       final ContainerStagingRequestListener containerStagingRequestListener,
+                                       @Lazy final ContainerStagingRequestListener containerStagingRequestListener,
                                        Destination containerFinalizingRequest,
-                                       final ContainerFinalizingRequestListener containerFinalizingRequestListener,
+                                       @Lazy final ContainerFinalizingRequestListener containerFinalizingRequestListener,
                                        ExecutorService executorService,
                                        final SiteConfigPreferences siteConfigPreferences,
                                        final NotificationsPreferences notificationsPreferences,

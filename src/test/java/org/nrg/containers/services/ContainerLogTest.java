@@ -10,7 +10,6 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
@@ -22,9 +21,8 @@ import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
 import org.nrg.containers.model.container.auto.Container;
@@ -55,11 +53,11 @@ import static org.mockito.Mockito.when;
 @Slf4j
 @RunWith(Enclosed.class)
 public class ContainerLogTest {
-    @ExtendWith(MockitoExtension.class)
     @Ignore
-    @MockitoSettings(strictness = Strictness.WARN)
     @RunWith(JUnit4.class)
     public static class BaseTest {
+
+        @Rule public MockitoRule rule = MockitoJUnit.rule();
 
         @Rule
         public TestRule watcher = new TestWatcher() {
