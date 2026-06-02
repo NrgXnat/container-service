@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.10.0-RC-SNAPSHOT"
+        vXnat = "1.10.1-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -13,12 +13,10 @@ plugins {
     id "io.spring.dependency-management" version "1.1.7"
     id "io.franzbecker.gradle-lombok" version "5.0.0"
     id "net.linguica.maven-settings" version "0.5"
-    id("org.openrewrite.rewrite") version("7.0.4")
-
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.8.0-java21-RC-SNAPSHOT"
+version "3.8.0-RC-SNAPSHOT"
 
 java {
     sourceCompatibility = 21
@@ -40,7 +38,6 @@ dependencyManagement {
     imports {
         mavenBom("org.nrg:parent:${vXnat}") {
             bomProperties([
-                    // "mockito.version": vMockito,
                     "javassist.version": vJavassist
             ])
         }
@@ -51,10 +48,7 @@ def vDockerJava = "3.4.0.1"
 def vAutoValue = "1.5.4"
 def vKubernetesClient = "15.0.+"
 def vPowerMock = "2.0.9"
-def vGson = dependencyManagement.importedProperties["gson.version"]
-def vJackson = dependencyManagement.importedProperties["jackson.version"]
-def vSpringSecurity = dependencyManagement.importedProperties["spring-security.version"]
-def vActiveMQ = dependencyManagement.importedProperties["activemq.version"]
+// importedProperties not available from Gradle java-platform BOM — versions managed by BOM directly
 
 // Use this configuration to put dependencies into the fat jar
 configurations {
@@ -74,16 +68,13 @@ tasks.withType(Test).configureEach {
     }
 
 lombok {
-    version = dependencyManagement.importedProperties["lombok.version"] as String
-    sha256 = dependencyManagement.importedProperties["lombok.checksum"] as String
+    version = "1.18.34"
+    sha256 = "1ea5ad6c6afcff902d75072b2aaa6695585aebee9f12127e15c0036ba95d2918"
 }
 
 dependencies {
     annotationProcessor "org.nrg:framework"
     annotationProcessor "com.google.auto.value:auto-value:${vAutoValue}"
-
-    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks:3.1.0")
-
 
     compileOnly "com.google.auto.value:auto-value:${vAutoValue}"
 
@@ -122,9 +113,7 @@ dependencies {
     implementation ("org.nrg.xdat:core") {
         transitive = false
     }
-    implementation ("org.nrg.xnat:xnat-data-models") {
-        transitive = false
-    }
+    // xnat-data-models merged into org.nrg.xnat:web in monorepo — no longer a separate artifact
     implementation "org.nrg:prefs"
     implementation ("org.nrg:notify") {
         exclude group: "cglib"
@@ -148,8 +137,8 @@ dependencies {
     implementation "org.springframework:spring-webmvc"
     implementation "org.springframework:spring-jms"
     implementation "org.springframework:spring-messaging"
-    implementation "javax.jms:javax.jms-api:2.0.1"
-    implementation "org.apache.activemq:activemq-all:${vActiveMQ}"
+    implementation "javax.jms:javax.jms-api"
+    implementation "org.apache.activemq:activemq-all"
     implementation "org.aspectj:aspectjweaver"
 
     implementation "io.springfox:springfox-swagger2"
@@ -161,8 +150,8 @@ dependencies {
     implementation "com.fasterxml.jackson.core:jackson-annotations"
     implementation "com.fasterxml.jackson.core:jackson-core"
     implementation "com.fasterxml.jackson.core:jackson-databind"
-    implementation "com.fasterxml.jackson.module:jackson-module-jaxb-annotations:${vJackson}"
-    implementation "com.fasterxml.jackson.datatype:jackson-datatype-guava:${vJackson}"
+    implementation "com.fasterxml.jackson.module:jackson-module-jaxb-annotations"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-guava"
 
     implementation "com.jayway.jsonpath:json-path"
 
@@ -180,7 +169,7 @@ dependencies {
     implementation ("org.apache.velocity:velocity") {
         transitive = false
     }
-    implementation ("xalan:xalan") {
+    implementation ("xalan:xalan:2.7.2") {
         transitive = false
     }
 
@@ -191,7 +180,7 @@ dependencies {
     runtimeOnly "org.apache.commons:commons-compress"
     runtimeOnly "org.apache.commons:commons-lang3"
     runtimeOnly "org.apache.httpcomponents:httpclient"
-    runtimeOnly "com.google.code.gson:gson:${vGson}"
+    runtimeOnly "com.google.code.gson:gson"
     runtimeOnly "com.google.code.findbugs:jsr305"
     runtimeOnly "org.yaml:snakeyaml:1.15+"
 
@@ -202,7 +191,7 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation "org.hamcrest:hamcrest-library"
     testImplementation "org.springframework:spring-test"
-    testImplementation "org.springframework.security:spring-security-test:${vSpringSecurity}"
+    testImplementation "org.springframework.security:spring-security-test"
     testImplementation "org.springframework.security:spring-security-config"
     testImplementation "org.mockito:mockito-core:${vMockito}"
     testImplementation 'org.mockito:mockito-junit-jupiter:5.0.0'  // JUnit 5 integration for Mockito
@@ -213,18 +202,9 @@ dependencies {
     testImplementation "org.springframework:spring-orm"
     testImplementation "org.apache.commons:commons-dbcp2"
     testImplementation "commons-net:commons-net"
-//    testImplementation "org.powermock:powermock-module-junit4:${vPowerMock}"
-//    testImplementation "org.powermock:powermock-api-mockito2:${vPowerMock}"
     testImplementation "org.awaitility:awaitility:${vAwaitility}"
     testImplementation "org.testcontainers:junit-jupiter:1.19.0"
     testImplementation "org.testcontainers:postgresql:1.19.0"
-}
-
-rewrite {
-    // activeRecipe("org.openrewrite.java.testing.mockito.Mockito1to5Migration")
-    activeRecipe("org.openrewrite.java.testing.mockito.ReplacePowerMockito")
-
-    setExportDatatables(true)
 }
 
 test {
