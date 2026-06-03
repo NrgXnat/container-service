@@ -5,10 +5,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.hibernate.Hibernate;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.MatchMode;
+import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.framework.orm.hibernate.AbstractHibernateDAO;
 import org.springframework.stereotype.Repository;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Repository;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 
 @Slf4j
@@ -81,20 +84,57 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
     }
 
     @Nonnull
-    public List<ContainerEntity> retrieveNonfinalizedServices() {
-        final List servicesResult = getSession()
+    @SuppressWarnings("unchecked")
+    public List<Long> retrieveNonfinalizedServiceIds() {
+        final List<Long> ids = getSession()
                 .createCriteria(ContainerEntity.class)
                 .add(Restrictions.conjunction()
                         .add(Restrictions.isNotNull("serviceId"))
                         .add(getNonFinalizedCriterion())
                 )
+                .setProjection(Projections.property("id"))
                 .list();
-        List<ContainerEntity> ces = initializeAndReturnList(servicesResult);
-        log.trace("FOLLOWING SERVICES ARE NOT FINAL: ");
-        for (ContainerEntity ce:ces) {
-        	log.trace("NONFINALIZED: " + ce.getServiceId() + " STATUS: " + ce.getStatus() + " " + " TASK: " + ce.getTaskId() + " WORKFLOW: " + ce.getWorkflowId() );
-        }
-        return ces;
+        return ids == null ? Collections.emptyList() : ids;
+    }
+
+    /**
+     * Lightweight projection-based fetch used by the polling loop in
+     * ContainerStatusUpdater. Returns a sparse ContainerEntity with only the
+     * scalars the loop reads.
+     */
+    @Nullable
+    public ContainerEntity retrieveServiceForPoll(final long id) {
+        final Object[] row = (Object[]) getSession()
+                .createCriteria(ContainerEntity.class)
+                .add(Restrictions.eq("id", id))
+                .setProjection(Projections.projectionList()
+                        .add(Projections.property("id"))
+                        .add(Projections.property("serviceId"))
+                        .add(Projections.property("taskId"))
+                        .add(Projections.property("containerId"))
+                        .add(Projections.property("status"))
+                        .add(Projections.property("statusTime"))
+                        .add(Projections.property("workflowId"))
+                        .add(Projections.property("userId"))
+                        .add(Projections.property("backend"))
+                        .add(Projections.property("project")))
+                .uniqueResult();
+        if (row == null) return null;
+        final ContainerEntity entity = new ContainerEntity();
+        entity.setId((Long) row[0]);
+        entity.setServiceId((String) row[1]);
+        entity.setTaskId((String) row[2]);
+        entity.setContainerId((String) row[3]);
+        entity.setStatus((String) row[4]);
+        entity.setStatusTime((Date) row[5]);
+        entity.setWorkflowId((String) row[6]);
+        entity.setUserId((String) row[7]);
+        entity.setBackend((Backend) row[8]);
+        entity.setProject((String) row[9]);
+        // Placeholders for non-@Nullable Container fields the poll loop never reads.
+        entity.setDockerImage("");
+        entity.setCommandLine("");
+        return entity;
     }
 
     public int howManyContainersAreWaiting() {

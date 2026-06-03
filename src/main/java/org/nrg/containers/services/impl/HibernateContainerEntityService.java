@@ -107,8 +107,14 @@ public class HibernateContainerEntityService
 
     @Override
     @Nonnull
-    public List<ContainerEntity> retrieveNonfinalizedServices() {
-        return getDao().retrieveNonfinalizedServices();
+    public List<Long> retrieveNonfinalizedServiceIds() {
+        return getDao().retrieveNonfinalizedServiceIds();
+    }
+
+    @Override
+    @Nullable
+    public ContainerEntity retrieveServiceForPoll(final long id) {
+        return getDao().retrieveServiceForPoll(id);
     }
 
     @Override

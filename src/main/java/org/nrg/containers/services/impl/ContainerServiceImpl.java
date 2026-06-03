@@ -404,8 +404,15 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     @Nonnull
-    public List<Container> retrieveNonfinalizedServices() {
-        return toPojo(containerEntityService.retrieveNonfinalizedServices());
+    public List<Long> retrieveNonfinalizedServiceIds() {
+        return containerEntityService.retrieveNonfinalizedServiceIds();
+    }
+
+    @Override
+    @Nullable
+    public Container retrieveServiceForPoll(final long id) {
+        final ContainerEntity entity = containerEntityService.retrieveServiceForPoll(id);
+        return entity == null ? null : toPojo(entity);
     }
 
     @Nullable
@@ -750,7 +757,7 @@ public class ContainerServiceImpl implements ContainerService {
                 .subtype(DOCKER_WRAPUP.getName())
                 .project(parent != null ? parent.project() : null)
                 .swarmConstraints(swarmConstraints)
-                .status(CREATED) //Needs non-empty status to be picked up by containerService.retrieveNonfinalizedServices()
+                .status(CREATED) //Needs non-empty status to be picked up by containerService.retrieveNonfinalizedServiceIds()
                 .build();
         return toPojo(containerEntityService.create(fromPojo(toCreate)));
     }
