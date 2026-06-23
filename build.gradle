@@ -250,19 +250,19 @@ try {
     isCleanTag = false
 }
 
-ext.gitManifest = manifest {
-    attributes "Application-Name": pluginAppName,
-            "Build-Date": buildDate,
-            "Build-Number": buildNumber,
-            "Implementation-Version": project.version,
-            "Implementation-Sha": gitHash,
-            "Implementation-Sha-Full": gitHashFull,
-            "Implementation-Commit": commitDistance,
-            "Implementation-LastTag": lastTag,
-            "Implementation-Branch": branchName,
-            "Implementation-CleanTag": isCleanTag,
-            "Implementation-Dirty": isDirty
-}
+ext.gitManifestAttrs = [
+        "Application-Name"        : pluginAppName,
+        "Build-Date"              : buildDate,
+        "Build-Number"            : buildNumber,
+        "Implementation-Version"  : project.version,
+        "Implementation-Sha"      : gitHash,
+        "Implementation-Sha-Full" : gitHashFull,
+        "Implementation-Commit"   : commitDistance,
+        "Implementation-LastTag"  : lastTag,
+        "Implementation-Branch"   : branchName,
+        "Implementation-CleanTag" : isCleanTag,
+        "Implementation-Dirty"    : isDirty
+]
 
 task fatJar(type: Jar) {
     zip64 true
@@ -276,7 +276,7 @@ task fatJar(type: Jar) {
     }
     duplicatesStrategy "exclude"
     manifest {
-        from gitManifest
+        attributes gitManifestAttrs
     }
     with jar
 }
@@ -288,7 +288,7 @@ sourceSets.main.java {
 
 jar{
     manifest {
-        from gitManifest
+        attributes gitManifestAttrs
     }
     doLast {
         if (!gradle.taskGraph.hasTask(":fatJar")) {
@@ -300,7 +300,7 @@ jar{
 task sourceJar(type: Jar, dependsOn: classes) {
     archiveClassifier.set("sources")
     manifest {
-        from gitManifest
+        attributes gitManifestAttrs
     }
     from sourceSets.main.allSource
 }
@@ -308,7 +308,7 @@ task sourceJar(type: Jar, dependsOn: classes) {
 task javadocJar(type: Jar, dependsOn: javadoc) {
     archiveClassifier.set("javadoc")
     manifest {
-        from gitManifest
+        attributes gitManifestAttrs
     }
     from javadoc.destinationDir
 }
