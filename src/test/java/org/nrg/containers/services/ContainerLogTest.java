@@ -20,6 +20,7 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.nrg.containers.api.ContainerControlApi;
@@ -45,8 +46,8 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @Slf4j
@@ -55,6 +56,8 @@ public class ContainerLogTest {
     @Ignore
     @RunWith(JUnit4.class)
     public static class BaseTest {
+
+        @Rule public MockitoRule rule = MockitoJUnit.rule();
 
         @Rule
         public TestRule watcher = new TestWatcher() {
@@ -66,8 +69,6 @@ public class ContainerLogTest {
                 log.info("ENDING TEST {}", description.getMethodName());
             }
         };
-
-        @Rule public MockitoRule rule = MockitoJUnit.rule();
 
         @Rule public TemporaryFolder temp = new TemporaryFolder(new File(System.getProperty("java.io.tmpdir")));
 
