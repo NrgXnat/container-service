@@ -21,6 +21,8 @@ import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matchers;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentMatcher;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientImpl;
 import org.nrg.containers.model.container.auto.Container;
@@ -41,7 +43,6 @@ import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.api.mockito.PowerMockito;
 import org.springframework.test.context.transaction.TestTransaction;
 
 import java.io.File;
@@ -63,10 +64,9 @@ import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @Slf4j
 public class TestingUtils {
@@ -354,19 +354,11 @@ public class TestingUtils {
     public static ArgumentMatcher<Map<String, String>> isMapWithEntry(final String key, final String value) {
         return new ArgumentMatcher<Map<String, String>>() {
             @Override
-            public boolean matches(final Object argument) {
-                if (argument == null || !Map.class.isAssignableFrom(argument.getClass())) {
+            public boolean matches(Map<String, String> argument) {
+                if (argument == null) {
                     return false;
                 }
-
-                final Map<String, String> argumentMap = Maps.newHashMap();
-                try {
-                    argumentMap.putAll((Map<String, String>)argument);
-                } catch (ClassCastException e) {
-                    return false;
-                }
-
-                for (final Map.Entry<String, String> entry : argumentMap.entrySet()) {
+                for (final Map.Entry<String, String> entry : argument.entrySet()) {
                     if (entry.getKey().equals(key) && entry.getValue().equals(value)) {
                         return true;
                     }
@@ -538,23 +530,31 @@ public class TestingUtils {
         when(mockItem.getXSIType()).thenReturn(xsiType);
         when(mockItem.getProject()).thenReturn(project);
         final ExptURI mockUriObject = mock(ExptURI.class);
-        when(UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
-        when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
-        fakeWorkflow.setId(uri);
-        ResourceData mockRD = mock(ResourceData.class);
-        when(mockRD.getItem()).thenReturn(mockItem);
-        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
+        try (MockedStatic<UriParserUtils> mockUriParserUtils = mockStatic(UriParserUtils.class)) {
+            mockUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
+            when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
+            fakeWorkflow.setId(uri);
+            ResourceData mockRD = mock(ResourceData.class);
+            when(mockRD.getItem()).thenReturn(mockItem);
+            when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
 
-        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-        setupWrapupWorkflow.setWfid(111);
-        setupWrapupWorkflow.setEventId(2);
-        PowerMockito.doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
-        when(WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
-                .thenReturn(setupWrapupWorkflow);
+            FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
+            setupWrapupWorkflow.setWfid(111);
+            setupWrapupWorkflow.setEventId(2);
+            MockedStatic<PersistentWorkflowUtils> mockedStatic = mockStatic(PersistentWorkflowUtils.class);
+            // 使用 Mockito.doReturn().when() 来定义静态方法的行为
+            mockedStatic.when(() -> PersistentWorkflowUtils.getOrCreateWorkflowData(eq(2), any(), any(), any(), any()))
+                    .thenReturn(setupWrapupWorkflow);
+//            Mockito.doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
+//                    eq(mockUser), any(XFTItem.class), any(EventDetails.class));
+            try (MockedStatic<WorkflowUtils> mockWorkflowUtils = mockStatic(WorkflowUtils.class)) {
+                mockWorkflowUtils.when(()->WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class))).thenReturn(setupWrapupWorkflow);
 
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
-                .thenReturn(setupWrapupWorkflow);
+                try (MockedStatic<WorkflowUtils> mockWorkflowUtils1 = mockStatic(WorkflowUtils.class)) {
+                    mockWorkflowUtils1.when(()->WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString())).thenReturn(setupWrapupWorkflow);
+                }
+            }
+        }
     }
 }
 

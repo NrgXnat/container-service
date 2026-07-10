@@ -99,6 +99,11 @@ public class JmsConfig {
         return new CachingConnectionFactory(mq);
     }
 
+    @Bean
+    public NrgPreferenceService nrgPreferenceService() {
+        return Mockito.mock(NrgPreferenceService.class);
+    }
+
     private DefaultJmsListenerContainerFactory defaultFactory(ConnectionFactory connectionFactory,
                                                               final SiteConfigPreferences siteConfigPreferences,
                                                               final NotificationsPreferences notificationsPreferences,

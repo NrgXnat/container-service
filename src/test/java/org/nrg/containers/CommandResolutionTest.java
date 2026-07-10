@@ -7,6 +7,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hamcrest.Matchers;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -15,8 +16,7 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
@@ -53,9 +53,6 @@ import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.cache.UserDataCache;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.archive.CatalogService;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -80,15 +77,14 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PrepareForTest(Users.class)
 public class CommandResolutionTest {
+    private MockedStatic<Users> mockedUsers;
     public static final String HELLO_1 = "hello1.txt";
     public static final String HELLO_2 = "hello2.txt";
     public static final String SUBDIR = "subdir";
@@ -108,13 +104,13 @@ public class CommandResolutionTest {
 
     private CommandResolutionService commandResolutionService;
 
-    @Mock private SiteConfigPreferences siteConfigPreferences;
-    @Mock private DockerService dockerService;
-    @Mock private DockerServerService dockerServerService;
-    @Mock private CatalogService catalogService;
-    @Mock private UserDataCache userDataCache;
-    @Mock private CommandService commandService;
-    @Mock private SystemPropertySecretSource.ValueObtainer systemPropertyObtainer;
+    private DockerService dockerService = Mockito.mock(DockerService.class);
+    private SiteConfigPreferences siteConfigPreferences = Mockito.mock(SiteConfigPreferences.class);
+    private DockerServerService dockerServerService = Mockito.mock(DockerServerService.class);
+    private CatalogService catalogService = Mockito.mock(CatalogService.class);
+    private UserDataCache userDataCache = Mockito.mock(UserDataCache.class);
+    private CommandService commandService = Mockito.mock(CommandService.class);
+    private SystemPropertySecretSource.ValueObtainer systemPropertyObtainer = Mockito.mock(SystemPropertySecretSource.ValueObtainer.class);
 
     private ObjectMapper mapper;
 
@@ -136,14 +132,13 @@ public class CommandResolutionTest {
 
     @Before
     public void setup() throws Exception {
-
+        mockedUsers = Mockito.mockStatic(Users.class);
         mapper = (new ObjectMapperConfig()).objectMapper();
 
         // Mock out a user for tests. Will return this as "admin" user.
         userI = Mockito.mock(UserI.class);
         when(userI.getLogin()).thenReturn("mockUser");
-        PowerMockito.mockStatic(Users.class);
-        PowerMockito.when(Users.getAdminUser()).thenReturn(userI);
+        mockedUsers.when(Users::getAdminUser).thenReturn(userI);
 
         // Read test data files for command + wrappers
         resourceDir = Paths.get(ClassLoader.getSystemResource("commandResolutionTest").toURI()).toString().replace("%20", " ");
@@ -195,6 +190,11 @@ public class CommandResolutionTest {
         }
         assertThat(wrapper, is(not(nullValue(CommandWrapper.class))));
         return wrapper;
+    }
+
+    @After
+    public void tearDownStaticMocks() {
+        mockedUsers.closeOnDemand();
     }
 
     @Test
@@ -703,8 +703,8 @@ public class CommandResolutionTest {
 
         // Just copy the archive dir over for now (tests for pullResourceCatalogsToDestination in xnat-web and filesystems_plugin)
         doAnswer(inv -> {
-            String src = inv.getArgumentAt(2, String.class);
-            String dest = inv.getArgumentAt(3, String.class);
+            String src = inv.getArgument(2, String.class);
+            String dest = inv.getArgument(3, String.class);
             FileUtils.copyDirectory(new File(src), new File(dest));
             return null;
         }).when(catalogService).pullResourceCatalogsToDestination(eq(userI),
