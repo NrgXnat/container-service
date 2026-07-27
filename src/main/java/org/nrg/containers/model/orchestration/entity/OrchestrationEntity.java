@@ -4,8 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
-import javax.persistence.*;
-import javax.validation.constraints.NotNull;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;

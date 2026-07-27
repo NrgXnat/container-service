@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.10.1-SNAPSHOT"
+        vXnat = "1.11.0-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -18,6 +18,11 @@ group "org.nrg.xnatx.plugins"
 version "3.9.0-SNAPSHOT"
 
 java {
+    // Build on JDK 21, not the Gradle launcher JVM (JDK 25). JDK 22+ tightened zip64 CEN validation and
+    // rejects old jars on the compile classpath (e.g. aspectjweaver-1.8.10) with "Invalid CEN header".
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
     sourceCompatibility = 21
     targetCompatibility = 21
 }
@@ -27,7 +32,12 @@ def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
 repositories {
-    mavenLocal()
+    mavenLocal {
+        // The plain ehcache-3.10.8.jar sits in mavenLocal and shadows the 'jakarta' classifier variant
+        // (which is only published on Central), so a transitive org.ehcache:ehcache:3.10.8:jakarta can't
+        // resolve. Exclude the group here so ehcache resolves from Central/jfrog instead.
+        content { excludeGroup "org.ehcache" }
+    }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
     mavenCentral()
@@ -136,15 +146,19 @@ dependencies {
     implementation "org.springframework:spring-webmvc"
     implementation "org.springframework:spring-jms"
     implementation "org.springframework:spring-messaging"
-    implementation "javax.jms:javax.jms-api"
+    implementation "jakarta.jms:jakarta.jms-api"
     implementation "org.apache.activemq:activemq-all"
     implementation "org.aspectj:aspectjweaver"
 
-    implementation "io.springfox:springfox-swagger2"
-    implementation "io.springfox:springfox-swagger-ui"
+    implementation "io.swagger:swagger-annotations:1.5.20"
 
     implementation "org.hibernate:hibernate-core"
     implementation "com.vladmihalcea:hibernate-types-55"
+    // ehcache 'jakarta' classifier: the default jar parses its XML config with javax JAXB and breaks on
+    // Tomcat 10; the jakarta variant is required. Declared explicitly (as XNAT core does) so it resolves
+    // from Central rather than being shadowed by the plain jar in mavenLocal, which arrives transitively
+    // via org.nrg:framework's module metadata.
+    implementation "org.ehcache:ehcache:3.10.8:jakarta"
 
     implementation "com.fasterxml.jackson.core:jackson-annotations"
     implementation "com.fasterxml.jackson.core:jackson-core"
@@ -159,13 +173,13 @@ dependencies {
 
     implementation "commons-lang:commons-lang"
 
-    implementation "javax.inject:javax.inject"
-    implementation "javax.servlet:javax.servlet-api"
+    implementation "jakarta.inject:jakarta.inject-api"
+    implementation "jakarta.servlet:jakarta.servlet-api"
 
-    implementation ("turbine:turbine") {
+    implementation ("org.apache.turbine:turbine") {
         transitive = false
     }
-    implementation ("org.apache.velocity:velocity") {
+    implementation ("org.apache.velocity:velocity-engine-core") {
         transitive = false
     }
     implementation ("xalan:xalan:2.7.2") {
@@ -195,7 +209,7 @@ dependencies {
     testImplementation "org.mockito:mockito-core:${vMockito}"
     testImplementation 'org.mockito:mockito-junit-jupiter:5.0.0'  // JUnit 5 integration for Mockito
 
-    testImplementation "javax.servlet:javax.servlet-api"
+    testImplementation "jakarta.servlet:jakarta.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"

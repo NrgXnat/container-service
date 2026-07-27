@@ -8,7 +8,7 @@ import com.google.auto.value.AutoValue;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
