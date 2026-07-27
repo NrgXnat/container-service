@@ -83,6 +83,16 @@ tasks.withType(Test).configureEach {
         jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
     }
 
+// Spring Framework 6 (Spring MVC in XNAT 1.11.0) no longer discovers method parameter names from
+// bytecode debug info, so @RequestParam / @PathVariable arguments that omit an explicit name resolve
+// only when classes are compiled with javac -parameters. XNAT core sets this in its build convention
+// (buildSrc/.../buildlogic.java-common-conventions.gradle); this plugin has its own build, so it must
+// opt in too. Without it, e.g. GET /xapi/commands/available throws IllegalArgumentException ("Name for
+// argument of type [String] not specified … Ensure that the compiler uses the '-parameters' flag") -> 500.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-parameters'
+}
+
 lombok {
     version = "1.18.34"
     sha256 = "1ea5ad6c6afcff902d75072b2aaa6695585aebee9f12127e15c0036ba95d2918"
