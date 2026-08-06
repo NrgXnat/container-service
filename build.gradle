@@ -74,6 +74,22 @@ configurations {
         resolutionStrategy.force "com.github.docker-java:docker-java-api:${vDockerJava}"
 
         exclude group: "org.bouncycastle"
+
+        // Jakarta: hibernate-core-jakarta is a differently-named artifact from javax hibernate-core, but
+        // hibernate-jcache (used by HibernateConfig's JCacheRegionFactory) still drags in the javax
+        // hibernate-core. With both on the classpath, Hibernate's BeanValidationIntegrator (from the javax
+        // jar) loads javax.validation.ValidatorFactory, which is absent on the jakarta classpath
+        // (only jakarta.validation-api is) -> NoClassDefFoundError building the test sessionFactory.
+        // Per the migration guide, excluding the javax variant is the consuming module's job.
+        exclude group: "org.hibernate", module: "hibernate-core"
+
+        // Jakarta: the plain jackson-datatype-hibernate5 (javax.persistence) arrives transitively (via
+        // org.nrg:framework). hibernate-types-55's ObjectMapperWrapper calls findAndRegisterModules(),
+        // which ServiceLoader-discovers and registers EVERY Module on the classpath -- including this
+        // javax one -- when binding a JSONB @Entity column, throwing NoClassDefFoundError:
+        // javax/persistence/Transient (the POST /xapi/docker/pull command-save 500). Removing it leaves
+        // only jackson-datatype-hibernate5-jakarta discoverable. Mirrors core's org.nrg:framework fix.
+        exclude group: "com.fasterxml.jackson.datatype", module: "jackson-datatype-hibernate5"
     }
 }
 
@@ -169,7 +185,7 @@ dependencies {
 
     implementation "io.swagger:swagger-annotations:1.5.20"
 
-    implementation "org.hibernate:hibernate-core"
+    implementation "org.hibernate:hibernate-core-jakarta"
     implementation "com.vladmihalcea:hibernate-types-55"
     // ehcache 'jakarta' classifier: the default jar parses its XML config with javax JAXB and breaks on
     // Tomcat 10; the jakarta variant is required. Declared explicitly (as XNAT core does) so it resolves
@@ -182,6 +198,11 @@ dependencies {
     implementation "com.fasterxml.jackson.core:jackson-databind"
     implementation "com.fasterxml.jackson.module:jackson-module-jaxb-annotations"
     implementation "com.fasterxml.jackson.datatype:jackson-datatype-guava"
+    // Jakarta: the -jakarta variant of jackson-datatype-hibernate5 (module renamed to
+    // Hibernate5JakartaModule). Declared explicitly because the javax variant is excluded globally
+    // above; hibernate-types-55 (runtime) auto-discovers this via findAndRegisterModules() when
+    // serializing JSONB @Entity columns, and ObjectMapperConfig registers it directly. Matches core.
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-hibernate5-jakarta"
 
     implementation "com.jayway.jsonpath:json-path"
 
@@ -240,6 +261,15 @@ dependencies {
 test {
     useJUnitPlatform()
     systemProperty "integration", System.getProperty('integration') == "true"
+}
+
+// SLF4J 2.x provider disambiguation. activemq-all bundles AND ServiceLoader-registers a log4j2
+// SLF4J binding (org.apache.logging.slf4j.SLF4JServiceProvider) but ships no log4j-api, so when
+// classpath order makes SLF4J pick it over slf4j-reload4j, SpringJUnit4ClassRunner.<clinit> dies
+// with NoClassDefFoundError: org/apache/logging/log4j/Logger and every test fails as
+// initializationError. Pin the working reload4j provider so selection is deterministic.
+tasks.withType(Test).configureEach {
+    systemProperty "slf4j.provider", "org.slf4j.reload4j.Reload4jServiceProvider"
 }
 
 tasks.register ( 'unitTest', Test ) {
