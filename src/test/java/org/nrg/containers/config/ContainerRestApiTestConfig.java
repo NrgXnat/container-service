@@ -24,18 +24,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.TestingAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
-@SuppressWarnings("deprecation")
 @Configuration
 @EnableWebMvc
 @EnableWebSecurity
 @Import({ContainerEntityTestConfig.class, RestApiTestConfig.class, CommandConfig.class})
-public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
+public class ContainerRestApiTestConfig {
     @Bean
     public ContainerRestApi containerRestApi(final ContainerService containerService,
                                              final UserManagementServiceI userManagementServiceI,
@@ -97,9 +98,16 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
         return Mockito.mock(UserGroupServiceI.class);
     }
 
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) {
-        auth.authenticationProvider(new TestingAuthenticationProvider());
+    @Bean
+    public AuthenticationManager authenticationManager() {
+        return new ProviderManager(new TestingAuthenticationProvider());
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(final HttpSecurity http) throws Exception {
+        http.csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
     }
 
 }
