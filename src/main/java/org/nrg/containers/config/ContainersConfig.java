@@ -15,6 +15,9 @@ import org.nrg.containers.jms.preferences.QueuePrefsBean;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.jms.tasks.QueueManager;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.tasks.BuildDirCleanupTrigger;
+import org.nrg.containers.tasks.BuildDirectoryCleanupTask;
 import org.nrg.framework.annotations.XnatPlugin;
 import org.nrg.framework.services.SerializerService;
 import org.nrg.mail.services.MailService;
@@ -145,6 +148,21 @@ public class ContainersConfig {
         return new TriggerTask(
                 queueManager,
                 new PeriodicTrigger(15L, TimeUnit.MINUTES)
+        );
+    }
+
+    /**
+     * Build directory cleanup, once a day at the hour configured on the container server.
+     *
+     * This method name must NOT match the scanned component's bean name ("buildDirectoryCleanupTask"), or the @Bean
+     * silently overrides the component, cannot then resolve its own parameter, and the context fails to start.
+     */
+    @Bean
+    public TriggerTask buildDirectoryCleanupTriggerTask(final BuildDirectoryCleanupTask buildDirectoryCleanupTask,
+                                                        final DockerServerService dockerServerService) {
+        return new TriggerTask(
+                buildDirectoryCleanupTask,
+                new BuildDirCleanupTrigger(dockerServerService)
         );
     }
 

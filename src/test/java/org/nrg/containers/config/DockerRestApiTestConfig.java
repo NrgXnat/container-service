@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Mockito;
 import org.nrg.containers.rest.DockerRestApi;
 import org.nrg.containers.services.DockerService;
+import org.nrg.containers.tasks.BuildDirectoryCleanupTask;
 import org.nrg.framework.services.ContextService;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.UserManagementServiceI;
@@ -25,9 +26,16 @@ public class DockerRestApiTestConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public DockerRestApi dockerRestApi(final DockerService dockerService,
                                        final ObjectMapper objectMapper,
+                                       final BuildDirectoryCleanupTask buildDirectoryCleanupTask,
                                        final UserManagementServiceI userManagementService,
                                        final RoleHolder roleHolder) {
-        return new DockerRestApi(dockerService, objectMapper, userManagementService, roleHolder);
+        return new DockerRestApi(dockerService, objectMapper, buildDirectoryCleanupTask,
+                userManagementService, roleHolder);
+    }
+
+    @Bean
+    public BuildDirectoryCleanupTask buildDirectoryCleanupTask() {
+        return Mockito.mock(BuildDirectoryCleanupTask.class);
     }
 
     @Bean

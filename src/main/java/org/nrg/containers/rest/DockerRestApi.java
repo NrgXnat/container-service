@@ -23,6 +23,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithP
 import org.nrg.containers.security.ContainerManagerUserAuthorization;
 import org.nrg.containers.services.DockerHubService.DockerHubDeleteDefaultException;
 import org.nrg.containers.services.DockerService;
+import org.nrg.containers.tasks.BuildDirectoryCleanupTask;
 import org.nrg.framework.annotations.XapiRestController;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.exceptions.NrgServiceRuntimeException;
@@ -69,15 +70,18 @@ public class DockerRestApi extends AbstractXapiRestController {
 
     private DockerService dockerService;
     private ObjectMapper mapper;
+    private final BuildDirectoryCleanupTask buildDirectoryCleanupTask;
 
     @Autowired
     public DockerRestApi(final DockerService dockerService,
                          final ObjectMapper objectMapper,
+                         final BuildDirectoryCleanupTask buildDirectoryCleanupTask,
                          final UserManagementServiceI userManagementService,
                          final RoleHolder roleHolder) {
         super(userManagementService, roleHolder);
         this.dockerService = dockerService;
         this.mapper = objectMapper;
+        this.buildDirectoryCleanupTask = buildDirectoryCleanupTask;
     }
 
     @ApiOperation(value = "Docker server", notes = "Returns Docker server configuration values",
@@ -108,6 +112,32 @@ public class DockerRestApi extends AbstractXapiRestController {
             return new ResponseEntity<>(server, HttpStatus.CREATED);
         } catch (InvalidDefinitionException e) {
             throw new BadRequestException(e.getMessage());
+        }
+    }
+
+    @AuthDelegate(ContainerManagerUserAuthorization.class)
+    @ApiOperation(value = "Run build directory cleanup now",
+            notes = "Starts a build directory cleanup run immediately rather than waiting for the daily schedule. " +
+                    "Returns as soon as the run has been started; the outcome is recorded on an ADMIN workflow entry.")
+    @ApiResponses({
+            @ApiResponse(code = 202, message = "Cleanup run started"),
+            @ApiResponse(code = 400, message = "Build directory cleanup is not enabled"),
+            @ApiResponse(code = 409, message = "A cleanup run is already in progress"),
+            @ApiResponse(code = 500, message = "Unexpected error")})
+    @XapiRequestMapping(value = "/server/build-dir-cleanup", method = POST, restrictTo = Authorizer, produces = TEXT)
+    public ResponseEntity<String> runBuildDirectoryCleanup() {
+        switch (buildDirectoryCleanupTask.triggerNow()) {
+            case STARTED:
+                return new ResponseEntity<>("Build directory cleanup started.", HttpStatus.ACCEPTED);
+            case ALREADY_RUNNING:
+                return new ResponseEntity<>("A build directory cleanup is already in progress.", HttpStatus.CONFLICT);
+            case FAILED_TO_START:
+                return new ResponseEntity<>("Build directory cleanup could not be started; see the server logs.",
+                        HttpStatus.SERVICE_UNAVAILABLE);
+            case DISABLED:
+            default:
+                return new ResponseEntity<>("Build directory cleanup is not enabled for this container server.",
+                        HttpStatus.BAD_REQUEST);
         }
     }
 
