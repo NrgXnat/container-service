@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.9.0
+
+### Features
+* [CS-660](https://radiologics.atlassian.net/browse/CS-660): Added optional scheduled cleanup of build directories left behind by finalized containers. Disabled by default. Configured per container server host under Administer &gt; Plugin Settings &gt; Container Service &gt; Compute Backend, with independent retention periods for completed, failed and killed containers and a configurable UTC time of day for the run. Adds POST /xapi/docker/server/build-dir-cleanup to run a cleanup pass immediately rather than waiting for the schedule. Note that only build folders for containers finalized within the past 365 days are considered, so directories older than that, or already unreferenced on disk, are not removed.
+
 ## 3.8.1
 
 ### Bugfixes

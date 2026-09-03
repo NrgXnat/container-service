@@ -23,6 +23,11 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private boolean autoCleanup = true;
     private Integer maxConcurrentFinalizingJobs;
     private boolean statusEmailEnabled = true;
+    private boolean buildDirCleanupEnabled = false;
+    private Integer buildDirRetainDaysCompleted = DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_COMPLETED;
+    private Integer buildDirRetainDaysFailed = DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_FAILED;
+    private Integer buildDirRetainDaysKilled = DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED;
+    private String buildDirCleanupTime = DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME;
     private String gpuVendor;
     private String archivePvcName;
     private String buildPvcName;
@@ -48,6 +53,11 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.autoCleanup = dockerServer.autoCleanup();
         this.maxConcurrentFinalizingJobs = dockerServer.maxConcurrentFinalizingJobs();
         this.statusEmailEnabled = dockerServer.statusEmailEnabled();
+        this.buildDirCleanupEnabled = dockerServer.buildDirCleanupEnabled();
+        this.buildDirRetainDaysCompleted = dockerServer.buildDirRetainDaysCompleted();
+        this.buildDirRetainDaysFailed = dockerServer.buildDirRetainDaysFailed();
+        this.buildDirRetainDaysKilled = dockerServer.buildDirRetainDaysKilled();
+        this.buildDirCleanupTime = dockerServer.buildDirCleanupTime();
         this.gpuVendor = dockerServer.gpuVendor();
         this.archivePvcName = dockerServer.archivePvcName();
         this.buildPvcName = dockerServer.buildPvcName();
@@ -283,6 +293,57 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.statusEmailEnabled = statusEmail == null || statusEmail;
     }
 
+    // columnDefinition defaults backfill the existing server row when hbm2ddl adds these columns on upgrade.
+    // Fields stay boxed so a stray NULL cannot break hydration; setters coerce to the default.
+    @Column(columnDefinition = "boolean default false")
+    public boolean isBuildDirCleanupEnabled() {
+        return buildDirCleanupEnabled;
+    }
+
+    public void setBuildDirCleanupEnabled(Boolean buildDirCleanupEnabled) {
+        this.buildDirCleanupEnabled = buildDirCleanupEnabled != null && buildDirCleanupEnabled;
+    }
+
+    @Column(columnDefinition = "integer default 7")
+    public Integer getBuildDirRetainDaysCompleted() {
+        return buildDirRetainDaysCompleted;
+    }
+
+    public void setBuildDirRetainDaysCompleted(Integer buildDirRetainDaysCompleted) {
+        this.buildDirRetainDaysCompleted = buildDirRetainDaysCompleted == null
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_COMPLETED : buildDirRetainDaysCompleted;
+    }
+
+    @Column(columnDefinition = "integer default 14")
+    public Integer getBuildDirRetainDaysFailed() {
+        return buildDirRetainDaysFailed;
+    }
+
+    public void setBuildDirRetainDaysFailed(Integer buildDirRetainDaysFailed) {
+        this.buildDirRetainDaysFailed = buildDirRetainDaysFailed == null
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_FAILED : buildDirRetainDaysFailed;
+    }
+
+    @Column(columnDefinition = "integer default 1")
+    public Integer getBuildDirRetainDaysKilled() {
+        return buildDirRetainDaysKilled;
+    }
+
+    public void setBuildDirRetainDaysKilled(Integer buildDirRetainDaysKilled) {
+        this.buildDirRetainDaysKilled = buildDirRetainDaysKilled == null
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED : buildDirRetainDaysKilled;
+    }
+
+    @Column(columnDefinition = "varchar(5) default '02:00'")
+    public String getBuildDirCleanupTime() {
+        return buildDirCleanupTime;
+    }
+
+    public void setBuildDirCleanupTime(String buildDirCleanupTime) {
+        this.buildDirCleanupTime = DockerServerBase.isValidCleanupTime(buildDirCleanupTime)
+                ? buildDirCleanupTime.trim() : DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME;
+    }
+
     public String getGpuVendor() {
         return gpuVendor;
     }
@@ -387,6 +448,11 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.archivePathTranslation, that.archivePathTranslation) &&
                 Objects.equals(this.buildPathTranslation, that.buildPathTranslation) &&
                 Objects.equals(this.combinedPathTranslation, that.combinedPathTranslation) &&
+                Objects.equals(this.buildDirCleanupEnabled, that.buildDirCleanupEnabled) &&
+                Objects.equals(this.buildDirRetainDaysCompleted, that.buildDirRetainDaysCompleted) &&
+                Objects.equals(this.buildDirRetainDaysFailed, that.buildDirRetainDaysFailed) &&
+                Objects.equals(this.buildDirRetainDaysKilled, that.buildDirRetainDaysKilled) &&
+                Objects.equals(this.buildDirCleanupTime, that.buildDirCleanupTime) &&
                 constrEqual &&
                 tolEqual;
     }
@@ -396,7 +462,9 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         return Objects.hash(name, host, certPath, lastEventCheckTime, backend, pathTranslationXnatPrefix,
                 pathTranslationDockerPrefix, pullImagesOnXnatInit, containerUser, autoCleanup, swarmConstraints,
                 maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
-                archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations);
+                archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations,
+                buildDirCleanupEnabled, buildDirRetainDaysCompleted, buildDirRetainDaysFailed,
+                buildDirRetainDaysKilled, buildDirCleanupTime);
     }
 
 }

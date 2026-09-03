@@ -1,12 +1,15 @@
 package org.nrg.containers.services;
 
 import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.model.container.ContainerBuildDirRow;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.orm.hibernate.BaseHibernateService;
 import org.nrg.xft.security.UserI;
 
+import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
 public interface ContainerEntityService extends BaseHibernateService<ContainerEntity> {
@@ -23,6 +26,11 @@ public interface ContainerEntityService extends BaseHibernateService<ContainerEn
 
     List<ContainerEntity> retrieveServices();
     List<Long> retrieveNonfinalizedServiceIds();
+
+    List<ContainerBuildDirRow> retrieveBuildDirCandidates(Date statusTimeAfter, Date statusTimeBefore,
+                                                          String buildPathPrefix);
+    List<ContainerBuildDirRow> retrieveBuildDirRowsForLaunchGroups(Collection<Long> rootIds, String buildPathPrefix);
+
     ContainerEntity retrieveServiceForPoll(final long id);
     List<ContainerEntity> retrieveContainersInFinalizingState();
     List<ContainerEntity> retrieveServicesInWaitingState();
