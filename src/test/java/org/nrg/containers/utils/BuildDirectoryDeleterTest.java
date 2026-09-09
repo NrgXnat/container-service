@@ -7,7 +7,9 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
@@ -157,6 +159,31 @@ public class BuildDirectoryDeleterTest {
         assertThat(Files.isDirectory(outsideDir), is(true));
         assertThat(Files.exists(outsideFile), is(true));
         assertThat(Files.exists(relTarget), is(true));
+    }
+
+    /**
+     * "Gone" is not "failed". Two runs may briefly overlap on one launch group by design, so entries the other
+     * one removed first must not count as failures — otherwise a directory that is entirely gone is reported as
+     * only partially removed, and logged as entries that could not be deleted. A genuine permission problem must
+     * still count, and must still be attributed to the access-denied tally that drives the container-user advice.
+     */
+    @Test
+    public void anEntryAnotherSweepAlreadyRemovedIsNotAFailure() {
+        final BuildDirectoryDeleter.DeleteResult result = new BuildDirectoryDeleter.DeleteResult();
+        final Path entry = buildRoot.resolve(uuid).resolve("payload.txt");
+
+        result.recordFailure(entry, new NoSuchFileException(entry.toString()));
+
+        assertThat("already gone is counted separately", result.getAlreadyDeleted(), is(1));
+        assertThat("and not as a failure", result.getFailures(), is(0));
+        assertThat("so the directory still reports as fully removed", result.isComplete(), is(true));
+        assertThat("and it must not look like a permissions problem", result.getAccessDenied(), is(0));
+
+        result.recordFailure(entry, new AccessDeniedException(entry.toString()));
+
+        assertThat("a real permission failure still counts", result.getFailures(), is(1));
+        assertThat(result.getAccessDenied(), is(1));
+        assertThat(result.isComplete(), is(false));
     }
 
     /** Same guarantee when the build directory entry is itself a symlink rather than containing one. */

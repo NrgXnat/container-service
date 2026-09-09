@@ -113,7 +113,7 @@ public class BuildDirectoryCleanupServiceTest {
     }
 
     private String run() throws BuildDirectoryCleanupException {
-        return service.cleanup();
+        return service.cleanup(() -> true);
     }
 
     // The service reports through its summary line rather than a model object, so these assert on that line.
@@ -247,17 +247,16 @@ public class BuildDirectoryCleanupServiceTest {
     }
 
     /**
-     * The positive control for the rule above. Without it, a service that deferred everything would pass every
-     * other test in this class. Zero days deletes as soon as the whole group is terminal, which is safe because
-     * the terminal status is only set after finalization has uploaded outputs and logs live under the archive.
+     * The positive control for the rule above; without it a service that deferred everything would pass every
+     * other test here. Zero days means "as soon as the group is terminal and past MINIMUM_AGE_MILLIS".
      */
     @Test
     public void wholeLaunchGroupTerminalIsDeleted() throws Exception {
         server(true, 0, 0, 0);
         final String dir = makeDirOnDisk();
         stubQueries(Arrays.asList(
-                row(1L, "Complete", TimeUnit.HOURS.toMillis(2), null),
-                row(1L, "Complete", TimeUnit.MINUTES.toMillis(1), dir)));
+                row(1L, "Complete", TimeUnit.HOURS.toMillis(3), null),
+                row(1L, "Complete", TimeUnit.HOURS.toMillis(2), dir)));
 
         final String summary = run();
 
@@ -298,6 +297,102 @@ public class BuildDirectoryCleanupServiceTest {
         assertThat(exists(noStatus), is(true));
     }
 
+    /**
+     * A kill is persisted by ContainerEntity.mapStatus as "Failed (Killed)", never as a bare "Killed", so a
+     * leading-token test would silently route killed containers to the failed window and leave the killed
+     * retention setting doing nothing at all.
+     */
+    @Test
+    public void aKilledContainerUsesTheKilledWindowDespiteItsFailedPrefix() throws Exception {
+        server(true, 7, 14, 1);
+        final String dir = makeDirOnDisk();
+        stubQueries(Collections.singletonList(row(1L, "Failed (Killed)", days(2), dir)));
+
+        assertDeleted("2 days is past the 1 day killed window, but inside the 14 day failed one", run(), 1);
+        assertThat(exists(dir), is(false));
+    }
+
+    /** A retention of zero must not mean "delete the moment it dies"; see MINIMUM_AGE_MILLIS. */
+    @Test
+    public void aFreshlyTerminalGroupIsHeldBackEvenAtZeroRetention() throws Exception {
+        server(true, 0, 0, 0);
+        final String dir = makeDirOnDisk();
+        stubQueries(Collections.singletonList(
+                row(1L, "Failed", TimeUnit.MINUTES.toMillis(2), dir)));
+
+        final String summary = run();
+
+        assertDeleted(summary, 0);
+        assertTooYoung(summary, 1);
+        assertThat("outputs may still be waiting in the finalizing queue", exists(dir), is(true));
+    }
+
+    /** A child left at "Created" was orphaned, and must not pin its group's directories for the whole window. */
+    @Test
+    public void anOrphanedNeverLaunchedChildDoesNotBlockAFinishedGroup() throws Exception {
+        final String dir = makeDirOnDisk();
+        stubQueries(Arrays.asList(
+                new ContainerBuildDirRow(1L, 1L, "Complete", new Date(System.currentTimeMillis() - days(30)), dir),
+                new ContainerBuildDirRow(2L, 1L, "Created", null, null)));   // wrap-up that never ran
+
+        assertDeleted(run(), 1);
+        assertThat(exists(dir), is(false));
+    }
+
+    /** The exemption is narrow: a child that actually started still blocks, however stale it looks. */
+    @Test
+    public void aChildThatStartedStillBlocksTheGroup() throws Exception {
+        final String dir = makeDirOnDisk();
+        stubQueries(Arrays.asList(
+                new ContainerBuildDirRow(1L, 1L, "Complete", new Date(System.currentTimeMillis() - days(30)), dir),
+                new ContainerBuildDirRow(2L, 1L, "Running", new Date(System.currentTimeMillis() - days(30)), null)));
+
+        assertDeferred(run(), 1);
+        assertThat(exists(dir), is(true));
+    }
+
+    /** Never begin a new group past the deadline; always finish the one already started. */
+    @Test
+    public void stoppingAtTheDeadlineFinishesTheCurrentGroupAndLeavesTheRest() throws Exception {
+        final String first  = makeDirOnDisk();
+        final String second = makeDirOnDisk();
+        final String third  = makeDirOnDisk();
+        stubQueries(Arrays.asList(
+                row(1L, "Complete", days(30), first),
+                row(2L, "Complete", days(30), second),
+                row(3L, "Complete", days(30), third)));
+
+        // Expressed by observation rather than by counting calls, so it does not depend on where the service
+        // happens to check.
+        final String summary = service.cleanup(() -> exists(first) && exists(second) && exists(third));
+
+        assertDeleted("only the group that was allowed to start", summary, 1);
+        assertThat(summary, containsString("stopped at the next scheduled time"));
+
+        int survivors = 0;
+        for (final String dir : Arrays.asList(first, second, third)) {
+            if (exists(dir)) {
+                survivors++;
+            }
+        }
+        assertThat("the groups never started are untouched", survivors, is(2));
+    }
+
+    /** With no deadline pressure the same input deletes everything, so the test above is not passing vacuously. */
+    @Test
+    public void withoutDeadlinePressureEveryGroupIsProcessed() throws Exception {
+        final String first  = makeDirOnDisk();
+        final String second = makeDirOnDisk();
+        stubQueries(Arrays.asList(
+                row(1L, "Complete", days(30), first),
+                row(2L, "Complete", days(30), second)));
+
+        final String summary = run();
+
+        assertDeleted(summary, 2);
+        assertThat(summary, not(containsString("stopped at the next scheduled time")));
+    }
+
     // ---------- what is out of scope stays out of scope ----------
 
     /**
@@ -318,17 +413,29 @@ public class BuildDirectoryCleanupServiceTest {
         assertThat(Files.exists(projectDir), is(true));
     }
 
-    /** A recorded mount outside the build root is dropped before the launch group query, not after. */
+    /**
+     * A recorded mount outside the build root is dropped before the launch group query, not after.
+     *
+     * Scope: this asserts the composed behaviour, not any one guard. Containment is enforced three times over -
+     * resolveBuildDirToDelete's root check, its UUID-name check, and again at deletion - so removing any single
+     * one leaves this green. What it does catch is restructuring, such as a candidate filter that stops calling
+     * resolveBuildDirToDelete. The build root needs a directory of its own or the run short-circuits on an empty
+     * listing and the filter never runs at all.
+     */
     @Test
     public void mountPathOutsideTheBuildRootIsRefused() throws Exception {
+        final String unrelated = makeDirOnDisk();          // so the build root listing is not empty
         final Path archive = tmp.newFolder("archive").toPath();
         final Path precious = Files.createDirectory(archive.resolve("PROJ"));
+        Files.write(precious.resolve("scan.dcm"), new byte[]{9});
         stubQueries(Collections.singletonList(row(1L, "Complete", days(30), precious.toString())));
 
         final String summary = run();
 
         assertExamined(summary, 0);
-        assertThat(Files.exists(precious), is(true));
+        verify(entityService, never()).retrieveBuildDirRowsForLaunchGroups(any(), anyString());
+        assertThat("the archive directory must survive", Files.exists(precious), is(true));
+        assertThat("and nothing in the build root is touched either", exists(unrelated), is(true));
     }
 
     /**

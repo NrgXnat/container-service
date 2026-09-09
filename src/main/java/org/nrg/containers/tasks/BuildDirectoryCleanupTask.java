@@ -1,79 +1,248 @@
 package org.nrg.containers.tasks;
 
 import lombok.extern.slf4j.Slf4j;
+import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.daos.BuildDirCleanupClaimDao;
 import org.nrg.containers.services.BuildDirectoryCleanupService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xft.event.EventUtils;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
-import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Nullable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Scheduled entry point for build directory cleanup, paired with a {@link BuildDirCleanupTrigger} in
- * ContainersConfig. Records each run as a site-wide ADMIN workflow entry.
+ * Runs build directory cleanup once a day at the UTC time configured on the container server.
  *
- * Neither entry point runs the sweep on the calling thread. A run is uncapped and can take hours on a site with a
- * large backlog, so executing it inline would hold an XNAT scheduler thread for that whole time - a pool that is
- * small and shared, and that services the container status updater every ten seconds. Both paths therefore hand
- * off to a dedicated single-threaded executor owned by this bean.
+ * <p>Polls instead of using a Spring {@link org.springframework.scheduling.Trigger}: ReschedulingRunnable asks its
+ * trigger for the next execution only once the previous run completes, so a run longer than a day yields a deadline
+ * already in the past, and a changed cleanup time is not seen until the run after next.
  *
- * The executor is deliberately private rather than a Spring bean. The plugin context holds exactly one
- * ExecutorService, injected by type in several places, and publishing a second one would make every one of those
- * injection points ambiguous. It is also deliberately not the shared container pool: a multi-hour sweep must not
- * occupy one of the five threads that serve bulk launches and the Kubernetes informers.
+ * <p>Ticks and runs share one single-threaded scheduler, so a tick cannot start while a run is in flight; that
+ * needs no lock.
  */
 @Slf4j
 @Component
-public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
+public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBean {
+
+    /**
+     * Bounds how late a run may start and how long a changed cleanup time takes to be noticed. A run is never
+     * started *before* its configured time, only up to this long after.
+     */
+    static final Duration TICK_INTERVAL = Duration.ofMinutes(10);
+
+    /**
+     * How stale the run deadline may be. Re-deriving it reads the container server row, which is far too costly
+     * once per launch group, and pointless more often than this: it exists only to notice a changed cleanup time,
+     * and it is already an order of magnitude finer than {@link #TICK_INTERVAL}.
+     */
+    private static final Duration DEADLINE_TTL = Duration.ofMinutes(1);
+
+    /** UTC, as the settings UI states; no DST rules apply. */
+    private static final ZoneId UTC = ZoneOffset.UTC;
 
     private static final String WORKFLOW_ACTION = "Build directory cleanup";
     private static final String SITE_XSI_TYPE   = "site";
 
     private final BuildDirectoryCleanupService cleanupService;
-    private final XnatAppInfo                  xnatAppInfo;
-    private final ExecutorService              executorService;
+    private final DockerServerService          dockerServerService;
+    private final BuildDirCleanupClaimDao      claimDao;
+    private final TaskScheduler                scheduler;
 
-    /** Guards against a second run starting while one is still in flight in another thread. */
+    /**
+     * Slot this node already attempted, so the database is asked once per slot rather than once per tick. Purely
+     * an optimization: the claim in the database, not this field, decides who runs. Package-private for tests.
+     */
+    volatile Instant lastAttemptedOccurrence = null;
+
+    /**
+     * Anchor for the current run's deadline: the occurrence it claimed, or the start instant for an on-demand run.
+     * Anchoring rather than measuring from "now" is the point - the next occurrence after *now* is always in the
+     * future, so a deadline recomputed from now would never arrive.
+     */
+    private volatile Instant runAnchor = Instant.EPOCH;
+
+    /** Derived from {@link #runAnchor} and the configured time, re-derived at most once per {@link #DEADLINE_TTL}. */
+    private volatile Instant cachedDeadline;
+    private volatile long    deadlineDerivedAt;
+
+    /** Claimed before a run is handed off, released when it ends, so a queued run also counts as running. */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     private boolean haveLoggedXftInitFailure = false;
 
     @Autowired
     public BuildDirectoryCleanupTask(final BuildDirectoryCleanupService cleanupService,
-                                     final XnatAppInfo appInfo) {
-        this(cleanupService, appInfo, newCleanupExecutor());
+                                     final DockerServerService dockerServerService,
+                                     final BuildDirCleanupClaimDao claimDao) {
+        this(cleanupService, dockerServerService, claimDao, newScheduler());
     }
 
-    /** Visible for testing, so a test can hold the guard open without ever running the submitted task. */
+    /** Visible for testing, so a test can supply a scheduler it controls. */
     BuildDirectoryCleanupTask(final BuildDirectoryCleanupService cleanupService,
-                              final XnatAppInfo appInfo,
-                              final ExecutorService executorService) {
-        this.cleanupService  = cleanupService;
-        this.xnatAppInfo     = appInfo;
-        this.executorService = executorService;
+                              final DockerServerService dockerServerService,
+                              final BuildDirCleanupClaimDao claimDao,
+                              final TaskScheduler scheduler) {
+        this.cleanupService      = cleanupService;
+        this.dockerServerService = dockerServerService;
+        this.claimDao            = claimDao;
+        this.scheduler           = scheduler;
     }
 
-    private static ExecutorService newCleanupExecutor() {
-        final AtomicInteger counter = new AtomicInteger();
-        return Executors.newSingleThreadExecutor(runnable -> {
-            final Thread thread = new Thread(runnable, "build-dir-cleanup-" + counter.incrementAndGet());
-            // Daemon so a sweep in progress can never delay JVM shutdown; a partial delete is retried next run.
-            thread.setDaemon(true);
-            return thread;
-        });
+    /**
+     * A dedicated thread, because the sweep runs on the tick thread and can last hours: on XNAT's shared scheduler
+     * pool ({@code scheduling.thread.pool.size}, default 4, also serving the ten-second container status updater)
+     * that would hold a quarter of the pool.
+     *
+     * <p>Not a {@code @Bean}: core injects ThreadPoolTaskScheduler by type with no qualifier in several places
+     * (InitializingTasksExecutor, EventSchedulingServiceImpl, AbstractScheduledXnatPreferenceHandlerMethod), so a
+     * second one makes those ambiguous and the context fails to refresh.
+     */
+    private static ThreadPoolTaskScheduler newScheduler() {
+        final ThreadPoolTaskScheduler created = new ThreadPoolTaskScheduler();
+        created.setPoolSize(1);
+        created.setThreadNamePrefix("build-dir-cleanup-");
+        // Daemon: a sweep must not hold up JVM shutdown; a partial delete is retried next run.
+        created.setDaemon(true);
+        created.setWaitForTasksToCompleteOnShutdown(false);
+        created.afterPropertiesSet();   // not a Spring bean, so it has to be initialized here
+        return created;
+    }
+
+    @Override
+    public void destroy() {
+        // TaskScheduler has no shutdown(), and a test-supplied one is not ours to close.
+        if (scheduler instanceof ThreadPoolTaskScheduler) {
+            ((ThreadPoolTaskScheduler) scheduler).shutdown();
+        }
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        // Fixed delay, not fixed rate: a run lasting days means no ticks meanwhile, not a burst of catch-up firings.
+        scheduler.scheduleWithFixedDelay(this::tick, TICK_INTERVAL);
+        log.info("Build directory cleanup will check every {} minutes whether its configured UTC time has passed.",
+                TICK_INTERVAL.toMinutes());
+    }
+
+    /**
+     * The earliest occurrence of {@code timeOfDay} in {@code zone} that is strictly after {@code now}. This is a
+     * run's deadline: no new launch group is started past it, so a run always finishes before the next occurrence
+     * becomes claimable and two runs can never overlap by more than the group in flight.
+     *
+     * Computed in the zoned domain rather than by adding 24 hours, so it stays correct if the configured zone is
+     * ever something other than UTC.
+     */
+    static Instant nextOccurrenceAfter(final Instant now, final LocalTime timeOfDay, final ZoneId zone) {
+        final ZonedDateTime zoned = now.atZone(zone);
+        final ZonedDateTime today = zoned.with(timeOfDay);
+        return (today.isAfter(zoned) ? today : today.plusDays(1)).toInstant();
+    }
+
+    /** The latest occurrence of {@code timeOfDay} in {@code zone} that is at or before {@code now}. */
+    static Instant mostRecentOccurrence(final Instant now, final LocalTime timeOfDay, final ZoneId zone) {
+        final ZonedDateTime zoned = now.atZone(zone);
+        final ZonedDateTime today = zoned.with(timeOfDay);
+        return (today.isAfter(zoned) ? today.minusDays(1) : today).toInstant();
+    }
+
+    void tick() {
+        try {
+            final LocalTime timeOfDay  = configuredTime();
+            final Instant   now        = Instant.now();
+            final Instant   occurrence = mostRecentOccurrence(now, timeOfDay, UTC);
+
+            if (occurrence.equals(lastAttemptedOccurrence)) {
+                return;
+            }
+            if (!xftIsInitialized()) {
+                // No attempt recorded: a node still starting up must retry next tick, not consume the day.
+                if (!haveLoggedXftInitFailure) {
+                    log.info("XFT is not initialized, skipping build directory cleanup task");
+                    haveLoggedXftInitFailure = true;
+                }
+                return;
+            }
+            haveLoggedXftInitFailure = false;
+            lastAttemptedOccurrence  = occurrence;
+
+            if (!cleanupService.isEnabled()) {
+                return;     // before claiming, so a disabled site leaves the slot free
+            }
+            // isPrimaryNode() is deliberately not consulted: it defaults to true, so on an unconfigured cluster
+            // every node thinks it is primary.
+            if (!claimDao.claim(occurrence)) {
+                return;
+            }
+            if (!running.compareAndSet(false, true)) {
+                log.warn("A build directory cleanup is already in progress; skipping this run.");
+                return;
+            }
+            anchorRunAt(occurrence);
+            guardedCleanup();
+        } catch (Throwable t) {
+            // Not redundant with Spring's error handler: an escaping error would end the repeating tick for good.
+            log.error("Unexpected error in the build directory cleanup tick", t);
+        }
+    }
+
+    /**
+     * A run starts no new group past this, so overlap with the next run is bounded to one group. The configured
+     * time is re-read rather than captured once, so moving the setting earlier shortens the run in progress
+     * instead of letting it overrun into the next slot.
+     */
+    private boolean mayStartMoreWork() {
+        final long now = System.nanoTime();
+        if (cachedDeadline == null || now - deadlineDerivedAt > DEADLINE_TTL.toNanos()) {
+            cachedDeadline    = nextOccurrenceAfter(runAnchor, configuredTime(), UTC);
+            deadlineDerivedAt = now;
+        }
+        return Instant.now().isBefore(cachedDeadline);
+    }
+
+    private void anchorRunAt(final Instant anchor) {
+        runAnchor      = anchor;
+        cachedDeadline = null;
+    }
+
+    /** The configured "HH:mm" as UTC, or the default if unset, unreadable or malformed. Package-private for tests. */
+    LocalTime configuredTime() {
+        String configured = null;
+        try {
+            // Null before the database is ready, and on sites with no container server configured.
+            final DockerServer server = dockerServerService.retrieveServer();
+            if (server != null) {
+                configured = server.buildDirCleanupTime();
+                if (DockerServerBase.isValidCleanupTime(configured)) {
+                    return LocalTime.parse(configured.trim());
+                }
+                log.warn("Configured build directory cleanup time \"{}\" is not HH:mm; using {}.",
+                        configured, DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME);
+            }
+        } catch (RuntimeException e) {   // includes DateTimeParseException
+            log.debug("Could not read the configured build directory cleanup time; using {}.",
+                    DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME, e);
+        }
+        return LocalTime.parse(DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME);
     }
 
     /** Outcome of an on-demand trigger, so the REST layer can pick a status code. */
@@ -82,12 +251,11 @@ public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
     /**
      * Start a cleanup run now, outside the schedule, without waiting for it to finish.
      *
-     * Shares the scheduled run's guard, so an on-demand run cannot overlap a nightly one in either direction, and
-     * produces the same ADMIN workflow entry. Deliberately does not check {@code isPrimaryNode()}: this is an
-     * explicit operator action, and the build path is shared across nodes anyway.
+     * Handed to the scheduler the tick uses, so it produces the same ADMIN workflow entry and cannot overlap a
+     * scheduled run. Any node may serve this: an explicit operator action, and the build path is shared. It does
+     * not consume a daily slot.
      */
     public TriggerResult triggerNow() {
-        // Guard first: a run already in flight is the more specific answer, whatever the enabled state.
         if (!running.compareAndSet(false, true)) {
             return TriggerResult.ALREADY_RUNNING;
         }
@@ -95,61 +263,20 @@ public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
             running.set(false);
             return TriggerResult.DISABLED;
         }
-        return submitGuardedCleanup() ? TriggerResult.STARTED : TriggerResult.FAILED_TO_START;
+        // An on-demand run is bounded from now, so it too stops before the next scheduled slot.
+        anchorRunAt(Instant.now());
+        return handOff() ? TriggerResult.STARTED : TriggerResult.FAILED_TO_START;
     }
 
-    @Override
-    public void run() {
-        if (!xnatAppInfo.isPrimaryNode()) {
-            return;
-        }
-
-        if (!xftIsInitialized()) {
-            if (!haveLoggedXftInitFailure) {
-                log.info("XFT is not initialized, skipping build directory cleanup task");
-                haveLoggedXftInitFailure = true;
-            }
-            return;
-        }
-        haveLoggedXftInitFailure = false;
-
-        if (!running.compareAndSet(false, true)) {
-            log.warn("A build directory cleanup is already in progress; skipping this run.");
-            return;
-        }
-        // Returns as soon as the sweep is handed off, so the scheduler thread is free and the trigger is asked for
-        // the next execution time immediately rather than after the sweep finishes.
-        if (!submitGuardedCleanup()) {
-            log.error("The scheduled build directory cleanup could not be started.");
-        }
-    }
-
-    /**
-     * Hand a guarded run to the cleanup thread. The caller must already hold the guard; this releases it if the
-     * hand-off fails, since a guard left set would block every later run until the next restart.
-     *
-     * The guard admits at most one outstanding run, so this executor's queue never holds more than one task.
-     */
-    private boolean submitGuardedCleanup() {
+    /** A scheduler shutting down rejects new work, and a guard left set would block every later run. */
+    private boolean handOff() {
         try {
-            executorService.submit(this::guardedCleanup);
+            scheduler.schedule(this::guardedCleanup, Instant.now());
             return true;
-        } catch (RejectedExecutionException e) {
+        } catch (TaskRejectedException e) {
             running.set(false);
-            log.error("Could not submit build directory cleanup for execution.", e);
+            log.error("Could not hand build directory cleanup to its scheduler.", e);
             return false;
-        }
-    }
-
-    /** Runs cleanup and always releases the guard. The caller must already have acquired it. */
-    private void guardedCleanup() {
-        try {
-            doCleanup();
-        } catch (Throwable t) {
-            // Never let an exception escape and kill the scheduled task.
-            log.error("Unexpected error during build directory cleanup", t);
-        } finally {
-            running.set(false);
         }
     }
 
@@ -158,12 +285,15 @@ public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
         return XFTManager.isInitialized();
     }
 
-    @Override
-    public void destroy() {
-        // Interrupts rather than waits: a sweep can run for hours and must not hold up a shutdown or redeploy.
-        // A half-finished directory is left on disk and reclaimed by the next run, which is the same handling as
-        // any other partial delete.
-        executorService.shutdownNow();
+    /** The caller must already hold the guard; this releases it. */
+    private void guardedCleanup() {
+        try {
+            doCleanup();
+        } catch (Throwable t) {
+            log.error("Unexpected error during build directory cleanup", t);
+        } finally {
+            running.set(false);
+        }
     }
 
     private void doCleanup() {
@@ -184,11 +314,10 @@ public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
             return;
         }
 
-        // Set details on the workflow directly and let complete()/fail() do the single save. Routing through
-        // ContainerUtils.updateWorkflowStatus would both save twice and NPE here, because a freshly built workflow
-        // already has status "In Progress" but null details, and that method compares details without a null check.
+        // Not ContainerUtils.updateWorkflowStatus: it saves twice, and NPEs on a freshly built workflow, which has
+        // status "In Progress" but null details, because it compares details without a null check.
         try {
-            final String summary = cleanupService.cleanup();
+            final String summary = cleanupService.cleanup(this::mayStartMoreWork);
             workflow.setDetails(summary);
             WorkflowUtils.complete(workflow, workflow.buildEvent());
             log.info("Build directory cleanup complete. {}", summary);
@@ -216,5 +345,4 @@ public class BuildDirectoryCleanupTask implements Runnable, DisposableBean {
             return null;
         }
     }
-
 }
