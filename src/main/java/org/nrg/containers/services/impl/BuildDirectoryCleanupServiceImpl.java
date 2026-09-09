@@ -1,6 +1,7 @@
 package org.nrg.containers.services.impl;
 
 import lombok.extern.slf4j.Slf4j;
+import com.google.common.collect.Lists;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.BuildDirectoryCleanupException;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +52,20 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
 
     /** Only containers finalized within the past year are considered, per the feature specification. */
     static final int LOOKBACK_DAYS = 365;
+
+    /**
+     * A container goes terminal when the backend reports its exit, *before* finalization reads its outputs:
+     * ContainerServiceImpl records the exit, then queueFinalize only posts a JMS request and leaves the status
+     * alone. So at a retention of zero a just-failed container's build directory is already eligible while its
+     * outputs are still unread.
+     *
+     * An hour covers the queue wait at normal load and costs nothing at the default settings, which are days. A
+     * mitigation, not a guarantee: a throttled finalizing queue can exceed it.
+     */
+    static final long MINIMUM_AGE_MILLIS = TimeUnit.HOURS.toMillis(1);
+
+    /** What ContainerEntity.mapStatus produces for a container row that has been created but never launched. */
+    private static final String CREATED_STATUS = "Created";
 
     /**
      * Root ids per family query. Both branches of its id disjunction bind the full list, so a chunk costs 2N+1
@@ -85,11 +101,12 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
         private int  dirsPartiallyDeleted;
         private long bytesFreed;
         private int  permissionFailures;
+        private boolean stoppedEarly;
     }
 
     @Override
     @Nonnull
-    public String cleanup() throws BuildDirectoryCleanupException {
+    public String cleanup(final BooleanSupplier mayStartMoreWork) throws BuildDirectoryCleanupException {
         final Counters counters = new Counters();
 
         final DockerServer server = dockerServerService.retrieveServer();
@@ -101,8 +118,8 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
 
         // One listing replaces a filesystem check per candidate: rows linger in the window for up to a year after
         // their directory is deleted, so per-path checks would re-examine a year of cleaned containers every run.
-        final Set<String> survivingDirNames = listBuildDirNames(buildRoot);
-        if (survivingDirNames.isEmpty()) {
+        final Set<Path> survivingDirs = listBuildDirs(buildRoot);
+        if (survivingDirs.isEmpty()) {
             log.debug("No Container Service build directories present under {}; nothing to clean up.", buildRoot);
             return summarize(counters);
         }
@@ -120,8 +137,8 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
         // Only groups whose directories are still on disk are worth expanding.
         final Set<Long> candidateRootIds = new LinkedHashSet<>();
         for (final ContainerBuildDirRow row : candidates) {
-            final String dirName = buildDirNameOf(row.getBuildDirPath(), buildRoot);
-            if (dirName != null && survivingDirNames.contains(dirName)) {
+            final Path dir = BuildDirectoryDeleter.resolveBuildDirToDelete(row.getBuildDirPath(), buildRoot);
+            if (dir != null && survivingDirs.contains(dir)) {
                 candidateRootIds.add(row.getRootId());
             }
         }
@@ -133,10 +150,12 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
 
         final Set<Path> alreadyHandled = new LinkedHashSet<>();
         final List<Long> rootIdList = new ArrayList<>(candidateRootIds);
-        for (int offset = 0; offset < rootIdList.size(); offset += ID_CHUNK_SIZE) {
-            final List<Long> chunk = rootIdList.subList(offset,
-                    Math.min(offset + ID_CHUNK_SIZE, rootIdList.size()));
-            processChunk(chunk, pathPrefix, buildRoot, runStart, server, alreadyHandled, counters);
+        for (final List<Long> chunk : Lists.partition(rootIdList, ID_CHUNK_SIZE)) {
+            if (counters.stoppedEarly) {
+                break;      // set by processChunk, before issuing a query for work we would not start
+            }
+            processChunk(chunk, pathPrefix, buildRoot, runStart, server, alreadyHandled, counters,
+                    mayStartMoreWork);
         }
 
         if (counters.permissionFailures > 0) {
@@ -158,6 +177,9 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
         addIfPositive(parts, counters.dirsPartiallyDeleted, "partial");
         addIfPositive(parts, counters.launchGroupsDeferred, "deferred");
         addIfPositive(parts, counters.launchGroupsTooYoung, "too young");
+        if (counters.stoppedEarly) {
+            parts.add("stopped at the next scheduled time, work remains");
+        }
         return String.join("; ", parts);
     }
 
@@ -173,24 +195,32 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                               final long runStart,
                               final DockerServer server,
                               final Set<Path> alreadyHandled,
-                              final Counters counters) {
+                              final Counters counters,
+                              final BooleanSupplier mayStartMoreWork) {
 
-        // This query commits before any deletion below, so no transaction spans filesystem work.
         final Map<Long, List<ContainerBuildDirRow>> launchGroups =
                 containerEntityService.retrieveBuildDirRowsForLaunchGroups(rootIds, pathPrefix).stream()
                         .collect(Collectors.groupingBy(ContainerBuildDirRow::getRootId));
 
         for (final Map.Entry<Long, List<ContainerBuildDirRow>> entry : launchGroups.entrySet()) {
+            // Checked before a group, never inside one: whole groups stay intact and overlap with the next run
+            // is bounded to one group.
+            if (!mayStartMoreWork.getAsBoolean()) {
+                counters.stoppedEarly = true;
+                break;
+            }
             counters.launchGroupsExamined++;
             final List<ContainerBuildDirRow> members = entry.getValue();
 
-            if (!launchGroupIsTerminal(members)) {
+            final List<ContainerBuildDirRow> blocking = membersThatBlockCleanup(members, entry.getKey());
+
+            if (!launchGroupIsTerminal(blocking)) {
                 counters.launchGroupsDeferred++;
                 log.debug("Launch group {} has a member that is not finalized; deferring.", entry.getKey());
                 continue;
             }
 
-            final Long effectiveTime = newestStatusTime(members);
+            final Long effectiveTime = newestStatusTime(blocking);
             if (effectiveTime == null) {
                 counters.launchGroupsDeferred++;
                 log.warn("Launch group {} has no usable statusTime; deferring. Its build directories will not be " +
@@ -198,10 +228,8 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                 continue;
             }
 
-            // No minimum age floor. Terminal status is set only after finalization uploads outputs, container logs
-            // live under the archive, and post-terminal work touches no files, so 0 days is safe. The launch group
-            // rule above, not a time delay, protects a running main container's mounted scratch space.
-            final long requiredAge = TimeUnit.DAYS.toMillis(retainDaysFor(members, server));
+            final long requiredAge = Math.max(MINIMUM_AGE_MILLIS,
+                    TimeUnit.DAYS.toMillis(retainDaysFor(blocking, server)));
             if (runStart - effectiveTime < requiredAge) {
                 counters.launchGroupsTooYoung++;
                 continue;
@@ -217,14 +245,43 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
     }
 
     /**
+     * Drops children that were created but never launched, once the root itself has finished.
+     *
+     * Wrap-up containers are persisted at parent-launch time with status "Created" and no statusTime, and are only
+     * launched or failed from inside the parent's finalize(). Finalization pauses and returns while they run, so
+     * the parent cannot reach a terminal status until they are done: a terminal root therefore means no wrap-up of
+     * that group can still be pending, and a child left at "Created" was orphaned rather than being about to run.
+     * Without this, one orphaned launch — a restart mid-run, a lost backend event — would block its group's build
+     * directories forever, and the deferral warning would ask an operator to correct something they cannot.
+     *
+     * Scoped deliberately: only non-root rows, only the exact "Created" status, and only with no statusTime.
+     */
+    private static List<ContainerBuildDirRow> membersThatBlockCleanup(final List<ContainerBuildDirRow> members,
+                                                                    final Long rootId) {
+        final boolean rootIsFinished = members.stream()
+                .filter(row -> rootId.equals(row.getContainerId()))
+                .allMatch(row -> ContainerUtils.statusIsTerminal(row.getStatus()));
+        if (!rootIsFinished) {
+            return members;
+        }
+        return members.stream()
+                .filter(row -> !isNeverLaunchedChild(row, rootId))
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isNeverLaunchedChild(final ContainerBuildDirRow row, final Long rootId) {
+        return !rootId.equals(row.getContainerId())
+                && row.getStatusTime() == null
+                && CREATED_STATUS.equals(row.getStatus());
+    }
+
+    /**
      * Every member must be terminal. A setup child goes terminal while its parent may still be running with the
      * child's output mounted; a wrap-up child runs while its parent is still finalizing.
      */
     private static boolean launchGroupIsTerminal(final Collection<ContainerBuildDirRow> members) {
         return members.stream()
-                .map(ContainerBuildDirRow::getStatus)
-                .distinct()
-                .allMatch(ContainerUtils::statusIsTerminal);
+                .allMatch(row -> ContainerUtils.statusIsTerminal(row.getStatus()));
     }
 
     @Nullable
@@ -248,7 +305,9 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
         for (final ContainerBuildDirRow row : members) {
             final String status = StringUtils.defaultString(row.getStatus());
             final int forThisMember;
-            if (status.startsWith(ContainerUtils.TerminalState.KILLED.value)) {
+            // ContainerEntity.mapStatus turns a kill into "Failed (Killed)" (and swarm wraps that again), so the
+            // marker is never the leading token. Tested before the Failed branch, which would otherwise claim it.
+            if (status.contains(ContainerUtils.TerminalState.KILLED.value)) {
                 forThisMember = server.buildDirRetainDaysKilled();
             } else if (status.startsWith(ContainerUtils.TerminalState.FAILED.value)) {
                 forThisMember = server.buildDirRetainDaysFailed();
@@ -297,8 +356,8 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                 if (result.getAccessDenied() > 0) {
                     counters.permissionFailures++;
                 }
-                log.warn("Partially removed build directory {}: {} entries could not be deleted", target,
-                        result.getFailures());
+                log.warn("Partially removed build directory {}: {} entries could not be deleted, {} were already gone",
+                        target, result.getFailures(), result.getAlreadyDeleted());
             }
         } catch (IOException e) {
             // A per-directory problem must not abandon the rest of the run.
@@ -335,40 +394,22 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
      * project-named directories under it, so anything that is not a bare UUID is ignored.
      */
     @Nonnull
-    private Set<String> listBuildDirNames(final Path buildRoot) throws BuildDirectoryCleanupException {
-        final Set<String> names = new HashSet<>();
+    private Set<Path> listBuildDirs(final Path buildRoot) throws BuildDirectoryCleanupException {
+        final Set<Path> dirs = new HashSet<>();
         // A directory stream rather than a listing: entries are not stat'd individually and a very large root is
         // never materialized into an array.
         try (final DirectoryStream<Path> stream = Files.newDirectoryStream(buildRoot)) {
             for (final Path entry : stream) {
                 final Path fileName = entry.getFileName();
                 if (fileName != null && BuildDirectoryDeleter.isBuildDirName(fileName.toString())) {
-                    names.add(fileName.toString());
+                    dirs.add(entry);
                 }
             }
         } catch (IOException e) {
             throw new BuildDirectoryCleanupException("Could not list the build path " + buildRoot, e);
         }
-        log.debug("Found {} Container Service build directories under {}", names.size(), buildRoot);
-        return names;
+        log.debug("Found {} Container Service build directories under {}", dirs.size(), buildRoot);
+        return dirs;
     }
 
-    /** The UUID directory name a persisted mount path falls under, or null if it is not under the build root. */
-    @Nullable
-    private static String buildDirNameOf(final @Nullable String xnatHostPath, final Path buildRoot) {
-        if (StringUtils.isBlank(xnatHostPath)) {
-            return null;
-        }
-        final Path path;
-        try {
-            path = Paths.get(xnatHostPath).normalize();
-        } catch (InvalidPathException e) {
-            return null;
-        }
-        if (!path.startsWith(buildRoot) || path.equals(buildRoot)) {
-            return null;
-        }
-        final String first = buildRoot.relativize(path).getName(0).toString();
-        return BuildDirectoryDeleter.isBuildDirName(first) ? first : null;
-    }
 }

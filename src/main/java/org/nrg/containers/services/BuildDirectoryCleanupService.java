@@ -1,5 +1,6 @@
 package org.nrg.containers.services;
 
+import java.util.function.BooleanSupplier;
 import org.nrg.containers.exceptions.BuildDirectoryCleanupException;
 
 import javax.annotation.Nonnull;
@@ -17,5 +18,5 @@ public interface BuildDirectoryCleanupService {
      * @throws BuildDirectoryCleanupException if the run cannot proceed, e.g. the build path is unusable
      */
     @Nonnull
-    String cleanup() throws BuildDirectoryCleanupException;
+    String cleanup(BooleanSupplier mayStartMoreWork) throws BuildDirectoryCleanupException;
 }

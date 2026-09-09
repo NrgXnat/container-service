@@ -1,6 +1,7 @@
 package org.nrg.containers.utils;
 
 import lombok.extern.slf4j.Slf4j;
+import org.nrg.framework.utilities.Patterns;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.annotation.Nullable;
@@ -11,12 +12,12 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.EnumSet;
-import java.util.regex.Pattern;
 
 /**
  * Path safety and recursive deletion for Container Service build directories, which are UUID-named immediate
@@ -32,14 +33,12 @@ public class BuildDirectoryDeleter {
      * The build root is shared with XNAT core, which creates project-named directories directly under it, so
      * requiring a bare UUID is the strongest guard available.
      */
-    private static final Pattern UUID_DIR_NAME = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private BuildDirectoryDeleter() {}
 
     /** Whether a single file name (not a path) is a bare UUID, i.e. looks like a build directory. */
     public static boolean isBuildDirName(final @Nullable String name) {
-        return name != null && UUID_DIR_NAME.matcher(name).matches();
+        return name != null && Patterns.UUID.matcher(name).matches();
     }
 
     /**
@@ -166,12 +165,14 @@ public class BuildDirectoryDeleter {
         private long    bytesFreed;
         private int     failures;
         private int     accessDenied;
+        private int     alreadyDeleted;
         private boolean alreadyGone;
 
         public int getFilesDeleted()   { return filesDeleted; }
         public long getBytesFreed()    { return bytesFreed; }
         public int getFailures()       { return failures; }
         public int getAccessDenied()   { return accessDenied; }
+        public int getAlreadyDeleted() { return alreadyDeleted; }
         public boolean isAlreadyGone() { return alreadyGone; }
 
         /** True when nothing was left behind, i.e. the build directory is entirely gone. */
@@ -179,7 +180,19 @@ public class BuildDirectoryDeleter {
             return failures == 0;
         }
 
-        private void recordFailure(final Path path, final IOException e) {
+        /**
+         * NoSuchFileException means another sweep removed the entry first, which the schedule permits by design.
+         * Counting it as a failure would leave isComplete() false, so a directory that is entirely gone would be
+         * reported as only partially removed.
+         *
+         * Package-private so the classification can be tested without provoking a real race.
+         */
+        void recordFailure(final Path path, final IOException e) {
+            if (e instanceof NoSuchFileException) {
+                alreadyDeleted++;
+                log.trace("{} was already gone while removing build directory", path);
+                return;
+            }
             failures++;
             if (e instanceof AccessDeniedException) {
                 accessDenied++;

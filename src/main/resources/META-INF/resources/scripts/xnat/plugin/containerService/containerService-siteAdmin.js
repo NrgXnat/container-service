@@ -372,28 +372,28 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 label: 'Completed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from successfully completed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup. Max 364. Default 7.'
+                                    '0 removes them during the next scheduled cleanup.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-retain-days-failed',
                                 label: 'Failed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from failed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup. Max 364. Default 14.'
+                                    '0 removes them during the next scheduled cleanup.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-retain-days-killed',
                                 label: 'Killed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from killed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup. Max 364. Default 1.'
+                                    '0 removes them during the next scheduled cleanup.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-cleanup-time',
                                 label: 'Cleanup time (UTC)',
                                 className: 'build-dir-cleanup-time',
                                 description: 'Cleanup time of day in UTC, as HH:mm. ' +
-                                    'A change takes effect after the next scheduled run; restart XNAT to apply it immediately.'
+                                    'Changes are applied within 10 minutes.'
                             })
                         ]),
 
