@@ -7,6 +7,7 @@ import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentMatchers;
 import org.nrg.containers.exceptions.BuildDirectoryCleanupException;
 import org.nrg.containers.model.container.ContainerBuildDirRow;
+import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.impl.BuildDirectoryCleanupServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -14,6 +15,7 @@ import org.nrg.xdat.preferences.SiteConfigPreferences;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -151,6 +153,39 @@ public class BuildDirectoryCleanupServiceTest {
         return Files.exists(java.nio.file.Paths.get(path));
     }
 
+    /**
+     * These two constants only work together: 364 exists because the lookback is 365, leaving exactly one day in
+     * which a group at the maximum retention is both eligible and still visible to the candidate query. They live
+     * in different classes, so nothing but this assertion stops an edit to one silently closing that window and
+     * leaking those directories permanently.
+     */
+    @Test
+    public void theRetentionCapLeavesAHarvestWindowInsideTheLookback() {
+        assertThat("a group at the maximum retention must still be visible to the candidate query",
+                DockerServerBase.MAX_BUILD_DIR_RETAIN_DAYS < BuildDirectoryCleanupServiceImpl.LOOKBACK_DAYS,
+                is(true));
+    }
+
+    /**
+     * PostgreSQL reads backslash as LIKE's escape character, so a Windows build root — whose stored paths use
+     * backslashes — must be escaped or the pattern matches nothing and the feature silently reclaims nothing.
+     * An underscore in the path would otherwise act as a single-character wildcard, broadening the match.
+     */
+    @Test
+    public void theLikePrefixEscapesEverythingPostgresWouldTreatAsAPattern() {
+        assertThat("posix, nothing to escape",
+                BuildDirectoryCleanupServiceImpl.buildPathPrefix(Paths.get("/data/xnat/build"), "/"),
+                is("/data/xnat/build/%"));
+
+        assertThat("an underscore must not become a wildcard",
+                BuildDirectoryCleanupServiceImpl.buildPathPrefix(Paths.get("/data/xnat_prod/build"), "/"),
+                is("/data/xnat\\_prod/build/%"));
+
+        assertThat("windows separators must survive as literals, including the trailing one",
+                BuildDirectoryCleanupServiceImpl.buildPathPrefix(Paths.get("/data/x/build"), "\\")
+                        .endsWith("\\\\%"), is(true));
+    }
+
     // ---------- disabled by default ----------
 
     /** An upgraded site that never opts in must have its build path left completely untouched. */
@@ -212,7 +247,12 @@ public class BuildDirectoryCleanupServiceTest {
                 row(1L, "Complete", days(10), null),
                 row(1L, "Failed (Setup)", days(10), dir)));
 
-        assertDeleted(run(), 0);
+        final String summary = run();
+
+        assertDeleted(summary, 0);
+        // Distinguishes "too young" from "deferred": both leave 0 deleted, but deferred would mean
+        // statusIsTerminal stopped matching a suffixed status, which is a regression rather than the rule working.
+        assertTooYoung(summary, 1);
         assertThat(exists(dir), is(true));
     }
 

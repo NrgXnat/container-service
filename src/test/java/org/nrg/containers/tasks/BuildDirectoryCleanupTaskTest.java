@@ -49,7 +49,7 @@ public class BuildDirectoryCleanupTaskTest {
         when(dockerServerService.retrieveServer()).thenReturn(null);   // no server: the default 02:00 applies
         task = new BuildDirectoryCleanupTask(cleanupService, dockerServerService, claimDao, scheduler) {
             @Override
-            protected boolean xftIsInitialized() {
+            protected boolean xnatIsReady() {
                 return true;
             }
         };
@@ -144,15 +144,15 @@ public class BuildDirectoryCleanupTaskTest {
     }
 
     /**
-     * XNAT can tick before XFT is up. The slot must be left unattempted so the run happens once XFT is ready,
-     * rather than the day being silently consumed.
+     * XNAT can tick before its database migration finishes. The slot must be left unattempted so the run happens
+     * once XNAT is ready, rather than the day being silently consumed.
      */
     @Test
-    public void aTickBeforeXftIsReadyDoesNotConsumeTheSlot() {
+    public void aTickBeforeXnatIsReadyDoesNotConsumeTheSlot() {
         final BuildDirectoryCleanupTask notReady =
                 new BuildDirectoryCleanupTask(cleanupService, dockerServerService, claimDao, scheduler) {
                     @Override
-                    protected boolean xftIsInitialized() {
+                    protected boolean xnatIsReady() {
                         return false;
                     }
                 };
