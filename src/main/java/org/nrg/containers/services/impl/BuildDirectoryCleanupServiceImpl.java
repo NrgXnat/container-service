@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupService {
 
     /** Only containers finalized within the past year are considered, per the feature specification. */
-    static final int LOOKBACK_DAYS = 365;
+    public static final int LOOKBACK_DAYS = 365;
 
     /**
      * A container goes terminal when the backend reports its exit, *before* finalization reads its outputs:
@@ -129,7 +129,7 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                 Math.min(server.buildDirRetainDaysFailed(), server.buildDirRetainDaysKilled()));
         final Date   windowStart   = new Date(runStart - TimeUnit.DAYS.toMillis(LOOKBACK_DAYS));
         final Date   windowEnd     = new Date(runStart - TimeUnit.DAYS.toMillis(minRetainDays));
-        final String pathPrefix    = buildRoot + File.separator + "%";
+        final String pathPrefix    = buildPathPrefix(buildRoot, File.separator);
 
         final List<ContainerBuildDirRow> candidates =
                 containerEntityService.retrieveBuildDirCandidates(windowStart, windowEnd, pathPrefix);
@@ -364,6 +364,25 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
             counters.dirsPartiallyDeleted++;
             log.warn("Could not remove build directory {}", target, e);
         }
+    }
+
+    /**
+     * The SQL LIKE pattern matching everything under the build root.
+     *
+     * PostgreSQL treats backslash as LIKE's escape character, so on Windows — where the stored paths use
+     * backslashes, because CommandResolutionServiceImpl builds them with FilenameUtils.concat — an unescaped
+     * prefix matches nothing at all and the feature becomes a silent no-op. `_` and `%` in a build path would
+     * likewise be read as wildcards. Escaping backslashes first is required: doing it later would double-escape
+     * the backslashes introduced by the other two replacements.
+     *
+     * The separator is a parameter so the Windows case can be tested from any platform.
+     */
+    public static String buildPathPrefix(final Path buildRoot, final String separator) {
+        return escapeLikeLiteral(buildRoot.toString()) + escapeLikeLiteral(separator) + "%";
+    }
+
+    private static String escapeLikeLiteral(final String literal) {
+        return literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Nonnull

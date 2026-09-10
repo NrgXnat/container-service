@@ -10,6 +10,7 @@ import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xft.event.EventUtils;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
+import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.utils.WorkflowUtils;
@@ -88,7 +89,7 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
     /** Claimed before a run is handed off, released when it ends, so a queued run also counts as running. */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    private boolean haveLoggedXftInitFailure = false;
+    private boolean haveLoggedNotReady = false;
 
     @Autowired
     public BuildDirectoryCleanupTask(final BuildDirectoryCleanupService cleanupService,
@@ -174,15 +175,15 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
             if (occurrence.equals(lastAttemptedOccurrence)) {
                 return;
             }
-            if (!xftIsInitialized()) {
+            if (!xnatIsReady()) {
                 // No attempt recorded: a node still starting up must retry next tick, not consume the day.
-                if (!haveLoggedXftInitFailure) {
-                    log.info("XFT is not initialized, skipping build directory cleanup task");
-                    haveLoggedXftInitFailure = true;
+                if (!haveLoggedNotReady) {
+                    log.info("XNAT is still initializing, skipping build directory cleanup task");
+                    haveLoggedNotReady = true;
                 }
                 return;
             }
-            haveLoggedXftInitFailure = false;
+            haveLoggedNotReady = false;
             lastAttemptedOccurrence  = occurrence;
 
             if (!cleanupService.isEnabled()) {
@@ -280,9 +281,15 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
         }
     }
 
-    /** Seam for tests: XFTManager is a static that cannot be initialized in a plain unit test. */
-    protected boolean xftIsInitialized() {
-        return XFTManager.isInitialized();
+    /**
+     * Both conditions, matching ContainerStatusUpdater: XFTManager says the schema metadata is loaded, while
+     * XDATServlet says XNAT has finished populating or migrating the database. This job queries three tables and
+     * deletes directories, so it needs the later of the two.
+     *
+     * Seam for tests: these are statics that cannot be initialized in a plain unit test.
+     */
+    protected boolean xnatIsReady() {
+        return XFTManager.isInitialized() && XDATServlet.isDatabasePopulateOrUpdateCompleted();
     }
 
     /** The caller must already hold the guard; this releases it. */
