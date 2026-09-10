@@ -228,10 +228,10 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             className: 'backend-selector',
                             options: backends
                         }),
-                        spawn('div.message.host-type-placeholder','Settings will populate based on selected host type'),
+                        spawn('div.message.host-type-placeholder', 'Settings will populate based on selected host type'),
 
-                        spawn('div.host-type-settings.docker.swarm',[
-                            spawn('p.divider','<strong>Host Settings</strong>'),
+                        spawn('div.host-type-settings.docker.swarm', [
+                            spawn('p.divider', '<strong>Host Settings</strong>'),
                             XNAT.ui.panel.input.text({
                                 name: 'host',
                                 className: 'docker swarm',
@@ -244,7 +244,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             }).element
                         ]),
 
-                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                        spawn('div.host-type-settings.docker.swarm.kubernetes', [
                             spawn('p.divider', '<strong>Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data.'),
                             XNAT.ui.panel.input.text({
                                 name: 'path-translation-xnat-prefix',
@@ -260,7 +260,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             })
                         ]),
 
-                        spawn('div.host-type-settings.docker.swarm',[
+                        spawn('div.host-type-settings.docker.swarm', [
                             spawn('p.divider', '<strong>Re-Pull Images on Init (Optional)</strong><br> Use this setting to force the Docker server to re-pull your images whenever the Apache Tomcat server is restarted. Images are only pulled if they are missing.'),
                             XNAT.ui.panel.input.switchbox({
                                 name: 'pull-images-on-xnat-init',
@@ -270,7 +270,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 value: 'false'
                             }),
                         ]),
-                        spawn('div.host-type-settings.swarm',[
+                        spawn('div.host-type-settings.swarm', [
                             spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
                                 '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
                                 'by requiring jobs to match (or not match) provided values. ' +
@@ -280,7 +280,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 '<a href="https://docs.docker.com/engine/reference/commandline/service_create/#specify-service-constraints---constraint" target="_blank">docker service create command</a> ' +
                                 'for more information about allowed constraints.'),
                         ]),
-                        spawn('div.host-type-settings.kubernetes',[
+                        spawn('div.host-type-settings.kubernetes', [
                             spawn('p.divider.swarm-constraints-divider', '<strong>Processing Node Constraints</strong>' +
                                 '<br> Use these settings to constrain the nodes on which container jobs can be scheduled ' +
                                 'by requiring jobs to match (or not match) provided node label values. ' +
@@ -289,40 +289,40 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 'for more information about allowed constraints.' +
                                 '<br><br><em>Use constraints to choose <strong>where</strong> jobs run; use tolerations (below) to allow jobs on otherwise-restricted nodes.</em>'),
                         ]),
-                        spawn('div.host-type-settings.swarm.kubernetes',[
+                        spawn('div.host-type-settings.swarm.kubernetes', [
                             spawn('button.new-swarm-constraint.btn.btn-sm', {
                                 html: 'Add Constraint',
-                                style: { 'margin-top': '0.75em' },
-                                onclick: function(){
+                                style: {'margin-top': '0.75em'},
+                                onclick: function () {
                                     containerHostManager.addSwarmConstraint();
                                     return false;
                                 }
                             })
                         ]),
-                        spawn('div.host-type-settings.kubernetes',[
+                        spawn('div.host-type-settings.kubernetes', [
                             spawn('p.divider', '<strong>Tolerations (Optional)</strong>' +
                                 '<br> Use these settings to allow container jobs to be scheduled on nodes with matching ' +
                                 '<a href="https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/" target="_blank">taints</a>. ' +
                                 'This is useful for workload isolation when your nodes use taints to restrict which pods can run on them.'),
                             spawn('button.new-kubernetes-toleration.btn.btn-sm', {
                                 html: 'Add Toleration',
-                                style: { 'margin-top': '0.75em' },
-                                onclick: function(){
+                                style: {'margin-top': '0.75em'},
+                                onclick: function () {
                                     containerHostManager.addKubernetesToleration();
                                     return false;
                                 }
                             })
                         ]),
-                        spawn('div.host-type-settings.docker.swarm',[
+                        spawn('div.host-type-settings.docker.swarm', [
                             spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
                                 'If no value is set, container processes are run as the value set in the image; if no value is set in the image, the default is "root".' +
                                 '<br><br>Value can be of the form user, user:group, uid, uid:gid, user:gid, or uid:group. '),
                         ]),
-                        spawn('div.host-type-settings.kubernetes',[
+                        spawn('div.host-type-settings.kubernetes', [
                             spawn('p.divider', '<strong>Container User (Optional)</strong><br>System user who will own process inside container. Use this if XNAT files are on a mount restricting permissions to certain users. ' +
                                 '<br><br><strong>Note: In Kubernetes mode, value must be an integer uid.</strong>')
                         ]),
-                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                        spawn('div.host-type-settings.docker.swarm.kubernetes', [
                             XNAT.ui.panel.input.text({
                                 name: 'container-user',
                                 label: 'Container User',
@@ -330,7 +330,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             })
                         ]),
 
-                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                        spawn('div.host-type-settings.docker.swarm.kubernetes', [
                             spawn('p.divider', '<strong>Automatically clean up completed containers</strong><br> Use this setting to automatically remove completed containers after saving outputs and logs. If you do not use this setting, you will need to run some sort of cleanup script on your server to remove old containers so as not to run out of system resources.'),
                             XNAT.ui.panel.input.switchbox({
                                 name: 'auto-cleanup',
@@ -341,7 +341,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             })
                         ]),
 
-                        spawn('div.host-type-settings.swarm',[
+                        spawn('div.host-type-settings.swarm', [
                             spawn('p.divider', '<strong>Throttle finalizing</strong><br> Use this setting to limit the number of jobs that can be finalizing at a time.'),
                             XNAT.ui.panel.input.text({
                                 name: 'max-concurrent-finalizing-jobs',
@@ -351,7 +351,53 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             }),
                         ]),
 
-                        spawn('div.host-type-settings.docker.swarm.kubernetes',[
+                        spawn('div.host-type-settings.docker.swarm.kubernetes', [
+                            spawn('p.divider', '<strong>Automatically clean up finalized container build space</strong><br> ' +
+                                'Containers with writable inputs or outputs create temporary directories in the XNAT build folder. ' +
+                                'Enable this to have a daily scheduled job delete those directories once the container has finalized ' +
+                                'and aged past the retention periods below. Retention is measured from the time the container reached ' +
+                                'its final status, and only once any setup and wrap-up containers it launched have also finished.' +
+                                '<br><br>' +
+                                'Only containers finalized within the past 365 days are considered. Older build folders, and any with ' +
+                                'no remaining container record, are not auto-deleted and should be removed manually.'),
+                            XNAT.ui.panel.input.switchbox({
+                                name: 'build-dir-cleanup-enabled',
+                                label: 'Automatically clean up build directories?',
+                                onText: 'ON',
+                                offText: 'OFF',
+                                value: 'false'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'build-dir-retain-days-completed',
+                                label: 'Completed [days]',
+                                className: 'build-dir-retain-days',
+                                description: 'Keep build folders from successfully completed containers for this many days. ' +
+                                    '0 removes them during the next scheduled cleanup.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'build-dir-retain-days-failed',
+                                label: 'Failed [days]',
+                                className: 'build-dir-retain-days',
+                                description: 'Keep build folders from failed containers for this many days. ' +
+                                    '0 removes them during the next scheduled cleanup.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'build-dir-retain-days-killed',
+                                label: 'Killed [days]',
+                                className: 'build-dir-retain-days',
+                                description: 'Keep build folders from killed containers for this many days. ' +
+                                    '0 removes them during the next scheduled cleanup.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'build-dir-cleanup-time',
+                                label: 'Cleanup time (UTC)',
+                                className: 'build-dir-cleanup-time',
+                                description: 'Cleanup time of day in UTC, as HH:mm. ' +
+                                    'Changes are applied within 10 minutes.'
+                            })
+                        ]),
+
+                        spawn('div.host-type-settings.docker.swarm.kubernetes', [
                             spawn('p.divider', '<strong>Container status emails</strong><br> Should the launching-user receive an email when container is complete or failed?'),
                             XNAT.ui.panel.input.switchbox({
                                 name: 'status-email-enabled',
@@ -362,21 +408,21 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             })
                         ]),
 
-                        spawn('div.host-type-settings.kubernetes',[
+                        spawn('div.host-type-settings.kubernetes', [
                             spawn('p.divider', '<strong>GPU Vendor</strong><br> Select GPU Vendor in the environment'),
                             XNAT.ui.panel.select.single({
                                 name: 'gpu-vendor',
                                 label: 'GPU Vendor',
                                 options:
                                     [
-                                        { label: 'Select GPU Vendor', value: '' },
-                                        { label: 'Nvidia', value: 'nvidia' },
-                                        { label: 'AMD', value: 'amd' },
+                                        {label: 'Select GPU Vendor', value: ''},
+                                        {label: 'Nvidia', value: 'nvidia'},
+                                        {label: 'AMD', value: 'amd'},
                                     ]
                             })
                         ]),
 
-                        spawn('div.host-type-settings.kubernetes',[
+                        spawn('div.host-type-settings.kubernetes', [
                             spawn('p.divider', '<strong>Archive and Build PVCs (Optional)</strong><br> Select how your xnat is currently hosting its data on Persistent Volumes (if applicable).'),
 
                             XNAT.ui.panel.select.single({
@@ -386,7 +432,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 className: 'pvc-selector',
                                 options: pvcMountType
                             }),
-                            spawn('div.pvc-type-settings.split',[
+                            spawn('div.pvc-type-settings.split', [
                                 XNAT.ui.panel.input.text({
                                     id: 'archive_pvc_name',
                                     name: 'archive-pvc-name',
@@ -394,7 +440,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                     className: 'archive-pvc-name'
                                 })
                             ]),
-                            spawn('div.pvc-type-settings.split',[
+                            spawn('div.pvc-type-settings.split', [
                                 XNAT.ui.panel.input.text({
                                     id: 'build_pvc_name',
                                     name: 'build-pvc-name',
@@ -402,7 +448,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                     className: 'build-pvc-name'
                                 })
                             ]),
-                            spawn('div.pvc-type-settings.split',[
+                            spawn('div.pvc-type-settings.split', [
                                 spawn('p.divider', '<strong>Archive and Build Path Translations (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive and build mount points and the Server mount points for your XNAT data that is mounted within two PVCs.'),
                                 XNAT.ui.panel.input.text({
                                     id: 'archive_path_translation',
@@ -417,7 +463,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                     className: 'build-path-translation'
                                 })
                             ]),
-                            spawn('div.pvc-type-settings.combined',[
+                            spawn('div.pvc-type-settings.combined', [
                                 XNAT.ui.panel.input.text({
                                     id: 'combined_pvc_name',
                                     name: 'combined-pvc-name',
@@ -425,7 +471,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                     className: 'combined-pvc-name'
                                 })
                             ]),
-                            spawn('div.pvc-type-settings.combined',[
+                            spawn('div.pvc-type-settings.combined', [
                                 spawn('p.divider', '<strong>Combined PVC Path Translation (Optional)</strong><br> Use these settings to resolve differences between your XNAT archive mount point and the Server mount point for your XNAT data that is mounted within a single combined PVC.'),
                                 XNAT.ui.panel.input.text({
                                     id: 'combined_path_translation',
@@ -550,6 +596,33 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         $form.find('.required:not(div)').each(function(){
                             if (!XNAT.validate(this).is('required').check()) {
                                 errors.push('Required input "' + getLabel($(this)) + '" is missing');
+                            }
+                        });
+
+                        // Build directory cleanup values. Blank is allowed: submitJSON sends "", which Jackson maps
+                        // to null for an Integer, and the server then restores the default. Server-side validate()
+                        // remains authoritative; this is only to save the user a round trip.
+                        function validateWholeNumberInRange($input, min, max) {
+                            var raw = $input.val();
+                            if (raw === null || String(raw).trim() === '') return;
+                            var trimmed = String(raw).trim();
+                            if (!/^\d+$/.test(trimmed)) {
+                                errors.push('"' + getLabel($input) + '" must be a whole number of days');
+                                $input.addClass('invalid');
+                            } else if (parseInt(trimmed, 10) < min || parseInt(trimmed, 10) > max) {
+                                errors.push('"' + getLabel($input) + '" must be between ' + min + ' and ' + max);
+                                $input.addClass('invalid');
+                            }
+                        }
+                        $form.find('input.build-dir-retain-days').each(function(){
+                            validateWholeNumberInRange($(this), 0, 364);
+                        });
+                        $form.find('input.build-dir-cleanup-time').each(function(){
+                            var raw = $(this).val();
+                            if (raw === null || String(raw).trim() === '') return;
+                            if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(String(raw).trim())) {
+                                errors.push('"' + getLabel($(this)) + '" must be a UTC time of day as HH:mm, e.g. 02:00');
+                                $(this).addClass('invalid');
                             }
                         });
 
