@@ -5,8 +5,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.hibernate.Hibernate;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.MatchMode;
+import org.hibernate.criterion.Projection;
 import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
+import org.hibernate.sql.JoinType;
+import org.nrg.containers.model.container.ContainerBuildDirRow;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.container.entity.ContainerEntityMount;
@@ -17,6 +20,8 @@ import org.springframework.stereotype.Repository;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -193,7 +198,94 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
         return ces;
     }
 
-    
+    /**
+     * Candidates for build directory cleanup: containers with a mount under the build root whose statusTime falls in
+     * the given window. The caller intersects the returned paths against a listing of the build root before
+     * expanding launch groups via {@link #retrieveBuildDirRowsForLaunchGroups(Collection, String)}.
+     *
+     * statusTimeBefore is a sound necessary condition, since a group's age is the maximum statusTime over its
+     * members: a container newer than the smallest threshold cannot belong to an eligible group. Bounding both ends
+     * keeps this a range scan.
+     *
+     * @param buildPathPrefix site build root plus separator plus "%", for a prefix LIKE
+     */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<ContainerBuildDirRow> retrieveBuildDirCandidates(final Date statusTimeAfter,
+                                                                 final Date statusTimeBefore,
+                                                                 final String buildPathPrefix) {
+        // No alias join to the parent: parentContainerEntity is a many-to-one, so its id is already a column here.
+        final List<Object[]> rows = getSession()
+                .createCriteria(getParameterizedType(), "c")
+                .createAlias("c.mounts", "m", JoinType.INNER_JOIN)
+                .add(Restrictions.between("c.statusTime", statusTimeAfter, statusTimeBefore))
+                .add(Restrictions.like("m.xnatHostPath", buildPathPrefix))
+                .setProjection(Projections.distinct(buildDirProjection()))
+                .setCacheable(false)
+                .list();
+        return toBuildDirRows(rows);
+    }
+
+    /**
+     * Every member of each given launch group, with build-path mounts left joined.
+     *
+     * The mount path condition sits in the join's ON clause, not in WHERE. That is load bearing: a WHERE condition
+     * would drop members with no build mount, which are exactly the rows whose status decides whether the group is
+     * safe to clean up.
+     *
+     * @param rootIds         launch group root ids, chunked by the caller
+     * @param buildPathPrefix site build root plus separator plus "%", for a prefix LIKE
+     * @return one row per launch group member, and per build mount for members that have any
+     */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<ContainerBuildDirRow> retrieveBuildDirRowsForLaunchGroups(final Collection<Long> rootIds,
+                                                                     final String buildPathPrefix) {
+        if (rootIds == null || rootIds.isEmpty()) {
+            // Restrictions.in on an empty collection produces degenerate SQL; there is nothing to ask for anyway.
+            return Collections.emptyList();
+        }
+        final List<Object[]> rows = getSession()
+                .createCriteria(getParameterizedType(), "c")
+                .createAlias("c.mounts", "m", JoinType.LEFT_OUTER_JOIN,
+                        Restrictions.like("m.xnatHostPath", buildPathPrefix))
+                .add(Restrictions.or(
+                        Restrictions.in("c.id", rootIds),
+                        Restrictions.in("c.parentContainerEntity.id", rootIds)))
+                .setProjection(buildDirProjection())
+                .setCacheable(false)
+                .list();
+        return toBuildDirRows(rows);
+    }
+
+    private static Projection buildDirProjection() {
+        return Projections.projectionList()
+                .add(Projections.property("c.id"))
+                .add(Projections.property("c.parentContainerEntity.id"))
+                .add(Projections.property("c.status"))
+                .add(Projections.property("c.statusTime"))
+                .add(Projections.property("m.xnatHostPath"));
+    }
+
+    @Nonnull
+    private static List<ContainerBuildDirRow> toBuildDirRows(final @Nullable List<Object[]> rows) {
+        if (rows == null) {
+            return Collections.emptyList();
+        }
+        final List<ContainerBuildDirRow> converted = new ArrayList<>(rows.size());
+        for (final Object[] row : rows) {
+            final Long containerId = (Long) row[0];
+            final Long parentId    = (Long) row[1];
+            converted.add(new ContainerBuildDirRow(
+                    containerId,
+                    parentId != null ? parentId : containerId,
+                    (String) row[2],
+                    (Date) row[3],
+                    (String) row[4]));
+        }
+        return converted;
+    }
+
     @Nonnull
     public List<ContainerEntity> retrieveContainersForParentWithSubtype(final long parentId,
                                                                         final String subtype) {
