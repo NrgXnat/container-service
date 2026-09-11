@@ -5,9 +5,12 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -28,7 +31,6 @@ import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
-import org.nrg.xft.event.EventMetaI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
@@ -36,11 +38,6 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.core.MessagePostProcessor;
@@ -49,8 +46,8 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.jms.Destination;
-import javax.jms.JMSRuntimeException;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSRuntimeException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,24 +56,18 @@ import java.util.List;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.AdditionalMatchers.aryEq;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyMapOf;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class})
-@PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
+@RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class JmsExceptionIntegrationTest {
+    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
+    private MockedStatic<Users> mockedUsers;
+    private MockedStatic<XFTManager> mockedXFTManager;
+    private MockedStatic<UriParserUtils> mockedUriParserUtils;
     @Autowired private JmsTemplate mockJmsTemplate;
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
@@ -119,8 +110,7 @@ public class JmsExceptionIntegrationTest {
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
         when(mockUser.getEmail()).thenReturn(FAKE_EMAIL);
-        mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         String buildDir = folder.newFolder().getAbsolutePath();
@@ -143,23 +133,12 @@ public class JmsExceptionIntegrationTest {
         mockAliasToken.setAlias("alias");
         mockAliasToken.setSecret("secret");
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        PowerMockito.mockStatic(UriParserUtils.class);
-
-        // Use powermock to mock out the static method XFTManager.isInitialized()
-        PowerMockito.mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-
-        // Also mock out workflow operations to return our fake workflow object
-        PowerMockito.mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        PowerMockito.doNothing().when(WorkflowUtils.class, "save", any(PersistentWorkflowI.class), isNull(EventMetaI.class));
-        PowerMockito.spy(PersistentWorkflowUtils.class);
-        PowerMockito.doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(FakeWorkflow.defaultEventId),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
+        Mockito.doNothing().when(WorkflowUtils.class);
+        Mockito.spy(PersistentWorkflowUtils.class);
+        Mockito.doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class);
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
@@ -181,6 +160,22 @@ public class JmsExceptionIntegrationTest {
         fakeWorkflow.setPipelineName(wrapper.name());
     }
 
+    @BeforeEach
+    void setUpStaticMocks() {
+        mockedWorkflowUtils = Mockito.mockStatic(WorkflowUtils.class);
+        mockedUsers = mockStatic(Users.class);
+        mockedXFTManager = Mockito.mockStatic(XFTManager.class);
+        mockedUriParserUtils = Mockito.mockStatic(UriParserUtils.class);
+    }
+
+    @AfterEach
+    void tearDownStaticMocks() {
+        mockedUriParserUtils.closeOnDemand();
+        mockedXFTManager.closeOnDemand();
+        mockedUsers.closeOnDemand();
+        mockedWorkflowUtils.closeOnDemand();
+    }
+
     @Test
     @DirtiesContext
     public void testStagingQueueFailure() throws Exception {
@@ -196,10 +191,10 @@ public class JmsExceptionIntegrationTest {
         assertThat(fakeWorkflow.getDetails(), is(exceptionMsg));
 
         Mockito.verify(mockMailService, times(1)).sendHtmlMessage(eq(FAKE_EMAIL),
-                aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), Matchers.<String[]>eq(null),
+                aryEq(new String[]{FAKE_EMAIL}), aryEq(new String[]{FAKE_EMAIL}), ArgumentMatchers.<String[]>eq(null),
                 Mockito.matches(".*" + wrapper.name() + ".*Failed.*"),
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
                 Mockito.matches(".*" + wrapper.name() + ".*" + FAKE_ID + ".*failed.*"),
-                anyMapOf(String.class, File.class));
+                anyMap());
     }
 }

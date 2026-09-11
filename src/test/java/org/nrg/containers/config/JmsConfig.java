@@ -24,8 +24,8 @@ import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.connection.CachingConnectionFactory;
 import org.springframework.jms.core.JmsTemplate;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
 
 @Configuration
 @EnableJms
@@ -97,6 +97,11 @@ public class JmsConfig {
         ActiveMQConnectionFactory mq = new ActiveMQConnectionFactory("vm://localhost?broker.persistent=false");
         mq.setTrustAllPackages(true);
         return new CachingConnectionFactory(mq);
+    }
+
+    @Bean
+    public NrgPreferenceService nrgPreferenceService() {
+        return Mockito.mock(NrgPreferenceService.class);
     }
 
     private DefaultJmsListenerContainerFactory defaultFactory(ConnectionFactory connectionFactory,

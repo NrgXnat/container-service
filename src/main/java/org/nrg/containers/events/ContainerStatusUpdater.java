@@ -217,23 +217,29 @@ public class ContainerStatusUpdater implements Runnable {
     private UpdateReport checkForDockerSwarmServiceUpdatesAndThrowEvents(final DockerServer dockerServer) {
         final UpdateReport report = UpdateReport.create();
         //TODO : Optimize this code so that waiting ones are handled first
-        for (Container service : containerService.retrieveNonfinalizedServices()) {
+        for (final Long databaseId : containerService.retrieveNonfinalizedServiceIds()) {
+            Container service = null;
             try {
-                if (log.isTraceEnabled()) {
-                    log.trace("Checking for updates for service {}", service);
-                } else {
-                    log.debug("Checking for updates for service {} \"{}\".", service.databaseId(), service.serviceId());
-                }
                 try {
-                    // Refresh service status etc. bc it could change while we're processing this list
-                    service = containerService.get(service.databaseId());
+                    // Lightweight service projection
+                    service = containerService.retrieveServiceForPoll(databaseId);
+                    if (service == null) {
+                        log.debug("Service id {} disappeared between bulk fetch and refetch; skipping.", databaseId);
+                        continue;
+                    }
+                    if (log.isTraceEnabled()) {
+                        log.trace("Checking for updates for service {}", service);
+                    } else {
+                        log.debug("Checking for updates for service {} \"{}\".", service.databaseId(), service.serviceId());
+                    }
                     if (containerService.fixWorkflowContainerStatusMismatch(service, Users.getAdminUser())) {
                         log.debug("Service {} \"{}\" had workflow <> status mismatch", service.databaseId(), service.serviceId());
                     } else if (containerService.isFinalizing(service) ||
                             containerService.containerStatusIsTerminal(service)) {
                         log.debug("Service {} \"{}\" no longer unfinalized", service.databaseId(), service.serviceId());
                     } else if (containerService.isWaiting(service)) {
-                        throwWaitingEventForService(service);
+                        // throwWaitingEventForService -> makeTaskFromLastHistoryItem needs history()
+                        throwWaitingEventForService(containerService.get(databaseId));
                     } else {
                         final ServiceTask task = containerControlApi.getTaskForService(dockerServer, service);
                         if (task != null) {
@@ -245,9 +251,10 @@ public class ContainerStatusUpdater implements Runnable {
                     }
                     report.add(UpdateReportEntry.success(service.serviceId()));
                 } catch (ServiceNotFoundException e) {
-                    // Service not found despite container being active: throw a restart event
+                    // Service not found despite container being active: throw a restart event.
+                    // throwRestartEventForService -> makeTaskFromLastHistoryItem needs history()
                     log.debug("Cannot find service {} \"{}\".", service.databaseId(), service.serviceId());
-                    throwRestartEventForService(service);
+                    throwRestartEventForService(containerService.get(databaseId));
                     report.add(UpdateReportEntry.success(service.serviceId()));
                 } catch (TaskNotFoundException e) {
                     log.error("Cannot get tasks for service {} \"{}\".", service.databaseId(), service.serviceId());
@@ -258,8 +265,13 @@ public class ContainerStatusUpdater implements Runnable {
                     report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
                 }
             } catch (Exception e) {
-                log.error("Unexpected exception trying to update service {} \"{}\".", service.databaseId(), service.serviceId(), e);
-                report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
+                if (service != null) {
+                    log.error("Unexpected exception trying to update service {} \"{}\".", service.databaseId(), service.serviceId(), e);
+                    report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
+                } else {
+                    log.error("Unexpected exception trying to retrieve service with database id {}.", databaseId, e);
+                    report.add(UpdateReportEntry.failure(String.valueOf(databaseId), e.getMessage()));
+                }
             }
         }
 

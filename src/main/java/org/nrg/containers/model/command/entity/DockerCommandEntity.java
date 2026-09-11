@@ -6,10 +6,10 @@ import com.google.common.collect.Maps;
 import org.nrg.containers.model.command.auto.Command;
 
 import javax.annotation.Nonnull;
-import javax.persistence.DiscriminatorValue;
-import javax.persistence.ElementCollection;
-import javax.persistence.Entity;
-import javax.persistence.Transient;
+import jakarta.persistence.DiscriminatorValue;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Transient;
 import java.util.Map;
 import java.util.Objects;
 

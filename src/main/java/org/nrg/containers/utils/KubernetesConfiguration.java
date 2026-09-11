@@ -136,7 +136,7 @@ public class KubernetesConfiguration {
      *
      * If a file cannot be found in those locations, returns null.
      *
-     * @return A <tt>KubeConfig</tt> if it can be found, or null
+     * @return A KubeConfig if it can be found, or null
      * @throws IOException if the configuration file or a file specified in a configuration file
      *     cannot be read.
      */

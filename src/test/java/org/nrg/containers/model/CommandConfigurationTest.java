@@ -23,10 +23,10 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNotNull;
-import static org.mockito.Matchers.isNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNotNull;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.nrg.containers.services.ContainerConfigService.TOOL_ID;
 
@@ -56,7 +56,7 @@ public class CommandConfigurationTest {
 
         final Configuration mockSiteConfiguration = Mockito.mock(Configuration.class);
         when(mockSiteConfiguration.getContents()).thenReturn(siteJson);
-        when(mockConfigService.getConfig(eq(TOOL_ID), anyString(), eq(Scope.Site), isNull(String.class))).thenReturn(mockSiteConfiguration);
+        when(mockConfigService.getConfig(eq(TOOL_ID), anyString(), eq(Scope.Site), isNull())).thenReturn(mockSiteConfiguration);
 
         final CommandConfigurationInternal retrieved = containerConfigService.getSiteConfiguration(WRAPPER_ID);
         assertThat(retrieved, is(site));
@@ -132,7 +132,7 @@ public class CommandConfigurationTest {
 
         final Configuration mockSiteConfiguration = Mockito.mock(Configuration.class);
         when(mockSiteConfiguration.getContents()).thenReturn(siteJson);
-        when(mockConfigService.getConfig(eq(TOOL_ID), anyString(), eq(Scope.Site), isNull(String.class))).thenReturn(mockSiteConfiguration);
+        when(mockConfigService.getConfig(eq(TOOL_ID), anyString(), eq(Scope.Site), isNull())).thenReturn(mockSiteConfiguration);
         final Configuration mockProjectConfiguration = Mockito.mock(Configuration.class);
         when(mockProjectConfiguration.getContents()).thenReturn(projectJson);
         when(mockConfigService.getConfig(eq(TOOL_ID), anyString(), eq(Scope.Project), isNotNull(String.class))).thenReturn(mockProjectConfiguration);

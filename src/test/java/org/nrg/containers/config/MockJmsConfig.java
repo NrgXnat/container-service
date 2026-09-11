@@ -2,23 +2,29 @@ package org.nrg.containers.config;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.mockito.Mockito;
+import org.nrg.containers.jms.errors.ContainerJmsErrorHandler;
 import org.nrg.containers.jms.listeners.ContainerFinalizingRequestListener;
 import org.nrg.containers.jms.listeners.ContainerStagingRequestListener;
 import org.nrg.containers.jms.requests.ContainerFinalizingRequest;
 import org.nrg.containers.jms.requests.ContainerStagingRequest;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.mail.services.MailService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
+import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jms.core.BrowserCallback;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.core.MessagePostProcessor;
 
-import javax.jms.Destination;
+import jakarta.jms.Destination;
 import java.util.concurrent.ExecutorService;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 
@@ -48,11 +54,16 @@ public class MockJmsConfig {
 
     @SuppressWarnings("unchecked")
     @Bean
+    @Primary
     public JmsTemplate mockJmsTemplate(Destination containerStagingRequest,
-                                       final ContainerStagingRequestListener containerStagingRequestListener,
+                                       @Lazy final ContainerStagingRequestListener containerStagingRequestListener,
                                        Destination containerFinalizingRequest,
-                                       final ContainerFinalizingRequestListener containerFinalizingRequestListener,
-                                       ExecutorService executorService) {
+                                       @Lazy final ContainerFinalizingRequestListener containerFinalizingRequestListener,
+                                       ExecutorService executorService,
+                                       final SiteConfigPreferences siteConfigPreferences,
+                                       final NotificationsPreferences notificationsPreferences,
+                                       final MailService mailService) {
+        final ContainerJmsErrorHandler errorHandler = new ContainerJmsErrorHandler(siteConfigPreferences, notificationsPreferences, mailService);
         JmsTemplate mockJmsTemplate = Mockito.mock(JmsTemplate.class);
         doAnswer(
                 invocation -> {
@@ -62,7 +73,7 @@ public class MockJmsConfig {
                         try {
                             containerStagingRequestListener.onRequest(request);
                         } catch (Exception e) {
-                            // ignored
+                            errorHandler.handleError(e);
                         }
                     });
                     return null;
@@ -77,7 +88,7 @@ public class MockJmsConfig {
                         try {
                             containerFinalizingRequestListener.onRequest(request);
                         } catch (Exception e) {
-                            // ignored
+                            errorHandler.handleError(e);
                         }
                     });
                     return null;

@@ -6,7 +6,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.orchestration.entity.OrchestratedWrapperEntity;
 
 import javax.annotation.Nonnull;
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;

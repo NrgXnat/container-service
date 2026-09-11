@@ -6,8 +6,8 @@ import org.nrg.xdat.XDAT;
 import org.springframework.jms.core.BrowserCallback;
 import org.springframework.jms.core.JmsTemplate;
 
-import javax.jms.Destination;
-import javax.jms.Message;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
 import java.util.Enumeration;
 
 @Slf4j

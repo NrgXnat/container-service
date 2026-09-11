@@ -1,6 +1,7 @@
 package org.nrg.containers.api;
 
 import org.nrg.containers.exceptions.NoContainerServerException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +15,7 @@ public class KubernetesClientFactoryImpl implements KubernetesClientFactory {
 
     private volatile KubernetesClientImpl kubernetesClient = null;
 
-    public KubernetesClientFactoryImpl(final ExecutorService executorService,
+    public KubernetesClientFactoryImpl(@Qualifier("containerServiceThreadPoolExecutorFactoryBean") final ExecutorService executorService,
                                        final JmsTemplate template) {
         this.executorService = executorService;
         this.template = template;

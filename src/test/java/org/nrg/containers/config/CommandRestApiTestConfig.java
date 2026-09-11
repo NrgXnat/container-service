@@ -13,17 +13,19 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.TestingAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 @Configuration
 @EnableWebMvc
 @EnableWebSecurity
 @Import({CommandTestConfig.class, RestApiTestConfig.class})
-public class CommandRestApiTestConfig extends WebSecurityConfigurerAdapter {
+public class CommandRestApiTestConfig {
     @Bean
     public CommandRestApi commandRestApi(final CommandService commandService,
                                          final UserManagementServiceI userManagementServiceI,
@@ -53,9 +55,20 @@ public class CommandRestApiTestConfig extends WebSecurityConfigurerAdapter {
         return Mockito.mock(UserGroupServiceI.class);
     }
 
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        auth.authenticationProvider(new TestingAuthenticationProvider());
+    @Bean
+    public AuthenticationManager authenticationManager() {
+        return new ProviderManager(new TestingAuthenticationProvider());
+    }
+
+    // SS6: WebSecurityConfigurerAdapter removed. The original config only registered a
+    // TestingAuthenticationProvider (it never customized HttpSecurity), so keep the chain permissive —
+    // these MockMvc controller tests exercise the REST controllers, which enforce their own authorization
+    // via the mocked RoleHolder/PermissionsService.
+    @Bean
+    public SecurityFilterChain securityFilterChain(final HttpSecurity http) throws Exception {
+        http.csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
     }
 
 }

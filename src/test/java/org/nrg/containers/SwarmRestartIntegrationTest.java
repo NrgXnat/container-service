@@ -5,17 +5,16 @@ import com.github.dockerjava.api.model.SwarmNodeAvailability;
 import com.github.dockerjava.api.model.SwarmNodeManagerStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.SystemUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -42,7 +41,6 @@ import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
-import org.nrg.xft.event.EventMetaI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
@@ -50,18 +48,13 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.persistence.EntityExistsException;
+import jakarta.persistence.EntityExistsException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -70,30 +63,24 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.doNothing;
-import static org.powermock.api.mockito.PowerMockito.doReturn;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class})
-@PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
+@RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmRestartIntegrationTest {
+    private MockedStatic<XDATServlet> mockedXDATServlet;
+    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
+    private MockedStatic<Users> mockedUsers;
+    private MockedStatic<XFTManager> mockedXFTManager;
+    private MockedStatic<UriParserUtils> mockedUriParserUtils;
     private Backend backend = Backend.SWARM;
     private boolean swarmMode = true;
 
@@ -154,18 +141,12 @@ public class SwarmRestartIntegrationTest {
         // Mock the user management service
         when(mockUserManagementServiceI.getUser(FAKE_USER)).thenReturn(mockUser);
 
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        mockStatic(UriParserUtils.class);
-
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
         mockAliasToken.setAlias(FAKE_ALIAS);
         mockAliasToken.setSecret(FAKE_SECRET);
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         buildDir = folder.newFolder().getAbsolutePath();
@@ -174,21 +155,14 @@ public class SwarmRestartIntegrationTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
-
-        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
-        mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-        mockStatic(XDATServlet.class);
-        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
-
-        // Also mock out workflow operations to return our fake workflow object
-        mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
+        mockedXDATServlet.when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
+        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class, "save", any(PersistentWorkflowI.class), isNull(EventMetaI.class));
-        PowerMockito.spy(PersistentWorkflowUtils.class);
-        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(FakeWorkflow.defaultEventId),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
+        doNothing().when(WorkflowUtils.class);
+        Mockito.spy(PersistentWorkflowUtils.class);
+        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class
+        );
 
         // Setup docker server
         final BackendConfig backendConfig = TestingUtils.getBackendConfig();
@@ -227,6 +201,24 @@ public class SwarmRestartIntegrationTest {
         }
 
         TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
+    }
+
+    @BeforeEach
+    void setUpStaticMocks() {
+        mockedXDATServlet = mockStatic(XDATServlet.class);
+        mockedWorkflowUtils = mockStatic(WorkflowUtils.class);
+        mockedUsers = mockStatic(Users.class);
+        mockedXFTManager = mockStatic(XFTManager.class);
+        mockedUriParserUtils = mockStatic(UriParserUtils.class);
+    }
+
+    @AfterEach
+    void tearDownStaticMocks() {
+        mockedUriParserUtils.closeOnDemand();
+        mockedXFTManager.closeOnDemand();
+        mockedUsers.closeOnDemand();
+        mockedWorkflowUtils.closeOnDemand();
+        mockedXDATServlet.closeOnDemand();
     }
 
     @Test

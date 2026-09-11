@@ -1,14 +1,16 @@
 package org.nrg.containers.services;
 
 import lombok.extern.slf4j.Slf4j;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.CommandSummaryForContext;
@@ -18,9 +20,6 @@ import org.nrg.xdat.om.XnatProjectdata;
 import org.nrg.xdat.security.helpers.Permissions;
 import org.nrg.xft.schema.Wrappers.GenericWrapper.GenericWrapperElement;
 import org.nrg.xft.security.UserI;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.util.Collections;
 import java.util.List;
@@ -29,18 +28,20 @@ import java.util.UUID;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mockStatic;
 import static org.nrg.containers.utils.ContainerServicePermissionUtils.PROJECT_EDIT_XML_PATH;
 import static org.nrg.containers.utils.ContainerServicePermissionUtils.PROJECT_READ_XML_PATH;
 import static org.nrg.xdat.security.SecurityManager.EDIT;
 import static org.nrg.xdat.security.SecurityManager.READ;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PrepareForTest({Permissions.class, GenericWrapperElement.class})
 public class CommandsAvailableTest {
+
+    private MockedStatic<GenericWrapperElement> mockedGenericWrapperElement;
+
+    private MockedStatic<Permissions> mockedPermissions;
 
     @Rule
     public TestRule watcher = new TestWatcher() {
@@ -53,11 +54,11 @@ public class CommandsAvailableTest {
         }
     };
 
-    @Mock private CommandEntityService commandEntityService;
-    @Mock private ContainerConfigService containerConfigService;
+    private CommandEntityService commandEntityService = Mockito.mock(CommandEntityService.class);
+    private ContainerConfigService containerConfigService = Mockito.mock(ContainerConfigService.class);
 
-    @Mock private UserI admin;
-    @Mock private UserI collaborator;
+    private UserI admin = Mockito.mock(UserI.class);
+    private UserI collaborator = Mockito.mock(UserI.class);
     private static final String project = "project";
 
     private CommandService commandService;
@@ -68,8 +69,15 @@ public class CommandsAvailableTest {
         Mockito.when(admin.getUsername()).thenReturn("admin");
         Mockito.when(collaborator.getLogin()).thenReturn("collab");
         Mockito.when(collaborator.getUsername()).thenReturn("collab");
-
+        mockedGenericWrapperElement = mockStatic(GenericWrapperElement.class);
+        mockedPermissions = mockStatic(Permissions.class);
         commandService = new CommandServiceImpl(commandEntityService, containerConfigService);
+    }
+
+    @After
+    public void tearDownStaticMocks() {
+        mockedPermissions.closeOnDemand();
+        mockedGenericWrapperElement.closeOnDemand();
     }
 
     @Test
@@ -117,29 +125,23 @@ public class CommandsAvailableTest {
 
         // Mock the call to get the enabled/disabled status
         Mockito.when(containerConfigService.isEnabled(eq(project), any(Long.class))).thenReturn(true);
-
-        // Mock resolving xsi type
-        mockStatic(GenericWrapperElement.class);
-        PowerMockito.when(GenericWrapperElement.GetElement(any(String.class)))
+        mockedGenericWrapperElement.when(() -> GenericWrapperElement.GetElement(any(String.class)))
                 .thenAnswer(invocation -> {
                     GenericWrapperElement gwe = Mockito.mock(GenericWrapperElement.class);
                     // Just return whatever xsi type was passed in
-                    Mockito.when(gwe.getXSIType()).thenReturn(invocation.getArgumentAt(0, String.class));
+                    Mockito.when(gwe.getXSIType()).thenReturn(invocation.getArgument(0, String.class));
                     return gwe;
                 });
 
-        // Mock permissions checks
-        mockStatic(Permissions.class);
-
         // Admin can read and edit
-        PowerMockito.when(Permissions.can(admin, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(admin, xsiType + "/project", project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(admin, xsiType + "/project", project, EDIT)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(admin, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(admin, xsiType + "/project", project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(admin, xsiType + "/project", project, EDIT)).thenReturn(true);
 
         // Collaborator can only read
-        PowerMockito.when(Permissions.can(collaborator, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(collaborator, xsiType + "/project", project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(collaborator, xsiType + "/project", project, EDIT)).thenReturn(false);
+        mockedPermissions.when(() -> Permissions.can(collaborator, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(collaborator, xsiType + "/project", project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(collaborator, xsiType + "/project", project, EDIT)).thenReturn(false);
 
         final CommandSummaryForContext readWrapperSummary = CommandSummaryForContext.create(command, wrapperRequiresRead, true, externalInputName);
         final CommandSummaryForContext editWrapperSummary = CommandSummaryForContext.create(command, wrapperRequiresEdit, true, externalInputName);
@@ -199,27 +201,21 @@ public class CommandsAvailableTest {
 
         // Mock the call to get the enabled/disabled status
         Mockito.when(containerConfigService.isEnabled(eq(project), any(Long.class))).thenReturn(true);
-
-        // Mock resolving xsi type
-        mockStatic(GenericWrapperElement.class);
-        PowerMockito.when(GenericWrapperElement.GetElement(any(String.class)))
+        mockedGenericWrapperElement.when(() -> GenericWrapperElement.GetElement(any(String.class)))
                 .thenAnswer(invocation -> {
                     GenericWrapperElement gwe = Mockito.mock(GenericWrapperElement.class);
                     // Just return whatever xsi type was passed in
-                    Mockito.when(gwe.getXSIType()).thenReturn(invocation.getArgumentAt(0, String.class));
+                    Mockito.when(gwe.getXSIType()).thenReturn(invocation.getArgument(0, String.class));
                     return gwe;
                 });
 
-        // Mock permissions checks
-        mockStatic(Permissions.class);
-
         // Admin can read and edit
-        PowerMockito.when(Permissions.can(admin, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(admin, PROJECT_EDIT_XML_PATH, project, EDIT)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(admin, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(admin, PROJECT_EDIT_XML_PATH, project, EDIT)).thenReturn(true);
 
         // Collaborator can only read
-        PowerMockito.when(Permissions.can(collaborator, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
-        PowerMockito.when(Permissions.can(collaborator, PROJECT_EDIT_XML_PATH, project, EDIT)).thenReturn(false);
+        mockedPermissions.when(() -> Permissions.can(collaborator, PROJECT_READ_XML_PATH, project, READ)).thenReturn(true);
+        mockedPermissions.when(() -> Permissions.can(collaborator, PROJECT_EDIT_XML_PATH, project, EDIT)).thenReturn(false);
 
         final CommandSummaryForContext readWrapperSummary = CommandSummaryForContext.create(command, wrapperRequiresRead, true, externalInputName);
         final CommandSummaryForContext editWrapperSummary = CommandSummaryForContext.create(command, wrapperRequiresEdit, true, externalInputName);
