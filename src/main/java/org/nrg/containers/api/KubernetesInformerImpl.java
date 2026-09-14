@@ -158,7 +158,8 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             // Pull out container statuses
             // We only ever launch jobs with a single template, so we only expect one container
             final List<V1ContainerStatus> containerStatuses = podStatus == null ? null : podStatus.getContainerStatuses();
-            final V1ContainerStatus containerStatus = containerStatuses == null ? null : containerStatuses.get(0);
+            final V1ContainerStatus containerStatus = containerStatuses == null || containerStatuses.isEmpty() ?
+                    null : containerStatuses.get(0);
 
             // Docker container id
             final String containerId = containerStatus == null ? null : containerStatus.getContainerID();

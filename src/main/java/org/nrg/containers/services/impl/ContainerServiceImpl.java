@@ -864,9 +864,13 @@ public class ContainerServiceImpl implements ContainerService {
             return;
         }
 
+        // A null return means we have already recorded this event. That happens when the backend replays
+        // events we have already seen, e.g. the kubernetes informer's initial LIST after a restart reports
+        // pods that terminated long ago. Such an event can still carry an id we have not recorded yet,
+        // but it must not be acted on again.
         Container containerWithAddedEvent = addContainerEventToHistory(event, userI);
-        if (containerWithAddedEvent == null) {
-            // Ignore this issue?
+        final boolean eventAlreadyRecorded = containerWithAddedEvent == null;
+        if (eventAlreadyRecorded) {
             containerWithAddedEvent = container;
         }
 
@@ -903,7 +907,9 @@ public class ContainerServiceImpl implements ContainerService {
             }
         }
 
-        if (event.isExitStatus()) {
+        if (eventAlreadyRecorded) {
+            log.debug("Not finalizing container {}. We have already recorded this event.", event.backendId());
+        } else if (event.isExitStatus()) {
             log.debug("Container is dead. Finalizing.");
 
             queueFinalize(event.exitCode(),
