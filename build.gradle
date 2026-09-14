@@ -45,7 +45,7 @@ dependencyManagement {
 
 def vDockerJava = "3.4.0.1"
 def vAutoValue = "1.5.4"
-def vKubernetesClient = "15.0.+"
+def vKubernetesClient = "17.0.+"
 def vPowerMock = "2.0.9"
 // importedProperties not available from Gradle java-platform BOM — versions managed by BOM directly
 
