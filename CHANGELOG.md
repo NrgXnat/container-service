@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.8.2
+
+### Bugfixes
+* [CS-1058](https://radiologics.atlassian.net/browse/CS-1058): Updated the Kubernetes client to 17.0 to fix a NoSuchMethodError that made the Kubernetes backend unusable on XNAT 1.10
+
 ## 3.8.1
 
 ### Bugfixes
