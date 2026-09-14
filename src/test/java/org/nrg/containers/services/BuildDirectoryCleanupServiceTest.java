@@ -137,8 +137,8 @@ public class BuildDirectoryCleanupServiceTest {
         assertCategory(summary, count, "deferred");
     }
 
-    private static void assertTooYoung(final String summary, final int count) {
-        assertCategory(summary, count, "too young");
+    private static void assertTooRecent(final String summary, final int count) {
+        assertCategory(summary, count, "too recent");
     }
 
     private static void assertCategory(final String summary, final int count, final String label) {
@@ -220,7 +220,7 @@ public class BuildDirectoryCleanupServiceTest {
         stubQueries(Collections.singletonList(row(2L, "Complete", days(6), completedYoung)));
         final String summary = run();
         assertDeleted(summary, 0);
-        assertTooYoung(summary, 1);
+        assertTooRecent(summary, 1);
         assertThat(exists(completedYoung), is(true));
 
         final String failedYoung = makeDirOnDisk();
@@ -250,9 +250,9 @@ public class BuildDirectoryCleanupServiceTest {
         final String summary = run();
 
         assertDeleted(summary, 0);
-        // Distinguishes "too young" from "deferred": both leave 0 deleted, but deferred would mean
+        // Distinguishes "too recent" from "deferred": both leave 0 deleted, but deferred would mean
         // statusIsTerminal stopped matching a suffixed status, which is a regression rather than the rule working.
-        assertTooYoung(summary, 1);
+        assertTooRecent(summary, 1);
         assertThat(exists(dir), is(true));
     }
 
@@ -301,7 +301,7 @@ public class BuildDirectoryCleanupServiceTest {
         final String summary = run();
 
         assertDeleted(summary, 1);
-        assertTooYoung(summary, 0);
+        assertTooRecent(summary, 0);
         assertThat(exists(dir), is(false));
     }
 
@@ -317,7 +317,7 @@ public class BuildDirectoryCleanupServiceTest {
                 row(1L, "Complete", days(2), null),
                 row(1L, "Complete", days(30), dir)));
 
-        assertTooYoung(run(), 1);
+        assertTooRecent(run(), 1);
         assertThat(exists(dir), is(true));
     }
 
@@ -363,7 +363,7 @@ public class BuildDirectoryCleanupServiceTest {
         final String summary = run();
 
         assertDeleted(summary, 0);
-        assertTooYoung(summary, 1);
+        assertTooRecent(summary, 1);
         assertThat("outputs may still be waiting in the finalizing queue", exists(dir), is(true));
     }
 

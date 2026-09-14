@@ -6,7 +6,6 @@ import org.nrg.containers.daos.BuildDirCleanupClaimDao;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.BuildDirectoryCleanupService;
 import org.nrg.containers.services.DockerServerService;
-import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Instant;
@@ -166,38 +165,43 @@ public class BuildDirectoryCleanupTaskTest {
 
     // ---------- on demand ----------
 
+    /**
+     * A request against a disabled site is refused at the point of asking, so the caller learns it was rejected.
+     * Accepting it and discarding it in the tick would leave the operator with a 202 and no run.
+     */
     @Test
-    public void triggerNowHandsOffToTheSchedulerAndReportsDisabledWithoutIt() {
+    public void aRequestIsRefusedWhileCleanupIsDisabled() throws Exception {
         when(cleanupService.isEnabled()).thenReturn(false);
-        assertThat(task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.DISABLED));
-        verify(scheduler, never()).schedule(any(Runnable.class), any(Instant.class));
+        assertThat(task.requestRun(), is(false));
+
+        task.tick();
+        verify(cleanupService, never()).cleanup(any());
 
         when(cleanupService.isEnabled()).thenReturn(true);
-        assertThat(task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.STARTED));
-        verify(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        assertThat(task.requestRun(), is(true));
     }
 
-    /** The guard is claimed at request time, not when the scheduler thread picks the run up. */
+    /**
+     * An operator request is acted on by the next tick, and must not consume or require the daily slot — so it
+     * runs even when this node has already attempted today's occurrence, and claims nothing.
+     */
     @Test
-    public void aSecondTriggerIsRefusedWhileTheFirstIsStillQueued() {
+    public void aRequestedRunIsHonouredOnTheNextTickWithoutClaimingASlot() throws Exception {
         when(cleanupService.isEnabled()).thenReturn(true);
+        task.lastAttemptedOccurrence = BuildDirectoryCleanupTask.mostRecentOccurrence(
+                Instant.now(), AT_0200, UTC);          // today's slot already attempted
 
-        assertThat(task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.STARTED));
-        assertThat(task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.ALREADY_RUNNING));
-        verify(scheduler, times(1)).schedule(any(Runnable.class), any(Instant.class));
-    }
+        task.tick();
+        verify(cleanupService, never()).isEnabled();      // nothing due, nothing requested
 
-    /** A scheduler shutting down refuses work; the guard must come back or cleanup is dead until a restart. */
-    @Test
-    public void aRejectedHandOffReleasesTheGuard() {
-        when(cleanupService.isEnabled()).thenReturn(true);
-        when(scheduler.schedule(any(Runnable.class), any(Instant.class)))
-                .thenThrow(new TaskRejectedException("scheduler is shutting down"))
-                .thenReturn(null);
+        task.requestRun();
+        task.tick();
 
-        assertThat(task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.FAILED_TO_START));
-        assertThat("a later run must still be able to start",
-                task.triggerNow(), is(BuildDirectoryCleanupTask.TriggerResult.STARTED));
+        // Three call sites: requestRun's own check, the pre-check in tick, then again inside the run. The run
+        // stops at Users.getAdminUser, which needs a live XFT, so reaching the third is what proves the sweep
+        // was entered.
+        verify(cleanupService, times(3)).isEnabled();
+        verify(claimDao, never()).claim(any(Instant.class));
     }
 
     /**

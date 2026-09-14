@@ -17,7 +17,6 @@ import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.DisposableBean;
-import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
@@ -29,7 +28,6 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Runs build directory cleanup once a day at the UTC time configured on the container server.
@@ -86,8 +84,11 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
     private volatile Instant cachedDeadline;
     private volatile long    deadlineDerivedAt;
 
-    /** Claimed before a run is handed off, released when it ends, so a queued run also counts as running. */
-    private final AtomicBoolean running = new AtomicBoolean(false);
+    /**
+     * Set by {@link #requestRun()}, cleared by the tick that acts on it. A plain flag suffices: the tick is the
+     * only reader and the only thing that runs a sweep, and two requests collapsing into one run is wanted.
+     */
+    private volatile boolean runRequested = false;
 
     private boolean haveLoggedNotReady = false;
 
@@ -171,8 +172,9 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
             final LocalTime timeOfDay  = configuredTime();
             final Instant   now        = Instant.now();
             final Instant   occurrence = mostRecentOccurrence(now, timeOfDay, UTC);
+            final boolean   requested  = runRequested;
 
-            if (occurrence.equals(lastAttemptedOccurrence)) {
+            if (!requested && occurrence.equals(lastAttemptedOccurrence)) {
                 return;
             }
             if (!xnatIsReady()) {
@@ -184,26 +186,47 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
                 return;
             }
             haveLoggedNotReady = false;
-            lastAttemptedOccurrence  = occurrence;
 
             if (!cleanupService.isEnabled()) {
+                runRequested = false;
                 return;     // before claiming, so a disabled site leaves the slot free
             }
-            // isPrimaryNode() is deliberately not consulted: it defaults to true, so on an unconfigured cluster
-            // every node thinks it is primary.
-            if (!claimDao.claim(occurrence)) {
-                return;
+
+            if (requested) {
+                // An operator asked for this, so it neither consumes nor needs the daily slot. Any node may serve
+                // it: a request is an explicit human action and the build path is shared across nodes.
+                runRequested = false;
+                anchorRunAt(now);
+            } else {
+                lastAttemptedOccurrence = occurrence;
+                // isPrimaryNode() is deliberately not consulted: it defaults to true, so on an unconfigured
+                // cluster every node thinks it is primary.
+                if (!claimDao.claim(occurrence)) {
+                    return;
+                }
+                anchorRunAt(occurrence);
             }
-            if (!running.compareAndSet(false, true)) {
-                log.warn("A build directory cleanup is already in progress; skipping this run.");
-                return;
-            }
-            anchorRunAt(occurrence);
-            guardedCleanup();
+
+            doCleanup();
         } catch (Throwable t) {
             // Not redundant with Spring's error handler: an escaping error would end the repeating tick for good.
             log.error("Unexpected error in the build directory cleanup tick", t);
         }
+    }
+
+    /**
+     * Ask for a sweep outside the schedule. Acted on by the next tick, so it begins within
+     * {@link #TICK_INTERVAL} rather than immediately; repeated requests collapse into one run.
+     *
+     * @return false if cleanup is switched off, in which case nothing was recorded. Checked here rather than
+     *         only in the tick so the caller can say so, instead of accepting a request it will discard.
+     */
+    public boolean requestRun() {
+        if (!cleanupService.isEnabled()) {
+            return false;
+        }
+        runRequested = true;
+        return true;
     }
 
     /**
@@ -246,41 +269,6 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
         return LocalTime.parse(DockerServerBase.DEFAULT_BUILD_DIR_CLEANUP_TIME);
     }
 
-    /** Outcome of an on-demand trigger, so the REST layer can pick a status code. */
-    public enum TriggerResult { STARTED, ALREADY_RUNNING, DISABLED, FAILED_TO_START }
-
-    /**
-     * Start a cleanup run now, outside the schedule, without waiting for it to finish.
-     *
-     * Handed to the scheduler the tick uses, so it produces the same ADMIN workflow entry and cannot overlap a
-     * scheduled run. Any node may serve this: an explicit operator action, and the build path is shared. It does
-     * not consume a daily slot.
-     */
-    public TriggerResult triggerNow() {
-        if (!running.compareAndSet(false, true)) {
-            return TriggerResult.ALREADY_RUNNING;
-        }
-        if (!cleanupService.isEnabled()) {
-            running.set(false);
-            return TriggerResult.DISABLED;
-        }
-        // An on-demand run is bounded from now, so it too stops before the next scheduled slot.
-        anchorRunAt(Instant.now());
-        return handOff() ? TriggerResult.STARTED : TriggerResult.FAILED_TO_START;
-    }
-
-    /** A scheduler shutting down rejects new work, and a guard left set would block every later run. */
-    private boolean handOff() {
-        try {
-            scheduler.schedule(this::guardedCleanup, Instant.now());
-            return true;
-        } catch (TaskRejectedException e) {
-            running.set(false);
-            log.error("Could not hand build directory cleanup to its scheduler.", e);
-            return false;
-        }
-    }
-
     /**
      * Both conditions, matching ContainerStatusUpdater: XFTManager says the schema metadata is loaded, while
      * XDATServlet says XNAT has finished populating or migrating the database. This job queries three tables and
@@ -290,17 +278,6 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
      */
     protected boolean xnatIsReady() {
         return XFTManager.isInitialized() && XDATServlet.isDatabasePopulateOrUpdateCompleted();
-    }
-
-    /** The caller must already hold the guard; this releases it. */
-    private void guardedCleanup() {
-        try {
-            doCleanup();
-        } catch (Throwable t) {
-            log.error("Unexpected error during build directory cleanup", t);
-        } finally {
-            running.set(false);
-        }
     }
 
     private void doCleanup() {

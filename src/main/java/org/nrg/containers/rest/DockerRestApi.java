@@ -116,29 +116,24 @@ public class DockerRestApi extends AbstractXapiRestController {
     }
 
     @AuthDelegate(ContainerManagerUserAuthorization.class)
-    @ApiOperation(value = "Run build directory cleanup now",
-            notes = "Starts a build directory cleanup run immediately rather than waiting for the daily schedule. " +
-                    "Returns as soon as the run has been started; the outcome is recorded on an ADMIN workflow entry.")
+    @ApiOperation(value = "Request a build directory cleanup run outside the schedule",
+            notes = "Records a request rather than starting a run. The request is picked up by the next periodic " +
+                    "check, so cleanup begins within ten minutes rather than immediately, and repeated requests " +
+                    "collapse into a single run. A requested run does not consume the daily scheduled slot, so " +
+                    "the next scheduled run still happens. The outcome is recorded on an ADMIN workflow entry; " +
+                    "this response only confirms the request was accepted.")
     @ApiResponses({
-            @ApiResponse(code = 202, message = "Cleanup run started"),
+            @ApiResponse(code = 202, message = "Cleanup requested"),
             @ApiResponse(code = 400, message = "Build directory cleanup is not enabled"),
-            @ApiResponse(code = 409, message = "A cleanup run is already in progress"),
             @ApiResponse(code = 500, message = "Unexpected error")})
     @XapiRequestMapping(value = "/server/build-dir-cleanup", method = POST, restrictTo = Authorizer, produces = TEXT)
-    public ResponseEntity<String> runBuildDirectoryCleanup() {
-        switch (buildDirectoryCleanupTask.triggerNow()) {
-            case STARTED:
-                return new ResponseEntity<>("Build directory cleanup started.", HttpStatus.ACCEPTED);
-            case ALREADY_RUNNING:
-                return new ResponseEntity<>("A build directory cleanup is already in progress.", HttpStatus.CONFLICT);
-            case FAILED_TO_START:
-                return new ResponseEntity<>("Build directory cleanup could not be started; see the server logs.",
-                        HttpStatus.SERVICE_UNAVAILABLE);
-            case DISABLED:
-            default:
-                return new ResponseEntity<>("Build directory cleanup is not enabled for this container server.",
-                        HttpStatus.BAD_REQUEST);
+    public ResponseEntity<String> requestBuildDirectoryCleanup() {
+        if (!buildDirectoryCleanupTask.requestRun()) {
+            return new ResponseEntity<>("Build directory cleanup is not enabled for this container server.",
+                    HttpStatus.BAD_REQUEST);
         }
+        return new ResponseEntity<>("Build directory cleanup requested; it will start within a few minutes.",
+                HttpStatus.ACCEPTED);
     }
 
     @XapiRequestMapping(value = "/server/ping", method = GET)

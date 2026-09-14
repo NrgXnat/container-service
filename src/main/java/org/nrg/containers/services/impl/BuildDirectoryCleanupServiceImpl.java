@@ -96,7 +96,7 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
     private static final class Counters {
         private int  launchGroupsExamined;
         private int  launchGroupsDeferred;
-        private int  launchGroupsTooYoung;
+        private int  launchGroupsTooRecent;
         private int  dirsDeleted;
         private int  dirsPartiallyDeleted;
         private long bytesFreed;
@@ -176,7 +176,7 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                 + FileUtils.byteCountToDisplaySize(counters.bytesFreed) + ")");
         addIfPositive(parts, counters.dirsPartiallyDeleted, "partial");
         addIfPositive(parts, counters.launchGroupsDeferred, "deferred");
-        addIfPositive(parts, counters.launchGroupsTooYoung, "too young");
+        addIfPositive(parts, counters.launchGroupsTooRecent, "too recent");
         if (counters.stoppedEarly) {
             parts.add("stopped at the next scheduled time, work remains");
         }
@@ -231,7 +231,7 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
             final long requiredAge = Math.max(MINIMUM_AGE_MILLIS,
                     TimeUnit.DAYS.toMillis(retainDaysFor(blocking, server)));
             if (runStart - effectiveTime < requiredAge) {
-                counters.launchGroupsTooYoung++;
+                counters.launchGroupsTooRecent++;
                 continue;
             }
 
