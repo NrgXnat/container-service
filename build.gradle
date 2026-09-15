@@ -12,7 +12,6 @@ plugins {
     id "com.palantir.git-version" version "3.3.0"
     id "io.spring.dependency-management" version "1.1.7"
     id "io.franzbecker.gradle-lombok" version "5.0.0"
-    id "net.linguica.maven-settings" version "0.5"
 }
 
 group "org.nrg.xnatx.plugins"
@@ -345,13 +344,19 @@ publishing {
     }
     repositories {
         maven {
+            name = "XNAT_Artifactory"
             if (project.version.endsWith("-SNAPSHOT")) {
                 url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot-local"
             } else {
                 url "https://nrgxnat.jfrog.io/nrgxnat/libs-release-local"
             }
-            // The value for name must match <id> in ~/.m2/settings.xml
-            name = "XNAT_Artifactory"
+            // CI injects ORG_GRADLE_PROJECT_artifactoryUser/Token env vars (Gradle maps
+            // these to project properties). Local devs can set artifactoryUser/Token in
+            // ~/.gradle/gradle.properties. Mirrors dev and the monorepo convention.
+            credentials {
+                username = (project.findProperty("artifactoryUser")  ?: System.getenv("ARTIFACTORY_USER"))  ?: ""
+                password = (project.findProperty("artifactoryToken") ?: System.getenv("ARTIFACTORY_TOKEN")) ?: ""
+            }
         }
     }
 }
