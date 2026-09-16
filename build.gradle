@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.10.1-SNAPSHOT"
+        vXnat = "1.11.0-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -18,6 +18,11 @@ group "org.nrg.xnatx.plugins"
 version "3.9.0-SNAPSHOT"
 
 java {
+    // Build on JDK 21, not the Gradle launcher JVM (JDK 25). JDK 22+ tightened zip64 CEN validation and
+    // rejects old jars on the compile classpath (e.g. aspectjweaver-1.8.10) with "Invalid CEN header".
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
     sourceCompatibility = 21
     targetCompatibility = 21
 }
@@ -27,7 +32,12 @@ def vJavassist = "3.21.0-GA"
 def vAwaitility = "2.0.0"
 
 repositories {
-    mavenLocal()
+    mavenLocal {
+        // The plain ehcache-3.10.8.jar sits in mavenLocal and shadows the 'jakarta' classifier variant
+        // (which is only published on Central), so a transitive org.ehcache:ehcache:3.10.8:jakarta can't
+        // resolve. Exclude the group here so ehcache resolves from Central/jfrog instead.
+        content { excludeGroup "org.ehcache" }
+    }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-release" }
     maven { url "https://nrgxnat.jfrog.io/nrgxnat/libs-snapshot" }
     mavenCentral()
@@ -52,11 +62,34 @@ def vPowerMock = "2.0.9"
 // Use this configuration to put dependencies into the fat jar
 configurations {
     implementation.extendsFrom(implementAndInclude)
+    // NOTE on commons-io: XNAT provides commons-io 2.21.0 (required by commons-fileupload2). docker-java
+    // drags in an older 2.15.1 transitively, which we still WANT on the compile classpath (the source uses
+    // FileUtils/FilenameUtils) — but must NOT bundle into the fat jar, or it shadows XNAT's 2.21.0 and
+    // breaks commons-fileupload2 DiskFileItemFactory with IllegalAccessError, taking Turbine's
+    // fulcrum-upload service (all /app screens) down on Tomcat 10. We can't exclude it here: an exclude on
+    // implementAndInclude propagates through extendsFrom to compileClasspath and would break compilation.
+    // Instead the fatJar task strips org/apache/commons/io/** from the assembled bundle (see below).
     all {
         resolutionStrategy.force "org.mockito:mockito-core:${vMockito}"
         resolutionStrategy.force "com.github.docker-java:docker-java-api:${vDockerJava}"
 
         exclude group: "org.bouncycastle"
+
+        // Jakarta: hibernate-core-jakarta is a differently-named artifact from javax hibernate-core, but
+        // hibernate-jcache (used by HibernateConfig's JCacheRegionFactory) still drags in the javax
+        // hibernate-core. With both on the classpath, Hibernate's BeanValidationIntegrator (from the javax
+        // jar) loads javax.validation.ValidatorFactory, which is absent on the jakarta classpath
+        // (only jakarta.validation-api is) -> NoClassDefFoundError building the test sessionFactory.
+        // Per the migration guide, excluding the javax variant is the consuming module's job.
+        exclude group: "org.hibernate", module: "hibernate-core"
+
+        // Jakarta: the plain jackson-datatype-hibernate5 (javax.persistence) arrives transitively (via
+        // org.nrg:framework). hibernate-types-55's ObjectMapperWrapper calls findAndRegisterModules(),
+        // which ServiceLoader-discovers and registers EVERY Module on the classpath -- including this
+        // javax one -- when binding a JSONB @Entity column, throwing NoClassDefFoundError:
+        // javax/persistence/Transient (the POST /xapi/docker/pull command-save 500). Removing it leaves
+        // only jackson-datatype-hibernate5-jakarta discoverable. Mirrors core's org.nrg:framework fix.
+        exclude group: "com.fasterxml.jackson.datatype", module: "jackson-datatype-hibernate5"
     }
 }
 
@@ -65,6 +98,16 @@ tasks.withType(Test).configureEach {
         jvmArgs("--add-opens", "java.xml/jdk.xml.internal=ALL-UNNAMED")
         jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
     }
+
+// Spring Framework 6 (Spring MVC in XNAT 1.11.0) no longer discovers method parameter names from
+// bytecode debug info, so @RequestParam / @PathVariable arguments that omit an explicit name resolve
+// only when classes are compiled with javac -parameters. XNAT core sets this in its build convention
+// (buildSrc/.../buildlogic.java-common-conventions.gradle); this plugin has its own build, so it must
+// opt in too. Without it, e.g. GET /xapi/commands/available throws IllegalArgumentException ("Name for
+// argument of type [String] not specified … Ensure that the compiler uses the '-parameters' flag") -> 500.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-parameters'
+}
 
 lombok {
     version = "1.18.34"
@@ -136,21 +179,30 @@ dependencies {
     implementation "org.springframework:spring-webmvc"
     implementation "org.springframework:spring-jms"
     implementation "org.springframework:spring-messaging"
-    implementation "javax.jms:javax.jms-api"
+    implementation "jakarta.jms:jakarta.jms-api"
     implementation "org.apache.activemq:activemq-all"
     implementation "org.aspectj:aspectjweaver"
 
-    implementation "io.springfox:springfox-swagger2"
-    implementation "io.springfox:springfox-swagger-ui"
+    implementation "io.swagger:swagger-annotations:1.5.20"
 
-    implementation "org.hibernate:hibernate-core"
+    implementation "org.hibernate:hibernate-core-jakarta"
     implementation "com.vladmihalcea:hibernate-types-55"
+    // ehcache 'jakarta' classifier: the default jar parses its XML config with javax JAXB and breaks on
+    // Tomcat 10; the jakarta variant is required. Declared explicitly (as XNAT core does) so it resolves
+    // from Central rather than being shadowed by the plain jar in mavenLocal, which arrives transitively
+    // via org.nrg:framework's module metadata.
+    implementation "org.ehcache:ehcache:3.10.8:jakarta"
 
     implementation "com.fasterxml.jackson.core:jackson-annotations"
     implementation "com.fasterxml.jackson.core:jackson-core"
     implementation "com.fasterxml.jackson.core:jackson-databind"
     implementation "com.fasterxml.jackson.module:jackson-module-jaxb-annotations"
     implementation "com.fasterxml.jackson.datatype:jackson-datatype-guava"
+    // Jakarta: the -jakarta variant of jackson-datatype-hibernate5 (module renamed to
+    // Hibernate5JakartaModule). Declared explicitly because the javax variant is excluded globally
+    // above; hibernate-types-55 (runtime) auto-discovers this via findAndRegisterModules() when
+    // serializing JSONB @Entity columns, and ObjectMapperConfig registers it directly. Matches core.
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-hibernate5-jakarta"
 
     implementation "com.jayway.jsonpath:json-path"
 
@@ -159,13 +211,13 @@ dependencies {
 
     implementation "commons-lang:commons-lang"
 
-    implementation "javax.inject:javax.inject"
-    implementation "javax.servlet:javax.servlet-api"
+    implementation "jakarta.inject:jakarta.inject-api"
+    implementation "jakarta.servlet:jakarta.servlet-api"
 
-    implementation ("turbine:turbine") {
+    implementation ("org.apache.turbine:turbine") {
         transitive = false
     }
-    implementation ("org.apache.velocity:velocity") {
+    implementation ("org.apache.velocity:velocity-engine-core") {
         transitive = false
     }
     implementation ("xalan:xalan:2.7.2") {
@@ -195,7 +247,7 @@ dependencies {
     testImplementation "org.mockito:mockito-core:${vMockito}"
     testImplementation 'org.mockito:mockito-junit-jupiter:5.0.0'  // JUnit 5 integration for Mockito
 
-    testImplementation "javax.servlet:javax.servlet-api"
+    testImplementation "jakarta.servlet:jakarta.servlet-api"
     testImplementation "com.h2database:h2"
     testImplementation "org.springframework:spring-jdbc"
     testImplementation "org.springframework:spring-orm"
@@ -209,6 +261,15 @@ dependencies {
 test {
     useJUnitPlatform()
     systemProperty "integration", System.getProperty('integration') == "true"
+}
+
+// SLF4J 2.x provider disambiguation. activemq-all bundles AND ServiceLoader-registers a log4j2
+// SLF4J binding (org.apache.logging.slf4j.SLF4JServiceProvider) but ships no log4j-api, so when
+// classpath order makes SLF4J pick it over slf4j-reload4j, SpringJUnit4ClassRunner.<clinit> dies
+// with NoClassDefFoundError: org/apache/logging/log4j/Logger and every test fails as
+// initializationError. Pin the working reload4j provider so selection is deterministic.
+tasks.withType(Test).configureEach {
+    systemProperty "slf4j.provider", "org.slf4j.reload4j.Reload4jServiceProvider"
 }
 
 tasks.register ( 'unitTest', Test ) {
@@ -272,6 +333,10 @@ task fatJar(type: Jar) {
         exclude "META-INF/*.SF"
         exclude "META-INF/*.DSA"
         exclude "META-INF/*.RSA"
+        // XNAT provides commons-io 2.21.0 (needed by commons-fileupload2). Do not bundle docker-java's
+        // transitive 2.15.1 — it shadows XNAT's and breaks fulcrum-upload's DiskFileItemFactory
+        // (IllegalAccessError), taking Turbine (all /app screens) down on Tomcat 10.
+        exclude "org/apache/commons/io/**"
     }
     duplicatesStrategy "exclude"
     manifest {

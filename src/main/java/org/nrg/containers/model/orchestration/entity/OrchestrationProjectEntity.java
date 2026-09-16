@@ -3,8 +3,8 @@ package org.nrg.containers.model.orchestration.entity;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
-import javax.persistence.*;
-import javax.validation.constraints.NotNull;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 
 @Entity
 @Slf4j

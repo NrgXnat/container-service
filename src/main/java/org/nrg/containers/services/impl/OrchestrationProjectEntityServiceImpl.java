@@ -7,7 +7,7 @@ import org.nrg.framework.orm.hibernate.AbstractHibernateEntityService;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Nullable;
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 
 @Transactional
 @Service

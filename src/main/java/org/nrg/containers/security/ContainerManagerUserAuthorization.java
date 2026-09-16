@@ -6,7 +6,7 @@ import org.aspectj.lang.JoinPoint;
 import org.nrg.xapi.authorization.AbstractXapiAuthorization;
 import org.nrg.xdat.security.helpers.Roles;
 import org.nrg.xft.security.UserI;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.nrg.xdat.security.helpers.AccessLevel;
 
 

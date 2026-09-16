@@ -46,8 +46,8 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.jms.Destination;
-import javax.jms.JMSRuntimeException;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSRuntimeException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;

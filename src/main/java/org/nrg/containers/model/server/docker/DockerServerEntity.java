@@ -3,7 +3,7 @@ package org.nrg.containers.model.server.docker;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.framework.orm.hibernate.AbstractHibernateEntity;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.util.*;
 
 @Entity
