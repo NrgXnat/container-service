@@ -23,6 +23,13 @@ public abstract class DockerServerBase implements Serializable {
     public static final int DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED    = 1;
     public static final String DEFAULT_BUILD_DIR_CLEANUP_TIME       = "02:00";
     /** One less than the 365 day lookback window, so a threshold can never exclude an otherwise eligible container. */
+    /**
+     * A container's status goes terminal when the backend reports its exit, *before* finalization reads its
+     * outputs out of the build directory, and the finalizing queue is throttled by maxConcurrentFinalizingJobs.
+     * A retention shorter than the queue wait would therefore delete outputs that were never uploaded, silently.
+     * A day comfortably exceeds any realistic wait.
+     */
+    public static final int MIN_BUILD_DIR_RETAIN_DAYS               = 1;
     public static final int MAX_BUILD_DIR_RETAIN_DAYS               = 364;
 
     private static final Pattern CLEANUP_TIME_PATTERN = Pattern.compile("^([01][0-9]|2[0-3]):[0-5][0-9]$");
@@ -401,9 +408,10 @@ public abstract class DockerServerBase implements Serializable {
         public abstract Builder toBuilder();
 
         private static List<String> validateRetentionDays(final String label, final int days) {
-            if (days < 0 || days > MAX_BUILD_DIR_RETAIN_DAYS) {
+            if (days < MIN_BUILD_DIR_RETAIN_DAYS || days > MAX_BUILD_DIR_RETAIN_DAYS) {
                 return Collections.singletonList("Build directory retention for " + label
-                        + " containers must be between 0 and " + MAX_BUILD_DIR_RETAIN_DAYS + " days");
+                        + " containers must be between " + MIN_BUILD_DIR_RETAIN_DAYS + " and "
+                        + MAX_BUILD_DIR_RETAIN_DAYS + " days");
             }
             return Collections.emptyList();
         }

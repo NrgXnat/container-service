@@ -372,21 +372,21 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 label: 'Completed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from successfully completed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup.'
+                                    'Minimum 1; a folder is removed by the first scheduled cleanup after it ages past this.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-retain-days-failed',
                                 label: 'Failed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from failed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup.'
+                                    'Minimum 1; a folder is removed by the first scheduled cleanup after it ages past this.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-retain-days-killed',
                                 label: 'Killed [days]',
                                 className: 'build-dir-retain-days',
                                 description: 'Keep build folders from killed containers for this many days. ' +
-                                    '0 removes them during the next scheduled cleanup.'
+                                    'Minimum 1; a folder is removed by the first scheduled cleanup after it ages past this.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'build-dir-cleanup-time',
@@ -615,7 +615,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             }
                         }
                         $form.find('input.build-dir-retain-days').each(function(){
-                            validateWholeNumberInRange($(this), 0, 364);
+                            validateWholeNumberInRange($(this), 1, 364);
                         });
                         $form.find('input.build-dir-cleanup-time').each(function(){
                             var raw = $(this).val();

@@ -56,11 +56,11 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
     /**
      * A container goes terminal when the backend reports its exit, *before* finalization reads its outputs:
      * ContainerServiceImpl records the exit, then queueFinalize only posts a JMS request and leaves the status
-     * alone. So at a retention of zero a just-failed container's build directory is already eligible while its
-     * outputs are still unread.
+     * alone. A retention shorter than the finalizing queue wait would therefore make a just-failed container's
+     * build directory eligible while its outputs are still unread.
      *
-     * An hour covers the queue wait at normal load and costs nothing at the default settings, which are days. A
-     * mitigation, not a guarantee: a throttled finalizing queue can exceed it.
+     * Retention is bounded at a day by DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS, so this floor only binds for
+     * a server object that reached this service without passing validation.
      */
     static final long MINIMUM_AGE_MILLIS = TimeUnit.HOURS.toMillis(1);
 

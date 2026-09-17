@@ -304,6 +304,11 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.buildDirCleanupEnabled = buildDirCleanupEnabled != null && buildDirCleanupEnabled;
     }
 
+    /**
+     * Clamped on the way in, not only validated. A value below the minimum reaching the entity from the
+     * database would otherwise fail validate() on every save, including the whole-row rewrite the
+     * container status poll performs every ten seconds, which would stop lastEventCheckTime persisting.
+     */
     @Column(columnDefinition = "integer default 7")
     public Integer getBuildDirRetainDaysCompleted() {
         return buildDirRetainDaysCompleted;
@@ -311,7 +316,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setBuildDirRetainDaysCompleted(Integer buildDirRetainDaysCompleted) {
         this.buildDirRetainDaysCompleted = buildDirRetainDaysCompleted == null
-                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_COMPLETED : buildDirRetainDaysCompleted;
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_COMPLETED
+                : Math.max(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS, buildDirRetainDaysCompleted);
     }
 
     @Column(columnDefinition = "integer default 14")
@@ -321,7 +327,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setBuildDirRetainDaysFailed(Integer buildDirRetainDaysFailed) {
         this.buildDirRetainDaysFailed = buildDirRetainDaysFailed == null
-                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_FAILED : buildDirRetainDaysFailed;
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_FAILED
+                : Math.max(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS, buildDirRetainDaysFailed);
     }
 
     @Column(columnDefinition = "integer default 1")
@@ -331,7 +338,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setBuildDirRetainDaysKilled(Integer buildDirRetainDaysKilled) {
         this.buildDirRetainDaysKilled = buildDirRetainDaysKilled == null
-                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED : buildDirRetainDaysKilled;
+                ? DockerServerBase.DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED
+                : Math.max(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS, buildDirRetainDaysKilled);
     }
 
     @Column(columnDefinition = "varchar(5) default '02:00'")

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import org.junit.Test;
 import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 
 import java.util.Date;
@@ -75,22 +76,44 @@ public class DockerServerBuildDirSettingsTest {
         assertThat(updated.buildDirCleanupTime(), is("04:30"));
     }
 
-    /** Retention has to stay inside 0-364, so a typo cannot turn into a retention window nobody intended. */
+    /**
+     * Retention must stay inside 1-364. A container goes terminal when the backend reports its exit, before
+     * finalization reads its outputs out of the build directory, so a retention below a day could delete outputs
+     * that were never uploaded.
+     */
     @Test
-    public void validateBoundsRetentionToZeroThrough364() throws Exception {
+    public void validateBoundsRetentionToOneThrough364() throws Exception {
         validBase()
-                .buildDirRetainDaysCompleted(0)
+                .buildDirRetainDaysCompleted(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS)
                 .buildDirRetainDaysFailed(DockerServerBase.MAX_BUILD_DIR_RETAIN_DAYS)
-                .buildDirRetainDaysKilled(0)
+                .buildDirRetainDaysKilled(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS)
                 .buildDirCleanupTime("00:00")
                 .build()
                 .validate();
 
-        assertValidationError(validBase().buildDirRetainDaysCompleted(-1).build(), "completed");
-        assertValidationError(validBase().buildDirRetainDaysFailed(-1).build(), "failed");
-        assertValidationError(validBase().buildDirRetainDaysKilled(-1).build(), "killed");
-        assertValidationError(validBase().buildDirRetainDaysCompleted(365).build(), "between 0 and 364");
-        assertValidationError(validBase().buildDirRetainDaysFailed(1000).build(), "between 0 and 364");
+        assertValidationError(validBase().buildDirRetainDaysCompleted(0).build(), "completed");
+        assertValidationError(validBase().buildDirRetainDaysFailed(0).build(), "failed");
+        assertValidationError(validBase().buildDirRetainDaysKilled(0).build(), "killed");
+        assertValidationError(validBase().buildDirRetainDaysCompleted(-1).build(), "between 1 and 364");
+        assertValidationError(validBase().buildDirRetainDaysFailed(1000).build(), "between 1 and 364");
+    }
+
+    /**
+     * A value below the minimum arriving from the database is clamped rather than left to fail validation. The
+     * container status poll rewrites this whole row every ten seconds and validates as it does, so an unclamped
+     * value would stop lastEventCheckTime persisting.
+     */
+    @Test
+    public void aRetentionBelowTheMinimumIsClampedOnTheWayIn() {
+        final DockerServerEntity entity = new DockerServerEntity();
+
+        entity.setBuildDirRetainDaysCompleted(0);
+        entity.setBuildDirRetainDaysFailed(0);
+        entity.setBuildDirRetainDaysKilled(-5);
+
+        assertThat(entity.getBuildDirRetainDaysCompleted(), is(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS));
+        assertThat(entity.getBuildDirRetainDaysFailed(), is(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS));
+        assertThat(entity.getBuildDirRetainDaysKilled(), is(DockerServerBase.MIN_BUILD_DIR_RETAIN_DAYS));
     }
 
     private static DockerServer.Builder validBase() {
