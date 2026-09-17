@@ -108,7 +108,17 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
     @Nonnull
     public String cleanup(final BooleanSupplier mayStartMoreWork) throws BuildDirectoryCleanupException {
         final Counters counters = new Counters();
+        try {
+            return sweep(mayStartMoreWork, counters);
+        } catch (RuntimeException e) {
+            // The run is abandoned either way, but the workflow entry should record what was reclaimed before it
+            // failed rather than only what broke. Counters are mutated in place, so they survive the throw.
+            throw new BuildDirectoryCleanupException(summarize(counters) + "; aborted: " + e.getMessage(), e);
+        }
+    }
 
+    private String sweep(final BooleanSupplier mayStartMoreWork, final Counters counters)
+            throws BuildDirectoryCleanupException {
         final DockerServer server = dockerServerService.retrieveServer();
         if (server == null || !server.buildDirCleanupEnabled()) {
             return "Build directory cleanup is disabled";
@@ -359,8 +369,9 @@ public class BuildDirectoryCleanupServiceImpl implements BuildDirectoryCleanupSe
                 log.warn("Partially removed build directory {}: {} entries could not be deleted, {} were already gone",
                         target, result.getFailures(), result.getAlreadyDeleted());
             }
-        } catch (IOException e) {
-            // A per-directory problem must not abandon the rest of the run.
+        } catch (IOException | RuntimeException e) {
+            // A per-directory problem must not abandon the rest of the run. Unchecked exceptions are included
+            // deliberately: a filesystem provider can raise them, and that promise applies either way.
             counters.dirsPartiallyDeleted++;
             log.warn("Could not remove build directory {}", target, e);
         }

@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.daos.BuildDirCleanupClaimDao;
+import org.nrg.containers.exceptions.BuildDirectoryCleanupException;
 import org.nrg.containers.services.BuildDirectoryCleanupService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.xdat.security.helpers.Users;
@@ -308,7 +309,11 @@ public class BuildDirectoryCleanupTask implements InitializingBean, DisposableBe
         } catch (Exception e) {
             log.error("Build directory cleanup failed", e);
             try {
-                workflow.setDetails(e.getClass().getSimpleName() + ": " + e.getMessage());
+                // The service's own exception already carries a readable summary; prefixing its class name
+                // would only bury it.
+                workflow.setDetails(e instanceof BuildDirectoryCleanupException
+                        ? e.getMessage()
+                        : e.getClass().getSimpleName() + ": " + e.getMessage());
                 WorkflowUtils.fail(workflow, workflow.buildEvent());
             } catch (Exception inner) {
                 log.error("Could not mark the build directory cleanup workflow as failed", inner);
