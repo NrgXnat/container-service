@@ -22,36 +22,74 @@ import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.exceptions.NotFoundException;
+import org.nrg.framework.node.NodeLeader;
+import org.nrg.framework.node.NodeLeaderListener;
+import org.nrg.framework.node.NodeLockService;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.schema.XFTManager;
-import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Nonnull;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
+/**
+ * Watches the container backend for status changes and turns them into container events. It is the only thing
+ * that notices finished containers: on Kubernetes it keeps the informer running, on Docker it polls events since
+ * a checkpoint stored on the server row, on Swarm it walks the unfinalized services.
+ * <p>
+ * Exactly one node runs it at a time. The scheduled task ticks on every node, but only the node holding the
+ * {@link #LEADER_LOCK} leader lock does anything. When the leader shuts down, loses its lock connection or
+ * {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN steps down} because it can't reach the backend, another node takes
+ * the lock and the informer or polling resumes there. The tick, {@link Listener#onElected(String)} and
+ * {@link Listener#onDemoted(String, String)} share one monitor: the tick re-checks leadership inside it, so a
+ * demotion can't land between the tick fetching the Kubernetes client and starting an informer that nothing
+ * would ever stop.
+ */
 @Slf4j
 @Component
 public class ContainerStatusUpdater implements Runnable {
+    public static final String LEADER_LOCK = "containers:status-updater";
+
+    /**
+     * How many consecutive ticks the leader may fail to reach the backend before it steps down so another node
+     * can try. At the 10 second tick this is about 3 minutes, long enough for an API server rollout or a Docker
+     * daemon restart to complete without moving the informer.
+     */
+    static final int BACKEND_FAILURES_BEFORE_STEP_DOWN = 18;
+
+    /**
+     * How long a node that stepped down waits before it may lead again.
+     */
+    static final Duration STEP_DOWN_BACKOFF = Duration.ofMinutes(5);
+
     private static final String SKIP_MESSAGE = "Skipping attempt to update status.";
 
     private final ContainerControlApi containerControlApi;
     private final ContainerService containerService;
     private final DockerServerService dockerServerService;
     private final NrgEventServiceI eventService;
-    private final XnatAppInfo xnatAppInfo;
     private final KubernetesClientFactory kubernetesClientFactory;
     private final JmsTemplate template;
+    private final NodeLeader leader;
 
+    private final Object monitor = new Object();
+
+    // All guarded by monitor.
     private boolean haveLoggedDockerConnectFailure = false;
     private boolean haveLoggedNoServerInDb = false;
     private boolean haveLoggedXftInitFailure = false;
+    private boolean haveLoggedUpdateFailure = false;
+    private int consecutiveBackendFailures = 0;
+    private boolean kubernetesInformerStarted = false;
 
     @Autowired
     @SuppressWarnings("SpringJavaAutowiringInspection")
@@ -59,21 +97,35 @@ public class ContainerStatusUpdater implements Runnable {
                                   final ContainerService containerService,
                                   final DockerServerService dockerServerService,
                                   final NrgEventServiceI eventService,
-                                  final XnatAppInfo xnatAppInfo,
                                   final KubernetesClientFactory kubernetesClientFactory,
-                                  final JmsTemplate template) {
+                                  final JmsTemplate template,
+                                  final NodeLockService nodeLockService) {
         this.containerControlApi = containerControlApi;
         this.containerService = containerService;
         this.dockerServerService = dockerServerService;
         this.eventService = eventService;
-        this.xnatAppInfo = xnatAppInfo;
         this.kubernetesClientFactory = kubernetesClientFactory;
         this.template = template;
+        this.leader = nodeLockService.registerLeader(LEADER_LOCK, new Listener());
+    }
+
+    /**
+     * Indicates whether this node currently runs the status updater.
+     *
+     * @return {@code true} when this node holds the {@link #LEADER_LOCK} leader lock.
+     */
+    public boolean isLeader() {
+        return leader.isLeader();
     }
 
     @Override
     public void run() {
+        synchronized (monitor) {
+            runUnderMonitor();
+        }
+    }
 
+    private void runUnderMonitor() {
         final DockerServer server = initialize();
 
         if (server == null) {
@@ -99,6 +151,7 @@ public class ContainerStatusUpdater implements Runnable {
             haveLoggedDockerConnectFailure = false;
             haveLoggedXftInitFailure = false;
             haveLoggedNoServerInDb = false;
+            haveLoggedUpdateFailure = false;
         } else if (updateReport.successful) {
             if (!updateReport.updateReports.isEmpty()) {
                 log.trace("Updated status successfully.");
@@ -107,8 +160,13 @@ public class ContainerStatusUpdater implements Runnable {
             haveLoggedDockerConnectFailure = false;
             haveLoggedXftInitFailure = false;
             haveLoggedNoServerInDb = false;
-        } else {
-            log.info("Did not update status successfully.");
+            haveLoggedUpdateFailure = false;
+        } else if (!haveLoggedUpdateFailure) {
+            // Once per run of failures, like the skip messages in initialize(): this class logs at INFO and the
+            // tick fires every 10 seconds.
+            log.info("Did not update status successfully: {}", updateReport.updateReports.stream()
+                    .map(entry -> entry.message).filter(Objects::nonNull).collect(Collectors.joining("; ")));
+            haveLoggedUpdateFailure = true;
         }
         log.trace("-----------------------------------------------------------------------------");
         log.trace("{}: RUN COMPLETE", this.getClass().getName().toUpperCase());
@@ -117,7 +175,9 @@ public class ContainerStatusUpdater implements Runnable {
     }
 
     private DockerServer initialize() {
-        if(!xnatAppInfo.isPrimaryNode()) {
+        final boolean isLeader = leader.isLeader();
+        log.debug("Container status tick: leader={}", isLeader);
+        if (!isLeader) {
             return null;
         }
 
@@ -146,17 +206,102 @@ public class ContainerStatusUpdater implements Runnable {
             return null;
         }
 
-        if (!containerControlApi.canConnect()) {
+        if (!canConnect(dockerServer)) {
             if (!haveLoggedDockerConnectFailure) {
                 log.info("Cannot ping docker server {}. {}", dockerServer.name(), SKIP_MESSAGE);
                 haveLoggedDockerConnectFailure = true;
                 haveLoggedXftInitFailure = false;
                 haveLoggedNoServerInDb = false;
             }
+            stepDownIfBackendStaysUnreachable(dockerServer);
             return null;
         }
 
+        consecutiveBackendFailures = 0;
         return dockerServer;
+    }
+
+    /**
+     * A ping that throws is a failed ping. docker-java, for one, wraps a missing socket in a RuntimeException that
+     * {@code canConnect()} doesn't catch; letting it escape would abort the tick before the failure counter runs,
+     * so a broken backend could never trigger the step-down below.
+     */
+    private boolean canConnect(final DockerServer dockerServer) {
+        try {
+            return containerControlApi.canConnect();
+        } catch (RuntimeException e) {
+            if (!haveLoggedDockerConnectFailure) {
+                log.warn("Pinging docker server {} threw: {}", dockerServer.name(), e.toString());
+            }
+            return false;
+        }
+    }
+
+    /**
+     * A leader that can't reach the backend can't finalize anything, so after
+     * {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN} consecutive failed pings it hands the lock to another node, which
+     * may have working credentials or a working route. On a single node there is nobody to hand over to:
+     * {@link NodeLeader#stepDown(Duration)} returns false, the lock is kept, and the updater resumes as soon as
+     * the backend answers again. The counter restarts either way, so the next attempt is another
+     * {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN} ticks out.
+     */
+    private void stepDownIfBackendStaysUnreachable(final DockerServer dockerServer) {
+        consecutiveBackendFailures++;
+        if (consecutiveBackendFailures < BACKEND_FAILURES_BEFORE_STEP_DOWN) {
+            return;
+        }
+        consecutiveBackendFailures = 0;
+        if (leader.stepDown(STEP_DOWN_BACKOFF)) {
+            log.warn("Cannot ping docker server {} after {} attempts. Stepped down as {} leader for {} so another node can take over.",
+                    dockerServer.name(), BACKEND_FAILURES_BEFORE_STEP_DOWN, LEADER_LOCK, STEP_DOWN_BACKOFF);
+        } else {
+            log.info("Cannot ping docker server {} after {} attempts, but no other node can take over. Keeping {} leadership.",
+                    dockerServer.name(), BACKEND_FAILURES_BEFORE_STEP_DOWN, LEADER_LOCK);
+        }
+    }
+
+    private void stopKubernetesInformer(final String reason) {
+        if (!kubernetesInformerStarted) {
+            return;
+        }
+        kubernetesInformerStarted = false;
+        try {
+            // KubernetesClientImpl.stop() discards its informer, and start() builds a new one. An informer is
+            // never restarted: the Kubernetes client library doesn't reset a started informer.
+            kubernetesClientFactory.getKubernetesClient().stop();
+            log.info("Stopped the Kubernetes informer ({}).", reason);
+        } catch (NoContainerServerException e) {
+            log.debug("No Kubernetes client to stop ({}).", reason);
+        } catch (RuntimeException e) {
+            log.warn("Could not stop the Kubernetes informer ({}).", reason, e);
+        }
+    }
+
+    /**
+     * Leadership changes arrive on the lock service's callback thread. Both callbacks take the monitor, so they
+     * wait for a tick in flight and no tick runs while they do.
+     */
+    private class Listener implements NodeLeaderListener {
+        @Override
+        public void onElected(final String name) {
+            synchronized (monitor) {
+                log.info("Container status updater elected: this node now holds the {} leader lock.", name);
+                consecutiveBackendFailures = 0;
+                haveLoggedDockerConnectFailure = false;
+                haveLoggedXftInitFailure = false;
+                haveLoggedNoServerInDb = false;
+                // The next tick starts the informer or resumes polling; nothing to do here.
+            }
+        }
+
+        @Override
+        public void onDemoted(final String name, final String reason) {
+            synchronized (monitor) {
+                log.info("Container status updater demoted: this node no longer holds the {} leader lock ({}).", name, reason);
+                consecutiveBackendFailures = 0;
+                stopKubernetesInformer(reason);
+            }
+        }
     }
 
     @Nonnull
@@ -170,7 +315,10 @@ public class ContainerStatusUpdater implements Runnable {
             case KUBERNETES:
                 try {
                     // Make sure the informer is running. It will handle throwing events on its own.
+                    // We hold the monitor and initialize() confirmed leadership, so a demotion can't stop the
+                    // client between fetching it and starting it.
                     kubernetesClientFactory.getKubernetesClient().start();
+                    kubernetesInformerStarted = true;
                 } catch (NoContainerServerException e) {
                     return UpdateReport.singleton(UpdateReportEntry.failure(null, e.getMessage()));
                 }
@@ -203,7 +351,10 @@ public class ContainerStatusUpdater implements Runnable {
 
             return UpdateReport.singleton(UpdateReportEntry.success());
         } catch (NoDockerServerException e) {
-            log.info("Cannot search for Docker container events. No Docker server defined.");
+            if (!haveLoggedNoServerInDb) {
+                log.info("Cannot search for Docker container events. No Docker server defined.");
+                haveLoggedNoServerInDb = true;
+            }
         } catch (DockerServerException e) {
             log.error("Cannot find Docker container events.", e);
         } catch (InvalidDefinitionException e) {
