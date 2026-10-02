@@ -6,14 +6,15 @@ import com.github.dockerjava.api.command.CreateServiceCmd;
 import com.github.dockerjava.api.command.CreateServiceResponse;
 import com.github.dockerjava.api.command.InspectServiceCmd;
 import com.github.dockerjava.api.command.InspectSwarmCmd;
+import com.github.dockerjava.api.command.ListImagesCmd;
 import com.github.dockerjava.api.command.LogContainerCmd;
 import com.github.dockerjava.api.command.LogSwarmObjectCmd;
 import com.github.dockerjava.api.command.PingCmd;
 import com.github.dockerjava.api.command.UpdateServiceCmd;
+import com.github.dockerjava.api.model.Image;
 import com.github.dockerjava.api.model.Service;
 import com.github.dockerjava.api.model.ServiceModeConfig;
 import com.github.dockerjava.api.model.ServiceSpec;
-import com.google.common.collect.ImmutableList;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
@@ -56,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -117,18 +119,8 @@ public class DockerControlApiTest {
         dockerControlApi = Mockito.spy(new DockerControlApi(
                 dockerServerService, dockerHubService, kubernetesClientFactory
         ));
-//        Mockito.doReturn(mockDockerImage)
-//                .when(dockerControlApi, method(DockerControlApi.class, "pullImage", String.class))
-//                .withArguments(anyString());
-
-        Method method = DockerControlApi.class.getDeclaredMethod("pullImage", String.class);
-        method.setAccessible(true);
-
-        Mockito.doReturn(mockDockerImage)
-                .when(dockerControlApi)
-                .getClass()
-                .getDeclaredMethod("pullImage", String.class)
-                .invoke(dockerControlApi, anyString());
+        // Never reach a real registry
+        Mockito.doReturn(mockDockerImage).when(dockerControlApi).pullImage(anyString());
 
 //        PowerMockito.doReturn(mockDockerJavaClient)
 //                .when(dockerControlApi, method(DockerControlApi.class, "getDockerClient", DockerServer.class))
@@ -306,20 +298,7 @@ public class DockerControlApiTest {
             Mockito.doReturn(resp).when(cmd).exec();
             Mockito.when(mockDockerJavaClient.createContainerCmd(dockerImage)).thenReturn(cmd);
 
-            // We also try to pull the image
-            Mockito.when(mockDockerImage.tags()).thenReturn(ImmutableList.of(dockerImage));
-//           Mockito.doReturn(Collections.singletonList(mockDockerImage))
-//                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
-//                   .withArguments(dockerServer);
-
-            Method method = DockerControlApi.class.getDeclaredMethod("getAllImages", DockerServer.class);
-            method.setAccessible(true);
-
-            Mockito.doReturn(Collections.singletonList(mockDockerImage))
-                    .when(dockerControlApi)
-                    .getClass()
-                    .getDeclaredMethod("getAllImages", DockerServer.class);
-            dockerControlApi.getAllImages();
+            imageIsAlreadyPresent(dockerImage);
         }
         final Container expected = toLaunchAndExpectedContainerBuilder.build();
 
@@ -328,6 +307,7 @@ public class DockerControlApiTest {
 
         // Check results
         assertThat(created, equalTo(expected));
+        verifyImageWasNotPulled();
     }
 
     @Test
@@ -376,16 +356,7 @@ public class DockerControlApiTest {
             Mockito.doReturn(resp).when(cmd).exec();
             Mockito.when(mockDockerJavaClient.createContainerCmd(dockerImage)).thenReturn(cmd);
 
-            // We also try to pull the image
-            Mockito.when(mockDockerImage.tags()).thenReturn(ImmutableList.of(dockerImage));
-            Method method = DockerControlApi.class.getDeclaredMethod("getAllImages", DockerServer.class);
-            method.setAccessible(true);
-//            doReturn(mockDockerImage).when(dockerControlApi).getAllImages(any(DockerServer.class));
-//            List<String> result = (List<String>) method.invoke(dockerControlApi, dockerServer);
-
-//            Mockito.doReturn(Collections.singletonList(mockDockerImage))
-//                    .when(dockerControlApi, method(DockerControlApi.class, "getAllImages", DockerServer.class))
-//                    .withArguments(dockerServer);
+            imageIsAlreadyPresent(dockerImage);
 
             expectedCreatedBuilder.containerId(BACKEND_ID);
         }
@@ -396,6 +367,27 @@ public class DockerControlApiTest {
 
         // Check results
         assertThat(created, equalTo(expected));
+        verifyImageWasNotPulled();
+    }
+
+    /**
+     * On the docker backend create() lists the server's images and pulls only if none carries the image's tag.
+     * That listing comes from a private method, so the image is made present one level down, in the client.
+     */
+    private void imageIsAlreadyPresent(final String dockerImage) {
+        final Image image = Mockito.mock(Image.class);
+        when(image.getId()).thenReturn("sha256:" + UUID.randomUUID());
+        when(image.getRepoTags()).thenReturn(new String[]{dockerImage});
+        final ListImagesCmd listImagesCmd = Mockito.mock(ListImagesCmd.class, RETURN_SELF);
+        Mockito.doReturn(Collections.singletonList(image)).when(listImagesCmd).exec();
+        when(mockDockerJavaClient.listImagesCmd()).thenReturn(listImagesCmd);
+    }
+
+    private void verifyImageWasNotPulled() throws Exception {
+        if (backend == Backend.DOCKER) {
+            verify(mockDockerJavaClient).listImagesCmd();
+            verify(dockerControlApi, never()).pullImage(anyString());
+        }
     }
 
     @Test

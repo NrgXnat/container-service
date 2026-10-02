@@ -5,14 +5,11 @@ import com.github.dockerjava.api.model.SwarmNode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.*;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -32,6 +29,7 @@ import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.impl.CommandResolutionServiceImpl;
 import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
+import org.nrg.containers.utils.StaticMocks;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -77,18 +75,13 @@ import static org.nrg.containers.model.command.entity.CommandType.DOCKER_WRAPUP;
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmConstraintsIntegrationTest {
-    private MockedStatic<ContainerServicePermissionUtils> mockedContainerServicePermissionUtils;
-    private MockedStatic<Session> mockedSession;
-    private MockedStatic<XDATServlet> mockedXDATServlet;
-    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
-    private MockedStatic<Users> mockedUsers;
-    private MockedStatic<XFTManager> mockedXFTManager;
-    private MockedStatic<UriParserUtils> mockedUriParserUtils;
+    private StaticMocks.Registration staticMocks;
     private UserI mockUser;
     private String buildDir;
     private String archiveDir;
 
     private final String FAKE_USER = "mockUser";
+    private final String FAKE_EMAIL = "user@email.com";
     private final String FAKE_ALIAS = "alias";
     private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
@@ -179,6 +172,8 @@ public class SwarmConstraintsIntegrationTest {
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
         when(mockUser.getUsername()).thenReturn(FAKE_USER);
+        when(mockUser.getEmail()).thenReturn(FAKE_EMAIL);
+        staticMocks = StaticMocks.openOnEveryThread(this::configureStaticMocks);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(Mockito.any(UserI.class), Mockito.any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -191,7 +186,6 @@ public class SwarmConstraintsIntegrationTest {
         mockAliasToken.setAlias(FAKE_ALIAS);
         mockAliasToken.setSecret(FAKE_SECRET);
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         buildDir = folder.newFolder().getAbsolutePath();
@@ -200,22 +194,9 @@ public class SwarmConstraintsIntegrationTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
-        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
-        mockedXDATServlet.when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
-        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
-                .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class);
-        Mockito.spy(PersistentWorkflowUtils.class);
-        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class
-        );
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
-        mockedSession.when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
-                .thenReturn(null);
-        mockedContainerServicePermissionUtils.when(() -> ContainerServicePermissionUtils.canCreateOutputObject(
-                eq(mockUser), any(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)
-        )).thenReturn(true);
 
         // Setup docker server
 
@@ -248,27 +229,59 @@ public class SwarmConstraintsIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        fakeWorkflow = new FakeWorkflow();
-        TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
-        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
+        try {
+            fakeWorkflow = new FakeWorkflow();
+            TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
+            TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
-        for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
-            String nodeId = entry.getKey();
-            Map<String, String> originalLabels = entry.getValue();
-            SwarmNode current = controlApi.getDockerClient()
-                    .listSwarmNodesCmd()
-                    .withIdFilter(Collections.singletonList(nodeId))
-                    .exec()
-                    .stream()
-                    .findFirst()
-                    .orElseThrow(() -> new Exception("Node not found"));
-            controlApi.getDockerClient().updateSwarmNodeCmd()
-                    .withSwarmNodeId(nodeId)
-                    .withVersion(current.getVersion().getIndex())
-                    .withSwarmNodeSpec(current.getSpec().withLabels(originalLabels))
-                    .exec();
+            for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
+                String nodeId = entry.getKey();
+                Map<String, String> originalLabels = entry.getValue();
+                SwarmNode current = controlApi.getDockerClient()
+                        .listSwarmNodesCmd()
+                        .withIdFilter(Collections.singletonList(nodeId))
+                        .exec()
+                        .stream()
+                        .findFirst()
+                        .orElseThrow(() -> new Exception("Node not found"));
+                controlApi.getDockerClient().updateSwarmNodeCmd()
+                        .withSwarmNodeId(nodeId)
+                        .withVersion(current.getVersion().getIndex())
+                        .withSwarmNodeSpec(current.getSpec().withLabels(originalLabels))
+                        .exec();
+            }
+            nodeLabelsToReset.clear();
+        } finally {
+            // Null when @Before failed before opening them
+            if (staticMocks != null) {
+                staticMocks.close();
+            }
         }
-        nodeLabelsToReset.clear();
+    }
+
+    /**
+     * Also opened on the status updater's and JMS listeners' threads, so it reads the current test's fields rather
+     * than capturing them.
+     */
+    private void configureStaticMocks(final StaticMocks mocks) {
+        mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
+        mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
+        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mocks.mock(UriParserUtils.class);
+        // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
+        mocks.mock(WorkflowUtils.class)
+                .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+                .thenReturn(fakeWorkflow);
+        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
+        // We can't load the XFT item in the session; only used for a permission check that is mocked anyway
+        mocks.mock(Session.class)
+                .when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+                .thenReturn(null);
+        mocks.mock(ContainerServicePermissionUtils.class)
+                // The project is null for launches without one; any(String.class) stopped matching null in Mockito 2
+                .when(() -> ContainerServicePermissionUtils.canCreateOutputObject(
+                        eq(mockUser), nullable(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)))
+                .thenReturn(true);
     }
 
     private List<DockerServerBase.DockerServerSwarmConstraint> setUpServerWithConstraints() throws Exception {
@@ -332,28 +345,6 @@ public class SwarmConstraintsIntegrationTest {
         TestingUtils.commitTransaction();
 
         return constraints;
-    }
-
-    @BeforeEach
-    void setUpStaticMocks() {
-        mockedContainerServicePermissionUtils = mockStatic(ContainerServicePermissionUtils.class);
-        mockedSession = mockStatic(Session.class);
-        mockedXDATServlet = mockStatic(XDATServlet.class);
-        mockedWorkflowUtils = mockStatic(WorkflowUtils.class);
-        mockedUsers = mockStatic(Users.class);
-        mockedXFTManager = mockStatic(XFTManager.class);
-        mockedUriParserUtils = mockStatic(UriParserUtils.class);
-    }
-
-    @AfterEach
-    void tearDownStaticMocks() {
-        mockedUriParserUtils.closeOnDemand();
-        mockedXFTManager.closeOnDemand();
-        mockedUsers.closeOnDemand();
-        mockedWorkflowUtils.closeOnDemand();
-        mockedXDATServlet.closeOnDemand();
-        mockedSession.closeOnDemand();
-        mockedContainerServicePermissionUtils.closeOnDemand();
     }
 
     @Test
@@ -516,7 +507,7 @@ public class SwarmConstraintsIntegrationTest {
                 mapper.writeValueAsString(Collections.singletonList(CORRECT_SELECTED_CONSTRAINT)));
 
         String uri = TestingUtils.setupSessionMock(folder, mapper, userInputs);
-        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         log.debug("Launching with satisfiable constraints + setup + wrapup");
         containerService.queueResolveCommandAndLaunchContainer(null, wrapper.id(),

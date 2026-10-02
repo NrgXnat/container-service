@@ -1264,17 +1264,25 @@ public class ContainerServiceImpl implements ContainerService {
             return false;
         }
 
-        // container still thinks it is active, but workflow is terminal
+        // container still thinks it is active, but workflow is terminal.
+        // Reload before writing: ContainerStatusUpdater passes a partial poll projection, and
+        // addContainerHistoryItem saves the container it is given over the whole row.
+        final Container container = retrieve(containerOrService.databaseId());
+        if (container == null) {
+            log.warn("Container {} disappeared before its status could be matched to workflow status \"{}\".",
+                    containerOrService.databaseId(), status);
+            return false;
+        }
         try {
-            killWithoutHistory(containerOrService);
+            killWithoutHistory(container);
         } catch (NoContainerServerException | ContainerBackendException | NotFoundException e) {
             log.error("Attempted to kill container {} due to workflow in status {}",
-                    containerOrService.containerOrServiceId(), status, e);
+                    container.containerOrServiceId(), status, e);
         }
-        log.info("Setting container {} status to \"{}\" to match workflow.", containerOrService.databaseId(), status);
+        log.info("Setting container {} status to \"{}\" to match workflow.", container.databaseId(), status);
         ContainerHistory failureHist = ContainerHistory.fromSystem(status,
                 "Manual update to match workflow status");
-        addContainerHistoryItem(containerOrService, failureHist, user);
+        addContainerHistoryItem(container, failureHist, user);
         return true;
     }
 

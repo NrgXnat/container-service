@@ -209,19 +209,23 @@ dependencies {
 test {
     useJUnitPlatform()
     systemProperty "integration", System.getProperty('integration') == "true"
+    systemProperty "skipKubernetes", System.getProperty('skipKubernetes') == "true"
 }
 
+// Since Gradle 9, custom Test tasks no longer inherit the test source set by convention
 tasks.register ( 'unitTest', Test ) {
     useJUnitPlatform()
-
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     systemProperties['integration'] = "false"
-    test
 }
 
 tasks.register ( 'integrationTest', Test ) {
     useJUnitPlatform()
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     systemProperties['integration'] = "true"
-    test
+    systemProperty "skipKubernetes", System.getProperty('skipKubernetes') == "true"
 }
 
 // Pulls in the Jenkins BUILD_NUMBER environment variable if available.

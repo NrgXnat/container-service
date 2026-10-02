@@ -21,9 +21,9 @@ import org.hamcrest.CustomTypeSafeMatcher;
 import org.hamcrest.Matchers;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentMatcher;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.KubernetesClient;
+import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.api.KubernetesClientImpl;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
@@ -63,6 +63,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -73,6 +74,7 @@ public class TestingUtils {
     public static final String BUSYBOX = "busybox:latest";
     private static final String DEFAULT_DOCKER_SOCKET = "unix:///var/run/docker.sock";
     public static final boolean RUNNING_INTEGRATION_TESTS = Boolean.parseBoolean(System.getProperty("integration"));
+    public static final boolean SKIP_KUBERNETES = Boolean.parseBoolean(System.getProperty("skipKubernetes"));
 
     public static void commitTransaction() {
         TestTransaction.flagForCommit();
@@ -233,10 +235,33 @@ public class TestingUtils {
 
     public static void skipIfCannotConnectToKubernetes(ApiClient client) {
         skipIfNotRunningIntegrationTests();
+        assumeFalse("Kubernetes tests are switched off by -DskipKubernetes=true", SKIP_KUBERNETES);
         assumeTrue("Cannot connect to kubernetes", canConnectToKubernetes(client));
     }
 
+    /**
+     * The real Kubernetes client for the kubernetes backend, and a mock for the others, so that only the kubernetes
+     * variants of a test depend on the local kubeconfig. Falls back to the mock, which the connection check then
+     * skips, when no client can be built.
+     */
+    public static KubernetesClient kubernetesClientFor(final Backend backend, final KubernetesClientFactory kubernetesClientFactory) {
+        if (backend != Backend.KUBERNETES || SKIP_KUBERNETES) {
+            return mock(KubernetesClient.class);
+        }
+        try {
+            return kubernetesClientFactory.getKubernetesClient();
+        } catch (Exception | LinkageError e) {
+            // LinkageError includes BouncyCastle missing from the test classpath, which a kubeconfig with certificates needs
+            log.info("Cannot build a kubernetes client; kubernetes tests will be skipped", e);
+            return mock(KubernetesClient.class);
+        }
+    }
+
     public static String createKubernetesNamespace(final KubernetesClient kubernetesClient) {
+        if (kubernetesClient.getBackendClient() == null) {
+            // A mock client: a CoreV1Api without one would fall back to building a default client from the kubeconfig
+            return null;
+        }
         String namespaceName = UUID.randomUUID().toString();
         CoreV1Api coreApi = new CoreV1Api(kubernetesClient.getBackendClient());
         try {
@@ -256,6 +281,9 @@ public class TestingUtils {
     }
 
     public static boolean cleanupKubernetesNamespace(final String namespaceName, final KubernetesClient kubernetesClient) {
+        if (namespaceName == null || kubernetesClient.getBackendClient() == null) {
+            return false;
+        }
         CoreV1Api coreApi = new CoreV1Api(kubernetesClient.getBackendClient());
         try {
             log.debug("Deleting namespace {}", namespaceName);
@@ -519,9 +547,12 @@ public class TestingUtils {
         return sessionInput.getUri();
     }
 
-    public static void setupMocksForSetupWrapupWorkflow(String uri, FakeWorkflow fakeWorkflow, CatalogService mockCatalogService, UserI mockUser) throws Exception {
-        // NOTE YOU MUST HAVE POWERMOCKITO PREPARED ON UriParserUtils, WorkflowUtils and PersistentWorkflowUtils
-        // to use this method!!
+    /**
+     * Stubs what launching a setup or wrapup container looks up. The static stubs are added through
+     * {@code staticMocks} so that they also apply on the threads the launch runs on.
+     */
+    public static void setupMocksForSetupWrapupWorkflow(String uri, FakeWorkflow fakeWorkflow, CatalogService mockCatalogService,
+                                                        UserI mockUser, StaticMocks.Registration staticMocks) throws Exception {
         final ArchivableItem mockItem = mock(ArchivableItem.class);
         String id = "id";
         String xsiType = "type";
@@ -530,31 +561,25 @@ public class TestingUtils {
         when(mockItem.getXSIType()).thenReturn(xsiType);
         when(mockItem.getProject()).thenReturn(project);
         final ExptURI mockUriObject = mock(ExptURI.class);
-        try (MockedStatic<UriParserUtils> mockUriParserUtils = mockStatic(UriParserUtils.class)) {
-            mockUriParserUtils.when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
-            when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
-            fakeWorkflow.setId(uri);
-            ResourceData mockRD = mock(ResourceData.class);
-            when(mockRD.getItem()).thenReturn(mockItem);
-            when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
+        when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
+        fakeWorkflow.setId(uri);
+        ResourceData mockRD = mock(ResourceData.class);
+        when(mockRD.getItem()).thenReturn(mockItem);
+        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
 
-            FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-            setupWrapupWorkflow.setWfid(111);
-            setupWrapupWorkflow.setEventId(2);
-            MockedStatic<PersistentWorkflowUtils> mockedStatic = mockStatic(PersistentWorkflowUtils.class);
-            // 使用 Mockito.doReturn().when() 来定义静态方法的行为
-            mockedStatic.when(() -> PersistentWorkflowUtils.getOrCreateWorkflowData(eq(2), any(), any(), any(), any()))
+        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
+        setupWrapupWorkflow.setWfid(111);
+        setupWrapupWorkflow.setEventId(2);
+        staticMocks.add(mocks -> {
+            mocks.mock(UriParserUtils.class).when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
+            mocks.mockWorkflowCreation(2, mockUser, () -> setupWrapupWorkflow);
+            mocks.mock(WorkflowUtils.class)
+                    .when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
                     .thenReturn(setupWrapupWorkflow);
-//            Mockito.doReturn(setupWrapupWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(2),
-//                    eq(mockUser), any(XFTItem.class), any(EventDetails.class));
-            try (MockedStatic<WorkflowUtils> mockWorkflowUtils = mockStatic(WorkflowUtils.class)) {
-                mockWorkflowUtils.when(()->WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class))).thenReturn(setupWrapupWorkflow);
-
-                try (MockedStatic<WorkflowUtils> mockWorkflowUtils1 = mockStatic(WorkflowUtils.class)) {
-                    mockWorkflowUtils1.when(()->WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString())).thenReturn(setupWrapupWorkflow);
-                }
-            }
-        }
+            mocks.mock(WorkflowUtils.class)
+                    .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
+                    .thenReturn(setupWrapupWorkflow);
+        });
     }
 }
 
