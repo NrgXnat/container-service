@@ -73,6 +73,8 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import org.nrg.containers.exceptions.ContainerException;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -640,5 +642,72 @@ public class SecretsTest {
         assertThat(secretDestination, instanceOf(FileSecretDestination.class));
         assertThat(secretDestination.identifier(), is(mountPath));
         assertThat(((FileSecretDestination) secretDestination).mountPath(), is(mountPath));
+    }
+
+    @Test
+    public void testResolveK8sFileSecretHasNoValue() throws Exception {
+        final String logicalName = RandomStringUtils.randomAlphabetic(8).toLowerCase();
+        final String mountPath = "/run/secrets";
+        final Secret secret = new Secret(new K8sSecretSource(logicalName), new FileSecretDestination(mountPath));
+
+        // No value obtainers at all: resolving must still succeed because nothing is obtained
+        final ContainerSecretService service = new ContainerSecretServiceImpl(Collections.emptyList());
+        final ResolvedSecret resolved = service.resolve(secret);
+
+        assertThat(resolved, instanceOf(FileResolvedSecret.class));
+        assertThat(resolved, not(instanceOf(ResolvedSecret.WithValue.class)));
+        final FileResolvedSecret fileSecret = (FileResolvedSecret) resolved;
+        assertThat(fileSecret.mountPath(), is(mountPath));
+        assertThat(fileSecret.logicalName(), is(logicalName));
+        assertThat(fileSecret.explicitSecretName(), is(nullValue()));
+    }
+
+    @Test
+    public void testPrepareSecretsForLaunchSeparatesFileSecrets() throws Exception {
+        final Secret secret = new Secret(new K8sSecretSource("redcap"), new FileSecretDestination("/run/secrets"));
+        final ResolvedSecret resolved = new FileResolvedSecret(secret, Optional.empty());
+        final Container container = Container.builder()
+                .wrapperId(0L).commandId(0L)
+                .dockerImage("busybox:latest")
+                .commandLine("true")
+                .secrets(Collections.singletonList(resolved))
+                .userId(userId)
+                .build();
+
+        final ContainerPropertiesWithSecretValues props = ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(container);
+
+        assertThat(props.environmentVariables().entrySet(), is(empty()));
+        assertThat(props.fileSecrets(), hasSize(1));
+        assertThat(props.fileSecrets().get(0).logicalName(), is("redcap"));
+    }
+
+    @Test
+    public void testDockerBackendRejectsFileSecret() throws Exception {
+        backend = Backend.DOCKER;
+        Mockito.when(dockerServer.backend()).thenReturn(backend);
+
+        final Secret secret = new Secret(new K8sSecretSource("redcap"), new FileSecretDestination("/run/secrets"));
+        final ResolvedSecret resolved = new FileResolvedSecret(secret, Optional.empty());
+        final Container toCreate = Container.builder()
+                .wrapperId(0L).commandId(0L)
+                .dockerImage("busybox:latest")
+                .commandLine("true")
+                .secrets(Collections.singletonList(resolved))
+                .backend(backend)
+                .userId(userId)
+                .build();
+
+        final DockerControlApi dockerControlApi = Mockito.spy(new DockerControlApi(dockerServerService, dockerHubService, kubernetesClientFactory));
+        final DockerClient dockerClient = Mockito.mock(DockerClient.class);
+        Mockito.doReturn(dockerClient).when(dockerControlApi).getDockerClient(any(DockerServerBase.DockerServer.class));
+
+        try {
+            dockerControlApi.create(toCreate, user);
+            org.junit.Assert.fail("Expected ContainerException for file secret on Docker backend");
+        } catch (ContainerException e) {
+            assertThat(e.getMessage(), containsString("not supported"));
+        }
+        // Nothing may have been sent to Docker
+        Mockito.verify(dockerClient, Mockito.never()).createContainerCmd(any(String.class));
     }
 }

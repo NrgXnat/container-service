@@ -523,6 +523,7 @@ public class DockerControlApi implements ContainerControlApi {
         // Secrets
         final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
                 ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+        containerPropertiesWithSecretValues.requireNoFileSecrets("Docker");
 
         // Environment variables
         final Map<String, String> environmentVariables = containerPropertiesWithSecretValues.environmentVariables();
@@ -679,6 +680,7 @@ public class DockerControlApi implements ContainerControlApi {
         // Secrets
         final ContainerPropertiesWithSecretValues containerPropertiesWithSecretValues =
                 ContainerPropertiesWithSecretValues.prepareSecretsForLaunch(toCreate);
+        containerPropertiesWithSecretValues.requireNoFileSecrets("Docker Swarm");
 
         // Environment variables
         final Map<String, String> environmentVariables = containerPropertiesWithSecretValues.environmentVariables();
