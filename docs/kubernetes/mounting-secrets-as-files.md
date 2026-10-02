@@ -17,7 +17,7 @@ Add an entry to the Command's `secrets` list with the new source and destination
 "secrets": [
   {
     "source":      {"type": "k8s-secret", "identifier": "redcap"},
-    "destination": {"type": "file",       "identifier": "/run/secrets"}
+    "destination": {"type": "file",       "identifier": "/run/secrets/redcap"}
   }
 ]
 ```
@@ -29,7 +29,10 @@ Add an entry to the Command's `secrets` list with the new source and destination
 * `source.name` (optional) — an explicit Secret name that bypasses the template.
 * `destination.type` `file` — mount as files.
 * `destination.identifier` — the directory inside the container. Each key of the Secret becomes a
-  file in that directory; the mount is read-only.
+  file in that directory; the mount is read-only. Use a dedicated subdirectory such as
+  `/run/secrets/<identifier>`, never `/run/secrets` itself: Kubernetes mounts the pod's service
+  account token under `/var/run/secrets/kubernetes.io/serviceaccount`, and a read-only mount at
+  `/run/secrets` makes that fail with `runc create failed ... make mountpoint`.
 
 The Docker and Docker Swarm backends refuse to launch a container that declares a `file`
 destination, with the message `File secrets are not supported on the Docker backend`.
@@ -68,8 +71,8 @@ to read Secrets: referencing a Secret from a Pod spec is enough for kubelet to m
 With the declaration above and a Secret holding keys `client_id` and `client_secret`:
 
 ```
-/run/secrets/client_id
-/run/secrets/client_secret
+/run/secrets/redcap/client_id
+/run/secrets/redcap/client_secret
 ```
 
 The files live on tmpfs and disappear when the Pod exits. The container reads them and uses the
