@@ -2,6 +2,9 @@ package org.nrg.containers.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Mockito;
+import org.nrg.framework.node.NodeLeader;
+import org.nrg.framework.node.NodeLeaderListener;
+import org.nrg.framework.node.NodeLockService;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.security.services.RoleHolder;
 import org.nrg.xdat.security.services.RoleServiceI;
@@ -34,6 +37,24 @@ public class RestApiTestConfig extends WebMvcConfigurerAdapter {
         XnatAppInfo mockXnatAppInfo = Mockito.mock(XnatAppInfo.class);
         when(mockXnatAppInfo.isPrimaryNode()).thenReturn(true);
         return mockXnatAppInfo;
+    }
+
+    /**
+     * A node lock service on which this node leads every lock at once, as a single node does.
+     */
+    @Bean
+    public NodeLockService mockNodeLockService() {
+        final NodeLockService nodeLockService = Mockito.mock(NodeLockService.class);
+        when(nodeLockService.isEnabled()).thenReturn(true);
+        when(nodeLockService.registerLeader(Mockito.anyString(), Mockito.any(NodeLeaderListener.class))).thenAnswer(invocation -> {
+            final String name = invocation.getArgument(0);
+            final NodeLeader leader = Mockito.mock(NodeLeader.class);
+            when(leader.getName()).thenReturn(name);
+            when(leader.isLeader()).thenReturn(true);
+            when(leader.stepDown(Mockito.any())).thenReturn(false);
+            return leader;
+        });
+        return nodeLockService;
     }
 
     @Bean

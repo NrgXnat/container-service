@@ -5,9 +5,8 @@ import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.framework.node.NodeLockService;
 import org.nrg.framework.services.NrgEventServiceI;
-import org.nrg.xnat.services.XnatAppInfo;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -32,11 +31,11 @@ public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
                                                          final ContainerService containerService,
                                                          final DockerServerService dockerServerService,
                                                          final NrgEventServiceI eventService,
-                                                         @Qualifier("mockXnatAppInfo") final XnatAppInfo mockXnatAppInfo,
                                                          final KubernetesClientFactory kubernetesClientFactory,
-                                                         final JmsTemplate template) {
+                                                         final JmsTemplate template,
+                                                         final NodeLockService nodeLockService) {
         return new ContainerStatusUpdater(
-                containerControlApi, containerService, dockerServerService, eventService, mockXnatAppInfo, kubernetesClientFactory, template
+                containerControlApi, containerService, dockerServerService, eventService, kubernetesClientFactory, template, nodeLockService
         );
     }
 
