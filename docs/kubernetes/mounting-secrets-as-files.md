@@ -62,7 +62,8 @@ set for example in Tomcat's `CATALINA_OPTS`:
 | `xnat.cs.k8s.secretVolumeType`    | `secret`                      | `secret` mounts a Kubernetes Secret object by name. `csi` mounts a Secrets Store CSI volume (`secrets-store.csi.k8s.io`) whose `secretProviderClass` attribute is the rendered name, for clusters that pull secrets from an external store such as AWS Secrets Manager or HashiCorp Vault |
 | `xnat.cs.k8s.serviceAccountName`  | unset                         | If set, applied as the Pod's `serviceAccountName`. Needed when the CSI provider authenticates with the Pod's identity (for example IRSA on EKS) |
 
-The Container Service's own Kubernetes identity needs permission to create Jobs and read Pods,
+The Container Service's own Kubernetes identity needs permission to create, get, list, watch, delete,
+patch and update Jobs (jobs are created suspended and then patched to start) and to read Pods,
 Pod logs and Events in the namespace. It does **not** need, and should not be given, permission
 to read Secrets: referencing a Secret from a Pod spec is enough for kubelet to mount it.
 
