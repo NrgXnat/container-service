@@ -41,6 +41,8 @@ import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
+import org.nrg.containers.secrets.K8sSecretNameTemplate;
+import org.nrg.containers.secrets.FileResolvedSecret;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -90,6 +92,17 @@ public class KubernetesClientImpl implements KubernetesClient {
     private BatchV1Api         batchApi;
     private String             namespace;
     private KubernetesInformer kubernetesInformer = null;
+
+    // File-secret mounting (XNAT-8703 Project Secrets). Configured by system properties until exposed as preferences.
+    public static final String SECRET_NAME_TEMPLATE_PROPERTY = "xnat.cs.k8s.secretNameTemplate";
+    public static final String SECRET_VOLUME_TYPE_PROPERTY   = "xnat.cs.k8s.secretVolumeType";
+    public static final String SERVICE_ACCOUNT_NAME_PROPERTY = "xnat.cs.k8s.serviceAccountName";
+    public static final String SECRET_VOLUME_TYPE_SECRET     = "secret";
+    public static final String SECRET_VOLUME_TYPE_CSI        = "csi";
+    public static final String CSI_SECRETS_STORE_DRIVER      = "secrets-store.csi.k8s.io";
+    private String secretNameTemplate = System.getProperty(SECRET_NAME_TEMPLATE_PROPERTY, K8sSecretNameTemplate.DEFAULT_TEMPLATE);
+    private String secretVolumeType   = System.getProperty(SECRET_VOLUME_TYPE_PROPERTY, SECRET_VOLUME_TYPE_SECRET);
+    private String serviceAccountName = System.getProperty(SERVICE_ACCOUNT_NAME_PROPERTY);
 
 
     public KubernetesClientImpl(
@@ -152,6 +165,38 @@ public class KubernetesClientImpl implements KubernetesClient {
         batchApi       = new BatchV1Api(apiClient);
 
         restart();
+    }
+
+    private V1Volume fileSecretVolume(final String volumeName, final String secretName) {
+        final String volumeType = StringUtils.isBlank(secretVolumeType) ? SECRET_VOLUME_TYPE_SECRET : secretVolumeType;
+        if (SECRET_VOLUME_TYPE_CSI.equalsIgnoreCase(volumeType)) {
+            return new V1VolumeBuilder()
+                    .withName(volumeName)
+                    .withNewCsi()
+                    .withDriver(CSI_SECRETS_STORE_DRIVER)
+                    .withReadOnly(true)
+                    .withVolumeAttributes(Collections.singletonMap("secretProviderClass", secretName))
+                    .endCsi()
+                    .build();
+        }
+        return new V1VolumeBuilder()
+                .withName(volumeName)
+                .withNewSecret()
+                .withSecretName(secretName)
+                .endSecret()
+                .build();
+    }
+
+    public void setSecretNameTemplate(final String secretNameTemplate) {
+        this.secretNameTemplate = secretNameTemplate;
+    }
+
+    public void setSecretVolumeType(final String secretVolumeType) {
+        this.secretVolumeType = secretVolumeType;
+    }
+
+    public void setServiceAccountName(final String serviceAccountName) {
+        this.serviceAccountName = serviceAccountName;
     }
 
     @Override
@@ -418,6 +463,21 @@ public class KubernetesClientImpl implements KubernetesClient {
                                                                           .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
                                                                           .collect(Collectors.toList());
 
+        // File secrets: reference the Kubernetes Secret (or SecretProviderClass) by name; kubelet mounts it on tmpfs.
+        for (final FileResolvedSecret fileSecret : containerPropertiesWithSecretValues.fileSecrets()) {
+            final String secretName = StringUtils.isNotBlank(fileSecret.explicitSecretName()) ?
+                    fileSecret.explicitSecretName() :
+                    K8sSecretNameTemplate.render(secretNameTemplate, toCreate.project(), fileSecret.logicalName());
+            final String volumeName = K8sSecretNameTemplate.sanitize("secret-" + fileSecret.logicalName());
+            volumes.add(fileSecretVolume(volumeName, secretName));
+            mounts.add(new V1VolumeMountBuilder()
+                               .withName(volumeName)
+                               .withMountPath(fileSecret.mountPath())
+                               .withReadOnly(true)
+                               .build());
+            log.debug("Container {} will mount secret {} at {} (volume type {})", name, secretName, fileSecret.mountPath(), secretVolumeType);
+        }
+
 final Map<String, String> cleanedLabels = labels.entrySet().stream()
                                                 .peek(entry -> {
                                                     String  value   = entry.getValue();
@@ -460,6 +520,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
                 .withAffinity(affinity)
                 .withTolerations(v1Tolerations.isEmpty() ? null : v1Tolerations)
                 .withRestartPolicy(POD_RESTART_POLICY)
+                .withServiceAccountName(StringUtils.isBlank(serviceAccountName) ? null : serviceAccountName)
                 .withVolumes(volumes)
                 .addNewContainer()
                 .withName(name)
