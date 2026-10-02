@@ -6,8 +6,6 @@ import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.nrg.containers.config.ContainerRestApiTestConfig;
@@ -110,14 +108,6 @@ public class ContainerRestApiTest {
             TestTransaction.end();
             TestTransaction.start();
         }
-    }
-
-    @BeforeEach
-    void setUpStaticMocks() {
-    }
-
-    @AfterEach
-    void tearDownStaticMocks() {
     }
 
     @Test

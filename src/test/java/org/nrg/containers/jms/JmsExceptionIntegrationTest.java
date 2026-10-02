@@ -1,16 +1,14 @@
 package org.nrg.containers.jms;
 
 import lombok.extern.slf4j.Slf4j;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -20,6 +18,7 @@ import org.nrg.containers.model.xnat.FakeWorkflow;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.StaticMocks;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.mail.services.MailService;
 import org.nrg.xdat.entities.AliasToken;
@@ -64,10 +63,6 @@ import static org.mockito.Mockito.*;
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class JmsExceptionIntegrationTest {
-    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
-    private MockedStatic<Users> mockedUsers;
-    private MockedStatic<XFTManager> mockedXFTManager;
-    private MockedStatic<UriParserUtils> mockedUriParserUtils;
     @Autowired private JmsTemplate mockJmsTemplate;
     @Autowired private SiteConfigPreferences mockSiteConfigPreferences;
     @Autowired private UserManagementServiceI mockUserManagementServiceI;
@@ -83,6 +78,7 @@ public class JmsExceptionIntegrationTest {
     @Autowired private Destination containerStagingRequest;
     @Autowired private Destination containerFinalizingRequest;
 
+    private StaticMocks.Registration staticMocks;
     private UserI mockUser;
     private FakeWorkflow fakeWorkflow;
     private Command.CommandWrapper wrapper;
@@ -110,7 +106,7 @@ public class JmsExceptionIntegrationTest {
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
         when(mockUser.getEmail()).thenReturn(FAKE_EMAIL);
-        mockedUsers.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        staticMocks = StaticMocks.openOnEveryThread(this::configureStaticMocks);
 
         // Mock the site config preferences
         String buildDir = folder.newFolder().getAbsolutePath();
@@ -133,12 +129,6 @@ public class JmsExceptionIntegrationTest {
         mockAliasToken.setAlias("alias");
         mockAliasToken.setSecret("secret");
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-        mockedXFTManager.when(XFTManager::isInitialized).thenReturn(true);
-        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
-                .thenReturn(fakeWorkflow);
-        Mockito.doNothing().when(WorkflowUtils.class);
-        Mockito.spy(PersistentWorkflowUtils.class);
-        Mockito.doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class);
 
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
@@ -160,20 +150,27 @@ public class JmsExceptionIntegrationTest {
         fakeWorkflow.setPipelineName(wrapper.name());
     }
 
-    @BeforeEach
-    void setUpStaticMocks() {
-        mockedWorkflowUtils = Mockito.mockStatic(WorkflowUtils.class);
-        mockedUsers = mockStatic(Users.class);
-        mockedXFTManager = Mockito.mockStatic(XFTManager.class);
-        mockedUriParserUtils = Mockito.mockStatic(UriParserUtils.class);
+    @After
+    public void cleanup() throws Exception {
+        // Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
+        }
     }
 
-    @AfterEach
-    void tearDownStaticMocks() {
-        mockedUriParserUtils.closeOnDemand();
-        mockedXFTManager.closeOnDemand();
-        mockedUsers.closeOnDemand();
-        mockedWorkflowUtils.closeOnDemand();
+    /**
+     * Also opened on the status updater's and JMS listeners' threads, so it reads the current test's fields rather
+     * than capturing them.
+     */
+    private void configureStaticMocks(final StaticMocks mocks) {
+        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
+        mocks.mock(UriParserUtils.class);
+        // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
+        mocks.mock(WorkflowUtils.class)
+                .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+                .thenReturn(fakeWorkflow);
+        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
     }
 
     @Test
