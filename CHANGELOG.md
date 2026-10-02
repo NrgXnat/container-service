@@ -3,6 +3,7 @@
 ## 3.9.0
 
 ### Features
+* [XNAT-8703](https://radiologics.atlassian.net/browse/XNAT-8703): Commands can now declare a `k8s-secret` source with a `file` destination to have an existing Kubernetes Secret mounted into the container as files on tmpfs. The Secret name is derived from a site template (`xnat-#PROJECT#-{identifier}` by default) so each project gets its own credential; XNAT never reads the value. Supports plain Secret volumes or Secrets Store CSI volumes, an optional pod service account, and surfaces `FailedMount` and similar pod warning events in container history. Docker and Swarm backends reject file secrets. See `docs/kubernetes/mounting-secrets-as-files.md`.
 * Added optional scheduled cleanup of build directories left behind by finalized containers. Disabled by default. Configured per container server host under Administer &gt; Plugin Settings &gt; Container Service &gt; Compute Backend, with independent retention periods for completed, failed and killed containers and a configurable UTC time of day for the run. Note that only build folders for containers finalized within the past 365 days are considered, so directories older than that, or already unreferenced on disk, are not removed.
 
 ## 3.8.2
