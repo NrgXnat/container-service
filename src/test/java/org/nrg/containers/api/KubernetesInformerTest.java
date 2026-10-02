@@ -1,6 +1,11 @@
 package org.nrg.containers.api;
 
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.containsString;
+import java.time.OffsetDateTime;
+import io.kubernetes.client.openapi.models.V1ObjectReference;
+import io.kubernetes.client.openapi.models.CoreV1Event;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodStatus;
 import org.junit.Test;
@@ -56,5 +61,78 @@ public class KubernetesInformerTest {
         assertThat(event.getValue().getPodPhase(), is(KubernetesPodPhase.PENDING));
         assertThat(event.getValue().getContainerId(), is(nullValue()));
         assertThat(event.getValue().getContainerState(), is(nullValue()));
+    }
+
+    // ---- Pod warning events (e.g. FailedMount when a secret is missing) ----
+
+    private static V1Pod trackedPod() {
+        return new V1Pod().metadata(new V1ObjectMeta()
+                .name(POD_NAME)
+                .labels(Collections.singletonMap("job-name", JOB_NAME)));
+    }
+
+    private static CoreV1Event podEvent(final String type, final String reason, final String message) {
+        return new CoreV1Event()
+                .metadata(new V1ObjectMeta().name(POD_NAME + ".18a1b2c3").namespace("xnat-proj01"))
+                .type(type)
+                .reason(reason)
+                .message(message)
+                .lastTimestamp(OffsetDateTime.now())
+                .involvedObject(new V1ObjectReference().kind("Pod").name(POD_NAME));
+    }
+
+    @Test
+    public void failedMountWarningBecomesPendingStatusWithDetails() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final String message = "MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found";
+        final ArgumentCaptor<KubernetesStatusChangeEvent> event = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> POD_NAME.equals(name) ? trackedPod() : null)
+                    .onAdd(podEvent("Warning", "FailedMount", message));
+            mockedQueueUtils.verify(() ->
+                    QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), event.capture()));
+        }
+
+        final KubernetesStatusChangeEvent sent = event.getValue();
+        assertThat(sent.getJobName(), is(JOB_NAME));
+        assertThat(sent.getPodName(), is(POD_NAME));
+        assertThat(sent.getPodPhase(), is(KubernetesPodPhase.PENDING));
+        assertThat(sent.isExitStatus(), is(false));
+        assertThat(sent.details(), containsString("FailedMount"));
+        assertThat(sent.details(), containsString("xnat-proj01-redcap\" not found"));
+        assertThat(sent.externalTimestamp(), is(notNullValue()));
+    }
+
+    @Test
+    public void normalEventsAreIgnored() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod())
+                    .onAdd(podEvent("Normal", "Scheduled", "Successfully assigned xnat-proj01/" + POD_NAME + " to node-1"));
+            mockedQueueUtils.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    public void warningsForPodsWeDoNotTrackAreIgnored() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> null)
+                    .onAdd(podEvent("Warning", "FailedMount", "secret \"x\" not found"));
+            mockedQueueUtils.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    public void repeatedWarningWithSameMessageIsNotResent() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final CoreV1Event first = podEvent("Warning", "FailedMount", "secret \"x\" not found").count(1);
+        final CoreV1Event again = podEvent("Warning", "FailedMount", "secret \"x\" not found").count(2);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod())
+                    .onUpdate(first, again);
+            mockedQueueUtils.verifyNoInteractions();
+        }
     }
 }
