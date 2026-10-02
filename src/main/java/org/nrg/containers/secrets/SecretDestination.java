@@ -8,7 +8,8 @@ import java.util.Map;
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = EnvironmentVariableSecretDestination.class, name = EnvironmentVariableSecretDestination.JSON_TYPE_NAME)
+        @JsonSubTypes.Type(value = EnvironmentVariableSecretDestination.class, name = EnvironmentVariableSecretDestination.JSON_TYPE_NAME),
+        @JsonSubTypes.Type(value = FileSecretDestination.class, name = FileSecretDestination.JSON_TYPE_NAME)
 })
 public interface SecretDestination {
     String type();

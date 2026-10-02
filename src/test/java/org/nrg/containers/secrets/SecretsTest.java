@@ -72,6 +72,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -588,5 +589,56 @@ public class SecretsTest {
 
     private static String makeEnvironmentVariableDestJson(final String identifier) throws Exception {
         return makeSourceDestJson(identifier, EnvironmentVariableSecretDestination.JSON_TYPE_NAME);
+    }
+
+    // ---- k8s-secret source / file destination (XNAT-8703 Project Secrets) ----
+
+    @Test
+    public void testK8sSecretSourceJson() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String json = "{" +
+                "\"type\": \"" + K8sSecretSource.JSON_TYPE_NAME + "\", " +
+                "\"identifier\": \"" + identifier + "\"" +
+                "}";
+        final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
+
+        assertThat(secretSource, instanceOf(K8sSecretSource.class));
+        assertThat(secretSource.identifier(), is(identifier));
+        // The value is never obtained by XNAT; kubelet mounts it. So it must NOT be a value-obtaining source.
+        assertThat(secretSource, not(instanceOf(SecretSource.ValueObtainingSecretSource.class)));
+        assertThat(((K8sSecretSource) secretSource).secretName(), is(nullValue()));
+    }
+
+    @Test
+    public void testK8sSecretSourceJsonWithExplicitName() throws Exception {
+        final String identifier = RandomStringUtils.randomAlphabetic(10);
+        final String name = "custom-" + RandomStringUtils.randomAlphabetic(6);
+        final String json = "{" +
+                "\"type\": \"" + K8sSecretSource.JSON_TYPE_NAME + "\", " +
+                "\"identifier\": \"" + identifier + "\", " +
+                "\"name\": \"" + name + "\"" +
+                "}";
+        final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
+
+        assertThat(secretSource, instanceOf(K8sSecretSource.class));
+        assertThat(((K8sSecretSource) secretSource).secretName(), is(name));
+        // Round-trip keeps the explicit name
+        final String reserialized = objectMapper.writeValueAsString(secretSource);
+        final SecretSource again = objectMapper.readValue(reserialized, SecretSource.class);
+        assertThat(((K8sSecretSource) again).secretName(), is(name));
+    }
+
+    @Test
+    public void testFileSecretDestJson() throws Exception {
+        final String mountPath = "/run/secrets/" + RandomStringUtils.randomAlphabetic(6);
+        final String json = "{" +
+                "\"type\": \"" + FileSecretDestination.JSON_TYPE_NAME + "\", " +
+                "\"identifier\": \"" + mountPath + "\"" +
+                "}";
+        final SecretDestination secretDestination = objectMapper.readValue(json, SecretDestination.class);
+
+        assertThat(secretDestination, instanceOf(FileSecretDestination.class));
+        assertThat(secretDestination.identifier(), is(mountPath));
+        assertThat(((FileSecretDestination) secretDestination).mountPath(), is(mountPath));
     }
 }

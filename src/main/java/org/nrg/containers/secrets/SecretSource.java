@@ -8,7 +8,8 @@ import java.util.Map;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
         // Add new source classes here as they are created
-        @JsonSubTypes.Type(value = SystemPropertySecretSource.class, name = SystemPropertySecretSource.JSON_TYPE_NAME)
+        @JsonSubTypes.Type(value = SystemPropertySecretSource.class, name = SystemPropertySecretSource.JSON_TYPE_NAME),
+        @JsonSubTypes.Type(value = K8sSecretSource.class, name = K8sSecretSource.JSON_TYPE_NAME)
 })
 public interface SecretSource {
     String type();
