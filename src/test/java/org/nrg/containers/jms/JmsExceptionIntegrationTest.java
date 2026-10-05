@@ -9,6 +9,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -163,14 +164,16 @@ public class JmsExceptionIntegrationTest {
      * than capturing them.
      */
     private void configureStaticMocks(final StaticMocks mocks) {
-        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
         mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
         mocks.mock(UriParserUtils.class);
         // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
         mocks.mock(WorkflowUtils.class)
                 .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
     }
 
     @Test

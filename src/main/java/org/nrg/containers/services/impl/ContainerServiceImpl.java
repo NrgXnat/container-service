@@ -923,7 +923,10 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void processEvent(final ServiceTaskEvent event) {
         final ServiceTask task = event.task();
-        Container service = event.service();
+        // Reload rather than save the event's copy: ContainerStatusUpdater sends the partial poll projection, and
+        // any copy goes stale on its way through the event bus and JMS, so saving it could orphan-delete history
+        // recorded in the meantime. DockerServiceEventListener handles one event per service at a time.
+        Container service = event.service() == null ? null : retrieve(event.service().databaseId());
 
         log.debug("Processing service task event for service \"{}\" status \"{}\" exit code {}.",
                 task.serviceId(), task.status(), task.exitCode());
@@ -1259,8 +1262,7 @@ public class ContainerServiceImpl implements ContainerService {
                 (!status.startsWith(PersistentWorkflowUtils.FAILED) && !status.startsWith(PersistentWorkflowUtils.COMPLETE))) {
             return false;
         }
-        if (status.equals(containerOrService.status()) || containerStatusIsTerminal(containerOrService)) {
-            // statuses are the same or at least both terminal
+        if (!containerLagsWorkflow(containerOrService, status)) {
             return false;
         }
 
@@ -1271,6 +1273,10 @@ public class ContainerServiceImpl implements ContainerService {
         if (container == null) {
             log.warn("Container {} disappeared before its status could be matched to workflow status \"{}\".",
                     containerOrService.databaseId(), status);
+            return false;
+        }
+        if (!containerLagsWorkflow(container, status)) {
+            // The poll record was stale: the container caught up on its own
             return false;
         }
         try {
@@ -1284,6 +1290,13 @@ public class ContainerServiceImpl implements ContainerService {
                 "Manual update to match workflow status");
         addContainerHistoryItem(container, failureHist, user);
         return true;
+    }
+
+    /**
+     * @return false if the container status already matches the terminal workflow status, or is at least terminal itself
+     */
+    private boolean containerLagsWorkflow(final Container container, final String workflowStatus) {
+        return !workflowStatus.equals(container.status()) && !containerStatusIsTerminal(container);
     }
 
 

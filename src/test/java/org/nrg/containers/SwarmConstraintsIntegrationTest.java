@@ -10,6 +10,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
@@ -229,34 +230,32 @@ public class SwarmConstraintsIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        try {
-            fakeWorkflow = new FakeWorkflow();
-            TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
-            TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
-
-            for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
-                String nodeId = entry.getKey();
-                Map<String, String> originalLabels = entry.getValue();
-                SwarmNode current = controlApi.getDockerClient()
-                        .listSwarmNodesCmd()
-                        .withIdFilter(Collections.singletonList(nodeId))
-                        .exec()
-                        .stream()
-                        .findFirst()
-                        .orElseThrow(() -> new Exception("Node not found"));
-                controlApi.getDockerClient().updateSwarmNodeCmd()
-                        .withSwarmNodeId(nodeId)
-                        .withVersion(current.getVersion().getIndex())
-                        .withSwarmNodeSpec(current.getSpec().withLabels(originalLabels))
-                        .exec();
-            }
-            nodeLabelsToReset.clear();
-        } finally {
-            // Null when @Before failed before opening them
-            if (staticMocks != null) {
-                staticMocks.close();
-            }
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still restart a service removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
         }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
+        TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
+
+        for (Map.Entry<String, Map<String, String>> entry : nodeLabelsToReset.entrySet()) {
+            String nodeId = entry.getKey();
+            Map<String, String> originalLabels = entry.getValue();
+            SwarmNode current = controlApi.getDockerClient()
+                    .listSwarmNodesCmd()
+                    .withIdFilter(Collections.singletonList(nodeId))
+                    .exec()
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new Exception("Node not found"));
+            controlApi.getDockerClient().updateSwarmNodeCmd()
+                    .withSwarmNodeId(nodeId)
+                    .withVersion(current.getVersion().getIndex())
+                    .withSwarmNodeSpec(current.getSpec().withLabels(originalLabels))
+                    .exec();
+        }
+        nodeLabelsToReset.clear();
     }
 
     /**
@@ -266,13 +265,15 @@ public class SwarmConstraintsIntegrationTest {
     private void configureStaticMocks(final StaticMocks mocks) {
         mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
         mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
-        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
         mocks.mock(UriParserUtils.class);
         // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
         mocks.mock(WorkflowUtils.class)
                 .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
         // We can't load the XFT item in the session; only used for a permission check that is mocked anyway
         mocks.mock(Session.class)
                 .when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))

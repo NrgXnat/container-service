@@ -243,9 +243,8 @@ public class ContainerStatusUpdater implements Runnable {
                     } else {
                         final ServiceTask task = containerControlApi.getTaskForService(dockerServer, service);
                         if (task != null) {
-                            // processEvent saves the service it is handed back to the database, so it must
-                            // get the full row; saving the poll projection would wipe everything it omits
-                            throwTaskEventForService(containerService.get(databaseId), task);
+                            // The poll projection is enough: processEvent reloads the full row before saving
+                            throwTaskEventForService(service, task);
                         } else {
                             log.debug("Appears that the task has not been assigned for service {} \"{}\".",
                                     service.databaseId(), service.serviceId());
@@ -260,8 +259,8 @@ public class ContainerStatusUpdater implements Runnable {
                     report.add(UpdateReportEntry.success(service.serviceId()));
                 } catch (TaskNotFoundException e) {
                     log.error("Cannot get tasks for service {} \"{}\".", service.databaseId(), service.serviceId());
-                    // processEvent saves the service and may restart it from it, so it needs the full row
-                    throwLostTaskEventForService(containerService.get(databaseId));
+                    // The poll projection is enough: processEvent reloads the full row before saving or restarting
+                    throwLostTaskEventForService(service);
                     report.add(UpdateReportEntry.failure(service.serviceId(), e.getMessage()));
                 } catch (DockerServerException e) {
                     log.error("Cannot find server for service {} \"{}\".", service.databaseId(), service.serviceId(), e);

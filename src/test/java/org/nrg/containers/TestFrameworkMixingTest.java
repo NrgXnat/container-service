@@ -19,6 +19,9 @@ import static org.hamcrest.Matchers.contains;
  * The suite runs JUnit 4 tests on the JUnit Platform's vintage engine, which silently ignores JUnit 5 annotations
  * in a JUnit 4 class (and the reverse). That is how static mocks opened in {@code @BeforeEach} went unopened in
  * five integration tests without anything failing to compile. A class must use one framework's annotations only.
+ *
+ * <p>The check only sees method annotations a class declares itself. It misses hooks inherited from a base class
+ * and class-level Jupiter constructs such as {@code @ExtendWith} or {@code @Nested}.
  */
 public class TestFrameworkMixingTest {
     private static final List<String> JUNIT_4 = Arrays.asList(

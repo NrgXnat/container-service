@@ -13,6 +13,7 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
@@ -208,28 +209,27 @@ public class ContainerCleanupIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        try {
-            Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
-            assertThat(containerCleanupFunction, notNullValue());
-            for (final String containerToCleanUp : containersToCleanUp) {
-                if (containerToCleanUp == null) {
-                    continue;
-                }
-                containerCleanupFunction.accept(containerToCleanUp);
-            }
-            containersToCleanUp.clear();
-
-            TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
-
-            kubernetesClientFactory.shutdown();
-            TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
-            executorService.shutdown();
-        } finally {
-            // Null when @Before failed before opening them
-            if (staticMocks != null) {
-                staticMocks.close();
-            }
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still act on a container removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
         }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
+        assertThat(containerCleanupFunction, notNullValue());
+        for (final String containerToCleanUp : containersToCleanUp) {
+            if (containerToCleanUp == null) {
+                continue;
+            }
+            containerCleanupFunction.accept(containerToCleanUp);
+        }
+        containersToCleanUp.clear();
+
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
+
+        kubernetesClientFactory.shutdown();
+        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
+        executorService.shutdown();
     }
 
     /**
@@ -239,13 +239,15 @@ public class ContainerCleanupIntegrationTest {
     private void configureStaticMocks(final StaticMocks mocks, final String fakeUser) {
         mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
         mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
-        mocks.mock(Users.class).when(() -> Users.getUser(fakeUser)).thenReturn(mockUser);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(fakeUser)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
         mocks.mock(UriParserUtils.class);
         // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
         mocks.mock(WorkflowUtils.class)
                 .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
         // We can't load the XFT item in the session, so don't try
         // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
         mocks.mock(Session.class)

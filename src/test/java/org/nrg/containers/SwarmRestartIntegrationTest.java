@@ -11,6 +11,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -180,21 +181,19 @@ public class SwarmRestartIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        try {
-            fakeWorkflow = new FakeWorkflow();
-            if (swarmMode) {
-                TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
-            } else {
-                TestingUtils.cleanDockerContainers(controlApi.getDockerClient(), containersToCleanUp);
-            }
-
-            TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
-        } finally {
-            // Null when @Before failed before opening them
-            if (staticMocks != null) {
-                staticMocks.close();
-            }
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still restart a service removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
         }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
+        if (swarmMode) {
+            TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
+        } else {
+            TestingUtils.cleanDockerContainers(controlApi.getDockerClient(), containersToCleanUp);
+        }
+
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
     }
 
     /**
@@ -204,13 +203,15 @@ public class SwarmRestartIntegrationTest {
     private void configureStaticMocks(final StaticMocks mocks) {
         mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
         mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
-        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
         mocks.mock(UriParserUtils.class);
         // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
         mocks.mock(WorkflowUtils.class)
                 .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
     }
 
     @Test
@@ -220,7 +221,7 @@ public class SwarmRestartIntegrationTest {
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        String serviceId = service.serviceId();
+        final String serviceId = service.serviceId();
         containersToCleanUp.add(serviceId);
 
         log.debug("Waiting until task has started");
@@ -269,14 +270,19 @@ public class SwarmRestartIntegrationTest {
         } else {
             // delete the node
             controlApi.getDockerClient().removeSwarmNodeCmd(nodeId).withForce(true).exec();
-            Thread.sleep(500L); // Sleep long enough for status updater to run
         }
 
         // ensure that container restarted & status updates, etc
+        // Wait as testRestartFailure does: the restart goes through the status updater, the event bus and a JMS listener
         TestingUtils.commitTransaction();
+        await().atMost(10, TimeUnit.SECONDS).until(() -> {
+            final Container current = containerService.get(service.databaseId());
+            return current.countRestarts() == 1
+                    && current.serviceId() != null
+                    && !current.serviceId().equals(serviceId);
+        });
         final Container restartedService = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedService.serviceId());
-        assertThat(restartedService.countRestarts(), is(1));
         log.debug("Waiting until task has restarted");
         await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), restartedService)); //Running again = success!
     }

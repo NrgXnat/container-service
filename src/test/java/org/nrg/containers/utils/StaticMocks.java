@@ -2,22 +2,12 @@ package org.nrg.containers.utils;
 
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
-import org.nrg.containers.model.xnat.FakeWorkflow;
-import org.nrg.xft.event.persist.PersistentWorkflowI;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
-import org.nrg.xft.security.UserI;
 
-import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * A group of Mockito static mocks opened and closed together, plus a way to open them on the threads that
@@ -33,52 +23,21 @@ public final class StaticMocks implements AutoCloseable {
     private static final ThreadLocal<Boolean> OPEN_ON_THIS_THREAD = ThreadLocal.withInitial(() -> false);
 
     private final Map<Class<?>, MockedStatic<?>> mocksByType = new HashMap<>();
-    private final Map<Class<?>, Answer<?>> defaultAnswersByType = new HashMap<>();
     private final Deque<MockedStatic<?>> mocks = new ArrayDeque<>();
-    private final List<WorkflowCreation> workflowCreations = new ArrayList<>();
-    // One instance, so that every mockWorkflowCreation call asks for the same default answer
-    private final Answer<Object> workflowCreationAnswer = this::answerWorkflowCreation;
 
     private StaticMocks() {}
 
     /** Mocks the class, or returns its mock if this group already has one, so later configuration can add stubs. */
-    public <T> MockedStatic<T> mock(final Class<T> type) {
-        return mock(type, null);
-    }
-
-    /**
-     * Mocks the class with a default answer, or returns its existing mock. Fails if the existing mock was opened with a
-     * different default answer, which would otherwise be silently ignored.
-     */
     @SuppressWarnings("unchecked")
-    public <T> MockedStatic<T> mock(final Class<T> type, final Answer<?> defaultAnswer) {
+    public <T> MockedStatic<T> mock(final Class<T> type) {
         final MockedStatic<?> existing = mocksByType.get(type);
         if (existing != null) {
-            if (defaultAnswersByType.get(type) != defaultAnswer) {
-                throw new IllegalStateException(type.getName() + " is already mocked in this group with a different default answer");
-            }
             return (MockedStatic<T>) existing;
         }
-        final MockedStatic<T> mock = defaultAnswer == null ? Mockito.mockStatic(type) : Mockito.mockStatic(type, defaultAnswer);
+        final MockedStatic<T> mock = Mockito.mockStatic(type);
         mocksByType.put(type, mock);
-        defaultAnswersByType.put(type, defaultAnswer);
         mocks.push(mock);
         return mock;
-    }
-
-    /** {@link #mockWorkflowCreation(Integer, UserI, Supplier)} for the default event the tests launch with. */
-    public void mockWorkflowCreation(final UserI user, final Supplier<? extends PersistentWorkflowI> workflow) {
-        mockWorkflowCreation(FakeWorkflow.defaultEventId, user, workflow);
-    }
-
-    /**
-     * Mocks {@link PersistentWorkflowUtils} so that creating the workflow for {@code eventId} and {@code user} returns
-     * {@code workflow}, with every other method real, as the PowerMock spy these tests were written with did.
-     * Answered rather than stubbed with {@code when()}, which would run the real method while stubbing.
-     */
-    public void mockWorkflowCreation(final Integer eventId, final UserI user, final Supplier<? extends PersistentWorkflowI> workflow) {
-        workflowCreations.add(new WorkflowCreation(eventId, user, workflow));
-        mock(PersistentWorkflowUtils.class, workflowCreationAnswer);
     }
 
     @Override
@@ -87,7 +46,6 @@ public final class StaticMocks implements AutoCloseable {
             mocks.pop().closeOnDemand();
         }
         mocksByType.clear();
-        defaultAnswersByType.clear();
     }
 
     /**
@@ -165,35 +123,6 @@ public final class StaticMocks implements AutoCloseable {
             // A mock left open would make every later task on this thread fail to reopen it
             staticMocks.close();
             throw e;
-        }
-    }
-
-    private Object answerWorkflowCreation(final InvocationOnMock invocation) throws Throwable {
-        if (invocation.getMethod().getName().equals("getOrCreateWorkflowData") && invocation.getArguments().length >= 2) {
-            // Newest first, so a later rule for the same event and user wins, as a later Mockito stub would
-            for (int i = workflowCreations.size() - 1; i >= 0; i--) {
-                final WorkflowCreation creation = workflowCreations.get(i);
-                if (creation.matches(invocation.getArgument(0), invocation.getArgument(1))) {
-                    return creation.workflow.get();
-                }
-            }
-        }
-        return invocation.callRealMethod();
-    }
-
-    private static final class WorkflowCreation {
-        private final Integer eventId;
-        private final UserI user;
-        private final Supplier<? extends PersistentWorkflowI> workflow;
-
-        private WorkflowCreation(final Integer eventId, final UserI user, final Supplier<? extends PersistentWorkflowI> workflow) {
-            this.eventId = eventId;
-            this.user = user;
-            this.workflow = workflow;
-        }
-
-        private boolean matches(final Object eventIdArgument, final Object userArgument) {
-            return Objects.equals(eventIdArgument, eventId) && userArgument == user;
         }
     }
 }

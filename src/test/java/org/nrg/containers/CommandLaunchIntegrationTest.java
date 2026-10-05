@@ -20,6 +20,7 @@ import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.ArgumentMatcher;
+import org.mockito.MockedStatic;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
@@ -215,28 +216,27 @@ public class CommandLaunchIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        try {
-            Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
-            assertThat(containerCleanupFunction, notNullValue());
-            for (final String containerToCleanUp : containersToCleanUp) {
-                if (containerToCleanUp == null) {
-                    continue;
-                }
-                containerCleanupFunction.accept(containerToCleanUp);
-            }
-            containersToCleanUp.clear();
-
-            TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
-
-            kubernetesClient.stop();
-            TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
-            executorService.shutdown();
-        } finally {
-            // Null when @Before failed before opening them
-            if (staticMocks != null) {
-                staticMocks.close();
-            }
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still act on a container removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
         }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
+        Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
+        assertThat(containerCleanupFunction, notNullValue());
+        for (final String containerToCleanUp : containersToCleanUp) {
+            if (containerToCleanUp == null) {
+                continue;
+            }
+            containerCleanupFunction.accept(containerToCleanUp);
+        }
+        containersToCleanUp.clear();
+
+        TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
+
+        kubernetesClient.stop();
+        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
+        executorService.shutdown();
     }
 
     /**
@@ -246,13 +246,15 @@ public class CommandLaunchIntegrationTest {
     private void configureStaticMocks(final StaticMocks mocks) {
         mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
         mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
-        mocks.mock(Users.class).when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
         mocks.mock(UriParserUtils.class);
         // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
         mocks.mock(WorkflowUtils.class)
                 .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
                 .thenReturn(fakeWorkflow);
-        mocks.mockWorkflowCreation(mockUser, () -> fakeWorkflow);
         mocks.mock(Session.class)
                 .when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
                 .thenReturn(null);
@@ -567,36 +569,8 @@ public class CommandLaunchIntegrationTest {
         final String testFileContents = "contents of the file";
         Files.write(Paths.get(resourceDir, "test.txt"), testFileContents.getBytes());
 
-        final ArchivableItem mockItem = mock(ArchivableItem.class);
-        final ResourcesExptURI mockUriObject = mock(ResourcesExptURI.class);
-        String uri = "/archive" + resourceInput.getUri();
-        staticMocks.add(mocks -> mocks.mock(UriParserUtils.class).when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject));
-        when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
-        fakeWorkflow.setId(uri);
-        ResourceData mockRD = mock(ResourceData.class);
-        when(mockRD.getItem()).thenReturn(mockItem);
-        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
-
-        String id = "id";
-        String xsiType = "type";
-        String project = "project";
-        when(mockItem.getId()).thenReturn(id);
-        when(mockItem.getXSIType()).thenReturn(xsiType);
-        when(mockItem.getProject()).thenReturn(project);
-
-        // Setup workflow
-        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-        setupWrapupWorkflow.setWfid(111);
-        setupWrapupWorkflow.setEventId(2);
-        staticMocks.add(mocks -> {
-            mocks.mockWorkflowCreation(2, mockUser, () -> setupWrapupWorkflow);
-            mocks.mock(WorkflowUtils.class)
-                    .when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
-                    .thenReturn(setupWrapupWorkflow);
-            mocks.mock(WorkflowUtils.class)
-                    .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
-                    .thenReturn(setupWrapupWorkflow);
-        });
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + resourceInput.getUri(), ResourcesExptURI.class,
+                fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         // Time to launch this thing
         log.debug("Queueing command for launch");
@@ -712,34 +686,8 @@ public class CommandLaunchIntegrationTest {
         }
 
         // Ensure the session XNAT object will be returned by the call to UriParserUtils.parseURI
-        final ArchivableItem mockSessionItem = mock(ArchivableItem.class);
-        final ExptURI mockUriObject = mock(ExptURI.class);
-        String uri = "/archive" + sessionInput.getUri();
-        staticMocks.add(mocks -> mocks.mock(UriParserUtils.class).when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject));
-        when(mockUriObject.getSecurityItem()).thenReturn(mockSessionItem);
-        String id = "id";
-        String xsiType = "type";
-        String project = "project";
-        when(mockSessionItem.getId()).thenReturn(id);
-        when(mockSessionItem.getXSIType()).thenReturn(xsiType);
-        when(mockSessionItem.getProject()).thenReturn(project);
-        fakeWorkflow.setId(uri);
-        ResourceData mockRD = mock(ResourceData.class);
-        when(mockRD.getItem()).thenReturn(mockSessionItem);
-        when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
-
-        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-        setupWrapupWorkflow.setWfid(111);
-        setupWrapupWorkflow.setEventId(2);
-        staticMocks.add(mocks -> {
-            mocks.mockWorkflowCreation(2, mockUser, () -> setupWrapupWorkflow);
-            mocks.mock(WorkflowUtils.class)
-                    .when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
-                    .thenReturn(setupWrapupWorkflow);
-            mocks.mock(WorkflowUtils.class)
-                    .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
-                    .thenReturn(setupWrapupWorkflow);
-        });
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + sessionInput.getUri(), fakeWorkflow, mockCatalogService,
+                mockUser, staticMocks);
 
         // Time to launch this thing
         log.debug("Queueing command for launch");

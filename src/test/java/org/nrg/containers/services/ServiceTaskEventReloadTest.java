@@ -1,6 +1,7 @@
 package org.nrg.containers.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.model.TaskState;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -10,41 +11,40 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
+import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.AliasTokenService;
-import org.nrg.xft.event.persist.PersistentWorkflowI;
-import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
-import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * {@code ContainerStatusUpdater} calls {@link ContainerService#fixWorkflowContainerStatusMismatch} with the partial
- * poll projection. When the workflow has gone terminal the method records a history item, which saves the container
- * it is given over the whole row, so it must reload the full container first rather than write the projection, and
- * re-check the reloaded row, which may have been deleted or finished since the poll.
+ * {@code ContainerStatusUpdater} sends service task events carrying the partial poll projection, and any copy of the
+ * service in an event goes stale on its way through the event bus and JMS. {@code processEvent} saves the service,
+ * so it must reload the full row rather than save the event's copy over it.
  */
 @RunWith(MockitoJUnitRunner.class)
-public class ContainerWorkflowMismatchTest {
+public class ServiceTaskEventReloadTest {
     private static final long DATABASE_ID = 42L;
-    private static final String WORKFLOW_ID = "1234";
+    private static final String SERVICE_ID = "swarm-service-abc123";
+    private static final String USER_LOGIN = "someuser";
 
     @Mock private ContainerControlApi containerControlApi;
     @Mock private ContainerEntityService containerEntityService;
@@ -60,14 +60,11 @@ public class ContainerWorkflowMismatchTest {
     @Mock private UserI user;
 
     private ContainerService containerService;
-    private MockedStatic<WorkflowUtils> mockedWorkflowUtils;
+    private MockedStatic<Users> mockedUsers;
 
     @Before
     public void setUp() {
-        final PersistentWorkflowI workflow = mock(PersistentWorkflowI.class);
-        when(workflow.getStatus()).thenReturn(PersistentWorkflowUtils.FAILED);
-        mockedWorkflowUtils = mockStatic(WorkflowUtils.class);
-        mockedWorkflowUtils.when(() -> WorkflowUtils.getUniqueWorkflow(user, WORKFLOW_ID)).thenReturn(workflow);
+        mockedUsers = mockStatic(Users.class);
 
         containerService = new ContainerServiceImpl(containerControlApi,
                 containerEntityService,
@@ -85,59 +82,22 @@ public class ContainerWorkflowMismatchTest {
 
     @After
     public void tearDown() {
-        mockedWorkflowUtils.closeOnDemand();
+        mockedUsers.closeOnDemand();
     }
 
     @Test
-    public void mismatchFixDoesNotSaveThePollProjectionOverTheRow() throws Exception {
-        final ContainerEntity row = ContainerEntity.fromPojo(fullService("running"));
-        row.setId(DATABASE_ID);
-        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(row);
-
-        assertThat(containerService.fixWorkflowContainerStatusMismatch(pollProjection(), user), is(true));
-
-        final ArgumentCaptor<ContainerEntity> saved = ArgumentCaptor.forClass(ContainerEntity.class);
-        verify(containerEntityService).addContainerHistoryItem(saved.capture(), any(ContainerEntityHistory.class), eq(user));
-        assertThat(saved.getValue().getDockerImage(), is("busybox:latest"));
-        assertThat(saved.getValue().getCommandLine(), is("echo hello"));
-        assertThat(saved.getValue().getNodeId(), is("swarm-node-1"));
-        assertThat(saved.getValue().getMounts().size(), is(1));
-        verify(containerControlApi).kill(any(Container.class));
-    }
-
-    @Test
-    public void mismatchFixSkipsARowDeletedSinceThePoll() throws Exception {
-        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(null);
-
-        assertThat(containerService.fixWorkflowContainerStatusMismatch(pollProjection(), user), is(false));
-
-        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
-        verify(containerControlApi, never()).kill(any(Container.class));
-    }
-
-    @Test
-    public void mismatchFixSkipsARowThatWentTerminalSinceThePoll() throws Exception {
-        final ContainerEntity row = ContainerEntity.fromPojo(fullService(PersistentWorkflowUtils.COMPLETE));
-        row.setId(DATABASE_ID);
-        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(row);
-
-        assertThat(containerService.fixWorkflowContainerStatusMismatch(pollProjection(), user), is(false));
-
-        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
-        verify(containerControlApi, never()).kill(any(Container.class));
-    }
-
-    private static Container fullService(final String status) {
-        return Container.builder()
+    public void processEventSavesTheReloadedRowNotTheEventsCopy() {
+        final ContainerEntity row = ContainerEntity.fromPojo(Container.builder()
                 .databaseId(DATABASE_ID)
                 .commandId(7L)
                 .wrapperId(8L)
-                .userId("someuser")
+                .userId(USER_LOGIN)
                 .backend(Backend.SWARM)
-                .serviceId("swarm-service-abc123")
+                .serviceId(SERVICE_ID)
+                .taskId("task-1")
                 .nodeId("swarm-node-1")
-                .workflowId(WORKFLOW_ID)
-                .status(status)
+                .containerId("container-1")
+                .status("running")
                 .dockerImage("busybox:latest")
                 .commandLine("echo hello")
                 .addMount(Container.ContainerMount.builder()
@@ -148,21 +108,55 @@ public class ContainerWorkflowMismatchTest {
                         .containerHostPath("/data/build/0b8e1f2c")
                         .containerPath("/output")
                         .build())
+                .build());
+        row.setId(DATABASE_ID);
+        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(row);
+        mockedUsers.when(() -> Users.getUser(USER_LOGIN)).thenReturn(user);
+
+        containerService.processEvent(ServiceTaskEvent.create(runningTask(), pollProjection()));
+
+        final ArgumentCaptor<ContainerEntity> saved = ArgumentCaptor.forClass(ContainerEntity.class);
+        verify(containerEntityService).addContainerHistoryItem(saved.capture(), any(ContainerEntityHistory.class), eq(user));
+        assertThat(saved.getValue().getDockerImage(), is("busybox:latest"));
+        assertThat(saved.getValue().getCommandLine(), is("echo hello"));
+        assertThat(saved.getValue().getNodeId(), is("swarm-node-1"));
+        assertThat(saved.getValue().getMounts().size(), is(1));
+    }
+
+    @Test
+    public void processEventSkipsARowDeletedSinceTheEventWasSent() {
+        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(null);
+
+        containerService.processEvent(ServiceTaskEvent.create(runningTask(), pollProjection()));
+
+        verify(containerEntityService, never()).update(any(ContainerEntity.class));
+        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
+    }
+
+    private static ServiceTask runningTask() {
+        return ServiceTask.builder()
+                .serviceId(SERVICE_ID)
+                .taskId("task-1")
+                .nodeId("swarm-node-1")
+                .containerId("container-1")
+                .status(TaskState.RUNNING.getValue())
+                .swarmNodeError(false)
                 .build();
     }
 
     /**
-     * What ContainerStatusUpdater passes in: scalars only, placeholders for the required strings
+     * What ContainerStatusUpdater sends: scalars only, placeholders for the required strings
      */
     private static Container pollProjection() {
         return Container.builder()
                 .databaseId(DATABASE_ID)
                 .commandId(0L)
                 .wrapperId(0L)
-                .userId("someuser")
+                .userId(USER_LOGIN)
                 .backend(Backend.SWARM)
-                .serviceId("swarm-service-abc123")
-                .workflowId(WORKFLOW_ID)
+                .serviceId(SERVICE_ID)
+                .taskId("task-1")
+                .containerId("container-1")
                 .status("running")
                 .dockerImage("")
                 .commandLine("")

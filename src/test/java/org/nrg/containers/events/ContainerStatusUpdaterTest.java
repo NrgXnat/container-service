@@ -35,14 +35,15 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * The Swarm polling loop reads each service through a cheap partial projection
- * ({@link ContainerService#retrieveServiceForPoll}). Any service it hands on in an event is saved back to the
- * database by {@code ContainerServiceImpl.processEvent}, so it must be the full row: saving the projection would
- * blank the image and command line and orphan-delete the mounts, inputs, outputs and history.
+ * ({@link ContainerService#retrieveServiceForPoll}). Task and lost-task events carry that projection without a full
+ * load on the polling thread, because {@code ContainerServiceImpl.processEvent} reloads the full row before saving
+ * (see {@code ServiceTaskEventReloadTest}).
  */
 @RunWith(MockitoJUnitRunner.class)
 public class ContainerStatusUpdaterTest {
@@ -65,7 +66,6 @@ public class ContainerStatusUpdaterTest {
     private ContainerStatusUpdater updater;
     private DockerServer swarmServer;
     private Container pollProjection;
-    private Container fullService;
 
     @Before
     public void setUp() throws Exception {
@@ -97,16 +97,9 @@ public class ContainerStatusUpdaterTest {
                 .dockerImage("")
                 .commandLine("")
                 .build();
-        fullService = pollProjection.toBuilder()
-                .commandId(7L)
-                .wrapperId(8L)
-                .dockerImage("busybox:latest")
-                .commandLine("echo hello")
-                .build();
 
         when(containerService.retrieveNonfinalizedServiceIds()).thenReturn(Collections.singletonList(DATABASE_ID));
         when(containerService.retrieveServiceForPoll(DATABASE_ID)).thenReturn(pollProjection);
-        when(containerService.get(DATABASE_ID)).thenReturn(fullService);
 
         updater = new ContainerStatusUpdater(containerControlApi, containerService, dockerServerService,
                 eventService, xnatAppInfo, kubernetesClientFactory, jmsTemplate);
@@ -120,7 +113,7 @@ public class ContainerStatusUpdaterTest {
     }
 
     @Test
-    public void taskEventCarriesTheFullServiceNotThePollProjection() throws Exception {
+    public void taskEventCarriesThePollProjectionWithoutAFullLoad() throws Exception {
         final ServiceTask task = ServiceTask.builder()
                 .serviceId(SERVICE_ID)
                 .taskId("task-1")
@@ -133,20 +126,22 @@ public class ContainerStatusUpdaterTest {
         updater.run();
 
         final ServiceTaskEvent event = capturedEvent();
-        assertThat(event.service(), is(sameInstance(fullService)));
+        assertThat(event.service(), is(sameInstance(pollProjection)));
         assertThat(event.task(), is(sameInstance(task)));
+        verify(containerService, never()).get(DATABASE_ID);
     }
 
     @Test
-    public void lostTaskEventCarriesTheFullServiceNotThePollProjection() throws Exception {
+    public void lostTaskEventCarriesThePollProjectionWithoutAFullLoad() throws Exception {
         when(containerControlApi.getTaskForService(swarmServer, pollProjection))
                 .thenThrow(new TaskNotFoundException(new RuntimeException("no task")));
 
         updater.run();
 
         final ServiceTaskEvent event = capturedEvent();
-        assertThat(event.service(), is(sameInstance(fullService)));
+        assertThat(event.service(), is(sameInstance(pollProjection)));
         assertThat(event.task().swarmNodeError(), is(true));
+        verify(containerService, never()).get(DATABASE_ID);
     }
 
     private ServiceTaskEvent capturedEvent() {

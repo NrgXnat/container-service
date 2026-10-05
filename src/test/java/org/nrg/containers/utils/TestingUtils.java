@@ -39,6 +39,7 @@ import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.archive.ResourceData;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
+import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptURI;
 import org.nrg.xnat.services.archive.CatalogService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
@@ -55,7 +56,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.awaitility.Awaitility.await;
@@ -354,6 +357,25 @@ public class TestingUtils {
         });
     }
 
+    /**
+     * Adds the ID of every container and service recorded in the database, so teardown also removes those a test
+     * created but never registered: the children of a parent it was still waiting on when it failed, or the
+     * replacement service from a restart.
+     */
+    public static void addRecordedContainers(final ContainerService containerService, final Collection<String> toCleanUp) {
+        try {
+            for (final Container container : containerService.getAll()) {
+                final String id = container.containerOrServiceId();
+                if (id != null && !toCleanUp.contains(id)) {
+                    toCleanUp.add(id);
+                }
+            }
+        } catch (Exception e) {
+            // Still clean up what the test registered
+            log.error("Could not list recorded containers to clean up", e);
+        }
+    }
+
     public static void cleanDockerContainers(final DockerClient client, Collection<String> containers) {
         containers.forEach(container -> {
             try {
@@ -553,6 +575,13 @@ public class TestingUtils {
      */
     public static void setupMocksForSetupWrapupWorkflow(String uri, FakeWorkflow fakeWorkflow, CatalogService mockCatalogService,
                                                         UserI mockUser, StaticMocks.Registration staticMocks) throws Exception {
+        setupMocksForSetupWrapupWorkflow(uri, ExptURI.class, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
+    }
+
+    /** @param uriType the type UriParserUtils.parseURI returns for the input's URI */
+    public static <T extends URIManager.ArchiveURI & URIManager.ArchiveItemURI> void setupMocksForSetupWrapupWorkflow(
+            String uri, Class<T> uriType, FakeWorkflow fakeWorkflow, CatalogService mockCatalogService, UserI mockUser,
+            StaticMocks.Registration staticMocks) throws Exception {
         final ArchivableItem mockItem = mock(ArchivableItem.class);
         String id = "id";
         String xsiType = "type";
@@ -560,25 +589,31 @@ public class TestingUtils {
         when(mockItem.getId()).thenReturn(id);
         when(mockItem.getXSIType()).thenReturn(xsiType);
         when(mockItem.getProject()).thenReturn(project);
-        final ExptURI mockUriObject = mock(ExptURI.class);
+        final T mockUriObject = mock(uriType);
         when(mockUriObject.getSecurityItem()).thenReturn(mockItem);
         fakeWorkflow.setId(uri);
         ResourceData mockRD = mock(ResourceData.class);
         when(mockRD.getItem()).thenReturn(mockItem);
         when(mockCatalogService.getResourceDataFromUri(uri)).thenReturn(mockRD);
 
-        FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
-        setupWrapupWorkflow.setWfid(111);
-        setupWrapupWorkflow.setEventId(2);
+        // A new workflow per setup or wrapup container, as in production. Sharing one would let the status updater's
+        // mismatch check see a finished setup's Complete workflow on the still-running wrapup service and kill it
+        final Map<String, FakeWorkflow> setupWrapupWorkflows = new ConcurrentHashMap<>();
+        final AtomicInteger nextWfid = new AtomicInteger(111);
         staticMocks.add(mocks -> {
             mocks.mock(UriParserUtils.class).when(() -> UriParserUtils.parseURI(uri)).thenReturn(mockUriObject);
-            mocks.mockWorkflowCreation(2, mockUser, () -> setupWrapupWorkflow);
             mocks.mock(WorkflowUtils.class)
                     .when(() -> WorkflowUtils.buildOpenWorkflow(eq(mockUser), eq(xsiType), eq(id), eq(project), any(EventDetails.class)))
-                    .thenReturn(setupWrapupWorkflow);
+                    .thenAnswer(invocation -> {
+                        final FakeWorkflow setupWrapupWorkflow = new FakeWorkflow();
+                        setupWrapupWorkflow.setWfid(nextWfid.getAndIncrement());
+                        setupWrapupWorkflow.setEventId(2);
+                        setupWrapupWorkflows.put(setupWrapupWorkflow.getWorkflowId().toString(), setupWrapupWorkflow);
+                        return setupWrapupWorkflow;
+                    });
             mocks.mock(WorkflowUtils.class)
-                    .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, setupWrapupWorkflow.getWorkflowId().toString()))
-                    .thenReturn(setupWrapupWorkflow);
+                    .when(() -> WorkflowUtils.getUniqueWorkflow(eq(mockUser), argThat(setupWrapupWorkflows::containsKey)))
+                    .thenAnswer(invocation -> setupWrapupWorkflows.get(invocation.<String>getArgument(1)));
         });
     }
 }

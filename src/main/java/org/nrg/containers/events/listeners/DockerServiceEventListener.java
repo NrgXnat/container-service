@@ -72,7 +72,13 @@ public class DockerServiceEventListener implements Consumer<Event<ServiceTaskEve
             switch (eventType) {
                 case Waiting:
                     log.debug("Finalizing service");
-                    Container service = event.service();
+                    // Reload: queueFinalize may save history, and the event's copy may be stale after the event bus
+                    // and JMS hops
+                    Container service = containerService.retrieve(serviceDbId);
+                    if (service == null) {
+                        log.warn("Service {} disappeared before it could be finalized", serviceDbId);
+                        break;
+                    }
                     ServiceTask task = event.task();
                     String status;
                     // If we don't have a task or status, consider it a failure
