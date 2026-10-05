@@ -2,79 +2,90 @@
 
 ## 3.9.0
 
+### Compatibility
+* Requires XNAT 1.10.1 and Java 21. This release is built against XNAT 1.10.1 and compiled for Java 21, so it will not load on XNAT 1.9 or on older Java versions. Sites on XNAT 1.9 should stay on 3.8.x.
+
 ### Features
-* Added optional scheduled cleanup of build directories left behind by finalized containers. Disabled by default. Configured per container server host under Administer &gt; Plugin Settings &gt; Container Service &gt; Compute Backend, with independent retention periods for completed, failed and killed containers and a configurable UTC time of day for the run. Note that only build folders for containers finalized within the past 365 days are considered, so directories older than that, or already unreferenced on disk, are not removed.
+* [#6](https://github.com/NrgXnat/container-service/pull/6): Added optional scheduled cleanup of build directories left behind by finalized containers. Disabled by default. Configured per container server host under Administer > Plugin Settings > Container Service > Compute Backend, with independent retention periods for completed, failed and killed containers and a configurable UTC time of day for the run. Only build directories for containers finalized within the past 365 days are considered, so directories older than that, or already unreferenced on disk, are not removed.
+    * The first run after enabling cleanup may remove a large backlog in a single pass.
+    * Scripts that POST container server settings to `/xapi/docker/server` without the new cleanup fields will turn cleanup off and reset the retention periods to their defaults.
+
+### Improvements
+* [CS-1054](https://xnat.atlassian.net/browse/CS-1054): Reduced the database load of the Docker Swarm status polling loop. It now reads only the fields it needs for each unfinalized service, and loads the full container only when it has an event to process.
+
+### Bugfixes
+* [CS-1057](https://github.com/NrgXnat/container-service/pull/4): Containers are no longer finalized a second time when the Kubernetes informer replays events it has already recorded, as it does after an XNAT restart for every finished pod still in the namespace (all of them when auto-cleanup is off).
 
 ## 3.8.2
 
 ### Bugfixes
-* [CS-1058](https://radiologics.atlassian.net/browse/CS-1058): Updated the Kubernetes client to 17.0 to fix a NoSuchMethodError that made the Kubernetes backend unusable on XNAT 1.10
+* [CS-1058](https://github.com/NrgXnat/container-service/pull/10): Updated the Kubernetes client to 17.0 to fix a NoSuchMethodError that made the Kubernetes backend unusable on XNAT 1.10
 
 ## 3.8.1
 
 ### Bugfixes
-* [CS-1055](https://radiologics.atlassian.net/browse/CS-1055)/[XNAT-8741](https://radiologics.atlassian.net/browse/XNAT-8741): Use a much more efficient means of checking if event service command action is available
+* [CS-1055](https://xnat.atlassian.net/browse/CS-1055)/[XNAT-8741](https://xnat.atlassian.net/browse/XNAT-8741): Use a much more efficient means of checking if event service command action is available
 
 ## 3.8.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.8.0/)
 
 ### Bugfixes
-* [CS-999](https://radiologics.atlassian.net/browse/CS-999): Added filtering to display logic to hide disabled commands
-* [CS-1042](https://radiologics.atlassian.net/browse/CS-1042): Added support for extended permissions for project members
-* [CS-1044](https://radiologics.atlassian.net/browse/CS-1044): Added sorting by label for containers listed in Actions boxes
-* [CS-1047](https://radiologics.atlassian.net/browse/CS-1047): Converted some event handlers to use JMS directly
-* [CS-1049](https://radiologics.atlassian.net/browse/CS-1049): Fixed occasional null pointer exception
-* [CS-1053](https://radiologics.atlassian.net/browse/CS-1053): Added support for Kubernetes tolerations
+* [CS-999](https://xnat.atlassian.net/browse/CS-999): Added filtering to display logic to hide disabled commands
+* [CS-1042](https://xnat.atlassian.net/browse/CS-1042): Added support for extended permissions for project members
+* [CS-1044](https://xnat.atlassian.net/browse/CS-1044): Added sorting by label for containers listed in Actions boxes
+* [CS-1047](https://xnat.atlassian.net/browse/CS-1047): Converted some event handlers to use JMS directly
+* [CS-1049](https://xnat.atlassian.net/browse/CS-1049): Fixed occasional null pointer exception
+* [CS-1053](https://xnat.atlassian.net/browse/CS-1053): Added support for Kubernetes tolerations
 
 ## 3.7.3
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.3/)
 
 ### Bugfixes
-* [CS-1029](https://radiologics.atlassian.net/browse/CS-1029): Fixed message display alignment in orchestration dialog due to CSS conflict
-* [CS-1031](https://radiologics.atlassian.net/browse/CS-1031): Fixed unit test failures related to orchestration visibility, container labels, workflow status updates, and permission changes
-* [CS-1039](https://radiologics.atlassian.net/browse/CS-1039): Disabled Save button in Command JSON editor when ACE editor validation errors are present
-* [CS-1040](https://radiologics.atlassian.net/browse/CS-1040): Fixed container workflow statuses becoming delayed or stuck in non-terminal states during large batch jobs by disabling KubernetesInformer resync and improving pod deletion handling
-* [CS-1043](https://radiologics.atlassian.net/browse/CS-1043): Fixed Kubernetes log polling errors by ensuring API call is not issued when sinceSeconds parameter is less than 1
+* [CS-1029](https://xnat.atlassian.net/browse/CS-1029): Fixed message display alignment in orchestration dialog due to CSS conflict
+* [CS-1031](https://xnat.atlassian.net/browse/CS-1031): Fixed unit test failures related to orchestration visibility, container labels, workflow status updates, and permission changes
+* [CS-1039](https://xnat.atlassian.net/browse/CS-1039): Disabled Save button in Command JSON editor when ACE editor validation errors are present
+* [CS-1040](https://xnat.atlassian.net/browse/CS-1040): Fixed container workflow statuses becoming delayed or stuck in non-terminal states during large batch jobs by disabling KubernetesInformer resync and improving pod deletion handling
+* [CS-1043](https://xnat.atlassian.net/browse/CS-1043): Fixed Kubernetes log polling errors by ensuring API call is not issued when sinceSeconds parameter is less than 1
 
 ## 3.7.2
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.2/)
 
-* **Bugfix** [CS-1037](https://radiologics.atlassian.net/browse/CS-1037): Disabling dynamic changes to JMS listener concurrency for staging and finalizing queues to prevent messages from getting lost
+* **Bugfix** [CS-1037](https://xnat.atlassian.net/browse/CS-1037): Disabling dynamic changes to JMS listener concurrency for staging and finalizing queues to prevent messages from getting lost
 
 ## 3.7.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.1/)
 
-* **Bugfix** [CS-1036](https://radiologics.atlassian.net/browse/CS-1036): Commands with spaces in their names could not be run in Kubernetes environment
+* **Bugfix** [CS-1036](https://xnat.atlassian.net/browse/CS-1036): Commands with spaces in their names could not be run in Kubernetes environment
 
 
 ## 3.7.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.7.0/)
 
-* **New Feature** [CS-980](https://radiologics.atlassian.net/browse/CS-990): Add tracking labels to command json
-* **New Feature** [CS-990](https://radiologics.atlassian.net/browse/CS-990): Added Container Manager Role, Added Container Visibility
-* **Improvement** [CS-986](https://radiologics.atlassian.net/browse/CS-986): Allow halt to orchestrations on midstream command failures
-* **Improvement** [CS-995](https://radiologics.atlassian.net/browse/CS-995): Removed duplicate jsonpath library
-* **Bugfix** [CS-599](https://radiologics.atlassian.net/browse/CS-599), [CS-1020](https://radiologics.atlassian.net/browse/CS-1020): Fixed JMS queue settings and appearance in Plugin Settings
-* **Bugfix** [CS-989](https://radiologics.atlassian.net/browse/CS-989): Fixed repeated queue entries for containers in "waiting" state
-* **Bugfix** [CS-998](https://radiologics.atlassian.net/browse/CS-998): Fixed display bug when reopening container history dialog 
-* **Bugfix** [CS-1001](https://radiologics.atlassian.net/browse/CS-1001): Use default Docker Swarm constraint values in event-launched containers
-* **Bugfix** [CS-1010](https://radiologics.atlassian.net/browse/CS-1010): Fixed calculation bug when tracking progress of orchestrations in activity monitor
-* **Bugfix** [CS-1023](https://radiologics.atlassian.net/browse/CS-1023), [CS-1025](https://radiologics.atlassian.net/browse/CS-1025): Fixed bugs in command availability for site-wide processing dashboard
-* **Bugfix** [CS-1029](https://radiologics.atlassian.net/browse/CS-1029): Fixed display bug in orchestration dialog
+* **New Feature** [CS-980](https://xnat.atlassian.net/browse/CS-990): Add tracking labels to command json
+* **New Feature** [CS-990](https://xnat.atlassian.net/browse/CS-990): Added Container Manager Role, Added Container Visibility
+* **Improvement** [CS-986](https://xnat.atlassian.net/browse/CS-986): Allow halt to orchestrations on midstream command failures
+* **Improvement** [CS-995](https://xnat.atlassian.net/browse/CS-995): Removed duplicate jsonpath library
+* **Bugfix** [CS-599](https://xnat.atlassian.net/browse/CS-599), [CS-1020](https://xnat.atlassian.net/browse/CS-1020): Fixed JMS queue settings and appearance in Plugin Settings
+* **Bugfix** [CS-989](https://xnat.atlassian.net/browse/CS-989): Fixed repeated queue entries for containers in "waiting" state
+* **Bugfix** [CS-998](https://xnat.atlassian.net/browse/CS-998): Fixed display bug when reopening container history dialog 
+* **Bugfix** [CS-1001](https://xnat.atlassian.net/browse/CS-1001): Use default Docker Swarm constraint values in event-launched containers
+* **Bugfix** [CS-1010](https://xnat.atlassian.net/browse/CS-1010): Fixed calculation bug when tracking progress of orchestrations in activity monitor
+* **Bugfix** [CS-1023](https://xnat.atlassian.net/browse/CS-1023), [CS-1025](https://xnat.atlassian.net/browse/CS-1025): Fixed bugs in command availability for site-wide processing dashboard
+* **Bugfix** [CS-1029](https://xnat.atlassian.net/browse/CS-1029): Fixed display bug in orchestration dialog
 
 
 ## 3.6.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.1/)
 
-* **Improvement** [CS-975](https://radiologics.atlassian.net/browse/CS-975)/[XNAT-8111](https://radiologics.atlassian.net/browse/XNAT-8111) Convert event handlers in CS to use JMS instead of executors
-* **Bugfix** [CS-985](https://radiologics.atlassian.net/browse/CS-985) Call to /xapi/docker/images failing in 3.6.0 in Kubernetes environments
+* **Improvement** [CS-975](https://xnat.atlassian.net/browse/CS-975)/[XNAT-8111](https://xnat.atlassian.net/browse/XNAT-8111) Convert event handlers in CS to use JMS instead of executors
+* **Bugfix** [CS-985](https://xnat.atlassian.net/browse/CS-985) Call to /xapi/docker/images failing in 3.6.0 in Kubernetes environments
 
 ## 3.6.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.6.0/)
 
-* **Improvement** [XNAT-7990](https://radiologics.atlassian.net/browse/XNAT-7990) Update Hibernate and Spring dependencies for compatibility with XNAT 1.9.0
-* **Improvement** [XNAT-7991](https://radiologics.atlassian.net/browse/XNAT-7991) Replace calls to deprecated commons-httpclient dependency
-* **Improvement** [CS-943](https://radiologics.atlassian.net/browse/CS-943) Add filtering to lists of installed commands in site-wide and project settings
+* **Improvement** [XNAT-7990](https://xnat.atlassian.net/browse/XNAT-7990) Update Hibernate and Spring dependencies for compatibility with XNAT 1.9.0
+* **Improvement** [XNAT-7991](https://xnat.atlassian.net/browse/XNAT-7991) Replace calls to deprecated commons-httpclient dependency
+* **Improvement** [CS-943](https://xnat.atlassian.net/browse/CS-943) Add filtering to lists of installed commands in site-wide and project settings
 * Also improved unit tests for automated validation 
 
 ## 3.5.0
@@ -97,9 +108,9 @@ This forced us to switch our library from `docker-client` to [docker-java][]. Th
 
 Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3.4.0.1` for our docker (and swarm) API support.
 
-[CS-946]: https://radiologics.atlassian.net/browse/CS-946
-[CS-966]: https://radiologics.atlassian.net/browse/CS-966
-[CS-968]: https://radiologics.atlassian.net/browse/CS-968
+[CS-946]: https://xnat.atlassian.net/browse/CS-946
+[CS-966]: https://xnat.atlassian.net/browse/CS-966
+[CS-968]: https://xnat.atlassian.net/browse/CS-968
 [docker-client]: https://github.com/spotify/docker-client
 [spotify/docker-client]: https://github.com/spotify/docker-client
 [v6.1.1]: https://github.com/spotify/docker-client/releases/tag/v6.1.1
@@ -114,15 +125,15 @@ Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3
 * **Improvement** [XNAT-7903][] Support shared data at project level 
 * **Bugfix** [CS-945][] Fix race condition on overlapping container status events
 
-[CS-945]: https://radiologics.atlassian.net/browse/CS-945
-[XNAT-7903]: https://radiologics.atlassian.net/browse/XNAT-7903
+[CS-945]: https://xnat.atlassian.net/browse/CS-945
+[XNAT-7903]: https://xnat.atlassian.net/browse/XNAT-7903
 
 ## 3.4.2
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.2/).
 
 * **Bugfix** [CS-948][] Support K8s compute backend with PEM credential
 
-[CS-948]: https://radiologics.atlassian.net/browse/CS-948
+[CS-948]: https://xnat.atlassian.net/browse/CS-948
 
 ## 3.4.1
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.1/).
@@ -131,9 +142,9 @@ Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3
 * **Improvement** [CS-939][] Remove synchronization on Docker Client creation (improves performance when using Docker and Docker Swarm compute backends) 
 * **Bugfix** [CS-944][] Fix regression in 3.3.2 that broke command preresolution / launch UI generation when derived inputs matched multiple possible XNAT objects
 
-[CS-923]: https://radiologics.atlassian.net/browse/CS-923
-[CS-939]: https://radiologics.atlassian.net/browse/CS-939
-[CS-944]: https://radiologics.atlassian.net/browse/CS-944
+[CS-923]: https://xnat.atlassian.net/browse/CS-923
+[CS-939]: https://xnat.atlassian.net/browse/CS-939
+[CS-944]: https://xnat.atlassian.net/browse/CS-944
 
 ## 3.4.0
 [Released](https://bitbucket.org/xnatdev/container-service/src/3.4.0/).
@@ -142,9 +153,9 @@ Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3
 * **Bugfix** [CS-810][] Tweak logs on failed ping to compute backend server
 * **Bugfix** [CS-934][] Fix support for optional file inputs
 
-[CS-810]: https://radiologics.atlassian.net/browse/CS-810
-[CS-864]: https://radiologics.atlassian.net/browse/CS-864
-[CS-934]: https://radiologics.atlassian.net/browse/CS-934
+[CS-810]: https://xnat.atlassian.net/browse/CS-810
+[CS-864]: https://xnat.atlassian.net/browse/CS-864
+[CS-934]: https://xnat.atlassian.net/browse/CS-934
 
 ## 3.3.2
 [Released 2023-06-07](https://bitbucket.org/xnatdev/container-service/src/3.3.2/).
@@ -153,16 +164,16 @@ Long story short, as of CS version `3.5.0` we depend on `docker-java` version `3
 * **Bugfix** [CS-605][] Fix silent container failures that were happening in container launch process
 * **Bugfix** [CS-902][] Fix for live container logs re-appending continuously
 
-[CS-835]: https://radiologics.atlassian.net/browse/CS-835
-[CS-605]: https://radiologics.atlassian.net/browse/CS-605
-[CS-902]: https://radiologics.atlassian.net/browse/CS-902
+[CS-835]: https://xnat.atlassian.net/browse/CS-835
+[CS-605]: https://xnat.atlassian.net/browse/CS-605
+[CS-902]: https://xnat.atlassian.net/browse/CS-902
 
 ## 3.3.1
 [Released 2023-03-30](https://bitbucket.org/xnatdev/container-service/src/3.3.1/).
 
 * **Bugfix** [CS-834][] Handle `ISO_DATE_TIME`s in addition to `ISO_INSTANT`s in container log timestamps
 
-[CS-834]: https://radiologics.atlassian.net/browse/CS-834
+[CS-834]: https://xnat.atlassian.net/browse/CS-834
 
 ## 3.3.0
 [Released 2022-10-11](https://bitbucket.org/xnatdev/container-service/src/3.3.0/).
