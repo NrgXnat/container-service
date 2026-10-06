@@ -159,7 +159,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.8.5";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.10.1";
 
     public static final String FAILED_CONTAINER_MESSAGE_TEMPLATE = "db id %d, %s id %s";
     public static final String WAITING = "Waiting";
@@ -923,13 +923,24 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void processEvent(final ServiceTaskEvent event) {
         final ServiceTask task = event.task();
-        Container service = event.service();
+        // Reload rather than save the event's copy: ContainerStatusUpdater sends the partial poll projection, and
+        // any copy goes stale on its way through the event bus and JMS, so saving it could orphan-delete history
+        // recorded in the meantime. DockerServiceEventListener handles one event per service at a time.
+        Container service = event.service() == null ? null : retrieve(event.service().databaseId());
 
         log.debug("Processing service task event for service \"{}\" status \"{}\" exit code {}.",
                 task.serviceId(), task.status(), task.exitCode());
 
         if (service == null) {
             log.error("Could not find service corresponding to event {}", event);
+            return;
+        }
+
+        if (!StringUtils.equals(event.service().serviceId(), service.serviceId())) {
+            // The service was restarted after this event was sent. Its task belongs to the removed service, so filling
+            // the new service's blank IDs from it, or restarting on it, would hijack the new service.
+            log.info("Skipping event for service {} \"{}\": it has since been restarted as \"{}\".",
+                    service.databaseId(), event.service().serviceId(), service.serviceId());
             return;
         }
 
@@ -1259,23 +1270,41 @@ public class ContainerServiceImpl implements ContainerService {
                 (!status.startsWith(PersistentWorkflowUtils.FAILED) && !status.startsWith(PersistentWorkflowUtils.COMPLETE))) {
             return false;
         }
-        if (status.equals(containerOrService.status()) || containerStatusIsTerminal(containerOrService)) {
-            // statuses are the same or at least both terminal
+        if (!containerLagsWorkflow(containerOrService, status)) {
             return false;
         }
 
-        // container still thinks it is active, but workflow is terminal
+        // container still thinks it is active, but workflow is terminal.
+        // Reload before writing: ContainerStatusUpdater passes a partial poll projection, and
+        // addContainerHistoryItem saves the container it is given over the whole row.
+        final Container container = retrieve(containerOrService.databaseId());
+        if (container == null) {
+            log.warn("Container {} disappeared before its status could be matched to workflow status \"{}\".",
+                    containerOrService.databaseId(), status);
+            return false;
+        }
+        if (!containerLagsWorkflow(container, status)) {
+            // The poll record was stale: the container caught up on its own
+            return false;
+        }
         try {
-            killWithoutHistory(containerOrService);
+            killWithoutHistory(container);
         } catch (NoContainerServerException | ContainerBackendException | NotFoundException e) {
             log.error("Attempted to kill container {} due to workflow in status {}",
-                    containerOrService.containerOrServiceId(), status, e);
+                    container.containerOrServiceId(), status, e);
         }
-        log.info("Setting container {} status to \"{}\" to match workflow.", containerOrService.databaseId(), status);
+        log.info("Setting container {} status to \"{}\" to match workflow.", container.databaseId(), status);
         ContainerHistory failureHist = ContainerHistory.fromSystem(status,
                 "Manual update to match workflow status");
-        addContainerHistoryItem(containerOrService, failureHist, user);
+        addContainerHistoryItem(container, failureHist, user);
         return true;
+    }
+
+    /**
+     * @return false if the container status already matches the terminal workflow status, or is at least terminal itself
+     */
+    private boolean containerLagsWorkflow(final Container container, final String workflowStatus) {
+        return !workflowStatus.equals(container.status()) && !containerStatusIsTerminal(container);
     }
 
 

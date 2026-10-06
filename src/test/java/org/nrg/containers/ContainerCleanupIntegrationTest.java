@@ -13,7 +13,7 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClient;
@@ -34,6 +34,7 @@ import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.BackendConfig;
 import org.nrg.containers.utils.ContainerServicePermissionUtils;
+import org.nrg.containers.utils.StaticMocks;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -103,7 +104,8 @@ public class ContainerCleanupIntegrationTest {
     @Parameterized.Parameter(1)
     public Backend backend;
 
-    @Mock private UserI mockUser;
+    private UserI mockUser;
+    private StaticMocks.Registration staticMocks;
 
     private FakeWorkflow fakeWorkflow;
 
@@ -153,8 +155,12 @@ public class ContainerCleanupIntegrationTest {
         // Mock out the prefs bean
         // Mock the userI
         final String fakeUser = "mockUser";
+        mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(fakeUser);
         when(mockUser.getUsername()).thenReturn(fakeUser);
+        when(mockUser.getEmail()).thenReturn("user@email.com");
+        fakeWorkflow = new FakeWorkflow();
+        staticMocks = StaticMocks.openOnEveryThread(mocks -> configureStaticMocks(mocks, fakeUser));
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -162,18 +168,11 @@ public class ContainerCleanupIntegrationTest {
         // Mock the user management service
         when(mockUserManagementServiceI.getUser(fakeUser)).thenReturn(mockUser);
 
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        mockStatic(UriParserUtils.class);
-
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
         mockAliasToken.setAlias("alias");
         mockAliasToken.setSecret("secret");
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        mockStatic(Users.class);
-        when(Users.getUser(fakeUser)).thenReturn(mockUser);
 
         // Mock the site config preferences
         final String buildDir = folder.newFolder().getAbsolutePath();
@@ -184,36 +183,8 @@ public class ContainerCleanupIntegrationTest {
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
 
-        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
-        mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-        mockStatic(XDATServlet.class);
-        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
-
-        // Also mock out workflow operations to return our fake workflow object
-        fakeWorkflow = new FakeWorkflow();
-        mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
-                .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class);
-        Mockito.spy(PersistentWorkflowUtils.class);
-        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class
-        );
-
         // mock external FS check
         when(mockCatalogService.hasRemoteFiles(eq(mockUser), any(String.class))).thenReturn(false);
-
-        // We can't load the XFT item in the session, so don't try
-        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
-        mockStatic(Session.class);
-        when(Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
-                .thenReturn(null);
-
-        // Permissions checks
-        mockStatic(ContainerServicePermissionUtils.class);
-        when(ContainerServicePermissionUtils.canCreateOutputObject(
-                eq(mockUser), any(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)
-        )).thenReturn(true);
 
         // Setup docker server
         final BackendConfig backendConfig = TestingUtils.getBackendConfig();
@@ -227,11 +198,7 @@ public class ContainerCleanupIntegrationTest {
                 .build();
         dockerServerService.setServer(dockerServer);
 
-        try {
-            kubernetesClient = kubernetesClientFactory.getKubernetesClient();
-        } catch (Exception ignored) {
-            kubernetesClient = Mockito.mock(KubernetesClient.class);
-        }
+        kubernetesClient = TestingUtils.kubernetesClientFor(backend, kubernetesClientFactory);
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         TestingUtils.skipIfCannotConnect(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient());
@@ -242,6 +209,12 @@ public class ContainerCleanupIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still act on a container removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
+        }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
         Consumer<String> containerCleanupFunction = TestingUtils.cleanupFunction(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient(), kubernetesNamespace);
         assertThat(containerCleanupFunction, notNullValue());
         for (final String containerToCleanUp : containersToCleanUp) {
@@ -257,6 +230,34 @@ public class ContainerCleanupIntegrationTest {
         kubernetesClientFactory.shutdown();
         TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
         executorService.shutdown();
+    }
+
+    /**
+     * Also opened on the status updater's and JMS listeners' threads, so it reads the current test's fields rather
+     * than capturing them.
+     */
+    private void configureStaticMocks(final StaticMocks mocks, final String fakeUser) {
+        mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
+        mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(fakeUser)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
+        mocks.mock(UriParserUtils.class);
+        // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
+        mocks.mock(WorkflowUtils.class)
+                .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+                .thenReturn(fakeWorkflow);
+        // We can't load the XFT item in the session, so don't try
+        // This is only used to check the permissions, and we mock that response anyway, so we don't need a real value
+        mocks.mock(Session.class)
+                .when(() -> Session.loadXnatImageSessionData(any(String.class), eq(mockUser)))
+                .thenReturn(null);
+        mocks.mock(ContainerServicePermissionUtils.class)
+                // The project is null for launches without one; any(String.class) stopped matching null in Mockito 2
+                .when(() -> ContainerServicePermissionUtils.canCreateOutputObject(
+                        eq(mockUser), nullable(String.class), any(XnatModelObject.class), any(Command.CommandWrapperOutput.class)))
+                .thenReturn(true);
     }
 
     @Test
@@ -348,7 +349,7 @@ public class ContainerCleanupIntegrationTest {
 
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
-        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
@@ -388,7 +389,7 @@ public class ContainerCleanupIntegrationTest {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_SETUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
-        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
@@ -416,8 +417,7 @@ public class ContainerCleanupIntegrationTest {
         toCleanup.addAll(containerService.retrieveWrapupContainersForParent(exited.databaseId()));
         for (Container ck : toCleanup) {
             containersToCleanUp.add(ck.containerOrServiceId());
-            assertThat("Unexpected status for " + ck, ck.status(),
-                    startsWith(PersistentWorkflowUtils.FAILED));
+            awaitChildFailed(ck);
             checkContainerRemoval(ck, CommandType.DOCKER_WRAPUP.getName().equals(ck.subtype()));
         }
     }
@@ -428,7 +428,7 @@ public class ContainerCleanupIntegrationTest {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
-        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
@@ -460,9 +460,19 @@ public class ContainerCleanupIntegrationTest {
         }
         for (Container ck : containerService.retrieveWrapupContainersForParent(exited.databaseId())) {
             containersToCleanUp.add(ck.containerOrServiceId());
-            assertThat(ck.status(), startsWith(PersistentWorkflowUtils.FAILED));
+            awaitChildFailed(ck);
             checkContainerRemoval(ck, CommandType.DOCKER_WRAPUP.getName().equals(ck.subtype()));
         }
+    }
+
+    /**
+     * When a setup or main container fails, the parent is failed first and its remaining children just after, on the
+     * same thread, so a child read the moment the parent is finalized can still be Created.
+     */
+    private void awaitChildFailed(final Container child) {
+        await("status of " + child).atMost(10, TimeUnit.SECONDS)
+                .pollInterval(100, TimeUnit.MILLISECONDS)
+                .until(() -> containerService.get(child.databaseId()).status(), startsWith(PersistentWorkflowUtils.FAILED));
     }
 
     @Test
@@ -471,7 +481,7 @@ public class ContainerCleanupIntegrationTest {
         final CommandWrapper mainWrapper = configureSetupWrapupCommands(CommandType.DOCKER_WRAPUP);
         Map<String, String> runtimeValues = new HashMap<>();
         String uri = TestingUtils.setupSessionMock(folder, mapper, runtimeValues);
-        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser);
+        TestingUtils.setupMocksForSetupWrapupWorkflow("/archive" + uri, fakeWorkflow, mockCatalogService, mockUser, staticMocks);
 
         log.debug("Queuing command resolution + launch");
         containerService.queueResolveCommandAndLaunchContainer(null, mainWrapper.id(),
