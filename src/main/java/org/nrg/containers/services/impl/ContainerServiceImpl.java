@@ -936,6 +936,14 @@ public class ContainerServiceImpl implements ContainerService {
             return;
         }
 
+        if (!StringUtils.equals(event.service().serviceId(), service.serviceId())) {
+            // The service was restarted after this event was sent. Its task belongs to the removed service, so filling
+            // the new service's blank IDs from it, or restarting on it, would hijack the new service.
+            log.info("Skipping event for service {} \"{}\": it has since been restarted as \"{}\".",
+                    service.databaseId(), event.service().serviceId(), service.serviceId());
+            return;
+        }
+
         if (StringUtils.isBlank(service.taskId()) || StringUtils.isBlank(service.nodeId()) || StringUtils.isBlank(service.containerId())) {
             // When we create the service, we don't know all the IDs.
             // We may be able to update some or all of them now.

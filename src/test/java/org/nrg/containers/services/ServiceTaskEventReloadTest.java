@@ -133,6 +133,35 @@ public class ServiceTaskEventReloadTest {
         verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
     }
 
+    @Test
+    public void processEventSkipsAnEventForAServiceThatHasSinceBeenRestarted() throws Exception {
+        // The restart replaced the service and blanked its IDs until the poll sees the new service's task
+        final ContainerEntity row = ContainerEntity.fromPojo(Container.builder()
+                .databaseId(DATABASE_ID)
+                .commandId(7L)
+                .wrapperId(8L)
+                .userId(USER_LOGIN)
+                .backend(Backend.SWARM)
+                .serviceId("swarm-service-restarted")
+                .status(Container.ContainerHistory.restartStatus)
+                .dockerImage("busybox:latest")
+                .commandLine("echo hello")
+                .build());
+        row.setId(DATABASE_ID);
+        when(containerEntityService.retrieve(DATABASE_ID)).thenReturn(row);
+
+        // Queued before the restart, so it still describes the old service and its lost task
+        final ServiceTask lostTask = runningTask().toBuilder()
+                .status(TaskState.FAILED.getValue())
+                .swarmNodeError(true)
+                .build();
+        containerService.processEvent(ServiceTaskEvent.create(lostTask, pollProjection()));
+
+        verify(containerEntityService, never()).update(any(ContainerEntity.class));
+        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
+        verify(containerControlApi, never()).remove(any(Container.class));
+    }
+
     private static ServiceTask runningTask() {
         return ServiceTask.builder()
                 .serviceId(SERVICE_ID)
