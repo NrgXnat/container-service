@@ -62,6 +62,8 @@ import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
+import org.nrg.prefs.services.NrgPreferenceService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.user.XnatUserProvider;
@@ -94,7 +96,7 @@ import java.util.concurrent.ExecutorService;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Configuration
 @EnableTransactionManagement
-@Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class})
+@Import({CommandConfig.class, HibernateConfig.class, RestApiTestConfig.class, MockJmsConfig.class})
 public class IntegrationTestConfig {
     /*
     Control API and dependencies + Events
@@ -255,6 +257,12 @@ public class IntegrationTestConfig {
         return Mockito.mock(SiteConfigPreferences.class);
     }
 
+    // Needed by MockJmsConfig's error handler; same name as JmsConfig's, so the two configs can be combined
+    @Bean
+    public NotificationsPreferences notificationsPreferences() {
+        return Mockito.mock(NotificationsPreferences.class);
+    }
+
     @Bean
     public ConfigService configService() {
         return Mockito.mock(ConfigService.class);
@@ -341,4 +349,10 @@ public class IntegrationTestConfig {
     public ResourceTransactionManager transactionManager(final SessionFactory sessionFactory) {
         return new HibernateTransactionManager(sessionFactory);
     }
+
+    @Bean
+    public NrgPreferenceService nrgPreferenceService() {
+        return Mockito.mock(NrgPreferenceService.class);
+    }
+
 }

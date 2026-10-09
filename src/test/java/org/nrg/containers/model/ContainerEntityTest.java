@@ -155,9 +155,26 @@ public class ContainerEntityTest {
         assertThat(services, hasSize(2));
         assertThat(services, hasItems(serviceFinalizedCreated, serviceNonfinalizedCreated));
 
-        final List<ContainerEntity> nonfinalizedServices = containerEntityService.retrieveNonfinalizedServices();
-        assertThat(nonfinalizedServices, hasSize(1));
-        assertThat(nonfinalizedServices, hasItem(serviceNonfinalizedCreated));
+        final List<Long> nonfinalizedServiceIds = containerEntityService.retrieveNonfinalizedServiceIds();
+        assertThat(nonfinalizedServiceIds, hasSize(1));
+        assertThat(nonfinalizedServiceIds, hasItem(serviceNonfinalizedCreated.getId()));
+
+        final ContainerEntity pollEntity = containerEntityService.retrieveServiceForPoll(serviceNonfinalizedCreated.getId());
+        assertThat(pollEntity, not(nullValue()));
+        assertThat(pollEntity.getId(), is(serviceNonfinalizedCreated.getId()));
+        assertThat(pollEntity.getServiceId(), is(nonFinalizedId));
+        assertThat(pollEntity.getStatus(), is(nonFinalizedStatus));
+        assertThat(pollEntity.getContainerId(), is(containerId));
+        assertThat(pollEntity.getUserId(), is(userId));
+        // Placeholders for non-@Nullable Container fields the poll loop never reads.
+        assertThat(pollEntity.getDockerImage(), is(""));
+        assertThat(pollEntity.getCommandLine(), is(""));
+        // No eager hydration of child collections.
+        assertThat(pollEntity.getMounts(), hasSize(0));
+        assertThat(pollEntity.getHistory(), hasSize(0));
+
+        // Missing id returns null.
+        assertThat(containerEntityService.retrieveServiceForPoll(-1L), is(nullValue()));
     }
 
     @Test

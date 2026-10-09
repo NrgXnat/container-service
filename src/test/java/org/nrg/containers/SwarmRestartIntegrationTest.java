@@ -5,17 +5,13 @@ import com.github.dockerjava.api.model.SwarmNodeAvailability;
 import com.github.dockerjava.api.model.SwarmNodeManagerStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.SystemUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.config.EventPullingIntegrationTestConfig;
 import org.nrg.containers.model.command.auto.Command;
@@ -31,6 +27,7 @@ import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.BackendConfig;
+import org.nrg.containers.utils.StaticMocks;
 import org.nrg.containers.utils.TestingUtils;
 import org.nrg.xdat.entities.AliasToken;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
@@ -42,7 +39,6 @@ import org.nrg.xdat.servlet.XDATServlet;
 import org.nrg.xft.ItemI;
 import org.nrg.xft.XFTItem;
 import org.nrg.xft.event.EventDetails;
-import org.nrg.xft.event.EventMetaI;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.schema.XFTManager;
@@ -50,11 +46,6 @@ import org.nrg.xft.security.UserI;
 import org.nrg.xnat.helpers.uri.UriParserUtils;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.utils.WorkflowUtils;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
@@ -70,30 +61,20 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 import static org.nrg.containers.utils.TestingUtils.BUSYBOX;
-import static org.powermock.api.mockito.PowerMockito.doNothing;
-import static org.powermock.api.mockito.PowerMockito.doReturn;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
 
 @Slf4j
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(SpringJUnit4ClassRunner.class)
-@PrepareForTest({UriParserUtils.class, XFTManager.class, Users.class, WorkflowUtils.class,
-        PersistentWorkflowUtils.class, XDATServlet.class})
-@PowerMockIgnore({"org.apache.*", "java.*", "javax.*", "org.w3c.*", "com.sun.*"})
+@RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = EventPullingIntegrationTestConfig.class)
 @Transactional
 public class SwarmRestartIntegrationTest {
+    private StaticMocks.Registration staticMocks;
     private Backend backend = Backend.SWARM;
     private boolean swarmMode = true;
 
@@ -102,6 +83,7 @@ public class SwarmRestartIntegrationTest {
     private String archiveDir;
 
     private final String FAKE_USER = "mockUser";
+    private final String FAKE_EMAIL = "user@email.com";
     private final String FAKE_ALIAS = "alias";
     private final String FAKE_SECRET = "secret";
     private final String FAKE_HOST = "mock://url";
@@ -147,6 +129,8 @@ public class SwarmRestartIntegrationTest {
         // Mock the userI
         mockUser = mock(UserI.class);
         when(mockUser.getLogin()).thenReturn(FAKE_USER);
+        when(mockUser.getEmail()).thenReturn(FAKE_EMAIL);
+        staticMocks = StaticMocks.openOnEveryThread(this::configureStaticMocks);
 
         // Permissions
         when(mockPermissionsServiceI.canEdit(any(UserI.class), any(ItemI.class))).thenReturn(Boolean.TRUE);
@@ -154,18 +138,11 @@ public class SwarmRestartIntegrationTest {
         // Mock the user management service
         when(mockUserManagementServiceI.getUser(FAKE_USER)).thenReturn(mockUser);
 
-        // Mock UriParserUtils using PowerMock. This allows us to mock out
-        // the responses to its static method parseURI().
-        mockStatic(UriParserUtils.class);
-
         // Mock the aliasTokenService
         final AliasToken mockAliasToken = new AliasToken();
         mockAliasToken.setAlias(FAKE_ALIAS);
         mockAliasToken.setSecret(FAKE_SECRET);
         when(mockAliasTokenService.issueTokenForUser(mockUser)).thenReturn(mockAliasToken);
-
-        mockStatic(Users.class);
-        when(Users.getUser(FAKE_USER)).thenReturn(mockUser);
 
         // Mock the site config preferences
         buildDir = folder.newFolder().getAbsolutePath();
@@ -174,21 +151,6 @@ public class SwarmRestartIntegrationTest {
         when(mockSiteConfigPreferences.getBuildPath()).thenReturn(buildDir); // transporter makes a directory under build
         when(mockSiteConfigPreferences.getArchivePath()).thenReturn(archiveDir); // container logs get stored under archive
         when(mockSiteConfigPreferences.getProperty("processingUrl", FAKE_HOST)).thenReturn(FAKE_HOST);
-
-        // Use powermock to mock out the static method XFTManager.isInitialized() and XDATServlet.isDatabasePopulateOrUpdateCompleted()
-        mockStatic(XFTManager.class);
-        when(XFTManager.isInitialized()).thenReturn(true);
-        mockStatic(XDATServlet.class);
-        when(XDATServlet.isDatabasePopulateOrUpdateCompleted()).thenReturn(true);
-
-        // Also mock out workflow operations to return our fake workflow object
-        mockStatic(WorkflowUtils.class);
-        when(WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
-                .thenReturn(fakeWorkflow);
-        doNothing().when(WorkflowUtils.class, "save", any(PersistentWorkflowI.class), isNull(EventMetaI.class));
-        PowerMockito.spy(PersistentWorkflowUtils.class);
-        doReturn(fakeWorkflow).when(PersistentWorkflowUtils.class, "getOrCreateWorkflowData", eq(FakeWorkflow.defaultEventId),
-                eq(mockUser), any(XFTItem.class), any(EventDetails.class));
 
         // Setup docker server
         final BackendConfig backendConfig = TestingUtils.getBackendConfig();
@@ -219,7 +181,12 @@ public class SwarmRestartIntegrationTest {
 
     @After
     public void cleanup() throws Exception {
-        fakeWorkflow = new FakeWorkflow();
+        // Close the static mocks first: once closed, the status updater skips its ticks, so only a tick already in
+        // progress could still restart a service removed below. Null when @Before failed before opening them
+        if (staticMocks != null) {
+            staticMocks.close();
+        }
+        TestingUtils.addRecordedContainers(containerService, containersToCleanUp);
         if (swarmMode) {
             TestingUtils.cleanSwarmServices(controlApi.getDockerClient(), containersToCleanUp);
         } else {
@@ -229,6 +196,24 @@ public class SwarmRestartIntegrationTest {
         TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
     }
 
+    /**
+     * Also opened on the status updater's and JMS listeners' threads, so it reads the current test's fields rather
+     * than capturing them.
+     */
+    private void configureStaticMocks(final StaticMocks mocks) {
+        mocks.mock(XFTManager.class).when(XFTManager::isInitialized).thenReturn(true);
+        mocks.mock(XDATServlet.class).when(XDATServlet::isDatabasePopulateOrUpdateCompleted).thenReturn(true);
+        final MockedStatic<Users> users = mocks.mock(Users.class);
+        users.when(() -> Users.getUser(FAKE_USER)).thenReturn(mockUser);
+        // The status updater and the Waiting-event handler act as the admin user
+        users.when(Users::getAdminUser).thenReturn(mockUser);
+        mocks.mock(UriParserUtils.class);
+        // WorkflowUtils.save needs no stub: void methods on a static mock already do nothing
+        mocks.mock(WorkflowUtils.class)
+                .when(() -> WorkflowUtils.getUniqueWorkflow(mockUser, fakeWorkflow.getWorkflowId().toString()))
+                .thenReturn(fakeWorkflow);
+    }
+
     @Test
     @DirtiesContext
     public void testRestartShutdown() throws Exception {
@@ -236,7 +221,7 @@ public class SwarmRestartIntegrationTest {
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         final Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
-        String serviceId = service.serviceId();
+        final String serviceId = service.serviceId();
         containersToCleanUp.add(serviceId);
 
         log.debug("Waiting until task has started");
@@ -285,14 +270,19 @@ public class SwarmRestartIntegrationTest {
         } else {
             // delete the node
             controlApi.getDockerClient().removeSwarmNodeCmd(nodeId).withForce(true).exec();
-            Thread.sleep(500L); // Sleep long enough for status updater to run
         }
 
         // ensure that container restarted & status updates, etc
+        // Wait as testRestartFailure does: the restart goes through the status updater, the event bus and a JMS listener
         TestingUtils.commitTransaction();
+        await().atMost(10, TimeUnit.SECONDS).until(() -> {
+            final Container current = containerService.get(service.databaseId());
+            return current.countRestarts() == 1
+                    && current.serviceId() != null
+                    && !current.serviceId().equals(serviceId);
+        });
         final Container restartedService = containerService.get(service.databaseId());
         containersToCleanUp.add(restartedService.serviceId());
-        assertThat(restartedService.countRestarts(), is(1));
         log.debug("Waiting until task has restarted");
         await().until(TestingUtils.serviceIsRunning(controlApi.getDockerClient(), restartedService)); //Running again = success!
     }
@@ -401,6 +391,7 @@ public class SwarmRestartIntegrationTest {
                 0L, null, Collections.emptyMap(), mockUser, fakeWorkflow);
         TestingUtils.commitTransaction();
         Container service = TestingUtils.getContainerFromWorkflow(containerService, fakeWorkflow);
+        final long databaseId = service.databaseId();
 
         // Restart
         int i = 1;
@@ -415,18 +406,28 @@ public class SwarmRestartIntegrationTest {
 
             log.debug("Removing service to throw a restart event");
             controlApi.getDockerClient().removeServiceCmd(serviceId).exec();
-            Thread.sleep(1000L); // Sleep long enough for status updater to run
 
-            // ensure that container restarted & status updates, etc
-            service = containerService.get(service.databaseId());
             if (i == 6) {
+                // One loss past the restart limit fails the container instead of restarting it
+                service = containerService.get(databaseId);
                 containersToCleanUp.add(service.serviceId());
                 break;
             }
-            assertThat(service.countRestarts(), is(i++));
+
+            // Wait for the restart to be recorded and its replacement service created, rather than sleeping a fixed
+            // time: the event reaches the restart through the status updater, the event bus and a JMS listener
+            final int expectedRestarts = i++;
+            await().atMost(10, TimeUnit.SECONDS).until(() -> {
+                final Container current = containerService.get(databaseId);
+                return current.countRestarts() == expectedRestarts
+                        && current.serviceId() != null
+                        && !current.serviceId().equals(serviceId);
+            });
+            service = containerService.get(databaseId);
         }
 
         // ensure that container failed
+        await().atMost(10, TimeUnit.SECONDS).until(fakeWorkflow::getStatus, is(PersistentWorkflowUtils.FAILED + " (Swarm)"));
         PersistentWorkflowI wrk = WorkflowUtils.getUniqueWorkflow(mockUser, service.workflowId());
         assertThat(wrk.getStatus(), is(PersistentWorkflowUtils.FAILED + " (Swarm)"));
         assertThat(wrk.getDetails().contains(ServiceTask.swarmNodeErrMsg), is(true));

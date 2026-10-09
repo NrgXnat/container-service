@@ -65,7 +65,8 @@ public interface ContainerService {
 
     List<Container> retrieveServices();
     List<Container> retrieveServicesInWaitingState();
-    List<Container> retrieveNonfinalizedServices();
+    List<Long> retrieveNonfinalizedServiceIds();
+    @Nullable Container retrieveServiceForPoll(final long id);
 
     void checkQueuedContainerJobs(UserI user);
     void checkWaitingContainerJobs(UserI user);

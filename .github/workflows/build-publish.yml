@@ -23,15 +23,8 @@ permissions:
 
 jobs:
   build-publish:
-    uses: NrgXnat/xnat-ci-workflows/.github/workflows/gradle-build-publish.yml@v1
+    uses: NrgXnat/xnat-ci-workflows/.github/workflows/gradle-build-publish.yml@v2
     with:
-      # ──── Toolchain ────
-      # main / releases/* are the 1.9 line: Gradle 7.5.1 + sourceCompatibility 8.
-      # The reusable workflow defaults to JDK 21, which fails here with
-      # NoClassDefFoundError: javax/annotation/Generated (removed in Java 11,
-      # still required by the AutoValue processor on this line).
-      java-version: '8'
-
       # ──── Artifact ────
       artifact-glob: 'build/libs/*.jar'
       artifact-name: 'container-service-jar'

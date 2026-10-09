@@ -105,7 +105,8 @@ public class HibernateConfig extends JCacheConfigurerSupport {
                 "org.nrg.containers.model.server.docker",
                 "org.nrg.containers.model.container.entity",
                 "org.nrg.containers.model.command.entity",
-                "org.nrg.containers.model.orchestration.entity");
+                "org.nrg.containers.model.orchestration.entity",
+                "org.nrg.containers.model.scheduling.entity");
     }
 
     @Bean
