@@ -109,15 +109,6 @@ public class ContainerStatusUpdater implements Runnable {
         this.leader = nodeLockService.registerLeader(LEADER_LOCK, new Listener());
     }
 
-    /**
-     * Indicates whether this node currently runs the status updater.
-     *
-     * @return {@code true} when this node holds the {@link #LEADER_LOCK} leader lock.
-     */
-    public boolean isLeader() {
-        return leader.isLeader();
-    }
-
     @Override
     public void run() {
         synchronized (monitor) {
@@ -316,9 +307,10 @@ public class ContainerStatusUpdater implements Runnable {
                 try {
                     // Make sure the informer is running. It will handle throwing events on its own.
                     // We hold the monitor and initialize() confirmed leadership, so a demotion can't stop the
-                    // client between fetching it and starting it.
-                    kubernetesClientFactory.getKubernetesClient().start();
+                    // client between fetching it and starting it. The flag is set first so that a start() that
+                    // throws partway is still stopped on demotion; stopping an informer that never started is safe.
                     kubernetesInformerStarted = true;
+                    kubernetesClientFactory.getKubernetesClient().start();
                 } catch (NoContainerServerException e) {
                     return UpdateReport.singleton(UpdateReportEntry.failure(null, e.getMessage()));
                 }
@@ -347,6 +339,12 @@ public class ContainerStatusUpdater implements Runnable {
                 QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, event);
             }
 
+            if (!leader.isLeader()) {
+                // Demoted during this tick: the new leader owns the checkpoint now, and writing this tick's
+                // timestamp after its own could move the checkpoint backward.
+                log.debug("No longer the {} leader; not moving the Docker event checkpoint.", LEADER_LOCK);
+                return UpdateReport.singleton(UpdateReportEntry.success());
+            }
             dockerServerService.update(server.updateEventCheckTime(now));
 
             return UpdateReport.singleton(UpdateReportEntry.success());
@@ -369,6 +367,12 @@ public class ContainerStatusUpdater implements Runnable {
         final UpdateReport report = UpdateReport.create();
         //TODO : Optimize this code so that waiting ones are handled first
         for (final Long databaseId : containerService.retrieveNonfinalizedServiceIds()) {
+            if (!leader.isLeader()) {
+                // Demoted partway through the walk: the new leader walks the services itself, so stop sending
+                // events for them from here.
+                log.debug("No longer the {} leader; stopping the Swarm service walk.", LEADER_LOCK);
+                break;
+            }
             Container service = null;
             try {
                 try {

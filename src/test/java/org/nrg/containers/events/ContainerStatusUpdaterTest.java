@@ -33,21 +33,25 @@ import org.nrg.xft.security.UserI;
 import org.springframework.jms.core.JmsTemplate;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -133,7 +137,46 @@ class ContainerStatusUpdaterTest {
     void leaderTickStartsTheInformer() throws Exception {
         updater.run();
         verify(kubernetesClient).start();
-        assertTrue(updater.isLeader());
+        verify(leader).isLeader();
+    }
+
+    @Test
+    void informerStartThatThrowsIsStillStoppedOnDemotion() throws Exception {
+        doThrow(new RejectedExecutionException("executor full")).when(kubernetesClient).start();
+        assertThrows(RejectedExecutionException.class, updater::run);
+
+        listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
+        verify(kubernetesClient).stop();
+    }
+
+    @Test
+    void swarmWalkStopsWhenDemotedPartway() throws Exception {
+        final Container pollProjection = useSwarmBackend();
+        when(containerService.retrieveNonfinalizedServiceIds()).thenReturn(Arrays.asList(DATABASE_ID, DATABASE_ID + 1));
+        // Leader for the tick's start and the first service, demoted before the second.
+        when(leader.isLeader()).thenReturn(true, true, false);
+
+        updater.run();
+
+        verify(containerService).retrieveServiceForPoll(DATABASE_ID);
+        verify(containerControlApi).getTaskForService(server, pollProjection);
+        verify(containerService, never()).retrieveServiceForPoll(DATABASE_ID + 1);
+    }
+
+    @Test
+    void dockerCheckpointIsNotMovedAfterDemotion() throws Exception {
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+
+        // Demoted while the events were fetched: the checkpoint now belongs to the new leader.
+        when(leader.isLeader()).thenReturn(true, false);
+        updater.run();
+        verify(dockerServerService, never()).update(any());
+
+        // Still the leader at the end of the tick: the checkpoint moves.
+        when(leader.isLeader()).thenReturn(true);
+        updater.run();
+        verify(dockerServerService).update(any());
     }
 
     @Test
