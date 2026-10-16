@@ -105,7 +105,8 @@ public class KubernetesClientTest {
                         .protocol(Protocol.HTTP_1_1)
                         .code(201)
                         .message("Created")
-                        .body(ResponseBody.create("{\"kind\":\"Job\"}", MediaType.get("application/json")))
+                        .body(ResponseBody.create("{\"kind\":\"PodList\",\"env\":[{\"name\":\"XNAT_PASS\",\"value\":\"listed-pod-secret\"}]}",
+                                                  MediaType.get("application/json")))
                         .build())
                 .build();
         final Request request = new Request.Builder()
@@ -123,6 +124,7 @@ public class KubernetesClientTest {
         assertThat(logged, containsString("Authorization: \u2588\u2588"));
         assertThat(logged, not(containsString("service-account-token")));
         assertThat(logged, not(containsString("alias-token-secret")));
+        assertThat(logged, not(containsString("listed-pod-secret")));
     }
 
 }

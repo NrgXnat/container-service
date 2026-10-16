@@ -12,7 +12,7 @@
     * `containers.log` records when a node is elected or demoted as the status updater leader.
 
 ### Bugfixes
-* [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and full body, and a job's body includes the container's `XNAT_PASS`. It now logs headers only, with `Authorization` redacted.
+* [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and the full request and response bodies. Those include a job's `XNAT_PASS` and, in pod lists, the environment of every pod in the namespace. It now logs headers only, with `Authorization` redacted.
 
 ## 3.9.0
 
