@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClient;
@@ -40,7 +41,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -52,6 +52,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -146,7 +147,7 @@ class ContainerStatusUpdaterTest {
         assertThrows(RejectedExecutionException.class, updater::run);
 
         listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-        verify(kubernetesClient).stop();
+        verify(kubernetesClientFactory).shutdown();
     }
 
     @Test
@@ -191,17 +192,17 @@ class ContainerStatusUpdaterTest {
     void demotionStopsTheInformerItStarted() throws Exception {
         updater.run();
         listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-        verify(kubernetesClient).stop();
+        verify(kubernetesClientFactory).shutdown();
 
         // A second demotion has nothing to stop.
         listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-        verify(kubernetesClient, times(1)).stop();
+        verify(kubernetesClientFactory, times(1)).shutdown();
     }
 
     @Test
     void demotionBeforeAnyTickStopsNothing() throws Exception {
         listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-        verify(kubernetesClientFactory, never()).getKubernetesClient();
+        verify(kubernetesClientFactory, never()).shutdown();
     }
 
     @Test
@@ -211,17 +212,15 @@ class ContainerStatusUpdaterTest {
         listener.onElected(ContainerStatusUpdater.LEADER_LOCK);
         updater.run();
         verify(kubernetesClient, times(2)).start();
-        verify(kubernetesClient, times(1)).stop();
+        verify(kubernetesClientFactory, times(1)).shutdown();
     }
 
     @Test
     void demotionWaitsForTheTickInFlightAndTheTickReChecksLeadership() throws Exception {
         // The tick blocks inside getKubernetesClient() while a demotion arrives on another thread. The demotion
-        // must wait for the tick to finish, and must then find the informer started so it can stop it.
+        // must wait for the tick to finish, so the informer is shut down after it starts, never before.
         // (The tick runs on this thread because Mockito's static mocks are thread-local.)
         final CountDownLatch demotionRequested = new CountDownLatch(1);
-        final AtomicBoolean tickFinished = new AtomicBoolean();
-        final AtomicBoolean tickHadFinishedWhenDemotionReturned = new AtomicBoolean();
         when(kubernetesClientFactory.getKubernetesClient()).thenAnswer(invocation -> {
             demotionRequested.countDown();
             // Give the demotion thread time to reach the monitor while we're still inside the tick.
@@ -236,17 +235,15 @@ class ContainerStatusUpdaterTest {
                 Thread.currentThread().interrupt();
             }
             listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-            tickHadFinishedWhenDemotionReturned.set(tickFinished.get());
         });
         demotion.start();
 
         updater.run();
-        tickFinished.set(true);
         demotion.join(5000);
 
-        assertTrue(tickHadFinishedWhenDemotionReturned.get());
-        verify(kubernetesClient).start();
-        verify(kubernetesClient).stop();
+        final InOrder order = inOrder(kubernetesClient, kubernetesClientFactory);
+        order.verify(kubernetesClient).start();
+        order.verify(kubernetesClientFactory).shutdown();
 
         // Once demoted, the next tick doesn't restart anything.
         when(leader.isLeader()).thenReturn(false);
@@ -329,9 +326,9 @@ class ContainerStatusUpdaterTest {
         updater.run();
         doAnswer(invocation -> {
             throw new IllegalStateException("boom");
-        }).when(kubernetesClient).stop();
+        }).when(kubernetesClientFactory).shutdown();
         listener.onDemoted(ContainerStatusUpdater.LEADER_LOCK, "test");
-        verify(kubernetesClient).stop();
+        verify(kubernetesClientFactory).shutdown();
     }
 
     @Test

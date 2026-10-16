@@ -231,10 +231,10 @@ public class ContainerStatusUpdater implements Runnable {
     /**
      * A leader that can't reach the backend can't finalize anything, so after
      * {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN} consecutive failed pings it hands the lock to another node, which
-     * may have working credentials or a working route. On a single node there is nobody to hand over to:
-     * {@link NodeLeader#stepDown(Duration)} returns false, the lock is kept, and the updater resumes as soon as
-     * the backend answers again. The counter restarts either way, so the next attempt is another
-     * {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN} ticks out.
+     * may have working credentials or a working route. Core refuses when it can't hand over, for example because no
+     * other node is connected or node locks are disabled, and logs why. {@link NodeLeader#stepDown(Duration)} then
+     * returns false, the lock is kept, and the updater resumes as soon as the backend answers again. The counter
+     * restarts either way, so the next attempt is another {@link #BACKEND_FAILURES_BEFORE_STEP_DOWN} ticks out.
      */
     private void stepDownIfBackendStaysUnreachable(final DockerServer dockerServer) {
         consecutiveBackendFailures++;
@@ -246,7 +246,7 @@ public class ContainerStatusUpdater implements Runnable {
             log.warn("Cannot ping docker server {} after {} attempts. Stepped down as {} leader for {} so another node can take over.",
                     dockerServer.name(), BACKEND_FAILURES_BEFORE_STEP_DOWN, LEADER_LOCK, STEP_DOWN_BACKOFF);
         } else {
-            log.info("Cannot ping docker server {} after {} attempts, but no other node can take over. Keeping {} leadership.",
+            log.info("Cannot ping docker server {} after {} attempts. Step-down from {} was refused (see tasks.log for why), keeping leadership.",
                     dockerServer.name(), BACKEND_FAILURES_BEFORE_STEP_DOWN, LEADER_LOCK);
         }
     }
@@ -257,12 +257,11 @@ public class ContainerStatusUpdater implements Runnable {
         }
         kubernetesInformerStarted = false;
         try {
-            // KubernetesClientImpl.stop() discards its informer, and start() builds a new one. An informer is
-            // never restarted: the Kubernetes client library doesn't reset a started informer.
-            kubernetesClientFactory.getKubernetesClient().stop();
+            // shutdown() stops the informer and discards the client, and does nothing if a server update already
+            // discarded it. Launches and log fetches on this node build a new client on their next call, and the
+            // next tick that leads builds a new informer: the Kubernetes client library doesn't reset a started one.
+            kubernetesClientFactory.shutdown();
             log.info("Stopped the Kubernetes informer ({}).", reason);
-        } catch (NoContainerServerException e) {
-            log.debug("No Kubernetes client to stop ({}).", reason);
         } catch (RuntimeException e) {
             log.warn("Could not stop the Kubernetes informer ({}).", reason, e);
         }
