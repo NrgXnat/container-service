@@ -1,13 +1,13 @@
 # Changelog
 
-## 3.9.1
+## 3.10.0
 
 ### Compatibility
-* Requires XNAT 1.10.3. The container status updater uses the node lock service added to XNAT core in 1.10.3 ([NrgXnat/xnat#85](https://github.com/NrgXnat/xnat/pull/85)), so this release will not load on XNAT 1.10.1 or 1.10.2, and XNAT will fail to start with it installed. Sites on those versions should stay on 3.9.0.
+* Requires XNAT 1.10.3. The container status updater uses the node lock service added to XNAT core in 1.10.3 ([NrgXnat/xnat#85](https://github.com/NrgXnat/xnat/pull/85)), so this release will not load on XNAT 1.10.1 or 1.10.2, and XNAT will fail to start with it installed. Sites on those versions should stay on 3.9.x.
 
 ### Features
 * [#15](https://github.com/NrgXnat/container-service/pull/15): The container status updater, which notices finished containers and finalizes them, now runs on whichever node holds the `containers:status-updater` leader lock instead of only on the node flagged with `xnat.is_primary_node`. On a multi-node install another node takes over when that node shuts down, crashes or loses its database connection, so containers keep being finalized while the primary node is down. A leader that can't reach the container backend for about 3 minutes hands the lock to another node. Single-node installs behave as before.
-    * Multi-node installs need a backend every node can reach: Kubernetes, Docker Swarm, or Docker over `tcp://`. With a local unix socket on each node, set `xnat.node.locks.enabled=false` on every node so the updater stays on the primary node. Keep this setting the same on all nodes.
+    * Multi-node installs need a backend every node can reach: Kubernetes, Docker Swarm, or Docker over `tcp://`.
     * Upgrade the primary node first. A non-primary node that restarts on this release while the primary still runs an older one takes the lock alongside it, and containers that finish in that window can be finalized twice.
     * `containers.log` records when a node is elected or demoted as the status updater leader.
 
