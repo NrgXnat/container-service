@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.10.0
+## 4.0.0
 
 ### Compatibility
 * Requires XNAT 1.10.3. The container status updater uses the node lock service added to XNAT core in 1.10.3 ([NrgXnat/xnat#85](https://github.com/NrgXnat/xnat/pull/85)), so this release will not load on XNAT 1.10.1 or 1.10.2, and XNAT will fail to start with it installed. Sites on those versions should stay on 3.9.x.
