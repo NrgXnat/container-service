@@ -43,6 +43,11 @@
     <logger additivity="false" level="ERROR" name="org.nrg.containers">
         <appender-ref ref="containers"/>
     </logger>
+    <!-- Leader election for the container status updater: "elected" and "demoted (reason)" are what an operator
+         checks on a multi-node install, so they're on by default. Raise this to DEBUG to see every tick. -->
+    <logger additivity="false" level="INFO" name="org.nrg.containers.events.ContainerStatusUpdater">
+        <appender-ref ref="containers"/>
+    </logger>
     <logger additivity="false" level="WARN" name="org.mandas">
         <appender-ref ref="spotify"/>
     </logger>

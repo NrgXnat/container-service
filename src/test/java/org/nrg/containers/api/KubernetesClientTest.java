@@ -4,14 +4,24 @@ import io.kubernetes.client.openapi.models.V1Affinity;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirement;
 import io.kubernetes.client.openapi.models.V1Toleration;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.junit.Test;
 import org.nrg.containers.model.server.docker.DockerServerBase.KubernetesToleration;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertThat;
@@ -82,6 +92,39 @@ public class KubernetesClientTest {
         assertThat(v1Exists.getOperator(), is("Exists"));
         assertThat(v1Exists.getValue(), is(nullValue()));
         assertThat(v1Exists.getEffect(), is(nullValue()));
+    }
+
+    @Test
+    public void debugLoggingRedactsTheTokenAndSkipsBodies() throws Exception {
+        final List<String> lines = new ArrayList<>();
+        final OkHttpClient client = new OkHttpClient.Builder()
+                .addInterceptor(KubernetesClientImpl.debugLoggingInterceptor(lines::add))
+                // Answers the call here instead of over the network.
+                .addInterceptor(chain -> new Response.Builder()
+                        .request(chain.request())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(201)
+                        .message("Created")
+                        .body(ResponseBody.create("{\"kind\":\"PodList\",\"env\":[{\"name\":\"XNAT_PASS\",\"value\":\"listed-pod-secret\"}]}",
+                                                  MediaType.get("application/json")))
+                        .build())
+                .build();
+        final Request request = new Request.Builder()
+                .url("https://kubernetes.default.svc/apis/batch/v1/namespaces/xnat/jobs")
+                .header("Authorization", "Bearer service-account-token")
+                .post(RequestBody.create("{\"env\":[{\"name\":\"XNAT_PASS\",\"value\":\"alias-token-secret\"}]}",
+                                         MediaType.get("application/json")))
+                .build();
+        try (final Response response = client.newCall(request).execute()) {
+            assertThat(response.code(), is(201));
+        }
+
+        final String logged = String.join("\n", lines);
+        assertThat(logged, containsString("--> POST https://kubernetes.default.svc/apis/batch/v1/namespaces/xnat/jobs"));
+        assertThat(logged, containsString("Authorization: \u2588\u2588"));
+        assertThat(logged, not(containsString("service-account-token")));
+        assertThat(logged, not(containsString("alias-token-secret")));
+        assertThat(logged, not(containsString("listed-pod-secret")));
     }
 
 }
