@@ -159,7 +159,7 @@ import static org.nrg.containers.model.command.entity.CommandWrapperInputType.SU
 @Slf4j
 @Service
 public class ContainerServiceImpl implements ContainerService {
-    private static final String MIN_XNAT_VERSION_REQUIRED = "1.10.1";
+    private static final String MIN_XNAT_VERSION_REQUIRED = "1.11.0";
 
     public static final String FAILED_CONTAINER_MESSAGE_TEMPLATE = "db id %d, %s id %s";
     public static final String WAITING = "Waiting";
