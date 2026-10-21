@@ -1,6 +1,5 @@
 package org.nrg.containers.events.model;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
@@ -11,8 +10,9 @@ import java.util.Map;
 
 @Value
 @Builder(toBuilder = true)
-@AllArgsConstructor
 public class KubernetesStatusChangeEvent implements ContainerEvent {
+    private static final long serialVersionUID = 1L;
+
     String jobName;
     String podName;
     String containerId;
