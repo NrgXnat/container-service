@@ -3072,24 +3072,30 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final List<ResolvedSecret> resolvedSecrets = new ArrayList<>(secrets.size());
             final List<FileResolvedSecret> fileSecrets = new ArrayList<>();
             for (final Secret secret : secrets) {
-                ResolvedSecret resolved;
+                final ResolvedSecret resolved;
                 try {
                     resolved = secretService.resolve(secret);
                 } catch (ContainerServiceSecretException e) {
                     throw new CommandResolutionException("Could not resolve secret " + secret, e);
                 }
                 if (resolved instanceof FileResolvedSecret) {
-                    final FileResolvedSecret rendered = renderFileSecret((FileResolvedSecret) resolved, resolvedInputValuesByReplacementKey);
-                    fileSecrets.add(rendered);
-                    resolved = rendered;
+                    fileSecrets.add((FileResolvedSecret) resolved);
                 }
                 resolvedSecrets.add(resolved);
             }
 
+            // Validation needs only identifier, volume name and mount path, so it runs before rendering and its
+            // message wins over the renderer's for a bad identifier.
             try {
                 FileSecretValidator.validate(fileSecrets);
             } catch (IllegalArgumentException e) {
                 throw new CommandResolutionException(e.getMessage(), e);
+            }
+
+            for (int i = 0; i < resolvedSecrets.size(); i++) {
+                if (resolvedSecrets.get(i) instanceof FileResolvedSecret) {
+                    resolvedSecrets.set(i, renderFileSecret((FileResolvedSecret) resolvedSecrets.get(i), resolvedInputValuesByReplacementKey));
+                }
             }
             return resolvedSecrets;
         }

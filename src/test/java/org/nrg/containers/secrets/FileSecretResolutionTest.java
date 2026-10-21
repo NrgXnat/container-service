@@ -158,6 +158,13 @@ public class FileSecretResolutionTest {
         assertThat(sameNameTwice.secrets(), hasSize(2));
     }
 
+    /** File secrets are validated before rendering, so a bad identifier gets the validator's message, not the renderer's. */
+    @Test
+    public void blankIdentifierIsReportedByTheValidator() throws Exception {
+        assertResolutionFails(Collections.singletonList(fileSecret("", null, MOUNT)), "PROJ01", Collections.emptyMap(),
+                kubernetesServer().build(), "Secret source identifier is required for file secrets");
+    }
+
     /** The mount path is not a secret; the upstream "inputs must not reference a secret destination" check is for env secrets only. */
     @Test
     public void inputsMayMentionTheMountPathButNotAnEnvSecretName() throws Exception {
