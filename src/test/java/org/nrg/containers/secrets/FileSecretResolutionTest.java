@@ -201,11 +201,16 @@ public class FileSecretResolutionTest {
         assertResolutionFails(Collections.emptyList(), StringUtils.repeat('p', 60), Collections.emptyMap(), server, "63");
     }
 
-    /** Rendering happens on any backend; Docker still refuses file secrets at launch (existing behaviour). */
+    /**
+     * Only Kubernetes can mount file secrets, so other backends refuse them at resolution with the launch-time wording,
+     * before a site-level launch could report a misleading "#PROJECT# has no value".
+     */
     @Test
-    public void dockerBackendStillRendersSoLaunchCanRefuseWithAClearMessage() throws Exception {
+    public void nonKubernetesBackendsRefuseFileSecretsAtResolution() throws Exception {
         final DockerServerBase.DockerServer docker = DockerServerBase.DockerServer.builder().name("d").host("unix:///var/run/docker.sock").backend(Backend.DOCKER).build();
-        assertThat(onlyFileSecret(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), docker)).secretName(),
-                is("xnat-proj01-redcap"));
+        assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), null, Collections.emptyMap(), docker,
+                "File secrets are not supported on the " + Backend.DOCKER + " backend");
+        assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(),
+                docker.toBuilder().backend(Backend.SWARM).build(), "File secrets are not supported on the " + Backend.SWARM + " backend");
     }
 }

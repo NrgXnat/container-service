@@ -3117,6 +3117,12 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 resolvedSecrets.add(resolved);
             }
 
+            // Only Kubernetes can mount file secrets. Refusing here, in the launch-time wording, keeps a site-level
+            // launch on another backend from reporting a misleading "#PROJECT# has no value" from the renderer.
+            if (!fileSecrets.isEmpty() && backend != Backend.KUBERNETES) {
+                throw new CommandResolutionException("File secrets are not supported on the " + backend + " backend");
+            }
+
             // Validation needs only identifier, volume name and mount path, so it runs before rendering and its
             // message wins over the renderer's for a bad identifier.
             try {
