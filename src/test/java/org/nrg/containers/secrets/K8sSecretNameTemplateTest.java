@@ -52,6 +52,36 @@ public class K8sSecretNameTemplateTest {
     }
 
     @Test
+    public void renderRejectsMalformedPlaceholders() {
+        assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
+        assertRejected(() -> K8sSecretNameTemplate.render("#a b#-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
+        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("x-#PROJECT-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
+    }
+
+    @Test
+    public void renderRejectsMissingIdentifierWithoutNullPointer() {
+        assertRejected(() -> K8sSecretNameTemplate.render(null, "P1", null, NO_INPUTS), "required");
+        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("{identifier}", "P1", null, NO_INPUTS), "required");
+        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName(null, "P1", "redcap", NO_INPUTS), "required");
+    }
+
+    @Test
+    public void renderTreatsRegexReplacementCharactersInValuesLiterally() {
+        final Map<String, String> inputs = Collections.singletonMap("#v#", "a$b\\c");
+        assertThat(K8sSecretNameTemplate.render("x-#v#-{identifier}", "P1", "redcap", inputs), is("x-a-b-c-redcap"));
+    }
+
+    @Test
+    public void namesMustHaveWellFormedDotSegments() {
+        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a..b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a-.b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.render(null, "P.", "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#.{identifier}", "P.", "redcap", NO_INPUTS),
+                "not a valid Kubernetes object name");
+        assertThat(K8sSecretNameTemplate.renderExplicitName("a.b-c", null, "redcap", NO_INPUTS), is("a.b-c"));
+    }
+
+    @Test
     public void sanitizeKeepsDotsButLowercasesAndReplacesOtherCharacters() {
         assertThat(K8sSecretNameTemplate.sanitize("Xnat_Proj.01--redcap"), is("xnat-proj.01-redcap"));
         assertThat(K8sSecretNameTemplate.sanitize("--a--"), is("a"));

@@ -51,6 +51,20 @@ public class FileSecretValidatorTest {
     }
 
     @Test
+    public void mountPathsMustBeNormalised() {
+        assertRejected(Collections.singletonList(secret("a", "x", "//run/secrets")), "normalised");
+        assertRejected(Collections.singletonList(secret("a", "x", "/run/./secrets")), "normalised");
+        assertRejected(Arrays.asList(secret("a", "x", "/run/secrets/a"), secret("b", "y", "/run/secrets//a")), "normalised");
+        FileSecretValidator.validate(Collections.singletonList(secret("a", "x", "/run/secrets/a/")));
+    }
+
+    @Test
+    public void identifiersMustBePresentAndUseSafeCharacters() {
+        assertRejected(Collections.singletonList(secret(null, "x", "/run/secrets/a")), "identifier is required");
+        assertRejected(Collections.singletonList(secret("red cap", "x", "/run/secrets/a")), "may only contain");
+    }
+
+    @Test
     public void mountPathsMustBeUniqueAndNotNested() {
         assertRejected(Arrays.asList(secret("a", "x", "/run/secrets/a"), secret("b", "y", "/run/secrets/a/")), "unique");
         assertRejected(Arrays.asList(secret("a", "x", "/run/secrets/a"), secret("b", "y", "/run/secrets/a/b")), "nest");
