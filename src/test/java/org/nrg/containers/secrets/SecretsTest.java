@@ -829,7 +829,7 @@ public class SecretsTest {
 
     @Test
     public void testKubernetesMountsFileSecretByResolvedName() throws Exception {
-        final V1Job job = captureJobForFileSecret("xnat-proj-01-redcap", "/run/secrets/redcap", kubernetesServer());
+        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", "/run/secrets/redcap", kubernetesServer());
         final V1PodSpec podSpec = job.getSpec().getTemplate().getSpec();
 
         final List<V1Volume> volumes = podSpec.getVolumes();
@@ -837,7 +837,7 @@ public class SecretsTest {
         final V1Volume volume = volumes.get(0);
         assertThat(volume.getName(), is("secret-redcap"));
         assertThat(volume.getSecret(), is(notNullValue()));
-        assertThat(volume.getSecret().getSecretName(), is("xnat-proj-01-redcap"));
+        assertThat(volume.getSecret().getSecretName(), is("xnat-proj01-redcap"));
         assertThat(volume.getCsi(), is(nullValue()));
 
         final List<V1VolumeMount> mounts = podSpec.getContainers().get(0).getVolumeMounts();
@@ -881,12 +881,11 @@ public class SecretsTest {
     }
 
     /**
-     * Regression guard: the name now comes from the resolved source, and the three legacy xnat.cs.k8s.* system
-     * properties can no longer influence the volume type or the service account.
+     * Regression guard: the legacy xnat.cs.k8s.* system properties can no longer influence the volume type or the
+     * service account.
      */
     @Test
     public void testLegacySystemPropertiesNoLongerConfigureFileSecrets() throws Exception {
-        System.setProperty("xnat.cs.k8s.secretNameTemplate", "legacy-{identifier}");
         System.setProperty("xnat.cs.k8s.secretVolumeType", "csi");
         System.setProperty("xnat.cs.k8s.serviceAccountName", "legacy-sa");
         try {
@@ -896,9 +895,56 @@ public class SecretsTest {
             assertThat(podSpec.getVolumes().get(0).getCsi(), is(nullValue()));
             assertThat(podSpec.getVolumes().get(0).getSecret().getSecretName(), is("xnat-proj01-redcap"));
         } finally {
-            System.clearProperty("xnat.cs.k8s.secretNameTemplate");
             System.clearProperty("xnat.cs.k8s.secretVolumeType");
             System.clearProperty("xnat.cs.k8s.serviceAccountName");
         }
+    }
+
+    /** FR-15: both kinds in one command resolve independently and the Kubernetes job carries both. */
+    @Test
+    public void testKubernetesJobWithMixedEnvAndFileSecrets() throws Exception {
+        backend = Backend.KUBERNETES;
+        final DockerServerBase.DockerServer server = kubernetesServer();
+        Mockito.when(dockerServerService.getServer()).thenReturn(server);
+
+        final String secretValue = RandomStringUtils.randomAlphanumeric(16);
+        final SystemPropertySecretSource envSource = new SystemPropertySecretSource("sys.prop");
+        Mockito.when(valueObtainer.handledType()).thenReturn(SystemPropertySecretSource.class);
+        Mockito.when(valueObtainer.obtainValue(envSource)).thenReturn(Optional.of(secretValue));
+        final Secret envSecret = new Secret(envSource, new EnvironmentVariableSecretDestination("SECRET_ENV"));
+        final Secret fileSecret = new Secret(new K8sSecretSource("redcap"), new FileSecretDestination("/run/secrets/redcap"));
+
+        final Command.CommandWrapper wrapper = Command.CommandWrapper.builder().name("w").build();
+        final Command command = Command.builder().name("mixed").image("busybox:latest").commandLine("true")
+                .secrets(Arrays.asList(envSecret, fileSecret)).addCommandWrapper(wrapper).build();
+        final Command.ConfiguredCommand configured = Command.ConfiguredCommand.initialize(command).wrapper(wrapper).build();
+        final CommandResolutionService resolutionService = new CommandResolutionServiceImpl(commandService, dockerServerService,
+                siteConfigPreferences, objectMapper, dockerService, catalogService, userDataCache,
+                new ContainerSecretServiceImpl(Collections.singletonList(valueObtainer)));
+
+        final ResolvedCommand resolved = resolutionService.resolve(configured, Collections.emptyMap(), "PROJ01", user, null);
+        assertThat(resolved.secrets(), hasSize(2));
+        assertThat(resolved.secrets().stream()
+                .anyMatch(s -> s instanceof EnvironmentVariableResolvedSecret
+                        && secretValue.equals(((EnvironmentVariableResolvedSecret) s).envValue())), is(true));
+        assertThat(resolved.secrets().stream()
+                .anyMatch(s -> s instanceof FileResolvedSecret && !(s instanceof ResolvedSecret.WithValue)), is(true));
+
+        final String namespace = "ns";
+        final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
+        kubernetesClientWithMockedApi(namespace, batchApi);
+        Mockito.when(batchApi.createNamespacedJob(Mockito.eq(namespace), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer((Answer<V1Job>) invocation -> invocation.getArgument(1, V1Job.class));
+        final Container toCreate = Container.builderFromResolvedCommand(resolved).userId(userId).backend(backend).build();
+        Mockito.when(kubernetesClient.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+        kubernetesClient.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server);
+
+        final ArgumentCaptor<V1Job> captor = ArgumentCaptor.forClass(V1Job.class);
+        Mockito.verify(batchApi).createNamespacedJob(Mockito.eq(namespace), captor.capture(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
+        final V1PodSpec podSpec = captor.getValue().getSpec().getTemplate().getSpec();
+        assertThat(podSpec.getContainers().get(0).getEnv(), contains(
+                both(hasProperty("name", is("SECRET_ENV"))).and(hasProperty("value", is(secretValue)))));
+        assertThat(podSpec.getVolumes(), hasSize(1));
+        assertThat(podSpec.getVolumes().get(0).getSecret().getSecretName(), is("xnat-proj01-redcap"));
     }
 }
