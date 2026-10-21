@@ -1,6 +1,7 @@
 package org.nrg.containers.secrets;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -35,6 +36,7 @@ public class FileResolvedSecret extends ResolvedSecret {
         return k8sSource().secretName();
     }
 
+    /** False lets the Pod start without the object (see K8sSecretSource). */
     public boolean required() {
         return k8sSource().required();
     }
@@ -46,11 +48,12 @@ public class FileResolvedSecret extends ResolvedSecret {
 
     /** Pod volume name, derived from the identifier; Kubernetes requires it to be unique within the Pod. */
     public String volumeName() {
-        return K8sSecretNameTemplate.sanitize(VOLUME_NAME_PREFIX + identifier());
+        return K8sSecretNameTemplate.sanitizeLabel(VOLUME_NAME_PREFIX + identifier());
     }
 
-    /** A copy whose source carries the rendered name, so it survives the jsonb round trip. */
+    /** A copy whose source carries the rendered (non-null) name, so it survives the jsonb round trip. */
     public FileResolvedSecret withSecretName(final String renderedSecretName) {
+        Objects.requireNonNull(renderedSecretName, "rendered secret name");
         return new FileResolvedSecret(new Secret(
                 new K8sSecretSource(identifier(), renderedSecretName, required()), destination()));
     }

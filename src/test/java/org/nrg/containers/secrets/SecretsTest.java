@@ -738,7 +738,12 @@ public class SecretsTest {
                 new K8sSecretSource("RedCap_API"), new FileSecretDestination("/run/secrets/redcap")));
         assertThat(secret.volumeName(), is("secret-redcap-api"));
 
+        final FileResolvedSecret dotted = new FileResolvedSecret(new Secret(
+                new K8sSecretSource("redcap.v2"), new FileSecretDestination("/run/secrets/redcap")));
+        assertThat("volume names are DNS-1123 labels, so dots are not allowed", dotted.volumeName(), is("secret-redcap-v2"));
+
         final FileResolvedSecret rendered = secret.withSecretName("xnat-proj01-redcap-api");
+        assertThat("the original is not mutated", secret.secretName(), is(nullValue()));
         assertThat(rendered.secretName(), is("xnat-proj01-redcap-api"));
         assertThat("the rendered name is written back into the serialisable source",
                 ((K8sSecretSource) rendered.source()).secretName(), is("xnat-proj01-redcap-api"));
