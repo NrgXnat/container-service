@@ -946,5 +946,10 @@ public class SecretsTest {
                 both(hasProperty("name", is("SECRET_ENV"))).and(hasProperty("value", is(secretValue)))));
         assertThat(podSpec.getVolumes(), hasSize(1));
         assertThat(podSpec.getVolumes().get(0).getSecret().getSecretName(), is("xnat-proj01-redcap"));
+        final List<V1VolumeMount> mounts = podSpec.getContainers().get(0).getVolumeMounts();
+        assertThat(mounts, hasSize(1));
+        assertThat(mounts.get(0).getName(), is("secret-redcap"));
+        assertThat(mounts.get(0).getMountPath(), is("/run/secrets/redcap"));
+        assertThat(mounts.get(0).getReadOnly(), is(true));
     }
 }
