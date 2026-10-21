@@ -824,7 +824,8 @@ public class SecretsTest {
 
     /**
      * Regression guard (not the red test of this task): the three xnat.cs.k8s.* system properties of the
-     * unreleased branch are gone; only the server settings count.
+     * unreleased branch are gone; only the server settings count. Limitation: the client is a Mockito mock, so field
+     * initialisers never run; this test only guards against reading the properties lazily inside createJob.
      */
     @Test
     public void testLegacySystemPropertiesNoLongerConfigureFileSecrets() throws Exception {

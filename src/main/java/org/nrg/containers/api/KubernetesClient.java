@@ -21,6 +21,10 @@ public interface KubernetesClient {
     String ping() throws ContainerBackendException;
     String getLog(String podName, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) throws ContainerBackendException;
 
+    /**
+     * Create a Kubernetes job for the container. Reads these settings from {@code server}: containerUser, gpuVendor,
+     * kubernetesTolerations, secretVolumeType, secretNameTemplate and jobServiceAccount.
+     */
     String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final DockerServerBase.DockerServer server)
             throws ContainerBackendException, ContainerException;
     void unsuspendJob(final String jobName) throws ContainerBackendException;

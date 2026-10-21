@@ -85,6 +85,8 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     public static final String CONTAINER_CREATING = "ContainerCreating";
 
+    public static final String CSI_SECRETS_STORE_DRIVER = "secrets-store.csi.k8s.io";
+
     private final ExecutorService executorService;
     private final JmsTemplate     template;
 
@@ -93,8 +95,6 @@ public class KubernetesClientImpl implements KubernetesClient {
     private BatchV1Api         batchApi;
     private String             namespace;
     private KubernetesInformer kubernetesInformer = null;
-
-    public static final String CSI_SECRETS_STORE_DRIVER = "secrets-store.csi.k8s.io";
 
 
     public KubernetesClientImpl(
@@ -273,6 +273,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     @Override
     public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final DockerServerBase.DockerServer server)
             throws ContainerBackendException, ContainerException {
+        Objects.requireNonNull(server, "Kubernetes job creation requires the container server settings");
         log.debug("Creating kubernetes job");
         final String serverContainerUser = server.containerUser();
         final String gpuVendor = server.gpuVendor();
