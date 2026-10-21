@@ -449,6 +449,10 @@ public class KubernetesClientImpl implements KubernetesClient {
         // File secrets: the name was rendered at resolution; reference it by name, kubelet mounts it on tmpfs.
         for (final FileResolvedSecret fileSecret : containerPropertiesWithSecretValues.fileSecrets()) {
             final String secretName = fileSecret.secretName();
+            if (StringUtils.isBlank(secretName)) {
+                throw new ContainerException("File secret \"" + fileSecret.identifier()
+                        + "\" has no rendered Kubernetes object name; command resolution must render it first");
+            }
             final String volumeName = fileSecret.volumeName();
             volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
             mounts.add(new V1VolumeMountBuilder()

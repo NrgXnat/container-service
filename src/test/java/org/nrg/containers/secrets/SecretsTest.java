@@ -851,6 +851,16 @@ public class SecretsTest {
     }
 
     @Test
+    public void testKubernetesRefusesFileSecretWithoutResolvedName() throws Exception {
+        try {
+            captureJobForFileSecret(null, "/run/secrets/redcap", kubernetesServer());
+            org.junit.Assert.fail("Expected ContainerException");
+        } catch (ContainerException e) {
+            assertThat(e.getMessage(), containsString("has no rendered Kubernetes object name"));
+        }
+    }
+
+    @Test
     public void testKubernetesMountsFileSecretAsCsiVolume() throws Exception {
         final DockerServerBase.DockerServer server = kubernetesServer().toBuilder()
                 .secretVolumeType(SecretVolumeType.CSI).build();
