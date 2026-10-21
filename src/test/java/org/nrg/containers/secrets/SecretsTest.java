@@ -1,6 +1,7 @@
 package org.nrg.containers.secrets;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
 import com.github.dockerjava.api.DockerClient;
@@ -55,6 +56,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.AbstractMap;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -679,8 +681,9 @@ public class SecretsTest {
         assertThat(resolved, not(instanceOf(ResolvedSecret.WithValue.class)));
         final FileResolvedSecret fileSecret = (FileResolvedSecret) resolved;
         assertThat(fileSecret.mountPath(), is(mountPath));
-        assertThat(fileSecret.logicalName(), is(logicalName));
-        assertThat(fileSecret.explicitSecretName(), is(nullValue()));
+        assertThat(fileSecret.identifier(), is(logicalName));
+        assertThat(fileSecret.secretName(), is(nullValue()));
+        assertThat(fileSecret.required(), is(true));
     }
 
     @Test
@@ -699,7 +702,47 @@ public class SecretsTest {
 
         assertThat(props.environmentVariables().entrySet(), is(empty()));
         assertThat(props.fileSecrets(), hasSize(1));
-        assertThat(props.fileSecrets().get(0).logicalName(), is("redcap"));
+        assertThat(props.fileSecrets().get(0).identifier(), is("redcap"));
+    }
+
+    /**
+     * ContainerEntity.secrets is a jsonb column read back through ResolvedSecret.fromUnresolved. A file secret
+     * must come back as a FileResolvedSecret with its rendered name and required flag, so the watchdog and the
+     * error translator can work from the database object. Env secrets still degrade (their value is never stored).
+     */
+    @Test
+    public void testFileResolvedSecretSurvivesJsonRoundTrip() throws Exception {
+        final FileResolvedSecret file = new FileResolvedSecret(new Secret(
+                new K8sSecretSource("redcap", "xnat-proj01-redcap", false), new FileSecretDestination("/run/secrets/redcap")));
+        final ResolvedSecret env = new EnvironmentVariableResolvedSecret(new Secret(
+                new SystemPropertySecretSource("sys.prop"), new EnvironmentVariableSecretDestination("ENV")), "value");
+
+        final String json = objectMapper.writeValueAsString(Arrays.asList(file, env));
+        assertThat("values are never serialised", json, not(containsString("value")));
+        final List<ResolvedSecret> back = objectMapper.readValue(json, new TypeReference<List<ResolvedSecret>>() {});
+
+        assertThat(back.get(0), instanceOf(FileResolvedSecret.class));
+        final FileResolvedSecret fileBack = (FileResolvedSecret) back.get(0);
+        assertThat(fileBack.identifier(), is("redcap"));
+        assertThat(fileBack.secretName(), is("xnat-proj01-redcap"));
+        assertThat(fileBack.mountPath(), is("/run/secrets/redcap"));
+        assertThat(fileBack.required(), is(false));
+        assertThat(fileBack.volumeName(), is("secret-redcap"));
+
+        assertThat(back.get(1).getClass(), is(equalTo(ResolvedSecret.class)));
+    }
+
+    @Test
+    public void testFileResolvedSecretVolumeNameIsSanitisedIdentifier() {
+        final FileResolvedSecret secret = new FileResolvedSecret(new Secret(
+                new K8sSecretSource("RedCap_API"), new FileSecretDestination("/run/secrets/redcap")));
+        assertThat(secret.volumeName(), is("secret-redcap-api"));
+
+        final FileResolvedSecret rendered = secret.withSecretName("xnat-proj01-redcap-api");
+        assertThat(rendered.secretName(), is("xnat-proj01-redcap-api"));
+        assertThat("the rendered name is written back into the serialisable source",
+                ((K8sSecretSource) rendered.source()).secretName(), is("xnat-proj01-redcap-api"));
+        assertThat(rendered.identifier(), is("RedCap_API"));
     }
 
     @Test

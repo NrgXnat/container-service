@@ -25,7 +25,14 @@ public class ResolvedSecret extends Secret {
         this(secret);
     }
 
+    /**
+     * Rebuilds a resolved secret from its serialised form (no value). Only value-less types can be restored
+     * faithfully; a secret whose resolved form carries a value degrades to a plain ResolvedSecret.
+     */
     public static ResolvedSecret fromUnresolved(final Secret secret) {
+        if (secret.source() instanceof K8sSecretSource && secret.destination() instanceof FileSecretDestination) {
+            return new FileResolvedSecret(secret);
+        }
         return new ResolvedSecret(secret);
     }
 

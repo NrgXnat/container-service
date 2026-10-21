@@ -449,10 +449,11 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // File secrets: reference the Kubernetes Secret (or SecretProviderClass) by name; kubelet mounts it on tmpfs.
         for (final FileResolvedSecret fileSecret : containerPropertiesWithSecretValues.fileSecrets()) {
-            final String secretName = StringUtils.isNotBlank(fileSecret.explicitSecretName()) ?
-                    fileSecret.explicitSecretName() :
-                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.logicalName());
-            final String volumeName = K8sSecretNameTemplate.sanitize("secret-" + fileSecret.logicalName());
+            // Rendered at resolution from Chunk 2 on; the fallback keeps pre-rendered containers launching meanwhile.
+            final String secretName = StringUtils.isNotBlank(fileSecret.secretName()) ?
+                    fileSecret.secretName() :
+                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.identifier());
+            final String volumeName = fileSecret.volumeName();
             volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
             mounts.add(new V1VolumeMountBuilder()
                                .withName(volumeName)
