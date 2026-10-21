@@ -5,7 +5,8 @@ public interface KubernetesInformer {
     void start();
     /** Stop every group. */
     void stop();
-    /** Register (and, once started, start) a group for this namespace; a no-op when it already exists. */
+    /** Register (and, once started, start) a group for this namespace; a no-op when it already exists.
+     * namespace must be non-null; callers resolve blank to the context namespace. */
     void ensureWatching(String namespace);
     /** The kubeconfig context namespace. */
     String getNamespace();

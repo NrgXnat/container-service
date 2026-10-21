@@ -44,7 +44,7 @@ import java.util.function.Function;
 public class KubernetesInformerImpl implements KubernetesInformer {
     private static final int RESYNC_DISABLED = 0;
 
-    /** One list/watch group (jobs, pods, events) for one namespace. Package-private seam for tests. */
+    /** One list/watch group (pods and pod warning events) for one namespace. Package-private seam for tests. */
     interface NamespaceWatch {
         void start();
         void stop();
@@ -105,6 +105,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
     @Override
     public synchronized void ensureWatching(final String namespace) {
+        Objects.requireNonNull(namespace, "namespace");
         if (watches.containsKey(namespace)) {
             return;
         }
@@ -156,6 +157,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         @Override
         public void stop() {
+            // false: the executor is XNAT's shared pool, owned by the caller, not by this group.
             sharedInformerFactory.stopAllRegisteredInformers(false);
         }
     }
