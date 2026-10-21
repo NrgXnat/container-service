@@ -43,6 +43,7 @@ import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.secrets.FileResolvedSecret;
+import org.nrg.containers.secrets.SecretErrorTranslator;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -209,6 +210,18 @@ public class KubernetesClientImpl implements KubernetesClient {
             stop();
             start();
         }
+    }
+
+    @Override
+    public synchronized void ensureWatching(final String namespace) {
+        if (kubernetesInformer == null) {
+            // Not started on this node (non-primary nodes never call start()). Do not build one here: its constructor
+            // sets readTimeout(0) on the shared ApiClient. The primary node's next status cycle calls start() and then
+            // retrieveNonfinalizedKubernetesNamespaces(), which registers this namespace.
+            log.debug("Informer not started; namespace {} will be watched after the next start()", namespace);
+            return;
+        }
+        kubernetesInformer.ensureWatching(namespace);
     }
 
     @Override
@@ -550,11 +563,14 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             job = batchApi.createNamespacedJob(namespace, job, null, null, null, null);
             final V1ObjectMeta meta    = job.getMetadata();
             final String       jobName = meta == null ? null : meta.getName();
-            log.debug("Created job {}", jobName);
+            log.debug("Created job {} in namespace {}", jobName, namespace);
+            // Only after success: an unprovisioned namespace would otherwise make the informer retry 403/404 forever.
+            // The group's initial LIST picks this job up, so no event is lost.
+            ensureWatching(namespace);
             return jobName;
         } catch (ApiException e) {
-            log.error("Could not create job: message \"{}\" code {} body {}", e.getMessage(), e.getCode(), e.getResponseBody(), e);
-            throw new ContainerBackendException("Could not create job", e);
+            log.error("Could not create job in namespace {}: message \"{}\" code {} body {}", namespace, e.getMessage(), e.getCode(), e.getResponseBody(), e);
+            throw new ContainerBackendException(SecretErrorTranslator.translateCreateJobFailure(e, namespace), e);
         }
     }
 

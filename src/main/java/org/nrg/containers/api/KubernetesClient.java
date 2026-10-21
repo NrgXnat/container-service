@@ -20,6 +20,9 @@ public interface KubernetesClient {
     void start();
     void stop();
 
+    /** Watch jobs in {@code namespace} if not already watched. A no-op when the informer has not been started on this node. */
+    void ensureWatching(String namespace);
+
     String ping() throws ContainerBackendException;
     String getLog(String podName, @Nullable String namespace, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) throws ContainerBackendException;
 
