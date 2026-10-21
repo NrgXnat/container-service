@@ -72,6 +72,28 @@ public final class K8sSecretNameTemplate {
         return requireValidName(requireRfc1123Subdomain(sanitize(substituted)), "Secret name");
     }
 
+    /**
+     * Render the per-project namespace template into a sanitised, length-checked DNS label.
+     * Only {@code #PROJECT#} is substituted: namespaces are a project-level boundary.
+     */
+    public static String renderNamespace(@Nullable final String template, @Nullable final String project) {
+        if (StringUtils.isBlank(template)) {
+            throw new IllegalArgumentException("A job namespace template is required in per-project mode");
+        }
+        if (!template.contains(PROJECT_PLACEHOLDER)) {
+            throw new IllegalArgumentException("Job namespace template \"" + template + "\" must contain " + PROJECT_PLACEHOLDER);
+        }
+        if (template.replace(PROJECT_PLACEHOLDER, "").contains("#")) {
+            throw new IllegalArgumentException("Job namespace template \"" + template + "\" may only use the "
+                    + PROJECT_PLACEHOLDER + " placeholder; input placeholders are not substituted in namespaces");
+        }
+        if (StringUtils.isBlank(project)) {
+            throw new IllegalArgumentException("Placeholder " + PROJECT_PLACEHOLDER
+                    + " has no value in this launch: per-project namespaces need a project");
+        }
+        return requireValidLabel(sanitizeLabel(template.replace(PROJECT_PLACEHOLDER, project)), "Job namespace");
+    }
+
     static boolean hasPlaceholders(final String name) {
         return name.contains(PROJECT_PLACEHOLDER) || name.contains(IDENTIFIER_PLACEHOLDER)
                 || INPUT_PLACEHOLDER.matcher(name).find();

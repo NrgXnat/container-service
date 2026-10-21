@@ -11,6 +11,7 @@ import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.JobNamespaceMode;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerSecretService;
@@ -33,6 +34,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.when;
@@ -176,6 +178,27 @@ public class FileSecretResolutionTest {
         final Secret env = new Secret(new SystemPropertySecretSource("sys.prop"), new EnvironmentVariableSecretDestination("SECRET_ENV"));
         assertResolutionFails(Collections.singletonList(env), "PROJ01", Collections.singletonMap("session", "uses SECRET_ENV"),
                 kubernetesServer().build(), "refers to secret destination");
+    }
+
+    @Test
+    public void perProjectModeRendersTheNamespaceEvenWithoutSecrets() throws Exception {
+        final DockerServerBase.DockerServer server = kubernetesServer()
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#").build();
+        assertThat(resolve(Collections.emptyList(), "My_Proj", Collections.emptyMap(), server).namespace(), is("xnat-my-proj"));
+        assertThat(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), server).namespace(), is("xnat-proj01"));
+    }
+
+    @Test
+    public void singleModeLeavesTheNamespaceToTheContext() throws Exception {
+        assertThat(resolve(Collections.emptyList(), "PROJ01", Collections.emptyMap(), kubernetesServer().build()).namespace(), is(nullValue()));
+    }
+
+    @Test
+    public void perProjectModeFailsWithoutAProjectOrWithAnOverlongName() throws Exception {
+        final DockerServerBase.DockerServer server = kubernetesServer()
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#").build();
+        assertResolutionFails(Collections.emptyList(), null, Collections.emptyMap(), server, "#PROJECT# has no value");
+        assertResolutionFails(Collections.emptyList(), StringUtils.repeat('p', 60), Collections.emptyMap(), server, "63");
     }
 
     /** Rendering happens on any backend; Docker still refuses file secrets at launch (existing behaviour). */

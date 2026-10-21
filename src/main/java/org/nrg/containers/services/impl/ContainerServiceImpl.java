@@ -756,6 +756,8 @@ public class ContainerServiceImpl implements ContainerService {
                 .workflowId(workflowid)
                 .subtype(DOCKER_WRAPUP.getName())
                 .project(parent != null ? parent.project() : null)
+                // Parent wins: the wrapup must run where the parent's job was created, whatever the current backend setting is
+                .namespace(parent != null ? parent.namespace() : resolvedCommand.namespace())
                 .swarmConstraints(swarmConstraints)
                 .status(CREATED) //Needs non-empty status to be picked up by containerService.retrieveNonfinalizedServiceIds()
                 .build();
@@ -805,6 +807,9 @@ public class ContainerServiceImpl implements ContainerService {
         if (parent != null) {
             if (resolvedCommand.project() == null) {
                 builder.project(parent.project());
+            }
+            if (resolvedCommand.namespace() == null) {
+                builder.namespace(parent.namespace());
             }
             builder.swarmConstraints(parent.swarmConstraints() != null ? new ArrayList<>(parent.swarmConstraints()) : null);
         }

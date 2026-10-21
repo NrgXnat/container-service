@@ -32,6 +32,7 @@ import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.configuration.CommandConfiguration;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.JobNamespaceMode;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.Resource;
@@ -658,6 +659,33 @@ public class CommandResolutionTest {
         final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInput(resourceDir, resourceDir, null);
         final ResolvedCommandMount expectedOutputMount = ResolvedCommandMount.specialOutput(resolvedCommandMountPath, resolvedCommandMountPath, null);
         assertThat(resolvedSetupCommand.mounts(), containsInAnyOrder(expectedInputMount, expectedOutputMount));
+    }
+
+    /** Setup commands run in the parent's namespace, otherwise they cannot reach the project's PVCs. */
+    @Test
+    public void testSetupCommandInheritsNamespace() throws Exception {
+        final String setupCommandResourceDir = Paths.get(ClassLoader.getSystemResource("setupCommand").toURI()).toString().replace("%20", " ");
+        final Command setupCommand = mapper.readValue(new File(setupCommandResourceDir + "/setup-command.json"), Command.class);
+        final Command commandWithSetupCommand = mapper.readValue(new File(setupCommandResourceDir + "/command-with-setup-command.json"), Command.class);
+        final CommandWrapper commandWrapper = commandWithSetupCommand.xnatCommandWrappers().get(0);
+        final Command.ConfiguredCommand configuredCommand = configure(commandWithSetupCommand, commandWrapper);
+        when(dockerService.getCommandByImage(commandWrapper.externalInputs().get(0).viaSetupCommand())).thenReturn(setupCommand);
+
+        final Resource resourceInput = mapper.readValue(new File(setupCommandResourceDir + "/resource.json"), Resource.class);
+        resourceInput.setDirectory(folder.newFolder("resource-ns").getAbsolutePath());
+        final Map<String, String> runtimeValues = Collections.singletonMap("resource", mapper.writeValueAsString(resourceInput));
+
+        when(dockerServerService.getServer()).thenReturn(DockerServerBase.DockerServer.builder()
+                .id(0).name("k8s").host("").backend(Backend.KUBERNETES).lastEventCheckTime(new Date())
+                .pathTranslationXnatPrefix(pathTranslationXnatPrefix).pathTranslationDockerPrefix(pathTranslationContainerHostPrefix)
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#")
+                .build());
+
+        final ResolvedCommand resolvedCommand = commandResolutionService.resolve(configuredCommand, runtimeValues, "PROJ01", userI, null);
+
+        assertThat(resolvedCommand.namespace(), is("xnat-proj01"));
+        assertThat(resolvedCommand.setupCommands(), hasSize(1));
+        assertThat(resolvedCommand.setupCommands().get(0).namespace(), is("xnat-proj01"));
     }
 
     /** Setup commands are resolved without their secrets, so a file secret there must be refused, not silently dropped. */

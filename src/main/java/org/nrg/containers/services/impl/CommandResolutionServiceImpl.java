@@ -52,6 +52,7 @@ import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.JobNamespaceMode;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.ProjectAsset;
@@ -299,6 +300,16 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private String secretNameTemplate = null;
 
+        private Backend backend = Backend.DOCKER;
+        private JobNamespaceMode jobNamespaceMode = JobNamespaceMode.DEFAULT;
+        private String jobNamespaceTemplate = null;
+        /**
+         * Rendered once per resolution in resolve(); setup and wrapup commands inherit it. Null means the context
+         * namespace. preResolve() never renders it and never resolves setup or wrapup commands, so the null is never
+         * observed there.
+         */
+        private String resolvedNamespace = null;
+
         private final List<ResolvedCommand> resolvedSetupCommands;
 
         // Caches
@@ -321,6 +332,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 pathTranslationXnatPrefix = dockerServer.pathTranslationXnatPrefix();
                 pathTranslationContainerHostPrefix = dockerServer.pathTranslationDockerPrefix();
                 secretNameTemplate = dockerServer.secretNameTemplate();
+                backend = dockerServer.backend();
+                jobNamespaceMode = dockerServer.jobNamespaceMode();
+                jobNamespaceTemplate = dockerServer.jobNamespaceTemplate();
                 if (StringUtils.isNotBlank(dockerServer.combinedPvcName())) {
                     archivePvcName = dockerServer.combinedPvcName();
                     buildPvcName = dockerServer.combinedPvcName();
@@ -445,6 +459,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             log.info("Resolving command.");
             log.debug("{}", command);
 
+            resolvedNamespace = resolveNamespace();
+
             final Map<String, String> resolvedInputValuesByReplacementKey = new HashMap<>();
             final Map<String, String> resolvedCommandLineValuesByReplacementKey = new HashMap<>();
             final List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees =
@@ -538,11 +554,25 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                     .genericResources(command.genericResources())
                     .ulimits(command.ulimits())
                     .secrets(resolvedSecrets)
+                    .namespace(resolvedNamespace)
                     .build();
 
             log.info("Done resolving command.");
             log.debug("Resolved command: \n{}", resolvedCommand);
             return resolvedCommand;
+        }
+
+        private String resolveNamespace() throws CommandResolutionException {
+            if (backend != Backend.KUBERNETES || jobNamespaceMode != JobNamespaceMode.PER_PROJECT) {
+                return null;
+            }
+            try {
+                final String namespace = K8sSecretNameTemplate.renderNamespace(jobNamespaceTemplate, project);
+                log.debug("Job will run in per-project namespace {}", namespace);
+                return namespace;
+            } catch (IllegalArgumentException e) {
+                throw new CommandResolutionException("Could not determine the Kubernetes namespace for this launch: " + e.getMessage(), e);
+            }
         }
 
         private void copyInputFilesToBuildDir(List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
@@ -653,7 +683,10 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             }
 
             return ResolvedCommand.fromSpecialCommandType(command, inputMountXnatHostPath, inputMountContainerHostPath,
-                    outputMountXnatHostPath, outputMountContainerHostPath, parentSourceObjectName, inputMountPvcName, outputMountPvcName);
+                    outputMountXnatHostPath, outputMountContainerHostPath, parentSourceObjectName, inputMountPvcName, outputMountPvcName)
+                    .toBuilder()
+                    .namespace(resolvedNamespace)
+                    .build();
         }
 
         private String getMountContainerHostPath(final String mountXnatHostPath, String xnatPathPrefix, String containerHostPathPrefix) {
