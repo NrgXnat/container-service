@@ -846,7 +846,10 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public void processEvent(final ContainerEvent event) {
         log.debug("Processing container event: {}", event);
-        final Container container = retrieve(event.backendId());
+        final KubernetesStatusChangeEvent kEvent = event instanceof KubernetesStatusChangeEvent ? (KubernetesStatusChangeEvent) event : null;
+        final Container container = kEvent != null
+                ? toPojoOrNull(containerEntityService.retrieveByJobNameAndNamespace(kEvent.getJobName(), kEvent.getNamespace()))
+                : retrieve(event.backendId());
 
         // container will be null if either we aren't tracking the container
         // that this event is about, or if we have already recorded the event
@@ -873,15 +876,13 @@ public class ContainerServiceImpl implements ContainerService {
         // events we have already seen, e.g. the kubernetes informer's initial LIST after a restart reports
         // pods that terminated long ago. Such an event can still carry an id we have not recorded yet,
         // but it must not be acted on again.
-        Container containerWithAddedEvent = addContainerEventToHistory(event, userI);
+        Container containerWithAddedEvent = toPojoOrNull(containerEntityService.addContainerEventToHistory(fromPojo(container), event, userI));
         final boolean eventAlreadyRecorded = containerWithAddedEvent == null;
         if (eventAlreadyRecorded) {
             containerWithAddedEvent = container;
         }
 
-        if (containerWithAddedEvent.backend() == Backend.KUBERNETES && event instanceof KubernetesStatusChangeEvent) {
-            KubernetesStatusChangeEvent kEvent = ((KubernetesStatusChangeEvent) event);
-
+        if (kEvent != null && containerWithAddedEvent.backend() == Backend.KUBERNETES) {
             // Check if we need to set additional ids
             boolean shouldUpdateNode = containerWithAddedEvent.nodeId() == null && kEvent.getNodeId() != null;
             boolean shouldUpdatePodName = containerWithAddedEvent.podName() == null && kEvent.getPodName() != null;
@@ -2209,6 +2210,11 @@ public class ContainerServiceImpl implements ContainerService {
 
     private List<Container> toPojo(@Nonnull final List<ContainerEntity> containerEntityList) {
         return containerEntityList.stream().map(this::toPojo).collect(Collectors.toList());
+    }
+
+    @Nullable
+    private Container toPojoOrNull(@Nullable final ContainerEntity entity) {
+        return entity == null ? null : toPojo(entity);
     }
 
     @Nonnull

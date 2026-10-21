@@ -171,13 +171,24 @@ public class HibernateContainerEntityService
 
     @Override
     @Nullable
+    public ContainerEntity retrieveByJobNameAndNamespace(final String jobName, @Nullable final String namespace) {
+        return StringUtils.isBlank(jobName) ? null : getDao().retrieveByJobNameAndNamespace(jobName, namespace);
+    }
+
+    @Override
+    @Nullable
     public ContainerEntity addContainerEventToHistory(final ContainerEvent containerEvent, final UserI userI) {
         final ContainerEntity containerEntity = retrieve(containerEvent.backendId());
         if (containerEntity == null) {
             log.debug("This event is not about a container we are interested in.");
             return null;
         }
+        return addContainerEventToHistory(containerEntity, containerEvent, userI);
+    }
 
+    @Override
+    @Nullable
+    public ContainerEntity addContainerEventToHistory(final ContainerEntity containerEntity, final ContainerEvent containerEvent, final UserI userI) {
         final ContainerEntityHistory added = addContainerHistoryItem(containerEntity,
                 ContainerEntityHistory.fromContainerEvent(containerEvent, containerEntity), userI);
         return added == null ? null : containerEntity; // Return null if we've already added the history item

@@ -131,6 +131,18 @@ public class ContainerEventReplayTest {
         assertThat(finalizeRequests.size(), is(1));
     }
 
+    /** generateName suffixes can collide across namespaces; an event from another namespace is not ours. */
+    @Test
+    public void eventFromAnotherNamespaceIsIgnored() {
+        final ContainerEntity containerEntity = trackedContainer(KubernetesPodPhase.RUNNING.toString());
+        when(containerEntityService.retrieveByJobNameAndNamespace(JOB_NAME, "xnat-proj02")).thenReturn(null);
+
+        containerService.processEvent(succeededEvent().toBuilder().namespace("xnat-proj02").build());
+
+        assertThat(finalizeRequests.size(), is(0));
+        assertThat(containerEntity.getHistory().size(), is(0));
+    }
+
     /**
      * A kubernetes container as we track it: {@link Container#jobName()} reads serviceId and
      * {@link Container#podName()} reads taskId. Every backend id is already set, so a replayed event
@@ -164,10 +176,10 @@ public class ContainerEventReplayTest {
      * {@code HibernateContainerEntityService.addContainerEventToHistory} does.
      */
     private void stubContainerEntityService(final ContainerEntity containerEntity) {
-        when(containerEntityService.retrieve(JOB_NAME)).thenReturn(containerEntity);
-        when(containerEntityService.addContainerEventToHistory(any(ContainerEvent.class), any(UserI.class)))
+        when(containerEntityService.retrieveByJobNameAndNamespace(JOB_NAME, null)).thenReturn(containerEntity);
+        when(containerEntityService.addContainerEventToHistory(any(ContainerEntity.class), any(ContainerEvent.class), any(UserI.class)))
                 .thenAnswer(invocation -> {
-                    final ContainerEvent event = (ContainerEvent) invocation.getArguments()[0];
+                    final ContainerEvent event = (ContainerEvent) invocation.getArguments()[1];
                     final ContainerEntityHistory historyItem =
                             ContainerEntityHistory.fromContainerEvent(event, containerEntity);
                     if (containerEntity.isItemInHistory(historyItem)) {

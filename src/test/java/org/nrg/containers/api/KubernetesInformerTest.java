@@ -43,6 +43,7 @@ public class KubernetesInformerTest {
         final V1Pod pod = new V1Pod()
                 .metadata(new V1ObjectMeta()
                         .name(POD_NAME)
+                        .namespace("xnat-proj01")
                         .labels(Collections.singletonMap("job-name", JOB_NAME)))
                 .status(new V1PodStatus()
                         .phase(KubernetesPodPhase.PENDING.toString())
@@ -61,6 +62,7 @@ public class KubernetesInformerTest {
         assertThat(event.getValue().getPodPhase(), is(KubernetesPodPhase.PENDING));
         assertThat(event.getValue().getContainerId(), is(nullValue()));
         assertThat(event.getValue().getContainerState(), is(nullValue()));
+        assertThat(event.getValue().getNamespace(), is("xnat-proj01"));
     }
 
     // ---- Pod warning events (e.g. FailedMount when a secret is missing) ----
@@ -68,6 +70,7 @@ public class KubernetesInformerTest {
     private static V1Pod trackedPod() {
         return new V1Pod().metadata(new V1ObjectMeta()
                 .name(POD_NAME)
+                .namespace("xnat-proj01")
                 .labels(Collections.singletonMap("job-name", JOB_NAME)));
     }
 
@@ -102,6 +105,7 @@ public class KubernetesInformerTest {
         assertThat(sent.details(), containsString("FailedMount"));
         assertThat(sent.details(), containsString("xnat-proj01-redcap\" not found"));
         assertThat(sent.externalTimestamp(), is(notNullValue()));
+        assertThat(sent.getNamespace(), is("xnat-proj01"));
     }
 
     @Test

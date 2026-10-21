@@ -141,6 +141,11 @@ public class KubernetesInformerImpl implements KubernetesInformer {
         return meta == null ? null : meta.getName();
     }
 
+    private static String objNamespace(KubernetesObject obj) {
+        final V1ObjectMeta meta = obj.getMetadata();
+        return meta == null ? null : meta.getNamespace();
+    }
+
     @Override
     public void start() {
         if (!isStarted) {
@@ -232,18 +237,19 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             final V1PodSpec podSpec = pod.getSpec();
             final String nodeName = podSpec == null ? null : podSpec.getNodeName();
 
-            return new KubernetesStatusChangeEvent(
-                    jobNameFromPodLabels(pod),
-                    objName(pod),
-                    containerId,
-                    podPhase,
-                    podPhaseReason,
-                    containerState,
-                    containerStateReason,
-                    exitCode,
-                    timestamp,
-                    nodeName
-            );
+            return KubernetesStatusChangeEvent.builder()
+                    .jobName(jobNameFromPodLabels(pod))
+                    .podName(objName(pod))
+                    .containerId(containerId)
+                    .podPhase(podPhase)
+                    .podPhaseReason(podPhaseReason)
+                    .containerState(containerState)
+                    .containerStateReason(containerStateReason)
+                    .exitCode(exitCode)
+                    .timestamp(timestamp)
+                    .nodeId(nodeName)
+                    .namespace(objNamespace(pod))
+                    .build();
         }
 
         private void triggerEvent(final KubernetesStatusChangeEvent event) {
@@ -365,18 +371,14 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                 return;
             }
             final OffsetDateTime timestamp = event.getLastTimestamp() != null ? event.getLastTimestamp() : event.getEventTime();
-            final KubernetesStatusChangeEvent statusEvent = new KubernetesStatusChangeEvent(
-                    jobName,
-                    event.getInvolvedObject().getName(),
-                    null,
-                    KubernetesPodPhase.PENDING,
-                    event.getReason() + ": " + event.getMessage(),
-                    null,
-                    null,
-                    null,
-                    timestamp,
-                    null
-            );
+            final KubernetesStatusChangeEvent statusEvent = KubernetesStatusChangeEvent.builder()
+                    .jobName(jobName)
+                    .podName(event.getInvolvedObject().getName())
+                    .podPhase(KubernetesPodPhase.PENDING)
+                    .podPhaseReason(event.getReason() + ": " + event.getMessage())
+                    .timestamp(timestamp)
+                    .namespace(objNamespace(event))
+                    .build();
             log.debug("Triggering event {}", statusEvent);
             QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, statusEvent);
         }

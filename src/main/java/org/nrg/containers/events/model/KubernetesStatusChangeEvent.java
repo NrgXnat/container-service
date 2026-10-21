@@ -23,6 +23,7 @@ public class KubernetesStatusChangeEvent implements ContainerEvent {
     Integer exitCode;
     OffsetDateTime timestamp;
     String nodeId;
+    String namespace;
 
     @Override
     public String backendId() {

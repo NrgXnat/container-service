@@ -15,6 +15,7 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
 import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.secrets.Secret;
@@ -75,6 +76,7 @@ public class ContainerEntityTest {
                 .image("xnat/dcm2niix:1.0")
                 .resolvedInputTrees(Collections.singletonList(inputTreeNode))
                 .commandLine("Anything I want")
+                .namespace("xnat-proj01")
                 .secrets(Collections.singletonList(ResolvedSecret.fromUnresolved(new Secret(
                         new SystemPropertySecretSource("system-prop"),
                         new EnvironmentVariableSecretDestination("ENV_NAME")
@@ -100,6 +102,26 @@ public class ContainerEntityTest {
 
         final ContainerEntity retrieved = containerEntityService.get(created.getId());
         assertThat(retrieved, is(created));
+        assertThat(retrieved.getNamespace(), is("xnat-proj01"));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testRetrieveByJobNameAndNamespace() throws Exception {
+        final ContainerEntity proj01 = containerEntityService.create(kubernetesEntity("job-abc", "xnat-proj01", "Running"));
+        final ContainerEntity legacy = containerEntityService.create(kubernetesEntity("job-legacy", null, "Running"));
+
+        assertThat(containerEntityService.retrieveByJobNameAndNamespace("job-abc", "xnat-proj01").getId(), is(proj01.getId()));
+        assertThat("a namespace-less event still finds the row", containerEntityService.retrieveByJobNameAndNamespace("job-abc", null).getId(), is(proj01.getId()));
+        assertThat("a pre-upgrade row matches any namespace", containerEntityService.retrieveByJobNameAndNamespace("job-legacy", "xnat-proj01").getId(), is(legacy.getId()));
+        assertThat(containerEntityService.retrieveByJobNameAndNamespace("job-abc", "xnat-proj02"), is(nullValue()));
+    }
+
+    private static ContainerEntity kubernetesEntity(final String jobName, final String namespace, final String status) {
+        return ContainerEntity.fromPojo(Container.builder()
+                .commandId(1L).wrapperId(1L).userId("me").dockerImage("busybox").commandLine("true")
+                .backend(Backend.KUBERNETES).serviceId(jobName).namespace(namespace).status(status)
+                .build());
     }
 
     @Test

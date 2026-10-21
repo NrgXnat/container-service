@@ -2,6 +2,7 @@ package org.nrg.containers.daos;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.hibernate.Criteria;
 import org.hibernate.Hibernate;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.MatchMode;
@@ -71,6 +72,32 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
     @Nullable
     public ContainerEntity retrieveByServiceId(final @Nonnull String serviceId) {
         return findByUniqueProperty("serviceId", serviceId);
+    }
+
+    /**
+     * Kubernetes jobs are matched by name and namespace: generateName suffixes can in theory collide across
+     * namespaces. A null event namespace or a pre-upgrade row (null column) matches on the name alone.
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    public ContainerEntity retrieveByJobNameAndNamespace(final @Nonnull String jobName, final @Nullable String namespace) {
+        final Criteria criteria = getSession()
+                .createCriteria(ContainerEntity.class)
+                .add(Restrictions.eq("serviceId", jobName));
+        if (namespace != null) {
+            criteria.add(Restrictions.or(Restrictions.eq("namespace", namespace), Restrictions.isNull("namespace")));
+        }
+        final List<ContainerEntity> matches = initializeAndReturnList(criteria.list());
+        if (matches.isEmpty()) {
+            return null;
+        }
+        if (matches.size() > 1) {
+            log.warn("{} containers share job name {}; preferring the one recorded in namespace {}", matches.size(), jobName, namespace);
+        }
+        return matches.stream()
+                .filter(entity -> namespace != null && namespace.equals(entity.getNamespace()))
+                .findFirst()
+                .orElse(matches.get(0));
     }
 
     public void addHistoryItem(final @Nonnull ContainerEntity containerEntity,

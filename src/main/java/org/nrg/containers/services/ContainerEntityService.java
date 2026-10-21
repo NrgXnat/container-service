@@ -8,6 +8,7 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.framework.orm.hibernate.BaseHibernateService;
 import org.nrg.xft.security.UserI;
 
+import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -40,7 +41,9 @@ public interface ContainerEntityService extends BaseHibernateService<ContainerEn
     List<ContainerEntity> retrieveSetupContainersForParent(long parentId);
     List<ContainerEntity> retrieveWrapupContainersForParent(long parentId);
 
+    @Nullable ContainerEntity retrieveByJobNameAndNamespace(String jobName, @Nullable String namespace);
     ContainerEntity addContainerEventToHistory(final ContainerEvent containerEvent, final UserI userI);
+    @Nullable ContainerEntity addContainerEventToHistory(ContainerEntity containerEntity, ContainerEvent containerEvent, UserI userI);
     ContainerEntityHistory addContainerHistoryItem(final ContainerEntity containerEntity,
                                                    final ContainerEntityHistory history, final UserI userI);
 
