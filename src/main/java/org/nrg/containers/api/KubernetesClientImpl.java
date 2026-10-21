@@ -452,7 +452,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             // Rendered at resolution from Task 9 on; this fallback is removed in Task 10.
             final String secretName = StringUtils.isNotBlank(fileSecret.secretName()) ?
                     fileSecret.secretName() :
-                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.identifier());
+                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.identifier(), Collections.emptyMap());
             final String volumeName = fileSecret.volumeName();
             volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
             mounts.add(new V1VolumeMountBuilder()
