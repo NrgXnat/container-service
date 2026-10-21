@@ -11,6 +11,7 @@ import com.github.dockerjava.api.command.CreateServiceCmd;
 import com.github.dockerjava.api.command.CreateServiceResponse;
 import com.github.dockerjava.api.model.ServiceSpec;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1Job;
@@ -233,8 +234,8 @@ public class SecretsTest {
         backend = Backend.KUBERNETES;
 
         final String namespace = RandomStringUtils.randomAlphabetic(5);
-        // Whitebox.setInternalState(kubernetesClient, "namespace", namespace);
-        Field namespaceField = kubernetesClient.getClass().getDeclaredField("namespace");
+        // Whitebox.setInternalState(kubernetesClient, "contextNamespace", namespace);
+        Field namespaceField = kubernetesClient.getClass().getDeclaredField("contextNamespace");
         namespaceField.setAccessible(true);  // Allow access to private fields
         namespaceField.set(kubernetesClient, namespace);
 
@@ -787,9 +788,58 @@ public class SecretsTest {
     }
 
     private KubernetesClientImpl kubernetesClientWithMockedApi(final String namespace, final BatchV1Api batchApi) throws Exception {
-        setField(kubernetesClient, "namespace", namespace);
+        setField(kubernetesClient, "contextNamespace", namespace);
         setField(kubernetesClient, "batchApi", batchApi);
         return kubernetesClient;
+    }
+
+    private Container kubernetesContainer(final String namespace) {
+        return Container.builder()
+                .wrapperId(0L).commandId(0L)
+                .dockerImage("busybox:latest").commandLine("true")
+                .backend(Backend.KUBERNETES).userId(userId)
+                .serviceId("job-1").taskId("job-1-pod")
+                .namespace(namespace)
+                .build();
+    }
+
+    @Test
+    public void testKubernetesJobIsCreatedInTheContainerNamespace() throws Exception {
+        final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
+        kubernetesClientWithMockedApi("ctx", batchApi);
+        Mockito.when(batchApi.createNamespacedJob(Mockito.anyString(), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer((Answer<V1Job>) invocation -> invocation.getArgument(1, V1Job.class));
+        final DockerServerBase.DockerServer server = kubernetesServer();
+
+        final Container perProject = kubernetesContainer("xnat-proj01");
+        Mockito.when(kubernetesClient.createJob(perProject, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+        kubernetesClient.createJob(perProject, DockerControlApi.NumReplicas.ZERO, server);
+        Mockito.verify(batchApi).createNamespacedJob(Mockito.eq("xnat-proj01"), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
+
+        final Container single = kubernetesContainer(null);
+        Mockito.when(kubernetesClient.createJob(single, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+        kubernetesClient.createJob(single, DockerControlApi.NumReplicas.ZERO, server);
+        Mockito.verify(batchApi).createNamespacedJob(Mockito.eq("ctx"), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
+    }
+
+    @Test
+    public void testKubernetesRemoveAndLogUseTheGivenNamespace() throws Exception {
+        final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
+        final CoreV1Api coreApi = Mockito.mock(CoreV1Api.class);
+        kubernetesClientWithMockedApi("ctx", batchApi);
+        setField(kubernetesClient, "coreApi", coreApi);
+
+        Mockito.doCallRealMethod().when(kubernetesClient).removeJob("job-1", "xnat-proj01");
+        kubernetesClient.removeJob("job-1", "xnat-proj01");
+        Mockito.verify(batchApi).deleteNamespacedJob(Mockito.eq("job-1"), Mockito.eq("xnat-proj01"), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.eq("Foreground"), Mockito.isNull());
+
+        Mockito.doCallRealMethod().when(kubernetesClient).removeJob("job-2", null);
+        kubernetesClient.removeJob("job-2", null);
+        Mockito.verify(batchApi).deleteNamespacedJob(Mockito.eq("job-2"), Mockito.eq("ctx"), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.eq("Foreground"), Mockito.isNull());
+
+        Mockito.when(kubernetesClient.getLog("job-1-pod", "xnat-proj01", org.nrg.containers.api.LogType.STDOUT, null, null)).thenCallRealMethod();
+        kubernetesClient.getLog("job-1-pod", "xnat-proj01", org.nrg.containers.api.LogType.STDOUT, null, null);
+        Mockito.verify(coreApi).readNamespacedPodLog(Mockito.eq("job-1-pod"), Mockito.eq("xnat-proj01"), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
     }
 
     private static void setField(final Object target, final String name, final Object value) throws Exception {

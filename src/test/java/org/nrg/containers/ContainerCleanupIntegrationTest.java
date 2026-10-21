@@ -235,7 +235,7 @@ public class ContainerCleanupIntegrationTest {
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         TestingUtils.skipIfCannotConnect(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient());
-        kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
+        kubernetesNamespace = TestingUtils.kubernetesTestNamespace(kubernetesClient);
 
         kubernetesClient.start();
     }
@@ -255,7 +255,6 @@ public class ContainerCleanupIntegrationTest {
         TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
         kubernetesClientFactory.shutdown();
-        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
         executorService.shutdown();
     }
 

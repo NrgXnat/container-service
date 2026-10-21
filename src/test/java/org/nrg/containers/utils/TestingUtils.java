@@ -11,9 +11,6 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.models.V1Namespace;
-import io.kubernetes.client.openapi.models.V1NamespaceBuilder;
-import io.kubernetes.client.openapi.models.V1Status;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -53,7 +50,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -236,35 +232,12 @@ public class TestingUtils {
         assumeTrue("Cannot connect to kubernetes", canConnectToKubernetes(client));
     }
 
-    public static String createKubernetesNamespace(final KubernetesClient kubernetesClient) {
-        String namespaceName = UUID.randomUUID().toString();
-        CoreV1Api coreApi = new CoreV1Api(kubernetesClient.getBackendClient());
-        try {
-            log.debug("Creating namespace {}", namespaceName);
-            V1Namespace namespace = new V1NamespaceBuilder()
-                    .withNewMetadata()
-                    .withName(namespaceName)
-                    .endMetadata()
-                    .build();
-            coreApi.createNamespace(namespace, null, null, null, null);
-            kubernetesClient.setNamespace(namespaceName);
-            return namespaceName;
-        } catch (Exception e) {
-            log.debug("Failed to create namespace {}", namespaceName);
-            return null;
-        }
-    }
-
-    public static boolean cleanupKubernetesNamespace(final String namespaceName, final KubernetesClient kubernetesClient) {
-        CoreV1Api coreApi = new CoreV1Api(kubernetesClient.getBackendClient());
-        try {
-            log.debug("Deleting namespace {}", namespaceName);
-            V1Status status = coreApi.deleteNamespace(namespaceName, null, null, null, null, KubernetesClientImpl.Propagation.Background.name(), null);
-            return status != null && 200 == status.getCode();
-        } catch (Exception e) {
-            log.debug("Failed to delete namespace {}", namespaceName);
-            return false;
-        }
+    /**
+     * The namespace integration-test jobs land in: the kubeconfig context namespace. The client no longer switches
+     * namespaces globally, so tests must not create a namespace of their own and expect jobs to appear there.
+     */
+    public static String kubernetesTestNamespace(final KubernetesClient kubernetesClient) {
+        return kubernetesClient.getNamespace();
     }
 
     private static void dockerCleanup(DockerClient dockerClient, String containerId) {

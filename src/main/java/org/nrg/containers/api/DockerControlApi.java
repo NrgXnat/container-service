@@ -776,7 +776,7 @@ public class DockerControlApi implements ContainerControlApi {
                 startDockerContainer(toStart.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient().unsuspendJob(toStart.jobName());
+                getKubernetesClient().unsuspendJob(toStart.jobName(), toStart.namespace());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");
@@ -857,7 +857,7 @@ public class DockerControlApi implements ContainerControlApi {
                 return getDockerContainerLog(server, container.containerId(), logType, withTimestamps, since);
             case KUBERNETES:
                 log.info("Getting logs for container {} (database ID: {}) in pod {} (server type {} on host {})", container.containerId(), container.databaseId(), container.podName(), server.backend(), server.host());
-                return getKubernetesClient().getLog(container.podName(), logType, withTimestamps, since);
+                return getKubernetesClient().getLog(container.podName(), container.namespace(), logType, withTimestamps, since);
             default:
                 throw new NoContainerServerException("Not implemented");
         }
@@ -995,7 +995,7 @@ public class DockerControlApi implements ContainerControlApi {
                 killDockerContainer(container.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient().removeJob(container.jobName());
+                getKubernetesClient().removeJob(container.jobName(), container.namespace());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");
@@ -1037,7 +1037,7 @@ public class DockerControlApi implements ContainerControlApi {
                 removeDockerContainer(container.containerId(), server);
                 break;
             case KUBERNETES:
-                getKubernetesClient().removeJob(container.jobName());
+                getKubernetesClient().removeJob(container.jobName(), container.namespace());
                 break;
             default:
                 throw new NoContainerServerException("Not implemented");

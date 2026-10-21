@@ -199,7 +199,7 @@ public class DockerControlApiTest {
         } else if (backend == Backend.KUBERNETES) {
             when(container.podName()).thenReturn(BACKEND_ID);
             when(kubernetesClient.getLog(
-                    BACKEND_ID, logType, null, null
+                    BACKEND_ID, null, logType, null, null
             )).thenReturn(logContents);
         } else {
             setUpForContainerLogTest(logContents);
@@ -510,7 +510,7 @@ public class DockerControlApiTest {
         // Run the test
         dockerControlApi.start(container);
 
-        verify(kubernetesClient).unsuspendJob(BACKEND_ID);
+        verify(kubernetesClient).unsuspendJob(BACKEND_ID, null);
     }
 
     private void testStart_localDocker() throws Exception {
@@ -536,7 +536,7 @@ public class DockerControlApiTest {
                 verify(mockDockerJavaClient).removeServiceCmd(BACKEND_ID);
                 break;
             case KUBERNETES:
-                verify(kubernetesClient).removeJob(BACKEND_ID);
+                verify(kubernetesClient).removeJob(BACKEND_ID, null);
                 break;
         }
     }
@@ -553,7 +553,7 @@ public class DockerControlApiTest {
         // In this case we expect nothing will happen
         verify(mockDockerJavaClient, times(0)).removeServiceCmd(BACKEND_ID);
         verify(mockDockerJavaClient, times(0)).removeContainerCmd(BACKEND_ID);
-        verify(kubernetesClient, times(0)).removeJob(BACKEND_ID);
+        verify(kubernetesClient, times(0)).removeJob(BACKEND_ID, null);
     }
 
     @Test
@@ -573,7 +573,7 @@ public class DockerControlApiTest {
                 verify(mockDockerJavaClient).removeServiceCmd(BACKEND_ID);
                 break;
             case KUBERNETES:
-                verify(kubernetesClient).removeJob(BACKEND_ID);
+                verify(kubernetesClient).removeJob(BACKEND_ID, null);
                 break;
         }
     }
@@ -592,7 +592,7 @@ public class DockerControlApiTest {
                 verify(mockDockerJavaClient).removeServiceCmd(BACKEND_ID);
                 break;
             case KUBERNETES:
-                verify(kubernetesClient).removeJob(BACKEND_ID);
+                verify(kubernetesClient).removeJob(BACKEND_ID, null);
                 break;
         }
     }

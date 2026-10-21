@@ -47,6 +47,7 @@ import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.time.OffsetDateTime;
@@ -92,7 +93,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     private ApiClient          apiClient;
     private CoreV1Api          coreApi;
     private BatchV1Api         batchApi;
-    private String             namespace;
+    private String             contextNamespace;
     private KubernetesInformer kubernetesInformer = null;
 
 
@@ -139,8 +140,8 @@ public class KubernetesClientImpl implements KubernetesClient {
                                    );
         }
 
+        this.contextNamespace = namespace;
         setBackendClient(apiClient);
-        setNamespace(namespace);
     }
 
 
@@ -179,19 +180,18 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     @Override
     public String getNamespace() {
-        return namespace;
+        return contextNamespace;
     }
 
-    @Override
-    public void setNamespace(String namespace) {
-        this.namespace = namespace;
-        restart();
+    /** A container created before namespaces were recorded has none; it lives in the context namespace. */
+    private String effectiveNamespace(@Nullable final String namespace) {
+        return StringUtils.isBlank(namespace) ? contextNamespace : namespace;
     }
 
     @Override
     public synchronized void start() {
         if (kubernetesInformer == null) {
-            kubernetesInformer = new KubernetesInformerImpl(namespace, apiClient, executorService, template);
+            kubernetesInformer = new KubernetesInformerImpl(contextNamespace, apiClient, executorService, template);
         }
         kubernetesInformer.start();
     }
@@ -219,7 +219,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             //  Kubernetes has health checks for the API itself https://kubernetes.io/docs/reference/using-api/health-checks/
             //  but currently the API client cannot get at them.
             //  See https://github.com/kubernetes-client/java/issues/2189
-            coreApi.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, null);
+            coreApi.listNamespacedPod(contextNamespace, null, null, null, null, null, null, null, null, null, null);
             // if we get here everything is good
         } catch (ApiException e) {
             log.trace("Ping failed: message \"{}\" code {} body \"{}\"", e.getMessage(), e.getCode(), e.getResponseBody());
@@ -229,7 +229,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String getLog(final String podName, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since)
+    public String getLog(final String podName, @Nullable final String namespace, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since)
             throws ContainerBackendException {
         if (logType == LogType.STDERR) {
             // Kubernetes does not split stdout and stderr logs.
@@ -256,7 +256,7 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
 
         try {
-            return coreApi.readNamespacedPodLog(podName, namespace, null, null, null, null, null, null, sinceRelative, null, withTimestamp);
+            return coreApi.readNamespacedPodLog(podName, effectiveNamespace(namespace), null, null, null, null, null, null, sinceRelative, null, withTimestamp);
         } catch (ApiException e) {
             if (e.getCode() == HttpStatus.BAD_REQUEST.value() && e.getResponseBody() != null && e.getResponseBody().contains(CONTAINER_CREATING)) {
                 // Kubernetes returns an error when we try to read logs for a container that is being created,
@@ -487,6 +487,8 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
         // Tolerations
         final List<V1Toleration> v1Tolerations = convertTolerations(tolerations);
 
+        final String namespace = effectiveNamespace(toCreate.namespace());
+
         // Build job
         V1Job job = new V1JobBuilder()
                 .withNewMetadata()
@@ -528,12 +530,14 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             log.trace("Creating kubernetes job: {}", job);
         } else if (log.isDebugEnabled()) {
             log.debug("Creating kubernetes job:" +
+                      "\n\tnamespace {}" +
                       "\n\timage {}" +
                       "\n\tcommand \"{}\"" +
                       "\n\tworking directory \"{}\"" +
                       "\n\tcontainerUser \"{}\"" +
                       "\n\tvolumes [{}]" +
                       "\n\texposed ports: {}",
+                      namespace,
                       toCreate.dockerImage(),
                       toCreate.commandLine(),
                       toCreate.workingDirectory(),
@@ -712,7 +716,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
     }
 
     @Override
-    public void unsuspendJob(final String jobName)
+    public void unsuspendJob(final String jobName, @Nullable final String namespace)
             throws ContainerBackendException {
         // Patch the job spec's suspend property
         final V1Patch patch = new V1Patch("{\"spec\": {\"suspend\": false}}");
@@ -728,7 +732,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             // PatchUtils.patch lets us set that header.
             PatchUtils.patch(
                     V1Job.class,
-                    () -> batchApi.patchNamespacedJobCall(jobName, namespace, patch, null, null, null, null, null, null),
+                    () -> batchApi.patchNamespacedJobCall(jobName, effectiveNamespace(namespace), patch, null, null, null, null, null, null),
                     V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
                     batchApi.getApiClient()
                             );
@@ -739,10 +743,10 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
     }
 
     @Override
-    public void removeJob(final String jobName) throws NotFoundException, ContainerBackendException {
+    public void removeJob(final String jobName, @Nullable final String namespace) throws NotFoundException, ContainerBackendException {
         try {
             log.debug("Removing job {}", jobName);
-            batchApi.deleteNamespacedJob(jobName, namespace, null, null, null, null, Propagation.Foreground.name(), null);
+            batchApi.deleteNamespacedJob(jobName, effectiveNamespace(namespace), null, null, null, null, Propagation.Foreground.name(), null);
         } catch (ApiException e) {
             if (e.getCode() == 404) {
                 log.error("Could not remove job {}: not found", jobName);

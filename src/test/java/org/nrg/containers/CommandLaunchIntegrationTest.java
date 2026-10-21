@@ -240,7 +240,7 @@ public class CommandLaunchIntegrationTest {
 
         assumeThat(SystemUtils.IS_OS_WINDOWS_7, is(false));
         TestingUtils.skipIfCannotConnect(backend, controlApi.getDockerClient(), kubernetesClient.getBackendClient());
-        kubernetesNamespace = TestingUtils.createKubernetesNamespace(kubernetesClient);
+        kubernetesNamespace = TestingUtils.kubernetesTestNamespace(kubernetesClient);
 
         kubernetesClient.start();
     }
@@ -260,7 +260,6 @@ public class CommandLaunchIntegrationTest {
         TestingUtils.cleanDockerImages(controlApi.getDockerClient(), imagesToCleanUp);
 
         kubernetesClient.stop();
-        TestingUtils.cleanupKubernetesNamespace(kubernetesNamespace, kubernetesClient);
         executorService.shutdown();
     }
 
