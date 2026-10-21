@@ -22,6 +22,7 @@ public abstract class DockerServerBase implements Serializable {
     public static final int DEFAULT_BUILD_DIR_RETAIN_DAYS_FAILED    = 14;
     public static final int DEFAULT_BUILD_DIR_RETAIN_DAYS_KILLED    = 1;
     public static final String DEFAULT_BUILD_DIR_CLEANUP_TIME       = "02:00";
+    public static final int DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS    = 600;
     /** One less than the 365 day lookback window, so a threshold can never exclude an otherwise eligible container. */
     /**
      * A container's status goes terminal when the backend reports its exit, *before* finalization reads its
@@ -152,6 +153,28 @@ public abstract class DockerServerBase implements Serializable {
     @JsonProperty("build-dir-cleanup-time")
     public abstract String buildDirCleanupTime();
 
+    /** Template for the Kubernetes Secret / SecretProviderClass name; null means the built-in default. Kubernetes only. */
+    @Nullable @JsonProperty("secret-name-template")
+    public abstract String secretNameTemplate();
+
+    @JsonProperty("secret-volume-type")
+    public abstract SecretVolumeType secretVolumeType();
+
+    @JsonProperty("job-namespace-mode")
+    public abstract JobNamespaceMode jobNamespaceMode();
+
+    /** Required when {@link #jobNamespaceMode()} is per-project; must contain {@code #PROJECT#}. */
+    @Nullable @JsonProperty("job-namespace-template")
+    public abstract String jobNamespaceTemplate();
+
+    /** Pod serviceAccountName for jobs; null leaves the namespace default. */
+    @Nullable @JsonProperty("job-service-account")
+    public abstract String jobServiceAccount();
+
+    /** Seconds a FailedMount on a secret volume may persist before the job is failed; 0 disables the watchdog. */
+    @JsonProperty("secret-mount-timeout-seconds")
+    public abstract int secretMountTimeoutSeconds();
+
     @AutoValue
     public abstract static class DockerServer extends DockerServerBase {
         private static final long serialVersionUID = 3879071283219400186L;
@@ -187,7 +210,14 @@ public abstract class DockerServerBase implements Serializable {
                                           @JsonProperty("build-dir-retain-days-completed") final Integer buildDirRetainDaysCompleted,
                                           @JsonProperty("build-dir-retain-days-failed") final Integer buildDirRetainDaysFailed,
                                           @JsonProperty("build-dir-retain-days-killed") final Integer buildDirRetainDaysKilled,
-                                          @JsonProperty("build-dir-cleanup-time") final String buildDirCleanupTime) {
+                                          @JsonProperty("build-dir-cleanup-time") final String buildDirCleanupTime,
+                                          @JsonProperty("secret-name-template") final String secretNameTemplate,
+                                          @JsonProperty("secret-volume-type") final SecretVolumeType secretVolumeType,
+                                          @JsonProperty("job-namespace-mode") final JobNamespaceMode jobNamespaceMode,
+                                          @JsonProperty("job-namespace-template") final String jobNamespaceTemplate,
+                                          @JsonProperty("job-service-account") final String jobServiceAccount,
+                                          // Boxed: an omitted property must fall back to 600, not to 0 (= watchdog off).
+                                          @JsonProperty("secret-mount-timeout-seconds") final Integer secretMountTimeoutSeconds) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
             }
@@ -196,7 +226,8 @@ public abstract class DockerServerBase implements Serializable {
                     maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
                     archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations,
                     buildDirCleanupEnabled, buildDirRetainDaysCompleted, buildDirRetainDaysFailed,
-                    buildDirRetainDaysKilled, buildDirCleanupTime);
+                    buildDirRetainDaysKilled, buildDirCleanupTime, secretNameTemplate, secretVolumeType,
+                    jobNamespaceMode, jobNamespaceTemplate, jobServiceAccount, secretMountTimeoutSeconds);
         }
 
         public static DockerServer create(final String name,
@@ -233,7 +264,13 @@ public abstract class DockerServerBase implements Serializable {
                                           final Integer buildDirRetainDaysCompleted,
                                           final Integer buildDirRetainDaysFailed,
                                           final Integer buildDirRetainDaysKilled,
-                                          final String buildDirCleanupTime) {
+                                          final String buildDirCleanupTime,
+                                          final String secretNameTemplate,
+                                          final SecretVolumeType secretVolumeType,
+                                          final JobNamespaceMode jobNamespaceMode,
+                                          final String jobNamespaceTemplate,
+                                          final String jobServiceAccount,
+                                          final Integer secretMountTimeoutSeconds) {
             return builder()
                     .id(id == null ? 0L : id)
                     .name(StringUtils.isBlank(name) ? host : name)
@@ -266,6 +303,13 @@ public abstract class DockerServerBase implements Serializable {
                     .buildPathTranslation(buildPathTranslation)
                     .combinedPathTranslation(combinedPathTranslation)
                     .kubernetesTolerations(kubernetesTolerations)
+                    .secretNameTemplate(StringUtils.trimToNull(secretNameTemplate))
+                    .secretVolumeType(secretVolumeType == null ? SecretVolumeType.DEFAULT : secretVolumeType)
+                    .jobNamespaceMode(jobNamespaceMode == null ? JobNamespaceMode.DEFAULT : jobNamespaceMode)
+                    .jobNamespaceTemplate(StringUtils.trimToNull(jobNamespaceTemplate))
+                    .jobServiceAccount(StringUtils.trimToNull(jobServiceAccount))
+                    .secretMountTimeoutSeconds(secretMountTimeoutSeconds == null
+                            ? DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS : secretMountTimeoutSeconds)
                     .build();
         }
 
@@ -304,7 +348,8 @@ public abstract class DockerServerBase implements Serializable {
                     dockerServerEntity.getBuildDirRetainDaysCompleted(),
                     dockerServerEntity.getBuildDirRetainDaysFailed(),
                     dockerServerEntity.getBuildDirRetainDaysKilled(),
-                    dockerServerEntity.getBuildDirCleanupTime());
+                    dockerServerEntity.getBuildDirCleanupTime(),
+                    null, null, null, null, null, null);
         }
 
         public static DockerServer create(final DockerServerPrefsBean dockerServerPrefsBean) {
@@ -335,7 +380,8 @@ public abstract class DockerServerBase implements Serializable {
                     null,
                     null,
                     null,
-                    null);
+                    null,
+                    null, null, null, null, null, null);
         }
 
         public DockerServer updateEventCheckTime(final Date newLastEventCheckTime) {
@@ -370,7 +416,13 @@ public abstract class DockerServerBase implements Serializable {
                             this.buildDirRetainDaysCompleted(),
                             this.buildDirRetainDaysFailed(),
                             this.buildDirRetainDaysKilled(),
-                            this.buildDirCleanupTime()
+                            this.buildDirCleanupTime(),
+                            this.secretNameTemplate(),
+                            this.secretVolumeType(),
+                            this.jobNamespaceMode(),
+                            this.jobNamespaceTemplate(),
+                            this.jobServiceAccount(),
+                            this.secretMountTimeoutSeconds()
                     );
         }
 
@@ -402,7 +454,13 @@ public abstract class DockerServerBase implements Serializable {
                     .archivePathTranslation(null)
                     .buildPathTranslation(null)
                     .combinedPathTranslation(null)
-                    .kubernetesTolerations(Collections.emptyList());
+                    .kubernetesTolerations(Collections.emptyList())
+                    .secretNameTemplate(null)
+                    .secretVolumeType(SecretVolumeType.DEFAULT)
+                    .jobNamespaceMode(JobNamespaceMode.DEFAULT)
+                    .jobNamespaceTemplate(null)
+                    .jobServiceAccount(null)
+                    .secretMountTimeoutSeconds(DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS);
         }
 
         public abstract Builder toBuilder();
@@ -526,6 +584,12 @@ public abstract class DockerServerBase implements Serializable {
             public abstract Builder buildPathTranslation(String buildPathTranslation);
             public abstract Builder combinedPathTranslation(String combinedPathTranslation);
             public abstract Builder kubernetesTolerations(List<KubernetesToleration> kubernetesTolerations);
+            public abstract Builder secretNameTemplate(String secretNameTemplate);
+            public abstract Builder secretVolumeType(SecretVolumeType secretVolumeType);
+            public abstract Builder jobNamespaceMode(JobNamespaceMode jobNamespaceMode);
+            public abstract Builder jobNamespaceTemplate(String jobNamespaceTemplate);
+            public abstract Builder jobServiceAccount(String jobServiceAccount);
+            public abstract Builder secretMountTimeoutSeconds(int secretMountTimeoutSeconds);
             public abstract DockerServer build();
         }
     }
@@ -567,6 +631,13 @@ public abstract class DockerServerBase implements Serializable {
                                                   @JsonProperty("build-dir-retain-days-failed") final Integer buildDirRetainDaysFailed,
                                                   @JsonProperty("build-dir-retain-days-killed") final Integer buildDirRetainDaysKilled,
                                                   @JsonProperty("build-dir-cleanup-time") final String buildDirCleanupTime,
+                                                  @JsonProperty("secret-name-template") final String secretNameTemplate,
+                                                  @JsonProperty("secret-volume-type") final SecretVolumeType secretVolumeType,
+                                                  @JsonProperty("job-namespace-mode") final JobNamespaceMode jobNamespaceMode,
+                                                  @JsonProperty("job-namespace-template") final String jobNamespaceTemplate,
+                                                  @JsonProperty("job-service-account") final String jobServiceAccount,
+                                                  // Boxed: an omitted property must fall back to 600, not to 0 (= watchdog off).
+                                                  @JsonProperty("secret-mount-timeout-seconds") final Integer secretMountTimeoutSeconds,
                                                   @JsonProperty("ping") final Boolean ping) {
             if (backend == null) {
                 backend = swarmMode != null && swarmMode ? Backend.SWARM : Backend.DOCKER;
@@ -578,7 +649,7 @@ public abstract class DockerServerBase implements Serializable {
                     gpuVendor, archivePvcName, buildPvcName, combinedPvcName, archivePathTranslation, buildPathTranslation,
                     combinedPathTranslation, kubernetesTolerations, buildDirCleanupEnabled,
                     buildDirRetainDaysCompleted, buildDirRetainDaysFailed, buildDirRetainDaysKilled,
-                    buildDirCleanupTime, ping);
+                    buildDirCleanupTime, secretNameTemplate, secretVolumeType, jobNamespaceMode, jobNamespaceTemplate, jobServiceAccount, secretMountTimeoutSeconds, ping);
         }
 
         public static DockerServerWithPing create(final Long id,
@@ -608,6 +679,12 @@ public abstract class DockerServerBase implements Serializable {
                                                   final Integer buildDirRetainDaysFailed,
                                                   final Integer buildDirRetainDaysKilled,
                                                   final String buildDirCleanupTime,
+                                                  final String secretNameTemplate,
+                                                  final SecretVolumeType secretVolumeType,
+                                                  final JobNamespaceMode jobNamespaceMode,
+                                                  final String jobNamespaceTemplate,
+                                                  final String jobServiceAccount,
+                                                  final Integer secretMountTimeoutSeconds,
                                                   final Boolean ping) {
             return builder()
                     .id(id == null ? 0L : id)
@@ -632,6 +709,13 @@ public abstract class DockerServerBase implements Serializable {
                     .buildPathTranslation(buildPathTranslation)
                     .combinedPathTranslation(combinedPathTranslation)
                     .kubernetesTolerations(kubernetesTolerations)
+                    .secretNameTemplate(StringUtils.trimToNull(secretNameTemplate))
+                    .secretVolumeType(secretVolumeType == null ? SecretVolumeType.DEFAULT : secretVolumeType)
+                    .jobNamespaceMode(jobNamespaceMode == null ? JobNamespaceMode.DEFAULT : jobNamespaceMode)
+                    .jobNamespaceTemplate(StringUtils.trimToNull(jobNamespaceTemplate))
+                    .jobServiceAccount(StringUtils.trimToNull(jobServiceAccount))
+                    .secretMountTimeoutSeconds(secretMountTimeoutSeconds == null
+                            ? DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS : secretMountTimeoutSeconds)
                     .buildDirCleanupEnabled(buildDirCleanupEnabled != null && buildDirCleanupEnabled)
                     .buildDirRetainDaysCompleted(buildDirRetainDaysCompleted == null
                             ? DEFAULT_BUILD_DIR_RETAIN_DAYS_COMPLETED : buildDirRetainDaysCompleted)
@@ -675,6 +759,12 @@ public abstract class DockerServerBase implements Serializable {
                     dockerServer.buildDirRetainDaysFailed(),
                     dockerServer.buildDirRetainDaysKilled(),
                     dockerServer.buildDirCleanupTime(),
+                    dockerServer.secretNameTemplate(),
+                    dockerServer.secretVolumeType(),
+                    dockerServer.jobNamespaceMode(),
+                    dockerServer.jobNamespaceTemplate(),
+                    dockerServer.jobServiceAccount(),
+                    dockerServer.secretMountTimeoutSeconds(),
                     ping
             );
         }
@@ -708,7 +798,13 @@ public abstract class DockerServerBase implements Serializable {
                     .archivePathTranslation(null)
                     .buildPathTranslation(null)
                     .combinedPathTranslation(null)
-                    .kubernetesTolerations(Collections.emptyList());
+                    .kubernetesTolerations(Collections.emptyList())
+                    .secretNameTemplate(null)
+                    .secretVolumeType(SecretVolumeType.DEFAULT)
+                    .jobNamespaceMode(JobNamespaceMode.DEFAULT)
+                    .jobNamespaceTemplate(null)
+                    .jobServiceAccount(null)
+                    .secretMountTimeoutSeconds(DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS);
         }
 
         public abstract Builder toBuilder();
@@ -747,6 +843,12 @@ public abstract class DockerServerBase implements Serializable {
             public abstract Builder buildPathTranslation(String buildPathTranslation);
             public abstract Builder combinedPathTranslation(String combinedPathTranslation);
             public abstract Builder kubernetesTolerations(List<KubernetesToleration> kubernetesTolerations);
+            public abstract Builder secretNameTemplate(String secretNameTemplate);
+            public abstract Builder secretVolumeType(SecretVolumeType secretVolumeType);
+            public abstract Builder jobNamespaceMode(JobNamespaceMode jobNamespaceMode);
+            public abstract Builder jobNamespaceTemplate(String jobNamespaceTemplate);
+            public abstract Builder jobServiceAccount(String jobServiceAccount);
+            public abstract Builder secretMountTimeoutSeconds(int secretMountTimeoutSeconds);
             public abstract Builder ping(Boolean ping);
 
             public abstract DockerServerWithPing build();
@@ -906,7 +1008,13 @@ public abstract class DockerServerBase implements Serializable {
                 Objects.equals(this.buildDirRetainDaysCompleted(), that.buildDirRetainDaysCompleted()) &&
                 Objects.equals(this.buildDirRetainDaysFailed(), that.buildDirRetainDaysFailed()) &&
                 Objects.equals(this.buildDirRetainDaysKilled(), that.buildDirRetainDaysKilled()) &&
-                Objects.equals(this.buildDirCleanupTime(), that.buildDirCleanupTime());
+                Objects.equals(this.buildDirCleanupTime(), that.buildDirCleanupTime()) &&
+                Objects.equals(this.secretNameTemplate(), that.secretNameTemplate()) &&
+                this.secretVolumeType() == that.secretVolumeType() &&
+                this.jobNamespaceMode() == that.jobNamespaceMode() &&
+                Objects.equals(this.jobNamespaceTemplate(), that.jobNamespaceTemplate()) &&
+                Objects.equals(this.jobServiceAccount(), that.jobServiceAccount()) &&
+                this.secretMountTimeoutSeconds() == that.secretMountTimeoutSeconds();
     }
 
     @Override
@@ -917,7 +1025,9 @@ public abstract class DockerServerBase implements Serializable {
                 statusEmailEnabled(), gpuVendor(), archivePvcName(), buildPvcName(), combinedPvcName(),
                 archivePathTranslation(), buildPathTranslation(), combinedPathTranslation(),
                 kubernetesTolerations(), buildDirCleanupEnabled(), buildDirRetainDaysCompleted(),
-                buildDirRetainDaysFailed(), buildDirRetainDaysKilled(), buildDirCleanupTime());
+                buildDirRetainDaysFailed(), buildDirRetainDaysKilled(), buildDirCleanupTime(),
+                secretNameTemplate(), secretVolumeType(), jobNamespaceMode(), jobNamespaceTemplate(),
+                jobServiceAccount(), secretMountTimeoutSeconds());
     }
 
 }
