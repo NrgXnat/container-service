@@ -351,7 +351,12 @@ public abstract class DockerServerBase implements Serializable {
                     dockerServerEntity.getBuildDirRetainDaysFailed(),
                     dockerServerEntity.getBuildDirRetainDaysKilled(),
                     dockerServerEntity.getBuildDirCleanupTime(),
-                    null, null, null, null, null, null);
+                    dockerServerEntity.getSecretNameTemplate(),
+                    dockerServerEntity.getSecretVolumeType(),
+                    dockerServerEntity.getJobNamespaceMode(),
+                    dockerServerEntity.getJobNamespaceTemplate(),
+                    dockerServerEntity.getJobServiceAccount(),
+                    dockerServerEntity.getSecretMountTimeoutSeconds());
         }
 
         public static DockerServer create(final DockerServerPrefsBean dockerServerPrefsBean) {

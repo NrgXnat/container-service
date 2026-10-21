@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
+import org.nrg.containers.model.server.docker.DockerServerEntity;
 import org.nrg.containers.model.server.docker.JobNamespaceMode;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 
@@ -118,5 +119,50 @@ public class DockerServerSecretSettingsTest {
         assertThat(updated.jobNamespaceTemplate(), is("xnat-#PROJECT#"));
         assertThat(updated.jobServiceAccount(), is("xnat-jobs"));
         assertThat(updated.secretMountTimeoutSeconds(), is(30));
+    }
+
+    @Test
+    public void entityRoundTripKeepsSecretSettings() {
+        final DockerServer server = DockerServer.builder()
+                .name("k8s").host("").backend(Backend.KUBERNETES)
+                .secretNameTemplate("site-#PROJECT#-{identifier}")
+                .secretVolumeType(SecretVolumeType.CSI)
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT)
+                .jobNamespaceTemplate("xnat-#PROJECT#")
+                .jobServiceAccount("xnat-jobs")
+                .secretMountTimeoutSeconds(120)
+                .build();
+
+        final DockerServer back = DockerServer.create(DockerServerEntity.create(server));
+
+        assertThat(back.secretNameTemplate(), is("site-#PROJECT#-{identifier}"));
+        assertThat(back.secretVolumeType(), is(SecretVolumeType.CSI));
+        assertThat(back.jobNamespaceMode(), is(JobNamespaceMode.PER_PROJECT));
+        assertThat(back.jobNamespaceTemplate(), is("xnat-#PROJECT#"));
+        assertThat(back.jobServiceAccount(), is("xnat-jobs"));
+        assertThat(back.secretMountTimeoutSeconds(), is(120));
+    }
+
+    /** A pre-upgrade row has NULL in the new columns; hydration must not break and defaults must apply. */
+    @Test
+    public void nullEntityColumnsFallBackToDefaults() {
+        final DockerServerEntity entity = new DockerServerEntity();
+        entity.setSecretMountTimeoutSeconds(null);
+        entity.setSecretVolumeType(null);
+        entity.setJobNamespaceMode(null);
+
+        assertThat(entity.getSecretMountTimeoutSeconds(), is(600));
+        assertThat("negative values are clamped, not left to fail validation on every status poll",
+                clampedTimeout(-5), is(0));
+        entity.setBackend(Backend.KUBERNETES);   // AutoValue rejects a null backend; a real row always has one
+        final DockerServer server = DockerServer.create(entity);
+        assertThat(server.secretVolumeType(), is(SecretVolumeType.SECRET));
+        assertThat(server.jobNamespaceMode(), is(JobNamespaceMode.SINGLE));
+    }
+
+    private static int clampedTimeout(final int value) {
+        final DockerServerEntity entity = new DockerServerEntity();
+        entity.setSecretMountTimeoutSeconds(value);
+        return entity.getSecretMountTimeoutSeconds();
     }
 }

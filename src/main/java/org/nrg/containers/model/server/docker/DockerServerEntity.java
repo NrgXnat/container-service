@@ -35,6 +35,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
     private String archivePathTranslation;
     private String buildPathTranslation;
     private String combinedPathTranslation;
+    private String secretNameTemplate;
+    private SecretVolumeType secretVolumeType;
+    private JobNamespaceMode jobNamespaceMode;
+    private String jobNamespaceTemplate;
+    private String jobServiceAccount;
+    private Integer secretMountTimeoutSeconds = DockerServerBase.DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS;
 
     public static DockerServerEntity create(final DockerServer dockerServer) {
         return new DockerServerEntity().update(dockerServer);
@@ -65,6 +71,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
         this.archivePathTranslation = dockerServer.archivePathTranslation();
         this.buildPathTranslation = dockerServer.buildPathTranslation();
         this.combinedPathTranslation = dockerServer.combinedPathTranslation();
+        this.secretNameTemplate = dockerServer.secretNameTemplate();
+        this.secretVolumeType = dockerServer.secretVolumeType();
+        this.jobNamespaceMode = dockerServer.jobNamespaceMode();
+        this.jobNamespaceTemplate = dockerServer.jobNamespaceTemplate();
+        this.jobServiceAccount = dockerServer.jobServiceAccount();
+        this.secretMountTimeoutSeconds = dockerServer.secretMountTimeoutSeconds();
 
         final Map<String, DockerServerBase.DockerServerSwarmConstraint> pojoConstraintsToAdd = new HashMap<>();
         List<DockerServerBase.DockerServerSwarmConstraint> pojoConstraints = dockerServer.swarmConstraints();
@@ -384,6 +396,39 @@ public class DockerServerEntity extends AbstractHibernateEntity {
 
     public void setCombinedPathTranslation(String combinedPathTranslation) { this.combinedPathTranslation = combinedPathTranslation; }
 
+    public String getSecretNameTemplate() { return secretNameTemplate; }
+
+    public void setSecretNameTemplate(String secretNameTemplate) { this.secretNameTemplate = secretNameTemplate; }
+
+    // Nullable on purpose: rows created before the upgrade have NULL here and DockerServer.create applies the default.
+    @Enumerated(EnumType.STRING)
+    public SecretVolumeType getSecretVolumeType() { return secretVolumeType; }
+
+    public void setSecretVolumeType(SecretVolumeType secretVolumeType) { this.secretVolumeType = secretVolumeType; }
+
+    @Enumerated(EnumType.STRING)
+    public JobNamespaceMode getJobNamespaceMode() { return jobNamespaceMode; }
+
+    public void setJobNamespaceMode(JobNamespaceMode jobNamespaceMode) { this.jobNamespaceMode = jobNamespaceMode; }
+
+    public String getJobNamespaceTemplate() { return jobNamespaceTemplate; }
+
+    public void setJobNamespaceTemplate(String jobNamespaceTemplate) { this.jobNamespaceTemplate = jobNamespaceTemplate; }
+
+    public String getJobServiceAccount() { return jobServiceAccount; }
+
+    public void setJobServiceAccount(String jobServiceAccount) { this.jobServiceAccount = jobServiceAccount; }
+
+    /** Clamped like the retention days: the status poll rewrites this row and validates on every save. */
+    @Column(columnDefinition = "integer default 600")
+    public Integer getSecretMountTimeoutSeconds() { return secretMountTimeoutSeconds; }
+
+    public void setSecretMountTimeoutSeconds(Integer secretMountTimeoutSeconds) {
+        this.secretMountTimeoutSeconds = secretMountTimeoutSeconds == null
+                ? DockerServerBase.DEFAULT_SECRET_MOUNT_TIMEOUT_SECONDS
+                : Math.max(0, secretMountTimeoutSeconds);
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -461,6 +506,12 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 Objects.equals(this.buildDirRetainDaysFailed, that.buildDirRetainDaysFailed) &&
                 Objects.equals(this.buildDirRetainDaysKilled, that.buildDirRetainDaysKilled) &&
                 Objects.equals(this.buildDirCleanupTime, that.buildDirCleanupTime) &&
+                Objects.equals(this.secretNameTemplate, that.secretNameTemplate) &&
+                this.secretVolumeType == that.secretVolumeType &&
+                this.jobNamespaceMode == that.jobNamespaceMode &&
+                Objects.equals(this.jobNamespaceTemplate, that.jobNamespaceTemplate) &&
+                Objects.equals(this.jobServiceAccount, that.jobServiceAccount) &&
+                Objects.equals(this.secretMountTimeoutSeconds, that.secretMountTimeoutSeconds) &&
                 constrEqual &&
                 tolEqual;
     }
@@ -472,7 +523,8 @@ public class DockerServerEntity extends AbstractHibernateEntity {
                 maxConcurrentFinalizingJobs, statusEmailEnabled, gpuVendor, archivePvcName, buildPvcName, combinedPvcName,
                 archivePathTranslation, buildPathTranslation, combinedPathTranslation, kubernetesTolerations,
                 buildDirCleanupEnabled, buildDirRetainDaysCompleted, buildDirRetainDaysFailed,
-                buildDirRetainDaysKilled, buildDirCleanupTime);
+                buildDirRetainDaysKilled, buildDirCleanupTime, secretNameTemplate, secretVolumeType,
+                jobNamespaceMode, jobNamespaceTemplate, jobServiceAccount, secretMountTimeoutSeconds);
     }
 
 }
