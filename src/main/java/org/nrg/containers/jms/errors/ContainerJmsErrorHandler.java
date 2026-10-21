@@ -8,7 +8,7 @@ import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.springframework.util.ErrorHandler;
 
-import javax.mail.MessagingException;
+import jakarta.mail.MessagingException;
 
 @Slf4j
 public class ContainerJmsErrorHandler implements ErrorHandler {

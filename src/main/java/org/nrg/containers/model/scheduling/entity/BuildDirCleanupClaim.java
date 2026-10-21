@@ -1,8 +1,8 @@
 package org.nrg.containers.model.scheduling.entity;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 
 /**
  * One row, recording which daily cleanup slot has already been taken by some node in the cluster.
