@@ -62,6 +62,9 @@ import org.nrg.containers.model.xnat.Subject;
 import org.nrg.containers.model.xnat.SubjectAssessor;
 import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.model.xnat.XnatModelObject;
+import org.nrg.containers.secrets.FileResolvedSecret;
+import org.nrg.containers.secrets.FileSecretValidator;
+import org.nrg.containers.secrets.K8sSecretNameTemplate;
 import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.secrets.SecretDestination;
@@ -294,6 +297,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
 
         private String buildPathTranslation;
 
+        private String secretNameTemplate = null;
+
         private final List<ResolvedCommand> resolvedSetupCommands;
 
         // Caches
@@ -315,6 +320,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 final DockerServerBase.DockerServer dockerServer = dockerServerService.getServer();
                 pathTranslationXnatPrefix = dockerServer.pathTranslationXnatPrefix();
                 pathTranslationContainerHostPrefix = dockerServer.pathTranslationDockerPrefix();
+                secretNameTemplate = dockerServer.secretNameTemplate();
                 if (StringUtils.isNotBlank(dockerServer.combinedPvcName())) {
                     archivePvcName = dockerServer.combinedPvcName();
                     buildPvcName = dockerServer.combinedPvcName();
@@ -454,8 +460,9 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 );
             }
 
-            // Resolve secrets
-            final List<ResolvedSecret> resolvedSecrets = resolveSecrets(command.secrets());
+            // Resolve secrets. File secrets get their Kubernetes name rendered here, from the launch project and
+            // the resolved input values, so the backend only ever sees a final name.
+            final List<ResolvedSecret> resolvedSecrets = resolveSecrets(command.secrets(), resolvedInputValuesByReplacementKey);
             ensureInputsDoNotUseSecrets(resolvedInputTrees, resolvedSecrets);
 
             final List<ResolvedCommandOutput> resolvedCommandOutputs = resolveOutputs(resolvedInputTrees, resolvedInputValuesByReplacementKey);
@@ -618,6 +625,11 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 throw new CommandResolutionException(
                         String.format("Command %s from image %s has type %s, but I expected it to have type %s.",
                                 command.name(), image, command.type(), type.getName()));
+            }
+            try {
+                FileSecretValidator.requireNoFileSecrets(command, typeStringForLog);
+            } catch (IllegalArgumentException e) {
+                throw new CommandResolutionException(e.getMessage(), e);
             }
 
             log.debug("Done resolving {} command {} from image {}.", typeStringForLog, command.name(), image);
@@ -3049,31 +3061,68 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             return resolvedConstraints.isEmpty() ? null : resolvedConstraints;
         }
 
-        private List<ResolvedSecret> resolveSecrets(final List<Secret> secrets) throws CommandResolutionException {
+        private List<ResolvedSecret> resolveSecrets(final List<Secret> secrets,
+                                                    final Map<String, String> resolvedInputValuesByReplacementKey)
+                throws CommandResolutionException {
             if (secrets.isEmpty()) {
                 return Collections.emptyList();
             }
 
-            final List<ResolvedSecret> resolvedSecrets = new ArrayList<>();
-            for (Secret secret : secrets) {
+            // Declaration order is kept; file secrets are collected separately only for validation.
+            final List<ResolvedSecret> resolvedSecrets = new ArrayList<>(secrets.size());
+            final List<FileResolvedSecret> fileSecrets = new ArrayList<>();
+            for (final Secret secret : secrets) {
+                ResolvedSecret resolved;
                 try {
-                    resolvedSecrets.add(secretService.resolve(secret));
+                    resolved = secretService.resolve(secret);
                 } catch (ContainerServiceSecretException e) {
                     throw new CommandResolutionException("Could not resolve secret " + secret, e);
                 }
+                if (resolved instanceof FileResolvedSecret) {
+                    final FileResolvedSecret rendered = renderFileSecret((FileResolvedSecret) resolved, resolvedInputValuesByReplacementKey);
+                    fileSecrets.add(rendered);
+                    resolved = rendered;
+                }
+                resolvedSecrets.add(resolved);
+            }
+
+            try {
+                FileSecretValidator.validate(fileSecrets);
+            } catch (IllegalArgumentException e) {
+                throw new CommandResolutionException(e.getMessage(), e);
             }
             return resolvedSecrets;
+        }
+
+        /** Command-level name beats the backend template, which beats the built-in default (design doc section 1.4). */
+        private FileResolvedSecret renderFileSecret(final FileResolvedSecret fileSecret,
+                                                    final Map<String, String> resolvedInputValuesByReplacementKey)
+                throws CommandResolutionException {
+            try {
+                final String secretName = StringUtils.isNotBlank(fileSecret.secretName())
+                        ? K8sSecretNameTemplate.renderExplicitName(fileSecret.secretName(), project, fileSecret.identifier(), resolvedInputValuesByReplacementKey)
+                        : K8sSecretNameTemplate.render(secretNameTemplate, project, fileSecret.identifier(), resolvedInputValuesByReplacementKey);
+                log.debug("Secret \"{}\" will be mounted from Kubernetes object \"{}\" at {}", fileSecret.identifier(), secretName, fileSecret.mountPath());
+                return fileSecret.withSecretName(secretName);
+            } catch (IllegalArgumentException e) {
+                throw new CommandResolutionException("Could not resolve secret \"" + fileSecret.identifier() + "\": " + e.getMessage(), e);
+            }
         }
 
         private void ensureInputsDoNotUseSecrets(
                 final List<ResolvedInputTreeNode<? extends Input>> resolvedInputTrees,
                 final List<ResolvedSecret> resolvedSecrets
         ) throws CommandResolutionException {
-            // Find all the destination identifiers
+            // Only secrets whose value passes through XNAT can leak through an input. A file secret's destination
+            // is a mount path, which legitimately appears on command lines and in inputs.
             final List<String> secretDestinationIdentifiers = resolvedSecrets.stream()
+                    .filter(secret -> secret instanceof ResolvedSecret.WithValue)
                     .map(Secret::destination)
                     .map(SecretDestination::identifier)
                     .collect(Collectors.toList());
+            if (secretDestinationIdentifiers.isEmpty()) {
+                return;
+            }
 
             // Will search resolved values for the secret identifiers using Aho-Corasick algorithm
             final Trie trie = Trie.builder()

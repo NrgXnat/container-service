@@ -39,6 +39,8 @@ import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.Session;
 import org.nrg.containers.model.xnat.XnatFile;
 import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.FileSecretDestination;
+import org.nrg.containers.secrets.K8sSecretSource;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.secrets.SystemPropertySecretSource;
 import org.nrg.containers.services.CommandResolutionService;
@@ -70,6 +72,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -655,6 +658,32 @@ public class CommandResolutionTest {
         final ResolvedCommandMount expectedInputMount = ResolvedCommandMount.specialInput(resourceDir, resourceDir, null);
         final ResolvedCommandMount expectedOutputMount = ResolvedCommandMount.specialOutput(resolvedCommandMountPath, resolvedCommandMountPath, null);
         assertThat(resolvedSetupCommand.mounts(), containsInAnyOrder(expectedInputMount, expectedOutputMount));
+    }
+
+    /** Setup commands are resolved without their secrets, so a file secret there must be refused, not silently dropped. */
+    @Test
+    public void testSetupCommandWithFileSecretIsRejected() throws Exception {
+        final String setupCommandResourceDir = Paths.get(ClassLoader.getSystemResource("setupCommand").toURI()).toString().replace("%20", " ");
+        final Command setupCommand = mapper.readValue(new File(setupCommandResourceDir + "/setup-command.json"), Command.class);
+        final Command commandWithSetupCommand = mapper.readValue(new File(setupCommandResourceDir + "/command-with-setup-command.json"), Command.class);
+        final CommandWrapper commandWrapper = commandWithSetupCommand.xnatCommandWrappers().get(0);
+        final Command.ConfiguredCommand configuredCommand = configure(commandWithSetupCommand, commandWrapper);
+        final String viaSetupCommand = commandWrapper.externalInputs().get(0).viaSetupCommand();
+        when(dockerService.getCommandByImage(viaSetupCommand)).thenReturn(setupCommand.toBuilder()
+                .secrets(Collections.singletonList(new Secret(new K8sSecretSource("redcap"), new FileSecretDestination("/run/secrets/redcap"))))
+                .build());
+
+        final Resource resourceInput = mapper.readValue(new File(setupCommandResourceDir + "/resource.json"), Resource.class);
+        resourceInput.setDirectory(folder.newFolder("resource-secret").getAbsolutePath());
+        final Map<String, String> runtimeValues = Collections.singletonMap("resource", mapper.writeValueAsString(resourceInput));
+
+        try {
+            commandResolutionService.resolve(configuredCommand, runtimeValues, userI);
+            fail("Expected CommandResolutionException");
+        } catch (CommandResolutionException e) {
+            assertThat(e.getMessage(), containsString("setup command"));
+            assertThat(e.getMessage(), containsString("redcap"));
+        }
     }
 
     @Test
