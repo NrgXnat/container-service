@@ -571,7 +571,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 log.debug("Job will run in per-project namespace {}", namespace);
                 return namespace;
             } catch (IllegalArgumentException e) {
-                throw new CommandResolutionException("Could not determine the Kubernetes namespace for this launch: " + e.getMessage(), e);
+                throw new CommandResolutionException("Could not determine the Kubernetes namespace for this launch (job-namespace-mode is per-project;"
+                        + " launch from a project or switch the backend to single): " + e.getMessage(), e);
             }
         }
 
