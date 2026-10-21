@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        vXnat = "1.11.0-SNAPSHOT"
+        vXnat = "1.12.0-SNAPSHOT"
         pluginAppName = "XNAT Container Service"
     }
 }
@@ -15,7 +15,7 @@ plugins {
 }
 
 group "org.nrg.xnatx.plugins"
-version "3.9.0-SNAPSHOT"
+version "4.0.0-SNAPSHOT"
 
 java {
     // Build on JDK 21, not the Gradle launcher JVM (JDK 25). JDK 22+ tightened zip64 CEN validation and
@@ -55,7 +55,7 @@ dependencyManagement {
 
 def vDockerJava = "3.4.0.1"
 def vAutoValue = "1.5.4"
-def vKubernetesClient = "15.0.+"
+def vKubernetesClient = "17.0.+"
 def vPowerMock = "2.0.9"
 // importedProperties not available from Gradle java-platform BOM — versions managed by BOM directly
 
@@ -261,6 +261,7 @@ dependencies {
 test {
     useJUnitPlatform()
     systemProperty "integration", System.getProperty('integration') == "true"
+    systemProperty "skipKubernetes", System.getProperty('skipKubernetes') == "true"
 }
 
 // SLF4J 2.x provider disambiguation. activemq-all bundles AND ServiceLoader-registers a log4j2
@@ -272,17 +273,20 @@ tasks.withType(Test).configureEach {
     systemProperty "slf4j.provider", "org.slf4j.reload4j.Reload4jServiceProvider"
 }
 
+// Since Gradle 9, custom Test tasks no longer inherit the test source set by convention
 tasks.register ( 'unitTest', Test ) {
     useJUnitPlatform()
-
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     systemProperties['integration'] = "false"
-    test
 }
 
 tasks.register ( 'integrationTest', Test ) {
     useJUnitPlatform()
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     systemProperties['integration'] = "true"
-    test
+    systemProperty "skipKubernetes", System.getProperty('skipKubernetes') == "true"
 }
 
 // Pulls in the Jenkins BUILD_NUMBER environment variable if available.

@@ -63,6 +63,7 @@ import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.mail.services.MailService;
 import org.nrg.prefs.services.NrgPreferenceService;
+import org.nrg.xdat.preferences.NotificationsPreferences;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.services.PermissionsServiceI;
 import org.nrg.xdat.security.user.XnatUserProvider;
@@ -254,6 +255,12 @@ public class IntegrationTestConfig {
     @Bean
     public SiteConfigPreferences siteConfigPreferences() {
         return Mockito.mock(SiteConfigPreferences.class);
+    }
+
+    // Needed by MockJmsConfig's error handler; same name as JmsConfig's, so the two configs can be combined
+    @Bean
+    public NotificationsPreferences notificationsPreferences() {
+        return Mockito.mock(NotificationsPreferences.class);
     }
 
     @Bean

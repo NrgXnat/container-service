@@ -19,6 +19,7 @@ import org.nrg.xdat.security.services.UserManagementServiceI;
 import org.nrg.xdat.services.DataTypeAwareEventService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.connection.CachingConnectionFactory;
@@ -87,7 +88,10 @@ public class JmsConfig {
         return defaultFactory(connectionFactory, siteConfigPreferences, notificationsPreferences, mailService);
     }
 
+    // IntegrationTestConfig brings in MockJmsConfig's template too. Where both are present the test is about real JMS
+    // delivery, listener containers and error handler, so this one must win the by-type lookup in QueueUtils.
     @Bean
+    @Primary
     public JmsTemplate jmsTemplate(ConnectionFactory connectionFactory){
         return new JmsTemplate(connectionFactory);
     }

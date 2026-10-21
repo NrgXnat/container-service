@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.daos.ContainerEntityRepository;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.model.command.entity.CommandType;
+import org.nrg.containers.model.container.ContainerBuildDirRow;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.services.ContainerEntityService;
@@ -18,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
 
@@ -115,6 +118,21 @@ public class HibernateContainerEntityService
     @Nullable
     public ContainerEntity retrieveServiceForPoll(final long id) {
         return getDao().retrieveServiceForPoll(id);
+    }
+
+    @Override
+    @Nonnull
+    public List<ContainerBuildDirRow> retrieveBuildDirCandidates(final Date statusTimeAfter,
+                                                                 final Date statusTimeBefore,
+                                                                 final String buildPathPrefix) {
+        return getDao().retrieveBuildDirCandidates(statusTimeAfter, statusTimeBefore, buildPathPrefix);
+    }
+
+    @Override
+    @Nonnull
+    public List<ContainerBuildDirRow> retrieveBuildDirRowsForLaunchGroups(final Collection<Long> rootIds,
+                                                                      final String buildPathPrefix) {
+        return getDao().retrieveBuildDirRowsForLaunchGroups(rootIds, buildPathPrefix);
     }
 
     @Override

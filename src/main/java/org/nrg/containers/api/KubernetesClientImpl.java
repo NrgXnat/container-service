@@ -124,13 +124,10 @@ public class KubernetesClientImpl implements KubernetesClient {
 
         // Turn on debug logging within the HTTP client if we are debugging out here
         if (log.isDebugEnabled()) {
-            // This creates a logging interceptor in okhttp's style that hands messages to our class's logger instance
-            final HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(log::debug);
-            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
             apiClient.setHttpClient(
                     apiClient.getHttpClient()
                              .newBuilder()
-                             .addInterceptor(loggingInterceptor)
+                             .addInterceptor(debugLoggingInterceptor(log::debug))
                              .build()
                                    );
         }
@@ -506,6 +503,19 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             log.error("Could not create job: message \"{}\" code {} body {}", e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not create job", e);
         }
+    }
+
+    /**
+     * The HTTP logging added while this class logs at DEBUG. It logs headers but not bodies, because a job's spec
+     * carries the container's XNAT_PASS, and it redacts the Authorization header, which carries the service account
+     * token.
+     */
+    @VisibleForTesting
+    static HttpLoggingInterceptor debugLoggingInterceptor(final HttpLoggingInterceptor.Logger logger) {
+        final HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor(logger);
+        interceptor.setLevel(HttpLoggingInterceptor.Level.HEADERS);
+        interceptor.redactHeader("Authorization");
+        return interceptor;
     }
 
     @VisibleForTesting
