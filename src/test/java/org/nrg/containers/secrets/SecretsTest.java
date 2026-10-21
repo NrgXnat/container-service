@@ -635,6 +635,23 @@ public class SecretsTest {
     }
 
     @Test
+    public void testK8sSecretSourceRequiredDefaultsToTrue() throws Exception {
+        final SecretSource withoutFlag = objectMapper.readValue(
+                "{\"type\": \"k8s-secret\", \"identifier\": \"redcap\"}", SecretSource.class);
+        assertThat(((K8sSecretSource) withoutFlag).required(), is(true));
+
+        final SecretSource optional = objectMapper.readValue(
+                "{\"type\": \"k8s-secret\", \"identifier\": \"redcap\", \"name\": \"redcap-#PROJECT#\", \"required\": false}", SecretSource.class);
+        assertThat(((K8sSecretSource) optional).required(), is(false));
+        assertThat("placeholders in name are stored verbatim; rendering happens at resolution",
+                ((K8sSecretSource) optional).secretName(), is("redcap-#PROJECT#"));
+
+        final SecretSource again = objectMapper.readValue(objectMapper.writeValueAsString(optional), SecretSource.class);
+        assertThat(((K8sSecretSource) again).required(), is(false));
+        assertThat(again, is(optional));
+    }
+
+    @Test
     public void testFileSecretDestJson() throws Exception {
         final String mountPath = "/run/secrets/" + RandomStringUtils.randomAlphabetic(6);
         final String json = "{" +
