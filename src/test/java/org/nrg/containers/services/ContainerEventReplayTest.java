@@ -35,6 +35,8 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -134,13 +136,13 @@ public class ContainerEventReplayTest {
     /** generateName suffixes can collide across namespaces; an event from another namespace is not ours. */
     @Test
     public void eventFromAnotherNamespaceIsIgnored() {
-        final ContainerEntity containerEntity = trackedContainer(KubernetesPodPhase.RUNNING.toString());
         when(containerEntityService.retrieveByJobNameAndNamespace(JOB_NAME, "xnat-proj02")).thenReturn(null);
 
         containerService.processEvent(succeededEvent().toBuilder().namespace("xnat-proj02").build());
 
         assertThat(finalizeRequests.size(), is(0));
-        assertThat(containerEntity.getHistory().size(), is(0));
+        verify(containerEntityService).retrieveByJobNameAndNamespace(JOB_NAME, "xnat-proj02");
+        verify(containerEntityService, never()).addContainerEventToHistory(any(), any(), any());
     }
 
     /**

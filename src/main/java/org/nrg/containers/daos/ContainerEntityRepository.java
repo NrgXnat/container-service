@@ -76,7 +76,9 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
 
     /**
      * Kubernetes jobs are matched by name and namespace: generateName suffixes can in theory collide across
-     * namespaces. A null event namespace or a pre-upgrade row (null column) matches on the name alone.
+     * namespaces. A null event namespace or a row with a null namespace column matches on the name alone.
+     * Rows launched in single-namespace mode also record a null namespace (the kubeconfig context namespace),
+     * so the {@code IS NULL} branch is a permanent main path, not just a leftover for pre-upgrade rows.
      */
     @Nullable
     @SuppressWarnings("unchecked")

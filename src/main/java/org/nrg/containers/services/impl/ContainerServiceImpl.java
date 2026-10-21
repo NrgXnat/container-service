@@ -854,7 +854,8 @@ public class ContainerServiceImpl implements ContainerService {
         // container will be null if either we aren't tracking the container
         // that this event is about, or if we have already recorded the event
         if (container == null) {
-            log.debug("Nothing to do. Container was null after retrieving by id {}.", event.backendId());
+            log.debug("Nothing to do. No tracked container for event with backend id {} in namespace {}.",
+                    event.backendId(), kEvent == null ? null : kEvent.getNamespace());
             return;
         }
 

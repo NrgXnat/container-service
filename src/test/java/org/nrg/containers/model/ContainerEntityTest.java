@@ -110,11 +110,15 @@ public class ContainerEntityTest {
     public void testRetrieveByJobNameAndNamespace() throws Exception {
         final ContainerEntity proj01 = containerEntityService.create(kubernetesEntity("job-abc", "xnat-proj01", "Running"));
         final ContainerEntity legacy = containerEntityService.create(kubernetesEntity("job-legacy", null, "Running"));
+        final ContainerEntity dupNullNamespace = containerEntityService.create(kubernetesEntity("job-dup", null, "Running"));
+        final ContainerEntity dupProj01 = containerEntityService.create(kubernetesEntity("job-dup", "xnat-proj01", "Running"));
 
         assertThat(containerEntityService.retrieveByJobNameAndNamespace("job-abc", "xnat-proj01").getId(), is(proj01.getId()));
         assertThat("a namespace-less event still finds the row", containerEntityService.retrieveByJobNameAndNamespace("job-abc", null).getId(), is(proj01.getId()));
         assertThat("a pre-upgrade row matches any namespace", containerEntityService.retrieveByJobNameAndNamespace("job-legacy", "xnat-proj01").getId(), is(legacy.getId()));
         assertThat(containerEntityService.retrieveByJobNameAndNamespace("job-abc", "xnat-proj02"), is(nullValue()));
+        assertThat("an exact namespace match wins over a null-namespace row", containerEntityService.retrieveByJobNameAndNamespace("job-dup", "xnat-proj01").getId(), is(dupProj01.getId()));
+        assertThat("another namespace falls back to the null-namespace row", containerEntityService.retrieveByJobNameAndNamespace("job-dup", "xnat-proj02").getId(), is(dupNullNamespace.getId()));
     }
 
     private static ContainerEntity kubernetesEntity(final String jobName, final String namespace, final String status) {
