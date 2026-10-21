@@ -106,6 +106,8 @@ public abstract class Container implements Serializable {
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
     @JsonProperty("secrets") public abstract List<ResolvedSecret> secrets();
+    /** Kubernetes namespace the job was created in; null means the kubeconfig context namespace (single mode or pre-upgrade rows). */
+    @Nullable @JsonProperty("namespace") public abstract String namespace();
 
     /**
      * @deprecated Use {@link Container#backend()} instead
@@ -382,7 +384,8 @@ public abstract class Container implements Serializable {
                                    @JsonProperty("shm-size") final Long shmSize,
                                    @JsonProperty("network") final String network,
                                    @JsonProperty("container-labels") final Map<String, String> containerLabels,
-                                   @JsonProperty("secrets") final List<ResolvedSecret> secrets)
+                                   @JsonProperty("secrets") final List<ResolvedSecret> secrets,
+                                   @JsonProperty("namespace") final String namespace)
     {
         if (backend == null) {
             backend = swarm != null && swarm ? Backend.SWARM : Backend.DOCKER;
@@ -426,6 +429,7 @@ public abstract class Container implements Serializable {
                 .network(network)
                 .containerLabels(containerLabels)
                 .secrets(secrets == null ? Collections.emptyList() : secrets)
+                .namespace(namespace)
                 .build();
     }
 
@@ -491,6 +495,7 @@ public abstract class Container implements Serializable {
                         containerEntity.getSecrets().stream()
                                 .map(ResolvedSecret::fromUnresolved)
                                 .collect(Collectors.toList()))
+                .namespace(containerEntity.getNamespace())
                 .build();
     }
 
@@ -526,7 +531,8 @@ public abstract class Container implements Serializable {
                 .gpus(resolvedCommand.gpus())
                 .genericResources(resolvedCommand.genericResources())
                 .ulimits(resolvedCommand.ulimits())
-                .secrets(resolvedCommand.secrets());
+                .secrets(resolvedCommand.secrets())
+                .namespace(resolvedCommand.namespace());
     }
 
     public static Builder builder() {
@@ -683,6 +689,7 @@ public abstract class Container implements Serializable {
         public abstract Builder genericResources(Map<String, String> genericResources);
         public abstract Builder ulimits(Map<String, String> ulimits);
         public abstract Builder secrets(List<ResolvedSecret> secrets);
+        public abstract Builder namespace(String namespace);
 
         public abstract Builder environmentVariables(Map<String, String> environmentVariables);
         abstract ImmutableMap.Builder<String, String> environmentVariablesBuilder();

@@ -79,6 +79,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     private Map<String, String> genericResources = new HashMap<>();
     private Map<String, String> ulimits;
     private List<ResolvedSecret> secrets = new ArrayList<>();
+    private String namespace;
 
 
     public ContainerEntity() {}
@@ -135,6 +136,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.setGenericResources(containerPojo.genericResources());
         this.setUlimits(containerPojo.ulimits());
         this.setSecrets(containerPojo.secrets());
+        this.setNamespace(containerPojo.namespace());
 
         return this;
     }
@@ -553,6 +555,14 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.project = project;
     }
 
+    public String getNamespace() {
+        return namespace;
+    }
+
+    public void setNamespace(final String namespace) {
+        this.namespace = namespace;
+    }
+
 
     @ElementCollection
     public List<String> getSwarmConstraints() {
@@ -599,6 +609,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
                 .add("userId", userId)
                 .add("subtype", subtype)
                 .add("project", project)
+                .add("namespace", namespace)
                 .add("parentContainerEntityId", parentContainerEntity == null ? null : parentContainerEntity.getId())
                 .add("parentContainerEntityContainerId", parentContainerEntity == null ? null : parentContainerEntity.getContainerId())
                 .add("parentSourceObjectName", parentSourceObjectName)

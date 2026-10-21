@@ -67,6 +67,7 @@ public abstract class ResolvedCommand implements Serializable {
     @JsonProperty("generic-resources") @Nullable public abstract ImmutableMap<String, String> genericResources();
     @JsonProperty("ulimits") @Nullable public abstract ImmutableMap<String, String> ulimits();
     @JsonProperty("secrets") public abstract List<ResolvedSecret> secrets();
+    @JsonProperty("namespace") @Nullable public abstract String namespace();
 
     @JsonProperty("external-wrapper-input-values")
     public ImmutableSet<ResolvedCommandInput> externalWrapperInputValues() {
@@ -407,6 +408,7 @@ public abstract class ResolvedCommand implements Serializable {
 
         public abstract Builder parentSourceObjectName(String parentSourceObjectName);
         public abstract Builder secrets(List<ResolvedSecret> secrets);
+        public abstract Builder namespace(String namespace);
 
         public abstract ResolvedCommand build();
     }
