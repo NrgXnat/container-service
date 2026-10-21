@@ -6,19 +6,19 @@ import javax.annotation.Nullable;
 import java.util.Locale;
 
 /**
- * Renders the site-level template that maps a secret's logical name plus launch context
- * to the name of the Kubernetes Secret (or SecretProviderClass) to mount.
+ * Renders the template that maps a secret's identifier plus launch context to the name of the
+ * Kubernetes Secret (or SecretProviderClass) to mount, and sanitises strings into Kubernetes names.
  * <p>
- * Supported placeholders: {@code #PROJECT#} (the XNAT project the container runs in) and
- * {@code {identifier}} (the logical name declared in the command). The result is sanitised
- * into a valid Kubernetes object name: lower case, only {@code [a-z0-9.-]}, no leading or
- * trailing dash.
+ * Placeholders: {@code #PROJECT#} (the XNAT project the container runs in) and {@code {identifier}}
+ * (the identifier declared in the command). Names are RFC 1123 subdomains (lower case, {@code [a-z0-9.-]},
+ * at most 253 characters); namespaces are RFC 1123 labels (no dots, at most 63 characters).
  */
 public final class K8sSecretNameTemplate {
-    public static final String DEFAULT_TEMPLATE = "xnat-#PROJECT#-{identifier}";
-
-    private static final String PROJECT_PLACEHOLDER    = "#PROJECT#";
-    private static final String IDENTIFIER_PLACEHOLDER = "{identifier}";
+    public static final String DEFAULT_TEMPLATE       = "xnat-#PROJECT#-{identifier}";
+    public static final String PROJECT_PLACEHOLDER    = "#PROJECT#";
+    public static final String IDENTIFIER_PLACEHOLDER = "{identifier}";
+    public static final int    MAX_NAME_LENGTH        = 253;
+    public static final int    MAX_LABEL_LENGTH       = 63;
 
     private K8sSecretNameTemplate() {}
 
@@ -30,11 +30,36 @@ public final class K8sSecretNameTemplate {
         return sanitize(rendered);
     }
 
-    /**
-     * Make a string usable as a Kubernetes object name (RFC 1123 subdomain subset).
-     */
+    /** Make a string usable as a Kubernetes object name (RFC 1123 subdomain subset). Length is not checked here. */
     public static String sanitize(final String raw) {
         final String lowered = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9.-]", "-").replaceAll("-{2,}", "-");
         return StringUtils.strip(lowered, "-.");
+    }
+
+    /** Make a string usable as a Kubernetes namespace (RFC 1123 label: like {@link #sanitize} but dots become dashes). */
+    public static String sanitizeLabel(final String raw) {
+        final String lowered = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9-]", "-").replaceAll("-{2,}", "-");
+        return StringUtils.strip(lowered, "-");
+    }
+
+    /** @throws IllegalArgumentException when the sanitised name is empty or longer than 253 characters. Never truncates. */
+    public static String requireValidName(final String sanitized, final String what) {
+        return requireLength(sanitized, what, MAX_NAME_LENGTH);
+    }
+
+    /** @throws IllegalArgumentException when the sanitised label is empty or longer than 63 characters. Never truncates. */
+    public static String requireValidLabel(final String sanitized, final String what) {
+        return requireLength(sanitized, what, MAX_LABEL_LENGTH);
+    }
+
+    private static String requireLength(final String sanitized, final String what, final int max) {
+        if (StringUtils.isBlank(sanitized)) {
+            throw new IllegalArgumentException(what + " is empty after sanitising");
+        }
+        if (sanitized.length() > max) {
+            throw new IllegalArgumentException(what + " \"" + sanitized + "\" is " + sanitized.length()
+                    + " characters long; Kubernetes allows at most " + max);
+        }
+        return sanitized;
     }
 }
