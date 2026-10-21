@@ -157,9 +157,11 @@ public abstract class DockerServerBase implements Serializable {
     @Nullable @JsonProperty("secret-name-template")
     public abstract String secretNameTemplate();
 
+    /** How file secrets are mounted on the Kubernetes backend; defaults to {@code secret}. */
     @JsonProperty("secret-volume-type")
     public abstract SecretVolumeType secretVolumeType();
 
+    /** Which namespace Kubernetes jobs are created in; defaults to {@code single}. */
     @JsonProperty("job-namespace-mode")
     public abstract JobNamespaceMode jobNamespaceMode();
 
@@ -649,7 +651,8 @@ public abstract class DockerServerBase implements Serializable {
                     gpuVendor, archivePvcName, buildPvcName, combinedPvcName, archivePathTranslation, buildPathTranslation,
                     combinedPathTranslation, kubernetesTolerations, buildDirCleanupEnabled,
                     buildDirRetainDaysCompleted, buildDirRetainDaysFailed, buildDirRetainDaysKilled,
-                    buildDirCleanupTime, secretNameTemplate, secretVolumeType, jobNamespaceMode, jobNamespaceTemplate, jobServiceAccount, secretMountTimeoutSeconds, ping);
+                    buildDirCleanupTime, secretNameTemplate, secretVolumeType, jobNamespaceMode,
+                    jobNamespaceTemplate, jobServiceAccount, secretMountTimeoutSeconds, ping);
         }
 
         public static DockerServerWithPing create(final Long id,

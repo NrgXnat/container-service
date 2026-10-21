@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import org.junit.Test;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
 import org.nrg.containers.model.server.docker.JobNamespaceMode;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 
@@ -18,8 +19,8 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 /**
- * The six backend settings behind Kubernetes file secrets (design doc section 3.1): JSON defaults, round trip,
- * entity mapping and validation. Only meaningful on the Kubernetes backend; other backends must store them unchanged.
+ * The six backend settings behind Kubernetes file secrets (design doc section 3.1): JSON defaults, round trip and
+ * enum parsing; entity mapping and validate() are covered by their own tests. Only meaningful on the Kubernetes backend; other backends must store them unchanged.
  */
 public class DockerServerSecretSettingsTest {
 
@@ -84,6 +85,16 @@ public class DockerServerSecretSettingsTest {
         } catch (JsonMappingException e) {
             assertThat(e.getMessage(), containsString("vault"));
         }
+    }
+
+    /** The with-ping JSON creator must forward the settings to the plain creator, not let defaults replace them. */
+    @Test
+    public void serverWithPingJsonKeepsSecretSettings() throws Exception {
+        final DockerServerWithPing server = mapper.readValue(json(
+                ",\"secret-volume-type\":\"csi\",\"ping\":true"), DockerServerWithPing.class);
+
+        assertThat(server.secretVolumeType(), is(SecretVolumeType.CSI));
+        assertThat(server.ping(), is(true));
     }
 
     /** updateEventCheckTime rebuilds the pojo on the status polling path; dropped settings would silently reset. */
