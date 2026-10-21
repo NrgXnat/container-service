@@ -8,7 +8,6 @@ import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.framework.exceptions.NotFoundException;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 
 public interface KubernetesClient {
     ApiClient getBackendClient();
@@ -22,8 +21,7 @@ public interface KubernetesClient {
     String ping() throws ContainerBackendException;
     String getLog(String podName, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) throws ContainerBackendException;
 
-    String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, String serverContainerUser, final String gpuVendor,
-                     final List<DockerServerBase.KubernetesToleration> tolerations)
+    String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final DockerServerBase.DockerServer server)
             throws ContainerBackendException, ContainerException;
     void unsuspendJob(final String jobName) throws ContainerBackendException;
     void removeJob(String jobName) throws NotFoundException, ContainerBackendException;

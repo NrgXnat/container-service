@@ -40,6 +40,7 @@ import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.secrets.K8sSecretNameTemplate;
 import org.nrg.containers.secrets.FileResolvedSecret;
@@ -93,16 +94,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     private String             namespace;
     private KubernetesInformer kubernetesInformer = null;
 
-    // File-secret mounting (XNAT-8703 Project Secrets). Configured by system properties until exposed as preferences.
-    public static final String SECRET_NAME_TEMPLATE_PROPERTY = "xnat.cs.k8s.secretNameTemplate";
-    public static final String SECRET_VOLUME_TYPE_PROPERTY   = "xnat.cs.k8s.secretVolumeType";
-    public static final String SERVICE_ACCOUNT_NAME_PROPERTY = "xnat.cs.k8s.serviceAccountName";
-    public static final String SECRET_VOLUME_TYPE_SECRET     = "secret";
-    public static final String SECRET_VOLUME_TYPE_CSI        = "csi";
-    public static final String CSI_SECRETS_STORE_DRIVER      = "secrets-store.csi.k8s.io";
-    private String secretNameTemplate = System.getProperty(SECRET_NAME_TEMPLATE_PROPERTY, K8sSecretNameTemplate.DEFAULT_TEMPLATE);
-    private String secretVolumeType   = System.getProperty(SECRET_VOLUME_TYPE_PROPERTY, SECRET_VOLUME_TYPE_SECRET);
-    private String serviceAccountName = System.getProperty(SERVICE_ACCOUNT_NAME_PROPERTY);
+    public static final String CSI_SECRETS_STORE_DRIVER = "secrets-store.csi.k8s.io";
 
 
     public KubernetesClientImpl(
@@ -167,9 +159,8 @@ public class KubernetesClientImpl implements KubernetesClient {
         restart();
     }
 
-    private V1Volume fileSecretVolume(final String volumeName, final String secretName) {
-        final String volumeType = StringUtils.isBlank(secretVolumeType) ? SECRET_VOLUME_TYPE_SECRET : secretVolumeType;
-        if (SECRET_VOLUME_TYPE_CSI.equalsIgnoreCase(volumeType)) {
+    private static V1Volume fileSecretVolume(final String volumeName, final String secretName, final SecretVolumeType volumeType) {
+        if (volumeType == SecretVolumeType.CSI) {
             return new V1VolumeBuilder()
                     .withName(volumeName)
                     .withNewCsi()
@@ -185,18 +176,6 @@ public class KubernetesClientImpl implements KubernetesClient {
                 .withSecretName(secretName)
                 .endSecret()
                 .build();
-    }
-
-    public void setSecretNameTemplate(final String secretNameTemplate) {
-        this.secretNameTemplate = secretNameTemplate;
-    }
-
-    public void setSecretVolumeType(final String secretVolumeType) {
-        this.secretVolumeType = secretVolumeType;
-    }
-
-    public void setServiceAccountName(final String serviceAccountName) {
-        this.serviceAccountName = serviceAccountName;
     }
 
     @Override
@@ -292,10 +271,14 @@ public class KubernetesClientImpl implements KubernetesClient {
     }
 
     @Override
-    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final String serverContainerUser, final String gpuVendor,
-                            final List<DockerServerBase.KubernetesToleration> tolerations)
+    public String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final DockerServerBase.DockerServer server)
             throws ContainerBackendException, ContainerException {
         log.debug("Creating kubernetes job");
+        final String serverContainerUser = server.containerUser();
+        final String gpuVendor = server.gpuVendor();
+        final List<DockerServerBase.KubernetesToleration> tolerations = server.kubernetesTolerations();
+        final SecretVolumeType secretVolumeType = server.secretVolumeType() == null ? SecretVolumeType.DEFAULT : server.secretVolumeType();
+        final String serviceAccountName = server.jobServiceAccount();
 
         Long containerUserId = null;
         if (StringUtils.isNotBlank(serverContainerUser)) {
@@ -467,9 +450,9 @@ public class KubernetesClientImpl implements KubernetesClient {
         for (final FileResolvedSecret fileSecret : containerPropertiesWithSecretValues.fileSecrets()) {
             final String secretName = StringUtils.isNotBlank(fileSecret.explicitSecretName()) ?
                     fileSecret.explicitSecretName() :
-                    K8sSecretNameTemplate.render(secretNameTemplate, toCreate.project(), fileSecret.logicalName());
+                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.logicalName());
             final String volumeName = K8sSecretNameTemplate.sanitize("secret-" + fileSecret.logicalName());
-            volumes.add(fileSecretVolume(volumeName, secretName));
+            volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
             mounts.add(new V1VolumeMountBuilder()
                                .withName(volumeName)
                                .withMountPath(fileSecret.mountPath())
