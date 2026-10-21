@@ -42,7 +42,6 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
-import org.nrg.containers.secrets.K8sSecretNameTemplate;
 import org.nrg.containers.secrets.FileResolvedSecret;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
@@ -447,12 +446,9 @@ public class KubernetesClientImpl implements KubernetesClient {
                                                                           .map(entry -> new V1EnvVarBuilder().withName(entry.getKey()).withValue(entry.getValue()).build())
                                                                           .collect(Collectors.toList());
 
-        // File secrets: reference the Kubernetes Secret (or SecretProviderClass) by name; kubelet mounts it on tmpfs.
+        // File secrets: the name was rendered at resolution; reference it by name, kubelet mounts it on tmpfs.
         for (final FileResolvedSecret fileSecret : containerPropertiesWithSecretValues.fileSecrets()) {
-            // Rendered at resolution from Task 9 on; this fallback is removed in Task 10.
-            final String secretName = StringUtils.isNotBlank(fileSecret.secretName()) ?
-                    fileSecret.secretName() :
-                    K8sSecretNameTemplate.render(server.secretNameTemplate(), toCreate.project(), fileSecret.identifier(), Collections.emptyMap());
+            final String secretName = fileSecret.secretName();
             final String volumeName = fileSecret.volumeName();
             volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
             mounts.add(new V1VolumeMountBuilder()
