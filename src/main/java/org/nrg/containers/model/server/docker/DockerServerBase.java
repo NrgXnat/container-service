@@ -7,6 +7,7 @@ import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.InvalidDefinitionException;
+import org.nrg.containers.secrets.K8sSecretNameTemplate;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -509,6 +510,31 @@ public abstract class DockerServerBase implements Serializable {
                 if (StringUtils.isNotEmpty(combinedPathTranslation()) && (StringUtils.isNotEmpty(archivePathTranslation())
                         || StringUtils.isNotEmpty(buildPathTranslation()))) {
                     errors.add("You cannot have a Kubernetes server setup which has path translations for both separate and combined locations for build and archive directories. Please choose one or the other.");
+                }
+                final String secretNameTemplate = secretNameTemplate();
+                if (StringUtils.isNotBlank(secretNameTemplate)
+                        && !secretNameTemplate.contains(K8sSecretNameTemplate.IDENTIFIER_PLACEHOLDER)) {
+                    errors.add("Secret name template must contain " + K8sSecretNameTemplate.IDENTIFIER_PLACEHOLDER);
+                }
+                if (jobNamespaceMode() == JobNamespaceMode.PER_PROJECT) {
+                    final String namespaceTemplate = jobNamespaceTemplate();
+                    if (StringUtils.isBlank(namespaceTemplate)) {
+                        errors.add("Job namespace template is required when job namespace mode is per-project");
+                    } else if (!namespaceTemplate.contains(K8sSecretNameTemplate.PROJECT_PLACEHOLDER)) {
+                        errors.add("Job namespace template must contain " + K8sSecretNameTemplate.PROJECT_PLACEHOLDER);
+                    } else {
+                        try {
+                            // A one-character project is the shortest possible rendering; a longer one only gets longer.
+                            K8sSecretNameTemplate.requireValidLabel(K8sSecretNameTemplate.sanitizeLabel(
+                                    namespaceTemplate.replace(K8sSecretNameTemplate.PROJECT_PLACEHOLDER, "x")),
+                                    "Job namespace template");
+                        } catch (IllegalArgumentException e) {
+                            errors.add(e.getMessage());
+                        }
+                    }
+                }
+                if (secretMountTimeoutSeconds() < 0) {
+                    errors.add("Secret mount timeout must be 0 or more seconds (0 disables the watchdog)");
                 }
             } else {
                 // Docker + Swarm must have a host configured

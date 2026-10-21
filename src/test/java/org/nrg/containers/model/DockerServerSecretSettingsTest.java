@@ -3,7 +3,9 @@ package org.nrg.containers.model;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
+import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServerWithPing;
@@ -20,8 +22,8 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 /**
- * The six backend settings behind Kubernetes file secrets (design doc section 3.1): JSON defaults, round trip and
- * enum parsing; entity mapping and validate() are covered by their own tests. Only meaningful on the Kubernetes backend; other backends must store them unchanged.
+ * The six backend settings behind Kubernetes file secrets (design doc section 3.1): JSON defaults, round trip, enum
+ * parsing, the entity round trip and the validate() rules, which apply to the Kubernetes backend only.
  */
 public class DockerServerSecretSettingsTest {
 
@@ -164,5 +166,54 @@ public class DockerServerSecretSettingsTest {
         final DockerServerEntity entity = new DockerServerEntity();
         entity.setSecretMountTimeoutSeconds(value);
         return entity.getSecretMountTimeoutSeconds();
+    }
+
+    private static DockerServer.Builder kubernetesBase() {
+        return DockerServer.builder().name("k8s").host("").backend(Backend.KUBERNETES);
+    }
+
+    @Test
+    public void kubernetesSecretNameTemplateMustContainIdentifierPlaceholder() throws Exception {
+        kubernetesBase().secretNameTemplate("site-#PROJECT#-{identifier}").build().validate();
+        kubernetesBase().secretNameTemplate(null).build().validate();   // blank means the built-in default
+        assertValidationError(kubernetesBase().secretNameTemplate("site-#PROJECT#").build(), "{identifier}");
+    }
+
+    @Test
+    public void perProjectModeRequiresARenderableNamespaceTemplate() throws Exception {
+        kubernetesBase().jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#").build().validate();
+        assertValidationError(kubernetesBase().jobNamespaceMode(JobNamespaceMode.PER_PROJECT).build(), "required");
+        assertValidationError(kubernetesBase().jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-jobs").build(), "#PROJECT#");
+        assertValidationError(kubernetesBase().jobNamespaceMode(JobNamespaceMode.PER_PROJECT)
+                .jobNamespaceTemplate(StringUtils.repeat('n', 70) + "-#PROJECT#").build(), "63");
+        // single mode never looks at the template
+        kubernetesBase().jobNamespaceMode(JobNamespaceMode.SINGLE).jobNamespaceTemplate("nonsense").build().validate();
+    }
+
+    @Test
+    public void negativeMountTimeoutIsRejected() {
+        assertValidationError(kubernetesBase().secretMountTimeoutSeconds(-1).build(), "0 or more");
+    }
+
+    /** Docker and Swarm ignore these settings; storing a bad value there must not block saving the server. */
+    @Test
+    public void otherBackendsIgnoreTheKubernetesSecretSettings() throws Exception {
+        DockerServer.builder().name("d").host("unix:///var/run/docker.sock").backend(Backend.DOCKER)
+                .secretNameTemplate("no-placeholder")
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT)
+                .secretMountTimeoutSeconds(-1)
+                .build().validate();
+        DockerServer.builder().name("s").host("tcp://swarm:2375").backend(Backend.SWARM)
+                .secretNameTemplate("no-placeholder")
+                .build().validate();
+    }
+
+    private static void assertValidationError(final DockerServer server, final String expectedFragment) {
+        try {
+            server.validate();
+            fail("Expected InvalidDefinitionException containing: " + expectedFragment);
+        } catch (InvalidDefinitionException e) {
+            assertThat(e.getMessage(), containsString(expectedFragment));
+        }
     }
 }
