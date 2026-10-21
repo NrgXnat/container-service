@@ -596,4 +596,16 @@ public class DockerControlApiTest {
                 break;
         }
     }
+
+    @Test
+    public void testRemoveKubernetesJobInContainerNamespace() throws Exception {
+        assumeThat(backend, is(Backend.KUBERNETES));
+        when(container.namespace()).thenReturn("xnat-proj01");
+
+        // Run the test
+        dockerControlApi.remove(container);
+
+        // Verify the job is removed from the namespace recorded on the container
+        verify(kubernetesClient).removeJob(BACKEND_ID, "xnat-proj01");
+    }
 }

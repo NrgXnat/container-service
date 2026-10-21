@@ -26,7 +26,7 @@ public interface KubernetesClient {
     /**
      * Create a Kubernetes job for the container in {@code toCreate.namespace()}, falling back to {@link #getNamespace()}
      * when null. Reads these settings from {@code server}: containerUser, gpuVendor, kubernetesTolerations,
-     * secretVolumeType, secretNameTemplate and jobServiceAccount.
+     * secretVolumeType and jobServiceAccount.
      */
     String createJob(final Container toCreate, final DockerControlApi.NumReplicas numReplicas, final DockerServerBase.DockerServer server)
             throws ContainerBackendException, ContainerException;

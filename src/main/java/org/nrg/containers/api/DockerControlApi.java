@@ -856,7 +856,7 @@ public class DockerControlApi implements ContainerControlApi {
             case DOCKER:
                 return getDockerContainerLog(server, container.containerId(), logType, withTimestamps, since);
             case KUBERNETES:
-                log.info("Getting logs for container {} (database ID: {}) in pod {} (server type {} on host {})", container.containerId(), container.databaseId(), container.podName(), server.backend(), server.host());
+                log.info("Getting logs for container {} (database ID: {}) in pod {} namespace {} (server type {} on host {})", container.containerId(), container.databaseId(), container.podName(), container.namespace(), server.backend(), server.host());
                 return getKubernetesClient().getLog(container.podName(), container.namespace(), logType, withTimestamps, since);
             default:
                 throw new NoContainerServerException("Not implemented");

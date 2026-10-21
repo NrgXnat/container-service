@@ -93,7 +93,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     private ApiClient          apiClient;
     private CoreV1Api          coreApi;
     private BatchV1Api         batchApi;
-    private String             contextNamespace;
+    private final String       contextNamespace;
     private KubernetesInformer kubernetesInformer = null;
 
 
@@ -720,10 +720,11 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             throws ContainerBackendException {
         // Patch the job spec's suspend property
         final V1Patch patch = new V1Patch("{\"spec\": {\"suspend\": false}}");
+        final String ns = effectiveNamespace(namespace);
         try {
 
             // Write updated job definition
-            log.debug("Unsuspending kubernetes job {}", jobName);
+            log.debug("Unsuspending kubernetes job {} in namespace {}", jobName, ns);
 
             // We use PatchUtils.patch here rather than directly calling
             // batchApi.patchNamespacedJob because the latter sets a header saying
@@ -732,27 +733,28 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             // PatchUtils.patch lets us set that header.
             PatchUtils.patch(
                     V1Job.class,
-                    () -> batchApi.patchNamespacedJobCall(jobName, effectiveNamespace(namespace), patch, null, null, null, null, null, null),
+                    () -> batchApi.patchNamespacedJobCall(jobName, ns, patch, null, null, null, null, null, null),
                     V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
                     batchApi.getApiClient()
                             );
         } catch (ApiException e) {
-            log.error("Could not start job {}: message \"{}\" code {} body {}", jobName, e.getMessage(), e.getCode(), e.getResponseBody(), e);
+            log.error("Could not start job {} in namespace {}: message \"{}\" code {} body {}", jobName, ns, e.getMessage(), e.getCode(), e.getResponseBody(), e);
             throw new ContainerBackendException("Could not start job " + jobName, e);
         }
     }
 
     @Override
     public void removeJob(final String jobName, @Nullable final String namespace) throws NotFoundException, ContainerBackendException {
+        final String ns = effectiveNamespace(namespace);
         try {
-            log.debug("Removing job {}", jobName);
-            batchApi.deleteNamespacedJob(jobName, effectiveNamespace(namespace), null, null, null, null, Propagation.Foreground.name(), null);
+            log.debug("Removing job {} in namespace {}", jobName, ns);
+            batchApi.deleteNamespacedJob(jobName, ns, null, null, null, null, Propagation.Foreground.name(), null);
         } catch (ApiException e) {
             if (e.getCode() == 404) {
-                log.error("Could not remove job {}: not found", jobName);
+                log.error("Could not remove job {} in namespace {}: not found", jobName, ns);
                 throw new NotFoundException(e);
             } else {
-                log.error("Could not remove job {}: message \"{}\" code {} body {}", jobName, e.getMessage(), e.getCode(), e.getResponseBody(), e);
+                log.error("Could not remove job {} in namespace {}: message \"{}\" code {} body {}", jobName, ns, e.getMessage(), e.getCode(), e.getResponseBody(), e);
                 throw new ContainerBackendException("Could not remove job " + jobName, e);
             }
         }
