@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -17,7 +18,7 @@ import java.util.Objects;
  * kubelet mounts it. This is therefore <em>not</em> a {@link ValueObtainingSecretSource}.
  * <p>
  * {@code identifier} is the logical name (e.g. {@code redcap}). {@code name} is optional: when the command
- * gives one it may contain the same placeholders as the site template ({@code #PROJECT#}, {@code #input#},
+ * gives one it may contain the same placeholders as the site template ({@code #PROJECT#}, {@code #<input-name>#},
  * {@code {identifier}}); when absent the site template applies. Command resolution renders the final name and
  * writes it back into {@code name}, so a persisted (jsonb) secret always carries the rendered name.
  * {@code required} defaults to true; false lets the container start without the object (see FileResolvedSecret).
@@ -79,7 +80,7 @@ public class K8sSecretSource implements SecretSource {
         if (!required) {
             properties.put("required", "false");
         }
-        return properties;
+        return Collections.unmodifiableMap(properties);
     }
 
     @Override
