@@ -1,5 +1,6 @@
 package org.nrg.containers.api;
 
+import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -19,10 +20,13 @@ import org.springframework.jms.core.JmsTemplate;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -138,5 +142,72 @@ public class KubernetesInformerTest {
                     .onUpdate(first, again);
             mockedQueueUtils.verifyNoInteractions();
         }
+    }
+
+    // ---- one informer group per namespace ----
+
+    /** Replaces the real list/watch group so these tests never touch the network. */
+    private static class RecordingInformer extends KubernetesInformerImpl {
+        final List<String> started = new ArrayList<>();
+        final List<String> stopped = new ArrayList<>();
+
+        RecordingInformer() {
+            super("ctx", new ApiClient(), mock(ExecutorService.class), mock(JmsTemplate.class));
+        }
+
+        @Override
+        protected NamespaceWatch createWatch(final String namespace) {
+            return new NamespaceWatch() {
+                @Override public void start() { started.add(namespace); }
+                @Override public void stop() { stopped.add(namespace); }
+            };
+        }
+    }
+
+    @Test
+    public void startWatchesTheContextNamespaceOnly() {
+        final RecordingInformer informer = new RecordingInformer();
+        informer.start();
+        assertThat(informer.getNamespace(), is("ctx"));
+        assertThat(informer.started, is(Collections.singletonList("ctx")));
+        assertThat(informer.watchedNamespaces(), is(Collections.singleton("ctx")));
+    }
+
+    @Test
+    public void ensureWatchingStartsANewGroupOnceAndIsIdempotent() {
+        final RecordingInformer informer = new RecordingInformer();
+        informer.start();
+        informer.ensureWatching("xnat-proj01");
+        informer.ensureWatching("xnat-proj01");
+        informer.ensureWatching("ctx");
+        assertThat(informer.started, is(java.util.Arrays.asList("ctx", "xnat-proj01")));
+    }
+
+    @Test
+    public void ensureWatchingBeforeStartIsDeferredUntilStart() {
+        final RecordingInformer informer = new RecordingInformer();
+        informer.ensureWatching("xnat-proj01");
+        assertThat(informer.started.isEmpty(), is(true));
+        informer.start();
+        assertThat(informer.started, containsInAnyOrder("ctx", "xnat-proj01"));
+    }
+
+    /**
+     * A stopped SharedInformerFactory cannot be restarted (its informers keep their started flag), so stop() discards
+     * every group. start() afterwards only recreates the context group; per-project groups come back through the
+     * status updater's ensureWatching on its next cycle.
+     */
+    @Test
+    public void stopDiscardsEveryGroupAndStartRecreatesOnlyTheContextGroup() {
+        final RecordingInformer informer = new RecordingInformer();
+        informer.start();
+        informer.ensureWatching("xnat-proj01");
+        informer.stop();
+        assertThat(informer.stopped, containsInAnyOrder("ctx", "xnat-proj01"));
+        assertThat(informer.watchedNamespaces().isEmpty(), is(true));
+        informer.start();
+        assertThat(informer.started, is(java.util.Arrays.asList("ctx", "xnat-proj01", "ctx")));
+        informer.ensureWatching("xnat-proj01");
+        assertThat(informer.started.size(), is(4));
     }
 }

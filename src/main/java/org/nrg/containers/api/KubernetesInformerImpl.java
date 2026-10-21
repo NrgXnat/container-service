@@ -6,24 +6,16 @@ import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
 import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.CoreV1Event;
+import io.kubernetes.client.openapi.models.CoreV1EventList;
 import io.kubernetes.client.openapi.models.V1ContainerState;
 import io.kubernetes.client.openapi.models.V1ContainerStateRunning;
 import io.kubernetes.client.openapi.models.V1ContainerStateTerminated;
 import io.kubernetes.client.openapi.models.V1ContainerStateWaiting;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
-import io.kubernetes.client.openapi.models.V1Job;
-import io.kubernetes.client.openapi.models.V1JobList;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
-import java.util.function.Function;
-import java.util.Set;
-import java.util.Objects;
-import java.util.HashSet;
-import java.util.Arrays;
 import io.kubernetes.client.openapi.models.V1ObjectReference;
-import io.kubernetes.client.openapi.models.CoreV1EventList;
-import io.kubernetes.client.openapi.models.CoreV1Event;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1PodSpec;
@@ -38,92 +30,134 @@ import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.springframework.jms.core.JmsTemplate;
 
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
 
 @Slf4j
 public class KubernetesInformerImpl implements KubernetesInformer {
     private static final int RESYNC_DISABLED = 0;
 
-    private final SharedInformerFactory sharedInformerFactory;
-    private volatile boolean isStarted;
+    /** One list/watch group (jobs, pods, events) for one namespace. Package-private seam for tests. */
+    interface NamespaceWatch {
+        void start();
+        void stop();
+    }
 
-    private final Lister<V1Job> jobLister;
-    private final Lister<V1Pod> podLister;
+    private final String contextNamespace;
+    private final ApiClient apiClient;
+    private final ExecutorService executorService;
+    private final JmsTemplate template;
+    private final Map<String, NamespaceWatch> watches = new ConcurrentHashMap<>();
+    private volatile boolean isStarted = false;
 
-    public KubernetesInformerImpl(final String namespace,
+    public KubernetesInformerImpl(final String contextNamespace,
                                   final ApiClient apiClient,
                                   final ExecutorService executorService,
                                   final JmsTemplate template) {
-
-        // Required to set read timeout to zero (disabling timeout) so long-lived watches work
+        this.contextNamespace = contextNamespace;
+        this.apiClient = apiClient;
+        this.executorService = executorService;
+        this.template = template;
+        // Required to set read timeout to zero (disabling timeout) so long-lived watches work. Once, for all groups.
         apiClient.setReadTimeout(0);
+    }
 
-        CoreV1Api coreApi = new CoreV1Api(apiClient);
-        BatchV1Api batchApi = new BatchV1Api(apiClient);
+    @Override
+    public String getNamespace() {
+        return contextNamespace;
+    }
 
-        sharedInformerFactory = new SharedInformerFactory(apiClient, executorService);
-        SharedIndexInformer<V1Job> jobInformer = sharedInformerFactory.sharedIndexInformerFor(
-                (CallGeneratorParams params) ->
-                        batchApi.listNamespacedJobCall(
-                                namespace,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                params.resourceVersion,
-                                null,
-                                params.timeoutSeconds,
-                                params.watch,
-                                null
-                        ),
-                V1Job.class, V1JobList.class, RESYNC_DISABLED);
-        jobLister = new Lister<>(jobInformer.getIndexer(), namespace);
+    /** Namespaces with a registered group, whether started or not. Package-private for tests. */
+    Set<String> watchedNamespaces() {
+        return new HashSet<>(watches.keySet());
+    }
 
-        SharedIndexInformer<V1Pod> podInformer = sharedInformerFactory.sharedIndexInformerFor(
-                (CallGeneratorParams params) ->
-                        coreApi.listNamespacedPodCall(
-                                namespace,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                params.resourceVersion,
-                                null,
-                                params.timeoutSeconds,
-                                params.watch,
-                                null
-                        ),
-                V1Pod.class, V1PodList.class, RESYNC_DISABLED);
-        podInformer.addEventHandler(new PodEventHandler(template));
-        podLister = new Lister<>(podInformer.getIndexer(), namespace);
+    @Override
+    public synchronized void start() {
+        if (isStarted) {
+            return;
+        }
+        log.debug("Starting kubernetes informers");
+        watches.computeIfAbsent(contextNamespace, this::createWatch);
+        watches.values().forEach(NamespaceWatch::start);
+        isStarted = true;
+    }
 
-        // Pod warning events (FailedMount, FailedAttachVolume, ...) never show up in pod status,
-        // only as Event objects. Watch them so a missing secret is visible in container history.
-        SharedIndexInformer<CoreV1Event> eventInformer = sharedInformerFactory.sharedIndexInformerFor(
-                (CallGeneratorParams params) ->
-                        coreApi.listNamespacedEventCall(
-                                namespace,
-                                null,
-                                null,
-                                null,
-                                "involvedObject.kind=Pod",
-                                null,
-                                null,
-                                params.resourceVersion,
-                                null,
-                                params.timeoutSeconds,
-                                params.watch,
-                                null
-                        ),
-                CoreV1Event.class, CoreV1EventList.class, RESYNC_DISABLED);
-        eventInformer.addEventHandler(new PodWarningEventHandler(template, podLister::get));
+    @Override
+    public synchronized void stop() {
+        if (!isStarted) {
+            return;
+        }
+        log.debug("Stopping kubernetes informers");
+        watches.values().forEach(NamespaceWatch::stop);
+        // A stopped SharedInformerFactory does not restart (DefaultSharedIndexInformer keeps its started flag),
+        // so groups are single-use. ContainerStatusUpdater re-registers live namespaces on its next cycle.
+        watches.clear();
         isStarted = false;
+    }
+
+    @Override
+    public synchronized void ensureWatching(final String namespace) {
+        if (watches.containsKey(namespace)) {
+            return;
+        }
+        final NamespaceWatch watch = watches.computeIfAbsent(namespace, this::createWatch);
+        if (isStarted) {
+            log.info("Starting kubernetes informers for namespace {}", namespace);
+            watch.start();
+        }
+    }
+
+    /** Overridden in tests; the real group lists and watches through the shared ApiClient and executor. */
+    protected NamespaceWatch createWatch(final String namespace) {
+        return new InformerNamespaceWatch(namespace);
+    }
+
+    /**
+     * Pods and pod warning events of one namespace. Each group has its own SharedInformerFactory because
+     * the factory keys informers by type, not namespace; the ApiClient and executor are shared.
+     */
+    private final class InformerNamespaceWatch implements NamespaceWatch {
+        private final SharedInformerFactory sharedInformerFactory;
+
+        private InformerNamespaceWatch(final String namespace) {
+            // Pods and pod events only. The former job informer fed a Lister nobody read; dropping it also drops the
+            // jobs list/watch permission from what the Container Service identity needs.
+            final CoreV1Api coreApi = new CoreV1Api(apiClient);
+            sharedInformerFactory = new SharedInformerFactory(apiClient, executorService);
+
+            final SharedIndexInformer<V1Pod> podInformer = sharedInformerFactory.sharedIndexInformerFor(
+                    (CallGeneratorParams params) -> coreApi.listNamespacedPodCall(namespace, null, null, null, null, null, null,
+                            params.resourceVersion, null, params.timeoutSeconds, params.watch, null),
+                    V1Pod.class, V1PodList.class, RESYNC_DISABLED);
+            podInformer.addEventHandler(new PodEventHandler(template));
+            final Lister<V1Pod> podLister = new Lister<>(podInformer.getIndexer(), namespace);
+
+            // Pod warning events (FailedMount, FailedAttachVolume, ...) never show up in pod status,
+            // only as Event objects. Watch them so a missing secret is visible in container history.
+            final SharedIndexInformer<CoreV1Event> eventInformer = sharedInformerFactory.sharedIndexInformerFor(
+                    (CallGeneratorParams params) -> coreApi.listNamespacedEventCall(namespace, null, null, null, "involvedObject.kind=Pod",
+                            null, null, params.resourceVersion, null, params.timeoutSeconds, params.watch, null),
+                    CoreV1Event.class, CoreV1EventList.class, RESYNC_DISABLED);
+            eventInformer.addEventHandler(new PodWarningEventHandler(template, podLister::get));
+        }
+
+        @Override
+        public void start() {
+            sharedInformerFactory.startAllRegisteredInformers();
+        }
+
+        @Override
+        public void stop() {
+            sharedInformerFactory.stopAllRegisteredInformers(false);
+        }
     }
 
     private static String readLabels(KubernetesObject obj, String key) {
@@ -144,34 +178,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
     private static String objNamespace(KubernetesObject obj) {
         final V1ObjectMeta meta = obj.getMetadata();
         return meta == null ? null : meta.getNamespace();
-    }
-
-    @Override
-    public void start() {
-        if (!isStarted) {
-            log.debug("Starting kubernetes informer");
-            sharedInformerFactory.startAllRegisteredInformers();
-            isStarted = true;
-        }
-    }
-
-    @Override
-    public void stop() {
-        if (isStarted) {
-            log.debug("Stopping kubernetes informer");
-            sharedInformerFactory.stopAllRegisteredInformers(false);
-            isStarted = false;
-        }
-    }
-
-    @Override
-    public V1Job getJob(final String jobName) {
-        return jobLister.get(jobName);
-    }
-
-    @Override
-    public V1Pod getPod(final String name) {
-        return podLister.get(name);
     }
 
     static class PodEventHandler implements ResourceEventHandler<V1Pod> {

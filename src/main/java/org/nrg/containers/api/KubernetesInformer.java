@@ -1,12 +1,12 @@
 package org.nrg.containers.api;
 
-import io.kubernetes.client.openapi.models.V1Job;
-import io.kubernetes.client.openapi.models.V1Pod;
-
 public interface KubernetesInformer {
+    /** Start the context namespace group and every group registered so far. */
     void start();
+    /** Stop every group. */
     void stop();
-
-    V1Job getJob(final String name);
-    V1Pod getPod(final String name);
+    /** Register (and, once started, start) a group for this namespace; a no-op when it already exists. */
+    void ensureWatching(String namespace);
+    /** The kubeconfig context namespace. */
+    String getNamespace();
 }
