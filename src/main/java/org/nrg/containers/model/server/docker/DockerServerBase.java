@@ -154,7 +154,10 @@ public abstract class DockerServerBase implements Serializable {
     @JsonProperty("build-dir-cleanup-time")
     public abstract String buildDirCleanupTime();
 
-    /** Template for the Kubernetes Secret / SecretProviderClass name; null means the built-in default. Kubernetes only. */
+    /**
+     * Template for the Kubernetes Secret / SecretProviderClass name; null means the built-in default. A non-null value
+     * must contain {identifier}. Kubernetes only.
+     */
     @Nullable @JsonProperty("secret-name-template")
     public abstract String secretNameTemplate();
 
@@ -522,12 +525,15 @@ public abstract class DockerServerBase implements Serializable {
                         errors.add("Job namespace template is required when job namespace mode is per-project");
                     } else if (!namespaceTemplate.contains(K8sSecretNameTemplate.PROJECT_PLACEHOLDER)) {
                         errors.add("Job namespace template must contain " + K8sSecretNameTemplate.PROJECT_PLACEHOLDER);
+                    } else if (namespaceTemplate.replace(K8sSecretNameTemplate.PROJECT_PLACEHOLDER, "").contains("#")) {
+                        errors.add("Job namespace template may only use the " + K8sSecretNameTemplate.PROJECT_PLACEHOLDER
+                                + " placeholder; input placeholders are not substituted in namespaces");
                     } else {
                         try {
                             // A one-character project is the shortest possible rendering; a longer one only gets longer.
                             K8sSecretNameTemplate.requireValidLabel(K8sSecretNameTemplate.sanitizeLabel(
                                     namespaceTemplate.replace(K8sSecretNameTemplate.PROJECT_PLACEHOLDER, "x")),
-                                    "Job namespace template");
+                                    "Job namespace template (rendered with a one-character project)");
                         } catch (IllegalArgumentException e) {
                             errors.add(e.getMessage());
                         }

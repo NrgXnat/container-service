@@ -191,8 +191,19 @@ public class DockerServerSecretSettingsTest {
     }
 
     @Test
+    public void perProjectNamespaceTemplateRejectsOtherPlaceholders() {
+        assertValidationError(kubernetesBase().jobNamespaceMode(JobNamespaceMode.PER_PROJECT)
+                .jobNamespaceTemplate("xnat-#PROJECT#-#session#").build(), "only");
+    }
+
+    @Test
     public void negativeMountTimeoutIsRejected() {
         assertValidationError(kubernetesBase().secretMountTimeoutSeconds(-1).build(), "0 or more");
+    }
+
+    @Test
+    public void zeroMountTimeoutIsAccepted() throws Exception {
+        kubernetesBase().secretMountTimeoutSeconds(0).build().validate();
     }
 
     /** Docker and Swarm ignore these settings; storing a bad value there must not block saving the server. */
