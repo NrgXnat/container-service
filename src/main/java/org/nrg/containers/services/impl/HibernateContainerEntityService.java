@@ -115,6 +115,12 @@ public class HibernateContainerEntityService
     }
 
     @Override
+    @Nonnull
+    public List<String> retrieveNonfinalizedKubernetesNamespaces() {
+        return getDao().retrieveNonfinalizedKubernetesNamespaces();
+    }
+
+    @Override
     @Nullable
     public ContainerEntity retrieveServiceForPoll(final long id) {
         return getDao().retrieveServiceForPoll(id);

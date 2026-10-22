@@ -1,9 +1,11 @@
 package org.nrg.containers.events;
 
 import com.github.dockerjava.api.model.TaskState;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.nrg.containers.api.ContainerControlApi;
+import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
@@ -160,7 +162,8 @@ public class ContainerStatusUpdater implements Runnable {
     }
 
     @Nonnull
-    private UpdateReport checkForUpdatesAndThrowEvents(final DockerServer server) {
+    @VisibleForTesting
+    UpdateReport checkForUpdatesAndThrowEvents(final DockerServer server) {
         // Delegate to backend-specific update methods
         switch (server.backend()) {
             case SWARM:
@@ -169,8 +172,18 @@ public class ContainerStatusUpdater implements Runnable {
                 return checkForDockerContainerUpdatesAndThrowEvents(server);
             case KUBERNETES:
                 try {
-                    // Make sure the informer is running. It will handle throwing events on its own.
-                    kubernetesClientFactory.getKubernetesClient().start();
+                    // Make sure the informers are running. They handle throwing events on their own.
+                    final KubernetesClient client = kubernetesClientFactory.getKubernetesClient();
+                    client.start();
+                    // Idempotent: after a restart or a client rebuild, every namespace with live jobs is watched again.
+                    // One namespace failing to register must not stop the others from being watched.
+                    for (final String namespace : containerService.retrieveNonfinalizedKubernetesNamespaces()) {
+                        try {
+                            client.ensureWatching(namespace);
+                        } catch (RuntimeException e) {
+                            log.error("Could not start watching Kubernetes namespace {}", namespace, e);
+                        }
+                    }
                 } catch (NoContainerServerException e) {
                     return UpdateReport.singleton(UpdateReportEntry.failure(null, e.getMessage()));
                 }
@@ -278,7 +291,7 @@ public class ContainerStatusUpdater implements Runnable {
         return report.finish();
     }
 
-    private static class UpdateReport {
+    static class UpdateReport {
         private Boolean successful = null;
         private List<UpdateReportEntry> updateReports;
 

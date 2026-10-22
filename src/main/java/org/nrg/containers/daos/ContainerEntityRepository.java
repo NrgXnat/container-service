@@ -102,6 +102,21 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
                 .orElse(matches.get(0));
     }
 
+    /** Distinct namespaces of unfinished Kubernetes containers; rows without a recorded namespace are the context one and need no extra watch. */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<String> retrieveNonfinalizedKubernetesNamespaces() {
+        final List<String> namespaces = getSession()
+                .createCriteria(ContainerEntity.class)
+                .add(Restrictions.conjunction()
+                        .add(Restrictions.eq("backend", Backend.KUBERNETES))
+                        .add(Restrictions.isNotNull("namespace"))
+                        .add(getNonFinalizedCriterion()))
+                .setProjection(Projections.distinct(Projections.property("namespace")))
+                .list();
+        return namespaces == null ? Collections.emptyList() : namespaces;
+    }
+
     public void addHistoryItem(final @Nonnull ContainerEntity containerEntity,
                                final @Nonnull ContainerEntityHistory containerEntityHistory) {
         containerEntity.addToHistory(containerEntityHistory);

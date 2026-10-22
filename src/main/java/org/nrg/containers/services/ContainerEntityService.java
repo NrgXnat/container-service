@@ -27,6 +27,7 @@ public interface ContainerEntityService extends BaseHibernateService<ContainerEn
 
     List<ContainerEntity> retrieveServices();
     List<Long> retrieveNonfinalizedServiceIds();
+    List<String> retrieveNonfinalizedKubernetesNamespaces();
 
     List<ContainerBuildDirRow> retrieveBuildDirCandidates(Date statusTimeAfter, Date statusTimeBefore,
                                                           String buildPathPrefix);

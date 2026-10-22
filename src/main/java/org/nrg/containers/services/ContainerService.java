@@ -66,6 +66,7 @@ public interface ContainerService {
     List<Container> retrieveServices();
     List<Container> retrieveServicesInWaitingState();
     List<Long> retrieveNonfinalizedServiceIds();
+    List<String> retrieveNonfinalizedKubernetesNamespaces();
     @Nullable Container retrieveServiceForPoll(final long id);
 
     void checkQueuedContainerJobs(UserI user);

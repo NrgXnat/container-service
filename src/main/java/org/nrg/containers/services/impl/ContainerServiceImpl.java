@@ -409,6 +409,11 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
+    public List<String> retrieveNonfinalizedKubernetesNamespaces() {
+        return containerEntityService.retrieveNonfinalizedKubernetesNamespaces();
+    }
+
+    @Override
     @Nullable
     public Container retrieveServiceForPoll(final long id) {
         final ContainerEntity entity = containerEntityService.retrieveServiceForPoll(id);

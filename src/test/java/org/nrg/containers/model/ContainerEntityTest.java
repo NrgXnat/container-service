@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
 
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
@@ -119,6 +120,22 @@ public class ContainerEntityTest {
         assertThat(containerEntityService.retrieveByJobNameAndNamespace("job-abc", "xnat-proj02"), is(nullValue()));
         assertThat("an exact namespace match wins over a null-namespace row", containerEntityService.retrieveByJobNameAndNamespace("job-dup", "xnat-proj01").getId(), is(dupProj01.getId()));
         assertThat("another namespace falls back to the null-namespace row", containerEntityService.retrieveByJobNameAndNamespace("job-dup", "xnat-proj02").getId(), is(dupNullNamespace.getId()));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testRetrieveNonfinalizedKubernetesNamespaces() throws Exception {
+        containerEntityService.create(kubernetesEntity("j1", "xnat-proj01", "Running"));
+        containerEntityService.create(kubernetesEntity("j2", "xnat-proj01", "Pending"));
+        containerEntityService.create(kubernetesEntity("j3", "xnat-proj02", "Running"));
+        containerEntityService.create(kubernetesEntity("j4", "xnat-proj03", "Complete"));
+        containerEntityService.create(kubernetesEntity("j5", null, "Running"));
+        containerEntityService.create(ContainerEntity.fromPojo(Container.builder()
+                .commandId(1L).wrapperId(1L).userId("me").dockerImage("busybox").commandLine("true")
+                .backend(Backend.SWARM).serviceId("swarm-service").namespace("xnat-proj04").status("Running")
+                .build()));
+
+        assertThat(containerEntityService.retrieveNonfinalizedKubernetesNamespaces(), containsInAnyOrder("xnat-proj01", "xnat-proj02"));
     }
 
     private static ContainerEntity kubernetesEntity(final String jobName, final String namespace, final String status) {
