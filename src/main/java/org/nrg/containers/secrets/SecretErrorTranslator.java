@@ -23,6 +23,9 @@ public final class SecretErrorTranslator {
     private static final Pattern SECRET_NOT_FOUND = Pattern.compile("secret \"([^\"]+)\" not found");
     private static final Pattern SPC_NOT_FOUND = Pattern.compile("failed to get secretproviderclass ([^/\\s]+)/([^,:\\s]+)");
     private static final Pattern PROVIDER_NOT_FOUND = Pattern.compile("provider not found: provider \"([^\"]+)\"|provider not found: (\\w+)");
+    /** The AWS provider's text after trying every region; it does not say whether the object is missing or access was denied. */
+    private static final Pattern FETCH_FAILED_ALL_REGIONS = Pattern.compile(
+            "Failed to fetch secret from all regions\\. Verify secret exists and required permissions are granted for: (\\S+)");
     private static final String ONBOARD_PROJECT = "onboard the project (create the namespace, ServiceAccount and RoleBinding)";
 
     private SecretErrorTranslator() {}
@@ -92,6 +95,12 @@ public final class SecretErrorTranslator {
         final String objectName = secret != null && secret.secretName() != null ? secret.secretName() : "<unknown>";
         if (raw.contains("ResourceNotFoundException")) {
             return "The external secret store has no secret for SecretProviderClass \"" + objectName + "\": check its objectName against the store";
+        }
+        final Matcher fetchFailed = FETCH_FAILED_ALL_REGIONS.matcher(raw);
+        if (fetchFailed.find()) {
+            final String serviceAccount = ctx.serviceAccount == null ? "" : " \"" + ctx.serviceAccount + "\"";
+            return "The external secret store refused or has no secret \"" + fetchFailed.group(1) + "\" for SecretProviderClass \"" + objectName
+                    + "\": verify the object exists and that the job's ServiceAccount" + serviceAccount + " (IRSA role) may read it";
         }
         if (raw.contains("AccessDeniedException")) {
             final String who = ctx.serviceAccount == null ? "The job's ServiceAccount" : "ServiceAccount \"" + ctx.serviceAccount + "\"";

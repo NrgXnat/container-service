@@ -127,19 +127,34 @@ public class SecretErrorTranslatorTest {
         assertThat(SecretErrorTranslator.translate(raw, ctx()), is("Secret \"xnat-proj01-redcap\" does not exist in namespace \"xnat-proj01\""));
     }
 
-    /** Reconstructed from the runbook fragment "FailedMount ... ResourceNotFoundException" in the AWS provider's message format; replace with captured text once scenario 1b has run on EKS. */
+    /** Captured on EKS: wrong objectName in the SecretProviderClass. */
     @Test
     public void storeHasNoSuchSecret() {
-        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: ResourceNotFoundException: Secrets Manager can't find the specified secret.";
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/391caf5a-8209-49a7-9715-e5130adc0409ql9ht-gqfdl, err: rpc error: code = Unknown desc = us-east-1: Failed fetching secret xnat/projects/PROJ01/does-not-exist: operation error Secrets Manager: GetSecretValue, https response error StatusCode: 400, RequestID: 7bfdc195-45b0-47a0-bbb3-688fb8c67355, ResourceNotFoundException: Secrets Manager can't find the specified secret.";
         assertThat(SecretErrorTranslator.translate(raw, ctx()),
                 is("The external secret store has no secret for SecretProviderClass \"xnat-proj01-redcap\": check its objectName against the store"));
         assertThat(SecretErrorTranslator.translate(raw, SecretErrorTranslator.Context.empty()),
                 is("The external secret store has no secret for SecretProviderClass \"<unknown>\": check its objectName against the store"));
     }
 
-    /** Reconstructed from the runbook fragment "FailedMount ... AccessDeniedException"; replace with captured text once scenario 1b has run on EKS. */
+    /**
+     * Captured on EKS with the IAM policy detached from the IRSA role: the AWS provider tries every region and reports
+     * this generic text, without the AccessDeniedException code, so access denied cannot be told apart from a missing object.
+     */
     @Test
-    public void storeDeniesAccess() {
+    public void storeRefusedOrHasNoSuchSecretAfterTryingAllRegions() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/f1c34872-70ac-4575-8755-40ed9c068f6dsffjp-rtdvf, err: rpc error: code = Unknown desc = Failed to fetch secret from all regions. Verify secret exists and required permissions are granted for: xnat/projects/PROJ01/redcap";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()),
+                is("The external secret store refused or has no secret \"xnat/projects/PROJ01/redcap\" for SecretProviderClass \"xnat-proj01-redcap\":"
+                        + " verify the object exists and that the job's ServiceAccount \"xnat-jobs\" (IRSA role) may read it"));
+        assertThat(SecretErrorTranslator.translate(raw, SecretErrorTranslator.Context.empty()),
+                is("The external secret store refused or has no secret \"xnat/projects/PROJ01/redcap\" for SecretProviderClass \"<unknown>\":"
+                        + " verify the object exists and that the job's ServiceAccount (IRSA role) may read it"));
+    }
+
+    /** Only for providers that surface the AWS error code; the AWS provider observed on EKS does not (see the test above). */
+    @Test
+    public void storeDeniesAccessWhenTheProviderSurfacesTheCode() {
         final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: AccessDeniedException: User: arn:aws:sts::123456789012:assumed-role/xnat-proj01-jobs/secrets-store-csi-driver-provider-aws is not authorized to perform: secretsmanager:GetSecretValue on resource: xnat/proj01/redcap";
         assertThat(SecretErrorTranslator.translate(raw, ctx()),
                 is("ServiceAccount \"xnat-jobs\" is not allowed to read the secret behind SecretProviderClass \"xnat-proj01-redcap\": check its IRSA annotation and the IAM policy"));

@@ -129,7 +129,8 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 | `failed to get secretproviderclass NS/NAME` | SecretProviderClass "NAME" does not exist in namespace "NS": check the secret name template or create the object |
 | `secret "NAME" not found` | Secret "NAME" does not exist in namespace "NS" (the namespace is shown in per-project mode) |
 | `ResourceNotFoundException` | The external secret store has no secret for SecretProviderClass "NAME": check its objectName against the store |
-| `AccessDeniedException` | ServiceAccount "SA" is not allowed to read the secret behind SecretProviderClass "NAME": check its IRSA annotation and the IAM policy (reads `The job's ServiceAccount` when `job-service-account` is unset) |
+| `Failed to fetch secret from all regions. Verify secret exists and required permissions are granted for: OBJECT` | The external secret store refused or has no secret "OBJECT" for SecretProviderClass "NAME": verify the object exists and that the job's ServiceAccount "SA" (IRSA role) may read it (the AWS provider's text when access is denied; it carries no error code, so a missing object is not ruled out) |
+| `AccessDeniedException` | ServiceAccount "SA" is not allowed to read the secret behind SecretProviderClass "NAME": check its IRSA annotation and the IAM policy (reads `The job's ServiceAccount` when `job-service-account` is unset; only for providers that surface the error code, which the AWS provider does not) |
 | `provider not found` | The Secrets Store CSI provider "PROVIDER" is not installed in the cluster |
 | `CSI token error` and `tokenRequests` | The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com |
 
