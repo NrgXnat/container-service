@@ -116,6 +116,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -3169,6 +3170,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
             final List<FileResolvedSecret> available = new ArrayList<>(fileSecrets.size());
             for (final FileResolvedSecret fileSecret : fileSecrets) {
                 final SecretProviderClassCheck check = containerControlApi.secretProviderClassExists(resolvedNamespace, fileSecret.secretName());
+                Objects.requireNonNull(check, "SecretProviderClass check");
                 switch (check.result()) {
                     case EXISTS:
                         available.add(fileSecret);
@@ -3177,7 +3179,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                         if (fileSecret.required()) {
                             throw new CommandResolutionException(check.reason());
                         }
-                        log.info("Optional secret \"{}\" skipped: {}", fileSecret.identifier(), check.reason());
+                        log.warn("Project \"{}\": optional secret \"{}\" will not be mounted: {}", project, fileSecret.identifier(), check.reason());
                         break;
                     case UNDETERMINED:
                     default:
