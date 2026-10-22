@@ -480,6 +480,52 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                     className: 'combined-path-translation'
                                 })
                             ])
+                        ]),
+                        spawn('div.host-type-settings.kubernetes', [
+                            spawn('p.divider', '<strong>Project secrets (file secrets)</strong><br> ' +
+                                'Commands can declare <code>k8s-secret</code> / <code>file</code> secrets that are mounted into the job ' +
+                                'from a Kubernetes Secret or a Secrets Store CSI SecretProviderClass named per project. XNAT never reads ' +
+                                'the value. Leave the defaults unless your cluster is set up differently; see docs/kubernetes/mounting-secrets-as-files.md.'),
+                            XNAT.ui.panel.select.single({
+                                name: 'secret-volume-type',
+                                label: 'Secret volume type',
+                                options: [
+                                    {label: 'Kubernetes Secret object (secret)', value: 'secret'},
+                                    {label: 'Secrets Store CSI SecretProviderClass (csi)', value: 'csi'}
+                                ],
+                                description: 'Where the secret value comes from. "csi" pulls it from an external store (AWS Secrets Manager, Vault) at mount time.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'secret-name-template',
+                                label: 'Secret name template',
+                                description: 'Name of the Secret / SecretProviderClass to mount. Placeholders: #PROJECT#, {identifier}, #<input name># (e.g. #session#). ' +
+                                    'Blank means xnat-#PROJECT#-{identifier}. Must contain {identifier}.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'job-service-account',
+                                label: 'Job service account',
+                                description: 'Pod serviceAccountName for jobs. Blank uses the namespace default. Required for IRSA with csi.'
+                            }),
+                            XNAT.ui.panel.select.single({
+                                name: 'job-namespace-mode',
+                                label: 'Job namespace mode',
+                                options: [
+                                    {label: 'Single: kubeconfig context namespace', value: 'single'},
+                                    {label: 'Per project: rendered from the template below', value: 'per-project'}
+                                ],
+                                description: 'Per-project needs every project namespace onboarded first (service account, RoleBinding for the Container Service identity, PVCs, secret objects).'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'job-namespace-template',
+                                label: 'Job namespace template',
+                                description: 'Only used in per-project mode. Must contain #PROJECT#, e.g. xnat-#PROJECT#. Rendered as a DNS label (lower case, dashes, max 63 characters).'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'secret-mount-timeout-seconds',
+                                label: 'Secret mount timeout [seconds]',
+                                description: 'How long a job may wait for a secret volume to mount before it is failed and deleted. ' +
+                                    '0 disables the watchdog (the pod stays Pending). Default 600. Other volumes (PVC, hostPath) are not affected.'
+                            })
                         ])
                     ])
                 );
