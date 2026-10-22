@@ -18,6 +18,7 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.exceptions.IllegalInputException;
@@ -175,7 +176,8 @@ public class CommandResolutionTest {
         final ContainerSecretService secretService = new ContainerSecretServiceImpl(Collections.singletonList(systemPropertyObtainer));
 
         commandResolutionService = new CommandResolutionServiceImpl(commandService, dockerServerService,
-                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache, secretService);
+                siteConfigPreferences, mapper, dockerService, catalogService, userDataCache, secretService,
+                Mockito.mock(ContainerControlApi.class));
     }
 
     private Command.ConfiguredCommand configure(Command command, CommandWrapper wrapper) {

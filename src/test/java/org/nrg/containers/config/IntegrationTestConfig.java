@@ -222,9 +222,11 @@ public class IntegrationTestConfig {
                                                              final DockerService dockerService,
                                                              final CatalogService mockCatalogService,
                                                              final UserDataCache mockUserDataCache,
-                                                             final ContainerSecretService secretService) {
+                                                             final ContainerSecretService secretService,
+                                                             final ContainerControlApi containerControlApi) {
         return new CommandResolutionServiceImpl(commandService, serverService,
-                siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache, secretService);
+                siteConfigPreferences, objectMapper, dockerService, mockCatalogService, mockUserDataCache, secretService,
+                containerControlApi);
     }
 
     @Bean

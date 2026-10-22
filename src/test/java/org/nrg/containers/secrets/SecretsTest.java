@@ -32,6 +32,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClientImpl;
 import org.nrg.containers.config.ObjectMapperConfig;
@@ -178,7 +179,8 @@ public class SecretsTest {
                 dockerService,
                 catalogService,
                 userDataCache,
-                containerSecretService
+                containerSecretService,
+                Mockito.mock(ContainerControlApi.class)
         );
 
         // Call method under test
@@ -970,7 +972,7 @@ public class SecretsTest {
         final Command.ConfiguredCommand configured = Command.ConfiguredCommand.initialize(command).wrapper(wrapper).build();
         final CommandResolutionService resolutionService = new CommandResolutionServiceImpl(commandService, dockerServerService,
                 siteConfigPreferences, objectMapper, dockerService, catalogService, userDataCache,
-                new ContainerSecretServiceImpl(Collections.singletonList(valueObtainer)));
+                new ContainerSecretServiceImpl(Collections.singletonList(valueObtainer)), Mockito.mock(ContainerControlApi.class));
 
         final ResolvedCommand resolved = resolutionService.resolve(configured, Collections.emptyMap(), "PROJ01", user, null);
         assertThat(resolved.secrets(), hasSize(2));

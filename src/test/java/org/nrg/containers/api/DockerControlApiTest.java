@@ -33,6 +33,7 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.xft.security.UserI;
@@ -607,5 +608,17 @@ public class DockerControlApiTest {
 
         // Verify the job is removed from the namespace recorded on the container
         verify(kubernetesClient).removeJob(BACKEND_ID, "xnat-proj01");
+    }
+
+    /** Only the Kubernetes backend can answer; the others must say so without touching the Kubernetes client. */
+    @Test
+    public void secretProviderClassCheckOnlyReachesKubernetes() throws Exception {
+        if (backend == Backend.KUBERNETES) {
+            when(kubernetesClient.secretProviderClassExists(null, "xnat-proj01-redcap")).thenReturn(SecretProviderClassCheck.exists());
+            assertThat(dockerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap").result(), is(SecretProviderClassCheck.Result.EXISTS));
+        } else {
+            assertThat(dockerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap").result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
+            Mockito.verifyNoInteractions(kubernetesClientFactory);
+        }
     }
 }

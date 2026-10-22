@@ -5,6 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
+import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.exceptions.CommandResolutionException;
 import org.nrg.containers.model.command.auto.Command;
@@ -12,6 +13,7 @@ import org.nrg.containers.model.command.auto.ResolvedCommand;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.JobNamespaceMode;
+import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerSecretService;
@@ -50,6 +52,7 @@ public class FileSecretResolutionTest {
     private final DockerServerService dockerServerService = Mockito.mock(DockerServerService.class);
     private final SystemPropertySecretSource.ValueObtainer valueObtainer = Mockito.mock(SystemPropertySecretSource.ValueObtainer.class);
     private final UserI user = Mockito.mock(UserI.class);
+    private final ContainerControlApi containerControlApi = Mockito.mock(ContainerControlApi.class);
     private CommandResolutionService service;
 
     @Before
@@ -59,7 +62,8 @@ public class FileSecretResolutionTest {
         final ContainerSecretService secretService = new ContainerSecretServiceImpl(Collections.singletonList(valueObtainer));
         service = new CommandResolutionServiceImpl(
                 Mockito.mock(CommandService.class), dockerServerService, Mockito.mock(SiteConfigPreferences.class), MAPPER,
-                Mockito.mock(DockerService.class), Mockito.mock(CatalogService.class), Mockito.mock(UserDataCache.class), secretService);
+                Mockito.mock(DockerService.class), Mockito.mock(CatalogService.class), Mockito.mock(UserDataCache.class), secretService,
+                containerControlApi);
     }
 
     static DockerServerBase.DockerServer.Builder kubernetesServer() {
@@ -212,5 +216,59 @@ public class FileSecretResolutionTest {
                 "File secrets are not supported on the " + Backend.DOCKER + " backend");
         assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(),
                 docker.toBuilder().backend(Backend.SWARM).build(), "File secrets are not supported on the " + Backend.SWARM + " backend");
+    }
+
+    private static DockerServerBase.DockerServer csiServer() {
+        return kubernetesServer().secretVolumeType(SecretVolumeType.CSI).build();
+    }
+
+    @Test
+    public void csiModeKeepsAnExistingSecretProviderClass() throws Exception {
+        when(containerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap")).thenReturn(SecretProviderClassCheck.exists());
+        assertThat(onlyFileSecret(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), csiServer())).secretName(),
+                is("xnat-proj01-redcap"));
+    }
+
+    @Test
+    public void csiModeFailsWhenARequiredSecretProviderClassIsMissing() throws Exception {
+        when(containerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap"))
+                .thenReturn(SecretProviderClassCheck.missing("SecretProviderClass \"xnat-proj01-redcap\" does not exist in namespace \"ctx\""));
+        assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), csiServer(),
+                "SecretProviderClass \"xnat-proj01-redcap\" does not exist");
+    }
+
+    @Test
+    public void csiModeDropsAnOptionalMissingSecretProviderClass() throws Exception {
+        when(containerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap"))
+                .thenReturn(SecretProviderClassCheck.missing("missing"));
+        when(containerControlApi.secretProviderClassExists(null, "xnat-proj01-openspecimen")).thenReturn(SecretProviderClassCheck.exists());
+        final Secret optional = new Secret(new K8sSecretSource("redcap", null, false), new FileSecretDestination(MOUNT));
+        final ResolvedCommand resolved = resolve(Arrays.asList(optional, fileSecret("openspecimen", null, "/run/secrets/openspecimen")),
+                "PROJ01", Collections.emptyMap(), csiServer());
+        assertThat(resolved.secrets(), hasSize(1));
+        assertThat(((FileResolvedSecret) resolved.secrets().get(0)).identifier(), is("openspecimen"));
+    }
+
+    @Test
+    public void csiModeFailsWhenTheCheckIsUndeterminedEvenForOptionalSecrets() throws Exception {
+        when(containerControlApi.secretProviderClassExists(null, "xnat-proj01-redcap"))
+                .thenReturn(SecretProviderClassCheck.undetermined("The Container Service identity lacks get permission on secretproviderclasses in namespace \"ctx\""));
+        final Secret optional = new Secret(new K8sSecretSource("redcap", null, false), new FileSecretDestination(MOUNT));
+        assertResolutionFails(Collections.singletonList(optional), "PROJ01", Collections.emptyMap(), csiServer(), "lacks get permission");
+    }
+
+    @Test
+    public void csiCheckUsesThePerProjectNamespace() throws Exception {
+        final DockerServerBase.DockerServer server = kubernetesServer().secretVolumeType(SecretVolumeType.CSI)
+                .jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#").build();
+        when(containerControlApi.secretProviderClassExists("xnat-proj01", "xnat-proj01-redcap")).thenReturn(SecretProviderClassCheck.exists());
+        assertThat(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), server).secrets(), hasSize(1));
+    }
+
+    /** In secret mode the object cannot be checked without reading the value, so nothing is asked. */
+    @Test
+    public void secretModeSkipsTheExistenceCheck() throws Exception {
+        resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), kubernetesServer().build());
+        Mockito.verifyNoInteractions(containerControlApi);
     }
 }

@@ -15,9 +15,11 @@ import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
+import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.security.UserI;
 
+import javax.annotation.Nullable;
 import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.List;
@@ -55,4 +57,7 @@ public interface ContainerControlApi {
 
     Integer getFinalizingThrottle();
     boolean isStatusEmailEnabled();
+
+    /** Kubernetes csi mode: whether the SecretProviderClass exists in the namespace (null = context). Other backends answer UNDETERMINED. */
+    SecretProviderClassCheck secretProviderClassExists(@Nullable String namespace, String name);
 }

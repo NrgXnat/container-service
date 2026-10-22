@@ -25,6 +25,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.nrg.action.ClientException;
 import org.nrg.action.ServerException;
+import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.exceptions.*;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.Command.CommandInput;
@@ -53,6 +54,7 @@ import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.JobNamespaceMode;
+import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.model.xnat.Assessor;
 import org.nrg.containers.model.xnat.Project;
 import org.nrg.containers.model.xnat.ProjectAsset;
@@ -69,6 +71,7 @@ import org.nrg.containers.secrets.K8sSecretNameTemplate;
 import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.secrets.SecretDestination;
+import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerSecretService;
@@ -152,6 +155,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
     private final CatalogService catalogService;
     private final UserDataCache userDataCache;
     private final ContainerSecretService secretService;
+    private final ContainerControlApi containerControlApi;
 
     private final ObjectMapper mapper;
     private final ParseContext jsonpathContext;
@@ -167,7 +171,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                         final DockerService dockerService,
                                         final CatalogService catalogService,
                                         final UserDataCache userDataCache,
-                                        final ContainerSecretService secretService) {
+                                        final ContainerSecretService secretService,
+                                        final ContainerControlApi containerControlApi) {
         this.commandService = commandService;
         this.dockerServerService = dockerServerService;
         this.siteConfigPreferences = siteConfigPreferences;
@@ -175,6 +180,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         this.catalogService = catalogService;
         this.userDataCache = userDataCache;
         this.secretService = secretService;
+        this.containerControlApi = containerControlApi;
 
         this.mapper = mapper;
         final Configuration jsonpathJackson = Configuration.builder()
@@ -301,6 +307,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
         private String secretNameTemplate = null;
 
         private Backend backend = Backend.DOCKER;
+        private SecretVolumeType secretVolumeType = SecretVolumeType.DEFAULT;
         private JobNamespaceMode jobNamespaceMode = JobNamespaceMode.DEFAULT;
         private String jobNamespaceTemplate = null;
         /**
@@ -333,6 +340,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 pathTranslationContainerHostPrefix = dockerServer.pathTranslationDockerPrefix();
                 secretNameTemplate = dockerServer.secretNameTemplate();
                 backend = dockerServer.backend();
+                secretVolumeType = dockerServer.secretVolumeType();
                 jobNamespaceMode = dockerServer.jobNamespaceMode();
                 jobNamespaceTemplate = dockerServer.jobNamespaceTemplate();
                 if (StringUtils.isNotBlank(dockerServer.combinedPvcName())) {
@@ -3132,12 +3140,51 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 throw new CommandResolutionException(e.getMessage(), e);
             }
 
+            final List<FileResolvedSecret> renderedFileSecrets = new ArrayList<>(fileSecrets.size());
             for (int i = 0; i < resolvedSecrets.size(); i++) {
                 if (resolvedSecrets.get(i) instanceof FileResolvedSecret) {
-                    resolvedSecrets.set(i, renderFileSecret((FileResolvedSecret) resolvedSecrets.get(i), resolvedInputValuesByReplacementKey));
+                    final FileResolvedSecret rendered = renderFileSecret((FileResolvedSecret) resolvedSecrets.get(i), resolvedInputValuesByReplacementKey);
+                    resolvedSecrets.set(i, rendered);
+                    renderedFileSecrets.add(rendered);
                 }
             }
+
+            final List<FileResolvedSecret> available = applySecretProviderClassCheck(renderedFileSecrets);
+            if (available.size() != renderedFileSecrets.size()) {
+                // Keep declaration order; only optional secrets whose SecretProviderClass is missing are dropped
+                resolvedSecrets.removeIf(secret -> secret instanceof FileResolvedSecret && !available.contains(secret));
+            }
             return resolvedSecrets;
+        }
+
+        /**
+         * csi mode only: the SecretProviderClass holds no value, so its absence can be detected now instead of as a
+         * FailedMount later. required → fail; optional → drop; undetermined (403, CRD missing, timeout) → fail.
+         */
+        private List<FileResolvedSecret> applySecretProviderClassCheck(final List<FileResolvedSecret> fileSecrets)
+                throws CommandResolutionException {
+            if (fileSecrets.isEmpty() || backend != Backend.KUBERNETES || secretVolumeType != SecretVolumeType.CSI) {
+                return fileSecrets;
+            }
+            final List<FileResolvedSecret> available = new ArrayList<>(fileSecrets.size());
+            for (final FileResolvedSecret fileSecret : fileSecrets) {
+                final SecretProviderClassCheck check = containerControlApi.secretProviderClassExists(resolvedNamespace, fileSecret.secretName());
+                switch (check.result()) {
+                    case EXISTS:
+                        available.add(fileSecret);
+                        break;
+                    case MISSING:
+                        if (fileSecret.required()) {
+                            throw new CommandResolutionException(check.reason());
+                        }
+                        log.info("Optional secret \"{}\" skipped: {}", fileSecret.identifier(), check.reason());
+                        break;
+                    case UNDETERMINED:
+                    default:
+                        throw new CommandResolutionException("Could not verify secret \"" + fileSecret.identifier() + "\": " + check.reason());
+                }
+            }
+            return available;
         }
 
         /** Command-level name beats the backend template, which beats the built-in default (design doc section 1.4). */

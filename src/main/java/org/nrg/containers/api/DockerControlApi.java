@@ -76,6 +76,7 @@ import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerClientCacheKey;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
+import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.containers.services.DockerHubService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.utils.ShellSplitter;
@@ -1308,5 +1309,17 @@ public class DockerControlApi implements ContainerControlApi {
         }
         log.error(message);
         throw new ContainerException(message);
+    }
+
+    @Override
+    public SecretProviderClassCheck secretProviderClassExists(@Nullable final String namespace, final String name) {
+        try {
+            if (getServer().backend() != Backend.KUBERNETES) {
+                return SecretProviderClassCheck.undetermined("Backend is not Kubernetes; SecretProviderClass \"" + name + "\" cannot be checked");
+            }
+            return getKubernetesClient().secretProviderClassExists(namespace, name);
+        } catch (NoContainerServerException e) {
+            return SecretProviderClassCheck.undetermined("Could not reach the Kubernetes backend to check SecretProviderClass \"" + name + "\": " + e.getMessage());
+        }
     }
 }
