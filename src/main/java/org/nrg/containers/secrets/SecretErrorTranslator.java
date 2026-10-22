@@ -2,7 +2,6 @@ package org.nrg.containers.secrets;
 
 import io.kubernetes.client.openapi.ApiException;
 import org.apache.commons.lang3.StringUtils;
-import org.nrg.containers.model.server.docker.SecretVolumeType;
 
 import javax.annotation.Nullable;
 import java.util.Collection;
@@ -32,28 +31,26 @@ public final class SecretErrorTranslator {
     public static final class Context {
         private final String namespace;
         private final String serviceAccount;
-        private final SecretVolumeType volumeType;
         private final Map<String, FileResolvedSecret> secretsByVolumeName;
 
         private Context(@Nullable final String namespace, @Nullable final String serviceAccount,
-                        @Nullable final SecretVolumeType volumeType, final Map<String, FileResolvedSecret> secretsByVolumeName) {
+                        final Map<String, FileResolvedSecret> secretsByVolumeName) {
             this.namespace = namespace;
             this.serviceAccount = serviceAccount;
-            this.volumeType = volumeType;
             this.secretsByVolumeName = secretsByVolumeName;
         }
 
         public static Context of(@Nullable final String namespace, @Nullable final String serviceAccount,
-                                 @Nullable final SecretVolumeType volumeType, final Collection<FileResolvedSecret> fileSecrets) {
+                                 final Collection<FileResolvedSecret> fileSecrets) {
             final Map<String, FileResolvedSecret> byVolume = new HashMap<>();
             for (final FileResolvedSecret secret : fileSecrets) {
                 byVolume.put(secret.volumeName(), secret);
             }
-            return new Context(namespace, serviceAccount, volumeType, byVolume);
+            return new Context(namespace, serviceAccount, byVolume);
         }
 
         public static Context empty() {
-            return new Context(null, null, null, Collections.emptyMap());
+            return new Context(null, null, Collections.emptyMap());
         }
 
         public boolean ownsVolume(@Nullable final String volumeName) {

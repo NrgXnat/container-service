@@ -987,7 +987,6 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         final DockerServerBase.DockerServer server = dockerServerService.retrieveServer();
         return SecretErrorTranslator.Context.of(container.namespace(),
                 server == null ? null : server.jobServiceAccount(),
-                server == null ? null : server.secretVolumeType(),
                 fileSecrets);
     }
 

@@ -3,7 +3,6 @@ package org.nrg.containers.secrets;
 import io.kubernetes.client.openapi.ApiException;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
-import org.nrg.containers.model.server.docker.SecretVolumeType;
 
 import java.net.SocketTimeoutException;
 import java.util.Collections;
@@ -111,7 +110,7 @@ public class SecretErrorTranslatorTest {
     private static SecretErrorTranslator.Context ctx() {
         final FileResolvedSecret redcap = new FileResolvedSecret(new Secret(
                 new K8sSecretSource("redcap", "xnat-proj01-redcap"), new FileSecretDestination("/run/secrets/redcap")));
-        return SecretErrorTranslator.Context.of("xnat-proj01", "xnat-jobs", SecretVolumeType.CSI, Collections.singletonList(redcap));
+        return SecretErrorTranslator.Context.of("xnat-proj01", "xnat-jobs", Collections.singletonList(redcap));
     }
 
     /** Partially reconstructed (rpc error wrapper from EKS fragment): the captured part is "failed to get secretproviderclass xnat-proj01/xnat-proj01-redcap". */
