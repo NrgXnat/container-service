@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -103,6 +104,29 @@ public class ContainerStatusUpdateTest {
         assertThat(returned, is(notNullValue()));
         assertThat(returned.getStatus(), is("Succeeded"));
         assertThat(returned.getHistory().stream().map(ContainerEntityHistory::getStatus).collect(Collectors.toList()), hasItem("Succeeded"));
+        // Recording happens on the managed instance, not on the detached copy
+        assertThat(detachedCopy.getHistory().isEmpty(), is(true));
+    }
+
+    /** A container deleted since the caller read it is not one we track any more: nothing is recorded or updated. */
+    @Test
+    public void addContainerEventToHistoryReturnsNullWhenTheContainerNoLongerExists() throws NotFoundException {
+        final long containerId = 7777;
+        final ContainerEntity detachedCopy = ContainerEntity.fromPojo(Container.builder().databaseId(containerId).commandId(0).wrapperId(0)
+                .userId("").dockerImage("").commandLine("").containerName("ContainerName").status("Running").build());
+        final ContainerEvent succeeded = Mockito.mock(ContainerEvent.class);
+
+        final HibernateContainerEntityServiceMock containerEntityService = Mockito.mock(HibernateContainerEntityServiceMock.class);
+        Mockito.when(containerEntityService.retrieve(containerId)).thenReturn(null);
+        Mockito.when(containerEntityService.addContainerEventToHistory(detachedCopy, succeeded, user)).thenCallRealMethod();
+        Mockito.lenient().when(containerEntityService.addContainerHistoryItem(Mockito.any(ContainerEntity.class), Mockito.any(ContainerEntityHistory.class), Mockito.eq(user))).thenCallRealMethod();
+        Mockito.lenient().when(containerEntityService.getDao()).thenReturn(containerEntityRepository);
+
+        final ContainerEntity returned = containerEntityService.addContainerEventToHistory(detachedCopy, succeeded, user);
+
+        assertThat(returned, is(nullValue()));
+        Mockito.verify(containerEntityService, Mockito.never()).update(Mockito.any(ContainerEntity.class));
+        Mockito.verifyNoInteractions(containerEntityRepository);
     }
 
 }

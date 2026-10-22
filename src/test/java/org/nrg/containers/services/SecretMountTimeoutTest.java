@@ -130,6 +130,8 @@ public class SecretMountTimeoutTest {
                         return null;
                     }
                     entity.addToHistory(item);
+                    // Like the real service: the returned entity carries the new status
+                    entity.setStatus(item.getStatus());
                     return entity;
                 });
 

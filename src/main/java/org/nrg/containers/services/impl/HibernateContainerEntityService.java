@@ -198,10 +198,15 @@ public class HibernateContainerEntityService
         // The caller may hand us a detached copy; record the event on the managed entity, whose status
         // addContainerHistoryItem updates, and return that so the caller sees the new status.
         final ContainerEntity managed = retrieve(containerEntity.getId());
-        final ContainerEntity target = managed == null ? containerEntity : managed;
-        final ContainerEntityHistory added = addContainerHistoryItem(target,
-                ContainerEntityHistory.fromContainerEvent(containerEvent, target), userI);
-        return added == null ? null : target; // Return null if we've already added the history item
+        if (managed == null) {
+            log.debug("This event is not about a container we are interested in. Container {} no longer exists.", containerEntity.getId());
+            return null;
+        }
+        // Correct only because the second retrieve inside addContainerHistoryItem runs in this same transaction and
+        // hits the session cache, so the instance it updates the status on is the one returned here.
+        final ContainerEntityHistory added = addContainerHistoryItem(managed,
+                ContainerEntityHistory.fromContainerEvent(containerEvent, managed), userI);
+        return added == null ? null : managed; // Return null if we've already added the history item
     }
 
     @Override
