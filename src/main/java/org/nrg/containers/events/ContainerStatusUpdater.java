@@ -181,7 +181,7 @@ public class ContainerStatusUpdater implements Runnable {
                         try {
                             client.ensureWatching(namespace);
                         } catch (RuntimeException e) {
-                            log.error("Could not start watching Kubernetes namespace {}", namespace, e);
+                            log.warn("Could not start watching Kubernetes namespace {}", namespace, e);
                         }
                     }
                 } catch (NoContainerServerException e) {

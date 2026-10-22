@@ -130,6 +130,8 @@ public class ContainerEntityTest {
         containerEntityService.create(kubernetesEntity("j3", "xnat-proj02", "Running"));
         containerEntityService.create(kubernetesEntity("j4", "xnat-proj03", "Complete"));
         containerEntityService.create(kubernetesEntity("j5", null, "Running"));
+        containerEntityService.create(kubernetesEntity("j6", "xnat-proj05", "Finalizing"));
+        containerEntityService.create(kubernetesEntity("j7", "xnat-proj06", "Failed (Container launch)"));
         containerEntityService.create(ContainerEntity.fromPojo(Container.builder()
                 .commandId(1L).wrapperId(1L).userId("me").dockerImage("busybox").commandLine("true")
                 .backend(Backend.SWARM).serviceId("swarm-service").namespace("xnat-proj04").status("Running")
