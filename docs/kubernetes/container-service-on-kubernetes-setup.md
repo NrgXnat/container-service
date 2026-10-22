@@ -34,6 +34,8 @@ in that file should have, at minimum, these permissions:
   verbs: ["get", "list", "watch"]
 ```
 
+In csi secret mode also grant `get` on `secretproviderclasses` (API group `secrets-store.csi.x-k8s.io`); see the script's Role below.
+
 In the following sections we will cover how to create an account with these permissions and how to
 create the kubeconfig file for the Container Service. We also present an example of configuring
 a demo Kubernetes cluster with Minikube.
@@ -54,6 +56,7 @@ Service Account for it.
 The Container Service only requires fairly limited permissions to cluster resources. It needs to create, read, update and
 delete Jobs, since those are the objects it creates to run containers. It also needs read permissions on Pods, their logs
 and Events.
+The Container Service itself only creates, patches (unsuspend) and deletes Jobs; `get` and `update` are kept so operators can inspect and edit Jobs with the same identity, and can be dropped for a stricter policy.
 We do enable `get` permissions on the API health endpoints `/livez` and `/readyz` to verify the cluster connection.
 
 If you choose not to create a dedicated Namespace or Service Account, everything should work fine. 
@@ -106,6 +109,8 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
+# The Container Service itself only creates, patches (unsuspend) and deletes Jobs; get and update are kept so
+# operators can inspect and edit Jobs with the same identity, and can be dropped for a stricter policy.
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["get", "create", "update", "patch", "delete"]

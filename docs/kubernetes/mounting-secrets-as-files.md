@@ -22,22 +22,24 @@ feature, which reads a value from a Java system property and injects it as an en
 
 | Field | Meaning |
 |-------|---------|
-| `source.identifier` | Required. Logical name (letters, digits, `_`, `.`, `-`); one entry per external system, each with its own mount path. Also the volume name (`secret-<identifier>`), so identifiers must be unique after sanitising. |
+| `source.identifier` | Required. Logical name (letters, digits, `_`, `.`, `-`); one entry per external system, each with its own mount path. At most 56 characters; `.` and `_` become `-` in the volume name `secret-<identifier>`, so identifiers must stay unique after that rewrite. |
 | `source.name` | Optional. Overrides the site template. May use the same placeholders; a value without placeholders is used literally (it must already be a valid Kubernetes name and is not sanitised). |
 | `source.required` | Optional, default `true`. See "Optional secrets". |
 | `destination.identifier` | Absolute, normalised mount directory (no empty, `.` or `..` segments). Must be a subdirectory, not `/run/secrets` or `/var/run/secrets` themselves (that would hide the pod's service account token), and paths of different secrets must be unique and must not nest. |
 
 `k8s-secret` only pairs with `file`; `system-property` only with `environment-variable`. Both kinds may appear in the
 same command. Setup and wrapup commands cannot declare file secrets. Docker and Swarm refuse to launch a container
-with a file secret (`File secrets are not supported on the Docker backend`).
+with a file secret (`File secrets are not supported on the <backend> backend`, with the lower case backend name, e.g.
+`docker` or `swarm`).
 
 ### Naming
 
 Three levels, highest first: the command's `source.name`, the backend setting `secret-name-template`, the built-in
 `xnat-#PROJECT#-{identifier}`. Placeholders (case sensitive): `#PROJECT#` (the launch project; wins over an input of the
 same name), `#<key>#` (a wrapper or command input replacement key, e.g. `#session#`), `{identifier}`. An unresolved
-placeholder fails the launch. A rendered name is sanitised to a Kubernetes name (lower case, `[a-z0-9.-]`, no leading or
-trailing dash; longer than 253 characters is an error, never truncated). Sanitising is many-to-one (`Proj_01` and
+placeholder fails the launch. A rendered name is sanitised to a Kubernetes name: lower cased, characters outside `[a-z0-9.-]` become `-`,
+repeated `-` are collapsed and leading or trailing `.` and `-` are stripped. The result must still be a valid RFC 1123
+subdomain (for example `a..b` is rejected, not repaired); longer than 253 characters is an error, never truncated. Sanitising is many-to-one (`Proj_01` and
 `proj-01` collide): provision objects under the sanitised name and keep project ids unique after sanitising.
 Names are rendered when the command is resolved and stored with the container record.
 
@@ -54,11 +56,12 @@ Administer > Plugin Settings > Container Service > Compute Backend (Kubernetes),
 | `job-namespace-template` | unset | Required in per-project mode; must contain `#PROJECT#` and no other placeholder; rendered as a DNS label (63 characters max, dots become dashes). |
 | `secret-mount-timeout-seconds` | 600 | See "Failures". 0 disables the watchdog. |
 
-Changes apply to new launches; running jobs keep the namespace recorded on their container.
+Namespace and secret settings apply to new launches; running jobs keep the namespace recorded on their container. The
+mount timeout is re-read every minute and applies to containers already waiting.
 
 In single mode the Container Service identity needs, in the context namespace, jobs create/get/delete/patch/update,
 pods get/list/watch, pods/log get and events get/list/watch (plus `secretproviderclasses` get in csi mode); it does
-not need, and must not have, permission to read Secrets. See `container-service-on-kubernetes-setup.md` for the Role.
+not need, and must not have, permission to read Secrets. The Container Service itself only creates, patches (unsuspend) and deletes Jobs; `get` and `update` are kept so operators can inspect and edit Jobs with the same identity, and can be dropped for a stricter policy. See `container-service-on-kubernetes-setup.md` for the Role.
 
 ### Per-project namespaces
 
@@ -66,11 +69,14 @@ Each project namespace must be prepared before a launch (an onboarding script sh
 a ServiceAccount named as `job-service-account` (with the IRSA annotation in csi mode); a Role plus RoleBinding
 for the Container Service's own service account (the one in its kubeconfig) with jobs
 create/get/delete/patch/update, pods get/list/watch, pods/log get, events get/list/watch, and in csi mode
-`secretproviderclasses` get in API group `secrets-store.csi.x-k8s.io`; the archive/build or combined PVC named as in
-the backend settings; and the Secret or SecretProviderClass objects. The Container Service starts watching a
+`secretproviderclasses` get in API group `secrets-store.csi.x-k8s.io`; if PVC mounts are configured, the archive/build or
+combined PVC named as in the backend settings; and the Secret or SecretProviderClass objects. The Container Service
+itself only creates, patches (unsuspend) and deletes Jobs; `get` and `update` are kept so operators can inspect and
+edit Jobs with the same identity, and can be dropped for a stricter policy. The Container Service starts watching a
 namespace after it created a job there; a launch into a namespace that does not exist or has no RoleBinding fails
 with `Namespace "..." does not exist` or `... cannot create jobs in namespace ...`. Launches without a project
-(site-level) fail in per-project mode.
+(site-level) fail in per-project mode. After an XNAT restart the watches are re-registered from the namespaces of
+unfinished containers, so no re-onboarding is needed.
 
 The Container Service identity never needs, and must not have, permission to read Secrets.
 
@@ -119,9 +125,9 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 | Kubernetes / kubelet message contains | Shown as |
 |---------------------------------------|----------|
 | `failed to get secretproviderclass NS/NAME` | SecretProviderClass "NAME" does not exist in namespace "NS": check the secret name template or create the object |
-| `secret "NAME" not found` | Secret "NAME" does not exist in namespace "NS" |
+| `secret "NAME" not found` | Secret "NAME" does not exist in namespace "NS" (the namespace is shown in per-project mode) |
 | `ResourceNotFoundException` | The external secret store has no secret for SecretProviderClass "NAME": check its objectName against the store |
-| `AccessDeniedException` | ServiceAccount "SA" is not allowed to read the secret behind SecretProviderClass "NAME": check its IRSA annotation and the IAM policy |
+| `AccessDeniedException` | ServiceAccount "SA" is not allowed to read the secret behind SecretProviderClass "NAME": check its IRSA annotation and the IAM policy (reads `The job's ServiceAccount` when `job-service-account` is unset) |
 | `provider not found` | The Secrets Store CSI provider "PROVIDER" is not installed in the cluster |
 | `CSI token error` and `tokenRequests` | The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com |
 
@@ -129,7 +135,8 @@ Other messages are recorded unchanged.
 
 When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
 Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and
-deletes the job; the workflow ends `Failed` with one notification. If the job cannot be deleted, the watchdog retries
+deletes the job; the workflow ends `Failed` with one notification. If finalizing is throttled, the job is kept and the
+watchdog tries again on the next tick. If the job cannot be deleted, the watchdog retries
 on the following ticks and gives up after 10 attempts, logging that the Kubernetes Job needs manual cleanup. Mount
 failures of other volumes (PVC, hostPath) are recorded only, as before. Values never appear in history, logs, the
 database or the job spec.

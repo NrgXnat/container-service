@@ -58,6 +58,8 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
+# The Container Service itself only creates, patches (unsuspend) and deletes Jobs; get and update are kept so
+# operators can inspect and edit Jobs with the same identity, and can be dropped for a stricter policy.
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["get", "create", "update", "patch", "delete"]
