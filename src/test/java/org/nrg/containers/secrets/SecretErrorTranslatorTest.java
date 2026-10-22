@@ -2,6 +2,7 @@ package org.nrg.containers.secrets;
 
 import io.kubernetes.client.openapi.ApiException;
 import org.junit.Test;
+import org.nrg.containers.model.server.docker.SecretVolumeType;
 
 import java.net.SocketTimeoutException;
 import java.util.Collections;
@@ -9,6 +10,7 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 /** Each row of the translation table in design doc section 4.2, fed with the message the API server / kubelet really sends. */
@@ -80,5 +82,65 @@ public class SecretErrorTranslatorTest {
         final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(timeout, "xnat-proj01", "xnat-proj01-redcap");
         assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
         assertThat(check.reason(), containsString("Could not check SecretProviderClass \"xnat-proj01-redcap\""));
+    }
+
+    private static SecretErrorTranslator.Context ctx() {
+        final FileResolvedSecret redcap = new FileResolvedSecret(new Secret(
+                new K8sSecretSource("redcap", "xnat-proj01-redcap"), new FileSecretDestination("/run/secrets/redcap")));
+        return SecretErrorTranslator.Context.of("xnat-proj01", "xnat-jobs", SecretVolumeType.CSI, Collections.singletonList(redcap));
+    }
+
+    @Test
+    public void secretProviderClassMissingAtMountTime() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to get secretproviderclass xnat-proj01/xnat-proj01-redcap, error: secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" not found";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()),
+                is("SecretProviderClass \"xnat-proj01-redcap\" does not exist in namespace \"xnat-proj01\": check the secret name template or create the object"));
+    }
+
+    @Test
+    public void kubernetesSecretMissingAtMountTime() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()), is("Secret \"xnat-proj01-redcap\" does not exist in namespace \"xnat-proj01\""));
+    }
+
+    /** Reconstructed from the runbook fragment "FailedMount ... ResourceNotFoundException" in the AWS provider's message format; replace with captured text once scenario 1b has run on EKS. */
+    @Test
+    public void storeHasNoSuchSecret() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: ResourceNotFoundException: Secrets Manager can't find the specified secret.";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()),
+                is("The external secret store has no secret for SecretProviderClass \"xnat-proj01-redcap\": check its objectName against the store"));
+    }
+
+    /** Reconstructed from the runbook fragment "FailedMount ... AccessDeniedException"; replace with captured text once scenario 1b has run on EKS. */
+    @Test
+    public void storeDeniesAccess() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: AccessDeniedException: User: arn:aws:sts::123456789012:assumed-role/xnat-proj01-jobs/secrets-store-csi-driver-provider-aws is not authorized to perform: secretsmanager:GetSecretValue on resource: xnat/proj01/redcap";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()),
+                is("ServiceAccount \"xnat-jobs\" is not allowed to read the secret behind SecretProviderClass \"xnat-proj01-redcap\": check its IRSA annotation and the IAM policy"));
+    }
+
+    /** Reconstructed from the runbook fragment "provider not found: aws"; replace with captured text when it is next observed. */
+    @Test
+    public void providerNotInstalled() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: error connecting to provider \"aws\": provider not found: provider \"aws\"";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()), is("The Secrets Store CSI provider \"aws\" is not installed in the cluster"));
+    }
+
+    @Test
+    public void csiTokenRequestsNotConfigured() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: CSI token error: serviceAccount.tokens not provided - ensure tokenRequests is configured in CSIDriver";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()),
+                is("The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com"));
+    }
+
+    @Test
+    public void unknownMessageAndMissingContextPassThrough() {
+        final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : something new";
+        assertThat(SecretErrorTranslator.translate(raw, ctx()), is(raw));
+        assertThat("no context: still a useful sentence from the raw text",
+                SecretErrorTranslator.translate("MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found", SecretErrorTranslator.Context.empty()),
+                is("Secret \"xnat-proj01-redcap\" does not exist"));
+        assertThat(SecretErrorTranslator.volumeNameFrom(raw), is("secret-redcap"));
+        assertThat(SecretErrorTranslator.volumeNameFrom("no volume here"), is(nullValue()));
     }
 }
