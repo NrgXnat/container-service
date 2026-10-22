@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
@@ -69,5 +70,56 @@ public class KubernetesClientJobCreationTest {
             assertThat(e.getMessage(), containsString("Namespace \"xnat-proj02\" does not exist"));
         }
         Mockito.verify(client, Mockito.never()).ensureWatching(Mockito.anyString());
+    }
+
+    @Test
+    public void aWatchThatCannotStartDoesNotFailTheLaunch() throws Exception {
+        // The API server fills in the name from generateName; the stub does the same.
+        Mockito.when(batchApi.createNamespacedJob(Mockito.eq("xnat-proj01"), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer(invocation -> {
+                    final V1Job created = invocation.getArgument(1, V1Job.class);
+                    created.getMetadata().setName("container-job-abcde");
+                    return created;
+                });
+        Mockito.doThrow(new IllegalStateException("informer down")).when(client).ensureWatching("xnat-proj01");
+        final Container toCreate = container("xnat-proj01");
+        Mockito.when(client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+
+        final String jobName = client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server);
+
+        assertThat(jobName, is("container-job-abcde"));
+    }
+
+    @Test
+    public void aContainerWithoutNamespaceWatchesTheContextNamespace() throws Exception {
+        Mockito.when(batchApi.createNamespacedJob(Mockito.eq("ctx"), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer(invocation -> invocation.getArgument(1, V1Job.class));
+        final Container toCreate = container(null);
+        Mockito.when(client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+
+        client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server);
+
+        Mockito.verify(client).ensureWatching("ctx");
+    }
+
+    @Test
+    public void ensureWatchingWithoutAStartedInformerDoesNothing() throws Exception {
+        setField("kubernetesInformer", null);
+        Mockito.doCallRealMethod().when(client).ensureWatching("ns");
+
+        client.ensureWatching("ns");
+
+        Mockito.verify(batchApi, Mockito.never()).createNamespacedJob(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    public void ensureWatchingDelegatesToTheStartedInformer() throws Exception {
+        final KubernetesInformer informer = Mockito.mock(KubernetesInformer.class);
+        setField("kubernetesInformer", informer);
+        Mockito.doCallRealMethod().when(client).ensureWatching("ns");
+
+        client.ensureWatching("ns");
+
+        Mockito.verify(informer).ensureWatching("ns");
     }
 }

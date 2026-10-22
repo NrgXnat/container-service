@@ -565,8 +565,14 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
             final String       jobName = meta == null ? null : meta.getName();
             log.debug("Created job {} in namespace {}", jobName, namespace);
             // Only after success: an unprovisioned namespace would otherwise make the informer retry 403/404 forever.
-            // The group's initial LIST picks this job up, so no event is lost.
-            ensureWatching(namespace);
+            // The group's initial LIST picks this job up, so no event is lost. The job already exists, so a watch
+            // failure must not fail the launch: the container record has to be saved so the status updater can
+            // re-register the namespace on its next cycle.
+            try {
+                ensureWatching(namespace);
+            } catch (RuntimeException e) {
+                log.warn("Job {} created in namespace {} but its informer group could not be started; it will be registered on the next status cycle", jobName, namespace, e);
+            }
             return jobName;
         } catch (ApiException e) {
             log.error("Could not create job in namespace {}: message \"{}\" code {} body {}", namespace, e.getMessage(), e.getCode(), e.getResponseBody(), e);

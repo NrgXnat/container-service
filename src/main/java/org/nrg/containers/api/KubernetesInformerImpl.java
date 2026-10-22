@@ -112,7 +112,13 @@ public class KubernetesInformerImpl implements KubernetesInformer {
         final NamespaceWatch watch = watches.computeIfAbsent(namespace, this::createWatch);
         if (isStarted) {
             log.info("Starting kubernetes informers for namespace {}", namespace);
-            watch.start();
+            try {
+                watch.start();
+            } catch (RuntimeException e) {
+                // Forget the group so a later ensureWatching retries instead of skipping a namespace nobody watches.
+                watches.remove(namespace);
+                throw e;
+            }
         }
     }
 

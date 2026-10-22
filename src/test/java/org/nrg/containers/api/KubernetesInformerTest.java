@@ -19,14 +19,18 @@ import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.springframework.jms.core.JmsTemplate;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -150,6 +154,8 @@ public class KubernetesInformerTest {
     private static class RecordingInformer extends KubernetesInformerImpl {
         final List<String> started = new ArrayList<>();
         final List<String> stopped = new ArrayList<>();
+        final List<String> created = new ArrayList<>();
+        final Set<String> failOnStart = new HashSet<>();
 
         RecordingInformer() {
             super("ctx", new ApiClient(), mock(ExecutorService.class), mock(JmsTemplate.class));
@@ -157,8 +163,14 @@ public class KubernetesInformerTest {
 
         @Override
         protected NamespaceWatch createWatch(final String namespace) {
+            created.add(namespace);
             return new NamespaceWatch() {
-                @Override public void start() { started.add(namespace); }
+                @Override public void start() {
+                    if (failOnStart.contains(namespace)) {
+                        throw new IllegalStateException("cannot start " + namespace);
+                    }
+                    started.add(namespace);
+                }
                 @Override public void stop() { stopped.add(namespace); }
             };
         }
@@ -209,5 +221,24 @@ public class KubernetesInformerTest {
         assertThat(informer.started, is(java.util.Arrays.asList("ctx", "xnat-proj01", "ctx")));
         informer.ensureWatching("xnat-proj01");
         assertThat(informer.started.size(), is(4));
+    }
+
+    @Test
+    public void aGroupThatFailsToStartIsForgottenSoTheNextCallRetries() {
+        final RecordingInformer informer = new RecordingInformer();
+        informer.start();
+        informer.failOnStart.add("xnat-proj01");
+        try {
+            informer.ensureWatching("xnat-proj01");
+            fail("Expected IllegalStateException");
+        } catch (IllegalStateException expected) {
+            // the failure is rethrown to the caller
+        }
+        assertThat(informer.watchedNamespaces().contains("xnat-proj01"), is(false));
+
+        informer.failOnStart.clear();
+        informer.ensureWatching("xnat-proj01");
+        assertThat(informer.created, is(Arrays.asList("ctx", "xnat-proj01", "xnat-proj01")));
+        assertThat(informer.watchedNamespaces().contains("xnat-proj01"), is(true));
     }
 }
