@@ -31,18 +31,19 @@ public class SecretErrorTranslatorTest {
     public void createJobNotFoundMeansTheNamespaceIsNotOnboarded() {
         final String translated = SecretErrorTranslator.translateCreateJobFailure(
                 apiException(404, "namespaces \"xnat-proj02\" not found"), "xnat-proj02");
-        assertThat(translated, containsString("Namespace \"xnat-proj02\" does not exist"));
-        assertThat(translated, containsString("onboard"));
-        assertThat("the raw message is kept", translated, containsString("namespaces \"xnat-proj02\" not found"));
+        assertThat(translated, is("Namespace \"xnat-proj02\" does not exist: onboard the project (create the namespace, ServiceAccount and RoleBinding)"
+                + " (Kubernetes: namespaces \"xnat-proj02\" not found)"));
     }
 
+    /** RBAC is evaluated before namespace existence, so a namespace-scoped identity sees 403, never 404, for a missing namespace. */
     @Test
-    public void createJobForbiddenMeansTheRoleBindingIsMissing() {
+    public void createJobForbiddenMeansTheNamespaceOrRoleBindingIsMissing() {
         final String translated = SecretErrorTranslator.translateCreateJobFailure(apiException(403,
                 "jobs.batch is forbidden: User \"system:serviceaccount:xnat-proj01:xnat-cs\" cannot create resource \"jobs\" in API group \"batch\" in the namespace \"xnat-proj02\""),
                 "xnat-proj02");
-        assertThat(translated, containsString("cannot create jobs in namespace \"xnat-proj02\""));
-        assertThat(translated, containsString("RoleBinding"));
+        assertThat(translated, is("Namespace \"xnat-proj02\" does not exist or the Container Service identity has no RoleBinding there:"
+                + " onboard the project (create the namespace, ServiceAccount and RoleBinding) (Kubernetes: jobs.batch is forbidden:"
+                + " User \"system:serviceaccount:xnat-proj01:xnat-cs\" cannot create resource \"jobs\" in API group \"batch\" in the namespace \"xnat-proj02\")"));
     }
 
     @Test

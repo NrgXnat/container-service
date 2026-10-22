@@ -24,6 +24,7 @@ public final class SecretErrorTranslator {
     private static final Pattern SECRET_NOT_FOUND = Pattern.compile("secret \"([^\"]+)\" not found");
     private static final Pattern SPC_NOT_FOUND = Pattern.compile("failed to get secretproviderclass ([^/\\s]+)/([^,:\\s]+)");
     private static final Pattern PROVIDER_NOT_FOUND = Pattern.compile("provider not found: provider \"([^\"]+)\"|provider not found: (\\w+)");
+    private static final String ONBOARD_PROJECT = "onboard the project (create the namespace, ServiceAccount and RoleBinding)";
 
     private SecretErrorTranslator() {}
 
@@ -113,12 +114,14 @@ public final class SecretErrorTranslator {
 
     public static String translateCreateJobFailure(final ApiException e, final String namespace) {
         final String raw = apiMessage(e);
+        // Only an identity with cluster-wide permissions gets a 404 for a missing namespace.
         if (e.getCode() == 404 && raw.contains("namespaces \"" + namespace + "\" not found")) {
-            return "Namespace \"" + namespace + "\" does not exist: onboard the project before launching (Kubernetes: " + raw + ")";
+            return "Namespace \"" + namespace + "\" does not exist: " + ONBOARD_PROJECT + " (Kubernetes: " + raw + ")";
         }
+        // RBAC is evaluated before namespace existence, so a namespace-scoped identity sees 403 for a missing namespace too.
         if (e.getCode() == 403 && (raw.contains("is forbidden: User") || raw.contains("cannot create resource \"jobs\""))) {
-            return "The Container Service identity cannot create jobs in namespace \"" + namespace
-                    + "\": it has no RoleBinding there (Kubernetes: " + raw + ")";
+            return "Namespace \"" + namespace + "\" does not exist or the Container Service identity has no RoleBinding there: "
+                    + ONBOARD_PROJECT + " (Kubernetes: " + raw + ")";
         }
         return "Could not create job in namespace \"" + namespace + "\": " + raw;
     }
