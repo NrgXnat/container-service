@@ -1,6 +1,7 @@
 package org.nrg.containers.secrets;
 
 import io.kubernetes.client.openapi.ApiException;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 
@@ -66,6 +67,13 @@ public class SecretErrorTranslatorTest {
     }
 
     @Test
+    public void longStatusMessageDoesNotOverflowTheStack() {
+        final String message = StringUtils.repeat("field invalid; ", 600);
+        assertThat(SecretErrorTranslator.translateCreateJobFailure(apiException(422, message), "ctx"),
+                containsString(message.substring(0, 40)));
+    }
+
+    @Test
     public void secretProviderClassNotFoundIsMissing() {
         final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(
                 apiException(404, "secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" not found"), "xnat-proj01", "xnat-proj01-redcap");
@@ -105,6 +113,7 @@ public class SecretErrorTranslatorTest {
         return SecretErrorTranslator.Context.of("xnat-proj01", "xnat-jobs", SecretVolumeType.CSI, Collections.singletonList(redcap));
     }
 
+    /** Partially reconstructed (rpc error wrapper from EKS fragment): the captured part is "failed to get secretproviderclass xnat-proj01/xnat-proj01-redcap". */
     @Test
     public void secretProviderClassMissingAtMountTime() {
         final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to get secretproviderclass xnat-proj01/xnat-proj01-redcap, error: secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" not found";
@@ -124,6 +133,8 @@ public class SecretErrorTranslatorTest {
         final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: ResourceNotFoundException: Secrets Manager can't find the specified secret.";
         assertThat(SecretErrorTranslator.translate(raw, ctx()),
                 is("The external secret store has no secret for SecretProviderClass \"xnat-proj01-redcap\": check its objectName against the store"));
+        assertThat(SecretErrorTranslator.translate(raw, SecretErrorTranslator.Context.empty()),
+                is("The external secret store has no secret for SecretProviderClass \"<unknown>\": check its objectName against the store"));
     }
 
     /** Reconstructed from the runbook fragment "FailedMount ... AccessDeniedException"; replace with captured text once scenario 1b has run on EKS. */
@@ -132,6 +143,8 @@ public class SecretErrorTranslatorTest {
         final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/secret-probe-7fd2a-x7k2p, err: rpc error: code = Unknown desc = Failed fetching secret xnat/proj01/redcap: AccessDeniedException: User: arn:aws:sts::123456789012:assumed-role/xnat-proj01-jobs/secrets-store-csi-driver-provider-aws is not authorized to perform: secretsmanager:GetSecretValue on resource: xnat/proj01/redcap";
         assertThat(SecretErrorTranslator.translate(raw, ctx()),
                 is("ServiceAccount \"xnat-jobs\" is not allowed to read the secret behind SecretProviderClass \"xnat-proj01-redcap\": check its IRSA annotation and the IAM policy"));
+        assertThat(SecretErrorTranslator.translate(raw, SecretErrorTranslator.Context.empty()),
+                is("The job's ServiceAccount is not allowed to read the secret behind SecretProviderClass \"<unknown>\": check its IRSA annotation and the IAM policy"));
     }
 
     /** Reconstructed from the runbook fragment "provider not found: aws"; replace with captured text when it is next observed. */
@@ -149,13 +162,21 @@ public class SecretErrorTranslatorTest {
     }
 
     @Test
-    public void unknownMessageAndMissingContextPassThrough() {
+    public void unknownMessagePassesThrough() {
         final String raw = "MountVolume.SetUp failed for volume \"secret-redcap\" : something new";
         assertThat(SecretErrorTranslator.translate(raw, ctx()), is(raw));
+    }
+
+    @Test
+    public void emptyContextDoesNotFail() {
         assertThat("no context: still a useful sentence from the raw text",
                 SecretErrorTranslator.translate("MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found", SecretErrorTranslator.Context.empty()),
                 is("Secret \"xnat-proj01-redcap\" does not exist"));
-        assertThat(SecretErrorTranslator.volumeNameFrom(raw), is("secret-redcap"));
+    }
+
+    @Test
+    public void volumeNameFromExtractsTheSecretVolume() {
+        assertThat(SecretErrorTranslator.volumeNameFrom("MountVolume.SetUp failed for volume \"secret-redcap\" : something new"), is("secret-redcap"));
         assertThat(SecretErrorTranslator.volumeNameFrom("no volume here"), is(nullValue()));
     }
 }

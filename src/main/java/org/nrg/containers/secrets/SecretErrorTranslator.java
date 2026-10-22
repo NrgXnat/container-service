@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,11 +18,11 @@ import java.util.regex.Pattern;
  * keeping the original text (design doc section 4.2). Unknown messages pass through unchanged.
  */
 public final class SecretErrorTranslator {
-    private static final Pattern STATUS_MESSAGE = Pattern.compile("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern STATUS_MESSAGE = Pattern.compile("\"message\"\\s*:\\s*\"([^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)\"");
 
     private static final Pattern VOLUME_NAME = Pattern.compile("for volume \"([^\"]+)\"");
     private static final Pattern SECRET_NOT_FOUND = Pattern.compile("secret \"([^\"]+)\" not found");
-    private static final Pattern SPC_NOT_FOUND = Pattern.compile("failed to get secretproviderclass ([^/\\s]+)/([^,\\s]+)");
+    private static final Pattern SPC_NOT_FOUND = Pattern.compile("failed to get secretproviderclass ([^/\\s]+)/([^,:\\s]+)");
     private static final Pattern PROVIDER_NOT_FOUND = Pattern.compile("provider not found: provider \"([^\"]+)\"|provider not found: (\\w+)");
 
     private SecretErrorTranslator() {}
@@ -76,6 +77,8 @@ public final class SecretErrorTranslator {
 
     /** One sentence with object name and suggestion; the raw text when nothing matches. Never contains a value. */
     public static String translate(final String raw, final Context ctx) {
+        // Most specific first: the SecretProviderClass text also ends in "... not found".
+        Objects.requireNonNull(raw, "raw message");
         final FileResolvedSecret secret = ctx.secretForVolume(volumeNameFrom(raw));
         final String inNamespace = ctx.namespace == null ? "" : " in namespace \"" + ctx.namespace + "\"";
 
@@ -88,7 +91,7 @@ public final class SecretErrorTranslator {
         if (secretMissing.find()) {
             return "Secret \"" + secretMissing.group(1) + "\" does not exist" + inNamespace;
         }
-        final String objectName = secret != null ? secret.secretName() : "<unknown>";
+        final String objectName = secret != null && secret.secretName() != null ? secret.secretName() : "<unknown>";
         if (raw.contains("ResourceNotFoundException")) {
             return "The external secret store has no secret for SecretProviderClass \"" + objectName + "\": check its objectName against the store";
         }
