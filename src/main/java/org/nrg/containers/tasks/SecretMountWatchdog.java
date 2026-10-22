@@ -30,6 +30,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Only FailedMount events on secret volumes are timed; optional secrets in secret mode never produce one: a
  * missing optional Secret mounts as an empty directory and the pod runs, so such a container is never tracked.
  *
+ * <p>Every node keeps its own map and ticks on its own; the tick is deliberately not gated on the primary node,
+ * because Kubernetes events are consumed by whichever node takes the JMS message. An entry that goes stale on
+ * one node (the container finished or was handled elsewhere) is reclaimed by the timeout handler's state checks,
+ * which clear it when the container is gone, terminal, no longer Pending or already queued for failure. Duplicate
+ * reports across nodes are therefore absorbed rather than prevented.
+ *
  * <p>Own scheduler, like BuildDirectoryCleanupTask: there is no taskScheduler bean in this plugin, and a second
  * ThreadPoolTaskScheduler bean would make core's by-type injections ambiguous.
  */
@@ -147,7 +153,7 @@ public class SecretMountWatchdog implements InitializingBean, DisposableBean {
         }
     }
 
-    /** 0 when there is no server, no Kubernetes backend, or the setting cannot be read. */
+    /** 0 when there is no server or the setting cannot be read. */
     int configuredTimeoutSeconds() {
         try {
             final DockerServer server = dockerServerService.retrieveServer();

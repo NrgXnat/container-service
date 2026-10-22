@@ -112,9 +112,19 @@ public class SecretMountWatchdogTest {
 
     @Test
     public void aFailingHandlerDoesNotStopTheTick() {
-        watchdog.registerTimeoutHandler((id, timeout, reason) -> { throw new IllegalStateException("boom"); });
-        watchdog.recordFailedMount(1L, OffsetDateTime.ofInstant(T0, ZoneOffset.UTC), "r");
+        watchdog.registerTimeoutHandler((id, timeout, reason) -> {
+            if (id == 1L) {
+                throw new IllegalStateException("boom");
+            }
+            fired.add(id + ":" + timeout + ":" + reason);
+        });
+        watchdog.recordFailedMount(1L, OffsetDateTime.ofInstant(T0, ZoneOffset.UTC), "r1");
+        watchdog.recordFailedMount(2L, OffsetDateTime.ofInstant(T0, ZoneOffset.UTC), "r2");
         clock.advance(Duration.ofSeconds(601));
+
         watchdog.tick();   // must not throw
+
+        assertThat("the other container is still handled whatever the iteration order",
+                fired, is(Collections.singletonList("2:600:r2")));
     }
 }
