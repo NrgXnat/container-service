@@ -521,7 +521,6 @@ public abstract class Container implements Serializable {
                 .limitCpu(resolvedCommand.limitCpu())
                 .swarmConstraints(resolvedCommand.swarmConstraints())
                 .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
-                .parentSourceObjectName(resolvedCommand.parentSourceObjectName())
                 .runtime(resolvedCommand.runtime())
                 .ipcMode(resolvedCommand.ipcMode())
                 .autoRemove(resolvedCommand.autoRemove())
