@@ -9,8 +9,10 @@ import org.nrg.containers.services.CommandService;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerFinalizeService;
 import org.nrg.containers.services.ContainerService;
+import org.nrg.containers.services.DockerServerService;
 import org.nrg.containers.services.OrchestrationService;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.framework.services.ContextService;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.UserGroupServiceI;
@@ -54,10 +56,23 @@ public class ContainerRestApiTestConfig extends WebSecurityConfigurerAdapter {
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
                                              final ObjectMapper mapper,
-                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean,
+                                             final DockerServerService dockerServerService,
+                                             final SecretMountWatchdog secretMountWatchdog) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService,
                                         commandService, aliasTokenService, siteConfigPreferences, containerFinalizeService,
-                                        null, catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean);
+                                        null, catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean,
+                                        dockerServerService, secretMountWatchdog);
+    }
+
+    @Bean
+    public DockerServerService dockerServerService() {
+        return Mockito.mock(DockerServerService.class);
+    }
+
+    @Bean
+    public SecretMountWatchdog secretMountWatchdog() {
+        return Mockito.mock(SecretMountWatchdog.class);
     }
 
     @Bean

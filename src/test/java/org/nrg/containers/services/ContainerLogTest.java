@@ -29,6 +29,7 @@ import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.rest.ContainerLogPollResponse;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.AliasTokenService;
@@ -83,6 +84,8 @@ public class ContainerLogTest {
         @Mock public CatalogService catalogService;
         @Mock public OrchestrationService orchestrationService;
         @Mock public ThreadPoolExecutorFactoryBean executorFactoryBean;
+        @Mock public DockerServerService dockerServerService;
+        @Mock public SecretMountWatchdog secretMountWatchdog;
 
         public final ObjectMapper mapper = new ObjectMapper();
 
@@ -101,7 +104,9 @@ public class ContainerLogTest {
                     catalogService,
                     orchestrationService,
                     mapper,
-                    executorFactoryBean);
+                    executorFactoryBean,
+                    dockerServerService,
+                    secretMountWatchdog);
         }
     }
 

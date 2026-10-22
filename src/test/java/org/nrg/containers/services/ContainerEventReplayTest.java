@@ -18,6 +18,7 @@ import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.containers.utils.ContainerUtils;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
@@ -70,6 +71,8 @@ public class ContainerEventReplayTest {
     @Mock private CatalogService catalogService;
     @Mock private OrchestrationService orchestrationService;
     @Mock private ThreadPoolExecutorFactoryBean executorFactoryBean;
+    @Mock private DockerServerService dockerServerService;
+    @Mock private SecretMountWatchdog secretMountWatchdog;
     @Mock private UserI user;
 
     private final List<Container> finalizeRequests = new ArrayList<>();
@@ -93,7 +96,9 @@ public class ContainerEventReplayTest {
                 catalogService,
                 orchestrationService,
                 new ObjectMapper(),
-                executorFactoryBean) {
+                executorFactoryBean,
+                dockerServerService,
+                secretMountWatchdog) {
             @Override
             public void queueFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
                                       final Container containerOrService, final UserI userI) {

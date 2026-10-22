@@ -58,6 +58,7 @@ import org.nrg.containers.services.impl.DockerServerServiceImpl;
 import org.nrg.containers.services.impl.DockerServiceImpl;
 import org.nrg.containers.services.impl.HibernateContainerEntityService;
 import org.nrg.containers.services.impl.HibernateDockerServerEntityService;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.framework.services.ContextService;
 import org.nrg.framework.services.NrgEventService;
 import org.nrg.framework.services.NrgEventServiceI;
@@ -208,10 +209,18 @@ public class IntegrationTestConfig {
                                              final CatalogService catalogService,
                                              final OrchestrationService mockOrchestrationService,
                                              final ObjectMapper mapper,
-                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean) {
+                                             final ThreadPoolExecutorFactoryBean threadPoolExecutorFactoryBean,
+                                             final DockerServerService dockerServerService,
+                                             final SecretMountWatchdog secretMountWatchdog) {
         return new ContainerServiceImpl(containerControlApi, containerEntityService, commandResolutionService, commandService,
                                         aliasTokenService, siteConfigPreferences, containerFinalizeService, mockXnatAppInfo,
-                                        catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean);
+                                        catalogService, mockOrchestrationService, mapper, threadPoolExecutorFactoryBean,
+                                        dockerServerService, secretMountWatchdog);
+    }
+
+    @Bean
+    public SecretMountWatchdog secretMountWatchdog() {
+        return Mockito.mock(SecretMountWatchdog.class);
     }
 
     @Bean
