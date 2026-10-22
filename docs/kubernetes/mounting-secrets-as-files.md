@@ -11,61 +11,76 @@ feature, which reads a value from a Java system property and injects it as an en
 
 ### Declaring the secret in a Command
 
-Add an entry to the Command's `secrets` list with the new source and destination types:
-
 ```json
 "secrets": [
   {
-    "source":      {"type": "k8s-secret", "identifier": "redcap"},
+    "source":      {"type": "k8s-secret", "identifier": "redcap", "name": "redcap-#PROJECT#", "required": false},
     "destination": {"type": "file",       "identifier": "/run/secrets/redcap"}
   }
 ]
 ```
 
-* `source.type` `k8s-secret` — the secret is a Kubernetes Secret object. No value is obtained by XNAT.
-* `source.identifier` — a logical name. It is combined with the launch context by the site template
-  (below) to produce the real Secret name. A command may declare several entries with different
-  identifiers (for example `redcap` and `openspecimen`) mounted at different paths.
-* `source.name` (optional) — an explicit Secret name that bypasses the template.
-* `destination.type` `file` — mount as files.
-* `destination.identifier` — the directory inside the container. Each key of the Secret becomes a
-  file in that directory; the mount is read-only. Use a dedicated subdirectory such as
-  `/run/secrets/<identifier>`, never `/run/secrets` itself: Kubernetes mounts the pod's service
-  account token under `/var/run/secrets/kubernetes.io/serviceaccount`, and a read-only mount at
-  `/run/secrets` makes that fail with `runc create failed ... make mountpoint`.
+| Field | Meaning |
+|-------|---------|
+| `source.identifier` | Required. Logical name (letters, digits, `_`, `.`, `-`); one entry per external system, each with its own mount path. Also the volume name (`secret-<identifier>`), so identifiers must be unique after sanitising. |
+| `source.name` | Optional. Overrides the site template. May use the same placeholders; a value without placeholders is used literally (it must already be a valid Kubernetes name and is not sanitised). |
+| `source.required` | Optional, default `true`. See "Optional secrets". |
+| `destination.identifier` | Absolute, normalised mount directory (no empty, `.` or `..` segments). Must be a subdirectory, not `/run/secrets` or `/var/run/secrets` themselves (that would hide the pod's service account token), and paths of different secrets must be unique and must not nest. |
 
-The Docker and Docker Swarm backends refuse to launch a container that declares a `file`
-destination, with the message `File secrets are not supported on the Docker backend`.
+`k8s-secret` only pairs with `file`; `system-property` only with `environment-variable`. Both kinds may appear in the
+same command. Setup and wrapup commands cannot declare file secrets. Docker and Swarm refuse to launch a container
+with a file secret (`File secrets are not supported on the Docker backend`).
 
-### Secret naming template
+### Naming
 
-The Secret name is rendered from a site-level template and then sanitised into a valid Kubernetes
-object name (lower case, `[a-z0-9.-]`, no leading or trailing dash):
+Three levels, highest first: the command's `source.name`, the backend setting `secret-name-template`, the built-in
+`xnat-#PROJECT#-{identifier}`. Placeholders (case sensitive): `#PROJECT#` (the launch project; wins over an input of the
+same name), `#<key>#` (a wrapper or command input replacement key, e.g. `#session#`), `{identifier}`. An unresolved
+placeholder fails the launch. A rendered name is sanitised to a Kubernetes name (lower case, `[a-z0-9.-]`, no leading or
+trailing dash; longer than 253 characters is an error, never truncated). Sanitising is many-to-one (`Proj_01` and
+`proj-01` collide): provision objects under the sanitised name and keep project ids unique after sanitising.
+Names are rendered when the command is resolved and stored with the container record.
 
-| Placeholder    | Replaced with                                   |
-|----------------|-------------------------------------------------|
-| `#PROJECT#`    | The XNAT project the container is launched in   |
-| `{identifier}` | The `source.identifier` from the Command         |
+### Backend settings
 
-The default template is `xnat-#PROJECT#-{identifier}`, so a command declaring `redcap` launched in
-project `Proj_01` mounts the Secret `xnat-proj-01-redcap`. Whoever provisions Secrets in the cluster
-(or SecretProviderClass objects, see below) must follow the same convention.
+Administer > Plugin Settings > Container Service > Compute Backend (Kubernetes), or `POST /xapi/docker/server`:
 
-### Site configuration
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `secret-volume-type` | `secret` | `secret`: a Kubernetes Secret of that name in the job's namespace. `csi`: a Secrets Store CSI volume (`secrets-store.csi.k8s.io`) whose `secretProviderClass` is that name; the value is fetched from the external store at mount time. |
+| `secret-name-template` | `xnat-#PROJECT#-{identifier}` | Must contain `{identifier}`. |
+| `job-service-account` | unset | Pod `serviceAccountName`. Needed when the CSI provider authenticates as the pod (IRSA on EKS). |
+| `job-namespace-mode` | `single` | `single`: jobs run in the kubeconfig context namespace, as before. `per-project`: in the namespace rendered from the template below. |
+| `job-namespace-template` | unset | Required in per-project mode; must contain `#PROJECT#` and no other placeholder; rendered as a DNS label (63 characters max, dots become dashes). |
+| `secret-mount-timeout-seconds` | 600 | See "Failures". 0 disables the watchdog. |
 
-Until these are exposed as Compute Backend preferences they are read from Java system properties,
-set for example in Tomcat's `CATALINA_OPTS`:
+Changes apply to new launches; running jobs keep the namespace recorded on their container.
 
-| System property                   | Default                       | Meaning |
-|-----------------------------------|-------------------------------|---------|
-| `xnat.cs.k8s.secretNameTemplate`  | `xnat-#PROJECT#-{identifier}` | Template above |
-| `xnat.cs.k8s.secretVolumeType`    | `secret`                      | `secret` mounts a Kubernetes Secret object by name. `csi` mounts a Secrets Store CSI volume (`secrets-store.csi.k8s.io`) whose `secretProviderClass` attribute is the rendered name, for clusters that pull secrets from an external store such as AWS Secrets Manager or HashiCorp Vault |
-| `xnat.cs.k8s.serviceAccountName`  | unset                         | If set, applied as the Pod's `serviceAccountName`. Needed when the CSI provider authenticates with the Pod's identity (for example IRSA on EKS) |
+In single mode the Container Service identity needs, in the context namespace, jobs create/get/delete/patch/update,
+pods get/list/watch, pods/log get and events get/list/watch (plus `secretproviderclasses` get in csi mode); it does
+not need, and must not have, permission to read Secrets. See `container-service-on-kubernetes-setup.md` for the Role.
 
-The Container Service's own Kubernetes identity needs permission to create, get, list, watch, delete,
-patch and update Jobs (jobs are created suspended and then patched to start) and to read Pods,
-Pod logs and Events in the namespace. It does **not** need, and should not be given, permission
-to read Secrets: referencing a Secret from a Pod spec is enough for kubelet to mount it.
+### Per-project namespaces
+
+Each project namespace must be prepared before a launch (an onboarding script should do this):
+a ServiceAccount named as `job-service-account` (with the IRSA annotation in csi mode); a Role plus RoleBinding
+for the Container Service's own service account (the one in its kubeconfig) with jobs
+create/get/delete/patch/update, pods get/list/watch, pods/log get, events get/list/watch, and in csi mode
+`secretproviderclasses` get in API group `secrets-store.csi.x-k8s.io`; the archive/build or combined PVC named as in
+the backend settings; and the Secret or SecretProviderClass objects. The Container Service starts watching a
+namespace after it created a job there; a launch into a namespace that does not exist or has no RoleBinding fails
+with `Namespace "..." does not exist` or `... cannot create jobs in namespace ...`. Launches without a project
+(site-level) fail in per-project mode.
+
+The Container Service identity never needs, and must not have, permission to read Secrets.
+
+### Optional secrets
+
+With `required: false`: in `secret` mode the volume is `optional`, so a missing Secret mounts an empty directory;
+in `csi` mode the SecretProviderClass is looked up at resolution and a missing one is dropped (the container has no
+such directory). In `csi` mode a missing SecretProviderClass of a required secret fails the launch, and so does a
+lookup that cannot decide (no `get` permission, CSI driver not installed) for any secret. An object that exists but
+whose value cannot be fetched (store has no such secret, access denied) is still a mount failure, handled below.
 
 ### What the container sees
 
@@ -80,10 +95,41 @@ The files live on tmpfs and disappear when the Pod exits. The container reads th
 values itself; the Container Service never logs or stores them, and the Pod spec contains only the
 Secret name.
 
-### When the Secret is missing
+### Failures
 
-Kubernetes reports a missing Secret only as a Warning Event on the Pod (`FailedMount: ... secret
-"xnat-proj01-redcap" not found`); the Pod itself just stays in `ContainerCreating`. The Container
-Service watches these Events and records the reason and message in the container's history, so the
-cause is visible in the XNAT UI without `kubectl`. `FailedAttachVolume` and `FailedScheduling` are
-surfaced the same way.
+| Stage | Where it shows |
+|-------|----------------|
+| Resolution (validation, csi SecretProviderClass missing or not checkable) | Launch response and workflow `Failed (Command resolution)`, no container record |
+| Job creation (namespace missing, no RoleBinding) | Launch response and workflow `Failed (Container launch)` |
+| Mount (`FailedMount` events) | Container history; the watchdog fails the container after `secret-mount-timeout-seconds` |
+
+At resolution and job creation the Kubernetes API errors are translated, with the original text appended as
+`(Kubernetes: ...)`:
+
+| Kubernetes API response | Shown as |
+|-------------------------|----------|
+| SecretProviderClass lookup 404, object not found | SecretProviderClass "NAME" does not exist in namespace "NS": check the secret name template or create the object |
+| SecretProviderClass lookup 404, resource unknown | The Secrets Store CSI driver is not installed in the cluster: the secretproviderclasses resource is unknown |
+| SecretProviderClass lookup 403 | The Container Service identity lacks get permission on secretproviderclasses in namespace "NS": grant get on secretproviderclasses to the Role bound to the Container Service's service account |
+| Job create 404, namespace not found | Namespace "NS" does not exist: onboard the project before launching |
+| Job create 403 | The Container Service identity cannot create jobs in namespace "NS": it has no RoleBinding there |
+
+`FailedMount` events on a secret volume are translated and recorded as `<translation> [<original text>]`:
+
+| Kubernetes / kubelet message contains | Shown as |
+|---------------------------------------|----------|
+| `failed to get secretproviderclass NS/NAME` | SecretProviderClass "NAME" does not exist in namespace "NS": check the secret name template or create the object |
+| `secret "NAME" not found` | Secret "NAME" does not exist in namespace "NS" |
+| `ResourceNotFoundException` | The external secret store has no secret for SecretProviderClass "NAME": check its objectName against the store |
+| `AccessDeniedException` | ServiceAccount "SA" is not allowed to read the secret behind SecretProviderClass "NAME": check its IRSA annotation and the IAM policy |
+| `provider not found` | The Secrets Store CSI provider "PROVIDER" is not installed in the cluster |
+| `CSI token error` and `tokenRequests` | The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com |
+
+Other messages are recorded unchanged.
+
+When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
+Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and
+deletes the job; the workflow ends `Failed` with one notification. If the job cannot be deleted, the watchdog retries
+on the following ticks and gives up after 10 attempts, logging that the Kubernetes Job needs manual cleanup. Mount
+failures of other volumes (PVC, hostPath) are recorded only, as before. Values never appear in history, logs, the
+database or the job spec.

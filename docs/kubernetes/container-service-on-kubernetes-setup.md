@@ -28,7 +28,10 @@ in that file should have, at minimum, these permissions:
   verbs: ["get"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
 ```
 
 In the following sections we will cover how to create an account with these permissions and how to
@@ -48,8 +51,9 @@ using [Role Based Access Control (RBAC)](https://kubernetes.io/docs/reference/ac
 The Container Service is exactly that kind of long-running process, so we recommend creating a dedicated
 Service Account for it.
 
-The Container Service only requires fairly limited permissions to cluster resources. It does need full permissions on
-Jobs, since those are the objects it creates to run containers. It also needs read permissions on Pods and their logs.
+The Container Service only requires fairly limited permissions to cluster resources. It needs to create, read, update and
+delete Jobs, since those are the objects it creates to run containers. It also needs read permissions on Pods, their logs
+and Events.
 We do enable `get` permissions on the API health endpoints `/livez` and `/readyz` to verify the cluster connection.
 
 If you choose not to create a dedicated Namespace or Service Account, everything should work fine. 
@@ -104,7 +108,14 @@ rules:
   verbs: ["get"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+# csi mode only: lets the Container Service confirm a SecretProviderClass exists before launching
+- apiGroups: ["secrets-store.csi.x-k8s.io"]
+  resources: ["secretproviderclasses"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
