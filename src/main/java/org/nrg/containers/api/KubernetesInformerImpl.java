@@ -1,5 +1,6 @@
 package org.nrg.containers.api;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.kubernetes.client.common.KubernetesObject;
 import io.kubernetes.client.informer.ResourceEventHandler;
 import io.kubernetes.client.informer.SharedIndexInformer;
@@ -39,6 +40,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 @Slf4j
 public class KubernetesInformerImpl implements KubernetesInformer {
@@ -368,6 +370,15 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             this.podLookup = podLookup;
         }
 
+        /** The AWS Secrets Store provider puts a fresh request id into every retry's message. */
+        private static final Pattern REQUEST_ID = Pattern.compile("(?:,\\s*)?RequestID: [0-9a-fA-F-]+");
+
+        /** The message without parts that change on every retry, for comparing repeats; never recorded. */
+        @VisibleForTesting
+        static String normalizeWarningMessage(final String message) {
+            return message == null ? null : REQUEST_ID.matcher(message).replaceAll("");
+        }
+
         private static boolean isInteresting(final CoreV1Event event) {
             final V1ObjectReference involved = event.getInvolvedObject();
             return WARNING.equals(event.getType())
@@ -408,8 +419,8 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         @Override
         public void onUpdate(final CoreV1Event oldObj, final CoreV1Event newObj) {
-            // Kubernetes bumps count/lastTimestamp on repeats; only a changed message is new information
-            if (oldObj != null && Objects.equals(oldObj.getMessage(), newObj.getMessage())
+            // Kubernetes bumps count/lastTimestamp on repeats; only a changed message (ignoring request ids) is new information
+            if (oldObj != null && Objects.equals(normalizeWarningMessage(oldObj.getMessage()), normalizeWarningMessage(newObj.getMessage()))
                     && Objects.equals(oldObj.getReason(), newObj.getReason())) {
                 return;
             }

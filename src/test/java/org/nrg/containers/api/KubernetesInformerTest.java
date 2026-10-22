@@ -188,6 +188,63 @@ public class KubernetesInformerTest {
         }
     }
 
+    private static String awsNotFound(final String requestId) {
+        return "MountVolume.SetUp failed for volume \"secret-redcap\" : rpc error: code = Unknown desc = failed to mount secrets store objects for pod xnat-proj01/" + POD_NAME
+                + ", err: rpc error: code = Unknown desc = us-east-1: Failed fetching secret xnat/projects/PROJ01/does-not-exist: operation error Secrets Manager: GetSecretValue,"
+                + " https response error StatusCode: 400, RequestID: " + requestId + ", ResourceNotFoundException: Secrets Manager can't find the specified secret.";
+    }
+
+    /** The AWS provider puts a fresh RequestID into every kubelet retry; without ignoring it each retry adds a history row. */
+    @Test
+    public void repeatedWarningDifferingOnlyInRequestIdIsNotResent() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final CoreV1Event first = podEvent("Warning", "FailedMount", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")).count(1);
+        final CoreV1Event again = podEvent("Warning", "FailedMount", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")).count(2);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod())
+                    .onUpdate(first, again);
+            mockedQueueUtils.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    public void repeatedWarningDifferingElsewhereIsResent() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final CoreV1Event first = podEvent("Warning", "FailedMount", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")).count(1);
+        final CoreV1Event again = podEvent("Warning", "FailedMount",
+                awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789").replace("does-not-exist", "redcap")).count(2);
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod())
+                    .onUpdate(first, again);
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()));
+        }
+        assertThat("the recorded message keeps its request id", sent.getValue().getPodPhaseReason(),
+                is(awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789").replace("does-not-exist", "redcap")));
+    }
+
+    @Test
+    public void firstWarningIsRecordedWithItsRequestId() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final String message = awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355");
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod())
+                    .onAdd(podEvent("Warning", "FailedMount", message));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()));
+        }
+        assertThat(sent.getValue().getPodPhaseReason(), is(message));
+    }
+
+    @Test
+    public void normalizeWarningMessageStripsOnlyTheRequestId() {
+        assertThat(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(
+                        "StatusCode: 400, RequestID: 7bfdc195-45b0-47a0-bbb3-688fb8c67355, ResourceNotFoundException: x"),
+                is("StatusCode: 400, ResourceNotFoundException: x"));
+        assertThat(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage("secret \"x\" not found"), is("secret \"x\" not found"));
+        assertThat(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(null), is(nullValue()));
+    }
+
     // ---- one informer group per namespace ----
 
     /** Replaces the real list/watch group so these tests never touch the network. */
