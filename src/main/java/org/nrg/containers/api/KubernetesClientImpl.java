@@ -172,7 +172,8 @@ public class KubernetesClientImpl implements KubernetesClient {
         restart();
     }
 
-    private static V1Volume fileSecretVolume(final String volumeName, final String secretName, final SecretVolumeType volumeType) {
+    private static V1Volume fileSecretVolume(final String volumeName, final String secretName, final SecretVolumeType volumeType,
+                                             final boolean required) {
         if (volumeType == SecretVolumeType.CSI) {
             return new V1VolumeBuilder()
                     .withName(volumeName)
@@ -187,6 +188,8 @@ public class KubernetesClientImpl implements KubernetesClient {
                 .withName(volumeName)
                 .withNewSecret()
                 .withSecretName(secretName)
+                // Missing optional Secret: pod starts with an empty mount (csi mode handled this at resolution)
+                .withOptional(required ? null : Boolean.TRUE)
                 .endSecret()
                 .build();
     }
@@ -498,7 +501,7 @@ public class KubernetesClientImpl implements KubernetesClient {
                         + "\" has no rendered Kubernetes object name; command resolution must render it first");
             }
             final String volumeName = fileSecret.volumeName();
-            volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType));
+            volumes.add(fileSecretVolume(volumeName, secretName, secretVolumeType, fileSecret.required()));
             mounts.add(new V1VolumeMountBuilder()
                                .withName(volumeName)
                                .withMountPath(fileSecret.mountPath())

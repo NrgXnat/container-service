@@ -850,14 +850,14 @@ public class SecretsTest {
         field.set(target, value);
     }
 
-    private V1Job captureJobForFileSecret(final String secretName, final String mountPath,
+    private V1Job captureJobForFileSecret(final String secretName, final boolean required, final String mountPath,
                                           final DockerServerBase.DockerServer server) throws Exception {
         backend = Backend.KUBERNETES;
         final String namespace = RandomStringUtils.randomAlphabetic(5).toLowerCase();
         final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
         kubernetesClientWithMockedApi(namespace, batchApi);
 
-        final Secret secret = new Secret(new K8sSecretSource("redcap", secretName), new FileSecretDestination(mountPath));
+        final Secret secret = new Secret(new K8sSecretSource("redcap", secretName, required), new FileSecretDestination(mountPath));
         final ResolvedSecret resolved = new FileResolvedSecret(secret, Optional.empty());
         final Container toCreate = Container.builder()
                 .wrapperId(0L).commandId(0L)
@@ -881,7 +881,7 @@ public class SecretsTest {
 
     @Test
     public void testKubernetesMountsFileSecretByResolvedName() throws Exception {
-        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", "/run/secrets/redcap", kubernetesServer());
+        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", true, "/run/secrets/redcap", kubernetesServer());
         final V1PodSpec podSpec = job.getSpec().getTemplate().getSpec();
 
         final List<V1Volume> volumes = podSpec.getVolumes();
@@ -905,7 +905,7 @@ public class SecretsTest {
     @Test
     public void testKubernetesRefusesFileSecretWithoutResolvedName() throws Exception {
         try {
-            captureJobForFileSecret(null, "/run/secrets/redcap", kubernetesServer());
+            captureJobForFileSecret(null, true, "/run/secrets/redcap", kubernetesServer());
             org.junit.Assert.fail("Expected ContainerException");
         } catch (ContainerException e) {
             assertThat(e.getMessage(), containsString("has no rendered Kubernetes object name"));
@@ -916,7 +916,7 @@ public class SecretsTest {
     public void testKubernetesMountsFileSecretAsCsiVolume() throws Exception {
         final DockerServerBase.DockerServer server = kubernetesServer().toBuilder()
                 .secretVolumeType(SecretVolumeType.CSI).build();
-        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", "/run/secrets/redcap", server);
+        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", true, "/run/secrets/redcap", server);
         final V1Volume volume = job.getSpec().getTemplate().getSpec().getVolumes().get(0);
         assertThat(volume.getSecret(), is(nullValue()));
         assertThat(volume.getCsi(), is(notNullValue()));
@@ -925,10 +925,20 @@ public class SecretsTest {
         assertThat(volume.getCsi().getVolumeAttributes(), IsMapContaining.hasEntry("secretProviderClass", "xnat-proj01-redcap"));
     }
 
+    /** FR-8, secret mode: a missing optional Secret must not block the pod; Kubernetes mounts an empty directory instead. */
+    @Test
+    public void testOptionalSecretVolumeIsMarkedOptional() throws Exception {
+        final V1Job optional = captureJobForFileSecret("xnat-proj01-redcap", false, "/run/secrets/redcap", kubernetesServer());
+        assertThat(optional.getSpec().getTemplate().getSpec().getVolumes().get(0).getSecret().getOptional(), is(true));
+
+        final V1Job required = captureJobForFileSecret("xnat-proj01-redcap", true, "/run/secrets/redcap", kubernetesServer());
+        assertThat(required.getSpec().getTemplate().getSpec().getVolumes().get(0).getSecret().getOptional(), anyOf(nullValue(), is(false)));
+    }
+
     @Test
     public void testKubernetesSetsServiceAccountNameFromServerSettings() throws Exception {
         final DockerServerBase.DockerServer server = kubernetesServer().toBuilder().jobServiceAccount("xnat-jobs").build();
-        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", "/run/secrets/redcap", server);
+        final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", true, "/run/secrets/redcap", server);
         assertThat(job.getSpec().getTemplate().getSpec().getServiceAccountName(), is("xnat-jobs"));
     }
 
@@ -941,7 +951,7 @@ public class SecretsTest {
         System.setProperty("xnat.cs.k8s.secretVolumeType", "csi");
         System.setProperty("xnat.cs.k8s.serviceAccountName", "legacy-sa");
         try {
-            final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", "/run/secrets/redcap", kubernetesServer());
+            final V1Job job = captureJobForFileSecret("xnat-proj01-redcap", true, "/run/secrets/redcap", kubernetesServer());
             final V1PodSpec podSpec = job.getSpec().getTemplate().getSpec();
             assertThat(podSpec.getServiceAccountName(), is(nullValue()));
             assertThat(podSpec.getVolumes().get(0).getCsi(), is(nullValue()));
