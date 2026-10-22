@@ -39,7 +39,7 @@ public final class SecretErrorTranslator {
         }
         if (e.getCode() == 403) {
             return SecretProviderClassCheck.undetermined("The Container Service identity lacks get permission on secretproviderclasses in namespace \"" + namespace
-                    + "\": add it to the xnat-cs Role (Kubernetes: " + raw + ")");
+                    + "\": grant get on secretproviderclasses to the Role bound to the Container Service's service account (Kubernetes: " + raw + ")");
         }
         return SecretProviderClassCheck.undetermined("Could not check SecretProviderClass \"" + name + "\" in namespace \"" + namespace + "\": " + raw);
     }

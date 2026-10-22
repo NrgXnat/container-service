@@ -34,6 +34,7 @@ import io.kubernetes.client.util.KubeConfig;
 import io.kubernetes.client.util.Namespaces;
 import io.kubernetes.client.util.PatchUtils;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Call;
 import okhttp3.logging.HttpLoggingInterceptor;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.ContainerBackendException;
@@ -57,6 +58,7 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -93,6 +95,8 @@ public class KubernetesClientImpl implements KubernetesClient {
     public static final String SPC_GROUP   = "secrets-store.csi.x-k8s.io";
     public static final String SPC_VERSION = "v1";
     public static final String SPC_PLURAL  = "secretproviderclasses";
+
+    private static final int SPC_LOOKUP_TIMEOUT_SECONDS = 10;
 
     private final ExecutorService executorService;
     private final JmsTemplate     template;
@@ -226,6 +230,7 @@ public class KubernetesClientImpl implements KubernetesClient {
             // Not started on this node (non-primary nodes never call start()). Do not build one here: its constructor
             // sets readTimeout(0) on the shared ApiClient. The primary node's next status cycle calls start() and then
             // retrieveNonfinalizedKubernetesNamespaces(), which registers this namespace.
+            // Calls that must not hang on that client set a per-call timeout (see secretProviderClassExists).
             log.debug("Informer not started; namespace {} will be watched after the next start()", namespace);
             return;
         }
@@ -253,11 +258,17 @@ public class KubernetesClientImpl implements KubernetesClient {
     public SecretProviderClassCheck secretProviderClassExists(@Nullable final String namespace, final String name) {
         final String effective = effectiveNamespace(namespace);
         try {
-            customObjectsApi.getNamespacedCustomObject(SPC_GROUP, SPC_VERSION, effective, SPC_PLURAL, name);
+            // The shared ApiClient has readTimeout(0) once the informer is built, so bound this call on its own.
+            final Call call = customObjectsApi.getNamespacedCustomObjectCall(SPC_GROUP, SPC_VERSION, effective, SPC_PLURAL, name, null);
+            call.timeout().timeout(SPC_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            apiClient.execute(call, Object.class);
             return SecretProviderClassCheck.exists();
         } catch (ApiException e) {
             log.debug("SecretProviderClass {}/{} lookup failed: code {} body {}", effective, name, e.getCode(), e.getResponseBody());
             return SecretErrorTranslator.translateSecretProviderClassLookup(e, effective, name);
+        } catch (RuntimeException e) {
+            log.warn("SecretProviderClass {}/{} lookup failed unexpectedly", effective, name, e);
+            return SecretProviderClassCheck.undetermined("Could not check SecretProviderClass \"" + name + "\" in namespace \"" + effective + "\": " + e);
         }
     }
 

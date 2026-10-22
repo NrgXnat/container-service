@@ -71,6 +71,7 @@ public class SecretErrorTranslatorTest {
                 "xnat-proj01", "xnat-proj01-redcap");
         assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
         assertThat(check.reason(), containsString("get permission on secretproviderclasses in namespace \"xnat-proj01\""));
+        assertThat(check.reason(), containsString("grant get on secretproviderclasses to the Role bound to the Container Service's service account"));
     }
 
     @Test
