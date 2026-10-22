@@ -32,6 +32,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -251,6 +252,83 @@ public class KubernetesInformerTest {
                 KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")),
                 not(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(
                         awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355").replace("secret-redcap", "secret-other"))));
+    }
+
+    // ---- repeats arriving as new Event objects ----
+
+    /** The kubelet's recorder creates a new Event object when the message changes, so retries arrive via onAdd. */
+    private static CoreV1Event newPodEvent(final String podName, final String eventName, final String message) {
+        return new CoreV1Event()
+                .metadata(new V1ObjectMeta().name(podName + "." + eventName).uid(eventName).namespace("xnat-proj01"))
+                .type("Warning")
+                .reason("FailedMount")
+                .message(message)
+                .count(1)
+                .lastTimestamp(OffsetDateTime.now())
+                .involvedObject(new V1ObjectReference().kind("Pod").name(podName));
+    }
+
+    private static V1Pod finishedPod(final String podName) {
+        return new V1Pod()
+                .metadata(new V1ObjectMeta().name(podName).namespace("xnat-proj01").resourceVersion("9")
+                        .labels(Collections.singletonMap("job-name", JOB_NAME)))
+                .status(new V1PodStatus().phase("Failed"));
+    }
+
+    @Test
+    public void newEventObjectsDifferingOnlyInRequestIdAreSentOnce() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+        final String otherObject = awsNotFound("11111111-2222-3333-4444-555555555555").replace("does-not-exist", "redcap");
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            final KubernetesInformerImpl.PodWarningEventHandler handler =
+                    new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod(), new PodWarningDeduplicator());
+            handler.onAdd(newPodEvent(POD_NAME, "18a1b2c3", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+            handler.onAdd(newPodEvent(POD_NAME, "18a1b2c4", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")));
+            handler.onAdd(newPodEvent(POD_NAME, "18a1b2c5", otherObject));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()), times(2));
+        }
+        assertThat("the first message is recorded as received", sent.getAllValues().get(0).getPodPhaseReason(),
+                is(awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+        assertThat(sent.getAllValues().get(1).getPodPhaseReason(), is(otherObject));
+    }
+
+    @Test
+    public void deletingThePodForgetsItsLastWarning() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final PodWarningDeduplicator deduplicator = new PodWarningDeduplicator();
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            final KubernetesInformerImpl.PodWarningEventHandler warnings =
+                    new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod(), deduplicator);
+            warnings.onAdd(newPodEvent(POD_NAME, "18a1b2c3", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+            new KubernetesInformerImpl.PodEventHandler(template, deduplicator).onDelete(finishedPod(POD_NAME), false);
+            warnings.onAdd(newPodEvent(POD_NAME, "18a1b2c4", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), any()), times(2));
+        }
+    }
+
+    @Test
+    public void warningsOfDifferentPodsAreDeduplicatedIndependently() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            final KubernetesInformerImpl.PodWarningEventHandler handler =
+                    new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod(), new PodWarningDeduplicator());
+            handler.onAdd(newPodEvent(POD_NAME, "18a1b2c3", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+            handler.onAdd(newPodEvent(JOB_NAME + "-q9w8e", "18a1b2c4", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()), times(2));
+        }
+        assertThat(sent.getAllValues().get(1).getPodName(), is(JOB_NAME + "-q9w8e"));
+    }
+
+    @Test
+    public void clearingTheDeduplicatorForgetsEveryPod() {
+        final PodWarningDeduplicator deduplicator = new PodWarningDeduplicator();
+        assertThat(deduplicator.isRepeat("xnat-proj01", POD_NAME, "FailedMount", "m"), is(false));
+        assertThat(deduplicator.isRepeat("xnat-proj01", POD_NAME, "FailedMount", "m"), is(true));
+        assertThat("another reason is tracked separately", deduplicator.isRepeat("xnat-proj01", POD_NAME, "FailedScheduling", "m"), is(false));
+        deduplicator.clear();
+        assertThat(deduplicator.isRepeat("xnat-proj01", POD_NAME, "FailedMount", "m"), is(false));
     }
 
     // ---- one informer group per namespace ----

@@ -138,7 +138,9 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 | `CSI token error` and `tokenRequests` | The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com |
 
 Other messages are recorded unchanged. Repeated kubelet retries whose message differs only in the AWS `RequestID` are
-recorded once in the container history (the event count shown by `kubectl get events` still increases).
+recorded once in the container history, whether the kubelet updates the existing Event or creates a new one (the
+events listed by `kubectl get events` still grow); the same warning is recorded again only after a different one for
+that pod and reason, or once the pod is deleted.
 
 When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
 Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and

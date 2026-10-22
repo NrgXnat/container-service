@@ -135,6 +135,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
      */
     private final class InformerNamespaceWatch implements NamespaceWatch {
         private final SharedInformerFactory sharedInformerFactory;
+        private final PodWarningDeduplicator warningDeduplicator = new PodWarningDeduplicator();
 
         private InformerNamespaceWatch(final String namespace) {
             // Pods and pod events only. The former job informer fed a Lister nobody read; dropping it also drops the
@@ -146,7 +147,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                     (CallGeneratorParams params) -> coreApi.listNamespacedPodCall(namespace, null, null, null, null, null, null,
                             params.resourceVersion, null, params.timeoutSeconds, params.watch, null),
                     V1Pod.class, V1PodList.class, RESYNC_DISABLED);
-            podInformer.addEventHandler(new PodEventHandler(template));
+            podInformer.addEventHandler(new PodEventHandler(template, warningDeduplicator));
             final Lister<V1Pod> podLister = new Lister<>(podInformer.getIndexer(), namespace);
 
             // Pod warning events (FailedMount, FailedAttachVolume, ...) never show up in pod status,
@@ -155,7 +156,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                     (CallGeneratorParams params) -> coreApi.listNamespacedEventCall(namespace, null, null, null, "involvedObject.kind=Pod",
                             null, null, params.resourceVersion, null, params.timeoutSeconds, params.watch, null),
                     CoreV1Event.class, CoreV1EventList.class, RESYNC_DISABLED);
-            eventInformer.addEventHandler(new PodWarningEventHandler(template, podLister::get));
+            eventInformer.addEventHandler(new PodWarningEventHandler(template, podLister::get, warningDeduplicator));
         }
 
         @Override
@@ -167,6 +168,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
         public void stop() {
             // false: the executor is XNAT's shared pool, owned by the caller, not by this group.
             sharedInformerFactory.stopAllRegisteredInformers(false);
+            warningDeduplicator.clear();
         }
     }
 
@@ -192,9 +194,15 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
     static class PodEventHandler implements ResourceEventHandler<V1Pod> {
         private final JmsTemplate template;
+        private final PodWarningDeduplicator warningDeduplicator;
 
         PodEventHandler(final JmsTemplate template) {
+            this(template, new PodWarningDeduplicator());
+        }
+
+        PodEventHandler(final JmsTemplate template, final PodWarningDeduplicator warningDeduplicator) {
             this.template = template;
+            this.warningDeduplicator = warningDeduplicator;
         }
 
         private static KubernetesStatusChangeEvent createEvent(V1Pod pod) {
@@ -327,6 +335,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         @Override
         public void onDelete(V1Pod obj, boolean deletedFinalStateUnknown) {
+            warningDeduplicator.forgetPod(objNamespace(obj), objName(obj));
             final V1ObjectMeta meta = obj.getMetadata();
             final String resourceVersion = meta != null && meta.getResourceVersion() != null
                     ? meta.getResourceVersion() : "<unknown>";
@@ -366,10 +375,17 @@ public class KubernetesInformerImpl implements KubernetesInformer {
 
         private final JmsTemplate template;
         private final Function<String, V1Pod> podLookup;
+        private final PodWarningDeduplicator warningDeduplicator;
 
         PodWarningEventHandler(final JmsTemplate template, final Function<String, V1Pod> podLookup) {
+            this(template, podLookup, new PodWarningDeduplicator());
+        }
+
+        PodWarningEventHandler(final JmsTemplate template, final Function<String, V1Pod> podLookup,
+                               final PodWarningDeduplicator warningDeduplicator) {
             this.template = template;
             this.podLookup = podLookup;
+            this.warningDeduplicator = warningDeduplicator;
         }
 
         /** The message without parts that change on every retry, for comparing repeats; never recorded. */
@@ -392,6 +408,12 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             final V1Pod pod = podLookup.apply(event.getInvolvedObject().getName());
             final String jobName = pod == null ? null : jobNameFromPodLabels(pod);
             if (jobName == null) {
+                return;
+            }
+            // A retry with a new message (e.g. a fresh request id) arrives as a new Event object, so compare across Events too
+            if (warningDeduplicator.isRepeat(objNamespace(event), event.getInvolvedObject().getName(), event.getReason(),
+                    normalizeWarningMessage(event.getMessage()))) {
+                log.debug("Skipping repeated {} warning for pod {}", event.getReason(), event.getInvolvedObject().getName());
                 return;
             }
             final OffsetDateTime timestamp = event.getLastTimestamp() != null ? event.getLastTimestamp() : event.getEventTime();
