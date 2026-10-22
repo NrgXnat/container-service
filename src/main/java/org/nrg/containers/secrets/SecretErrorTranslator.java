@@ -110,15 +110,14 @@ public final class SecretErrorTranslator {
 
     public static String translateCreateJobFailure(final ApiException e, final String namespace) {
         final String raw = apiMessage(e);
-        switch (e.getCode()) {
-            case 404:
-                return "Namespace \"" + namespace + "\" does not exist: onboard the project before launching (Kubernetes: " + raw + ")";
-            case 403:
-                return "The Container Service identity cannot create jobs in namespace \"" + namespace
-                        + "\": it has no RoleBinding there (Kubernetes: " + raw + ")";
-            default:
-                return "Could not create job in namespace \"" + namespace + "\": " + raw;
+        if (e.getCode() == 404 && raw.contains("namespaces \"" + namespace + "\" not found")) {
+            return "Namespace \"" + namespace + "\" does not exist: onboard the project before launching (Kubernetes: " + raw + ")";
         }
+        if (e.getCode() == 403 && (raw.contains("is forbidden: User") || raw.contains("cannot create resource \"jobs\""))) {
+            return "The Container Service identity cannot create jobs in namespace \"" + namespace
+                    + "\": it has no RoleBinding there (Kubernetes: " + raw + ")";
+        }
+        return "Could not create job in namespace \"" + namespace + "\": " + raw;
     }
 
     public static SecretProviderClassCheck translateSecretProviderClassLookup(final ApiException e, final String namespace, final String name) {

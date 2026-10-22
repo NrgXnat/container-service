@@ -45,6 +45,21 @@ public class SecretErrorTranslatorTest {
     }
 
     @Test
+    public void createJobNotFoundFromAReverseProxyIsNotAMissingNamespace() {
+        final ApiException proxy404 = new ApiException("Not Found", 404, Collections.<String, List<String>>emptyMap(),
+                "<html><body><h1>404 Not Found</h1></body></html>");
+        assertThat(SecretErrorTranslator.translateCreateJobFailure(proxy404, "xnat-proj02"),
+                is("Could not create job in namespace \"xnat-proj02\": Not Found"));
+    }
+
+    @Test
+    public void createJobForbiddenByAnAdmissionWebhookIsNotAMissingRoleBinding() {
+        final String webhook = "admission webhook \"validate.kyverno.svc-fail\" denied the request: policy require-labels/check-team failed";
+        assertThat(SecretErrorTranslator.translateCreateJobFailure(apiException(403, webhook), "xnat-proj02"),
+                is("Could not create job in namespace \"xnat-proj02\": " + webhook));
+    }
+
+    @Test
     public void otherCreateJobFailuresKeepTheOriginalMessage() {
         final String translated = SecretErrorTranslator.translateCreateJobFailure(apiException(422, "Job.batch \"x\" is invalid"), "ctx");
         assertThat(translated, is("Could not create job in namespace \"ctx\": Job.batch \"x\" is invalid"));
