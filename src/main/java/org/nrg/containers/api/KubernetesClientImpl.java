@@ -7,6 +7,7 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Affinity;
 import io.kubernetes.client.openapi.models.V1AffinityBuilder;
 import io.kubernetes.client.openapi.models.V1ContainerPort;
@@ -44,6 +45,7 @@ import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
 import org.nrg.containers.secrets.FileResolvedSecret;
 import org.nrg.containers.secrets.SecretErrorTranslator;
+import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.containers.utils.KubernetesConfiguration;
 import org.nrg.containers.utils.ShellSplitter;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -88,12 +90,17 @@ public class KubernetesClientImpl implements KubernetesClient {
 
     public static final String CSI_SECRETS_STORE_DRIVER = "secrets-store.csi.k8s.io";
 
+    public static final String SPC_GROUP   = "secrets-store.csi.x-k8s.io";
+    public static final String SPC_VERSION = "v1";
+    public static final String SPC_PLURAL  = "secretproviderclasses";
+
     private final ExecutorService executorService;
     private final JmsTemplate     template;
 
     private ApiClient          apiClient;
     private CoreV1Api          coreApi;
     private BatchV1Api         batchApi;
+    private CustomObjectsApi   customObjectsApi;
     private final String       contextNamespace;
     private KubernetesInformer kubernetesInformer = null;
 
@@ -154,8 +161,9 @@ public class KubernetesClientImpl implements KubernetesClient {
     @Override
     public void setBackendClient(ApiClient apiClient) {
         this.apiClient = apiClient;
-        coreApi        = new CoreV1Api(apiClient);
-        batchApi       = new BatchV1Api(apiClient);
+        coreApi          = new CoreV1Api(apiClient);
+        batchApi         = new BatchV1Api(apiClient);
+        customObjectsApi = new CustomObjectsApi(apiClient);
 
         restart();
     }
@@ -239,6 +247,18 @@ public class KubernetesClientImpl implements KubernetesClient {
             throw new ContainerBackendException(e);
         }
         return "OK";
+    }
+
+    @Override
+    public SecretProviderClassCheck secretProviderClassExists(@Nullable final String namespace, final String name) {
+        final String effective = effectiveNamespace(namespace);
+        try {
+            customObjectsApi.getNamespacedCustomObject(SPC_GROUP, SPC_VERSION, effective, SPC_PLURAL, name);
+            return SecretProviderClassCheck.exists();
+        } catch (ApiException e) {
+            log.debug("SecretProviderClass {}/{} lookup failed: code {} body {}", effective, name, e.getCode(), e.getResponseBody());
+            return SecretErrorTranslator.translateSecretProviderClassLookup(e, effective, name);
+        }
     }
 
     @Override

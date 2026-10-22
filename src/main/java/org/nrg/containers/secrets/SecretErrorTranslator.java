@@ -28,6 +28,22 @@ public final class SecretErrorTranslator {
         }
     }
 
+    public static SecretProviderClassCheck translateSecretProviderClassLookup(final ApiException e, final String namespace, final String name) {
+        final String raw = apiMessage(e);
+        if (e.getCode() == 404 && raw.contains("\"" + name + "\" not found")) {
+            return SecretProviderClassCheck.missing("SecretProviderClass \"" + name + "\" does not exist in namespace \"" + namespace
+                    + "\": check the secret name template or create the object (Kubernetes: " + raw + ")");
+        }
+        if (e.getCode() == 404) {
+            return SecretProviderClassCheck.undetermined("The Secrets Store CSI driver is not installed in the cluster: the secretproviderclasses resource is unknown (Kubernetes: " + raw + ")");
+        }
+        if (e.getCode() == 403) {
+            return SecretProviderClassCheck.undetermined("The Container Service identity lacks get permission on secretproviderclasses in namespace \"" + namespace
+                    + "\": add it to the xnat-cs Role (Kubernetes: " + raw + ")");
+        }
+        return SecretProviderClassCheck.undetermined("Could not check SecretProviderClass \"" + name + "\" in namespace \"" + namespace + "\": " + raw);
+    }
+
     /** The Status object's message when the body is one, else the exception message. */
     static String apiMessage(final ApiException e) {
         final String body = e.getResponseBody();

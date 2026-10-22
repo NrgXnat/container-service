@@ -3,6 +3,7 @@ package org.nrg.containers.secrets;
 import io.kubernetes.client.openapi.ApiException;
 import org.junit.Test;
 
+import java.net.SocketTimeoutException;
 import java.util.Collections;
 import java.util.List;
 
@@ -45,5 +46,38 @@ public class SecretErrorTranslatorTest {
     public void otherCreateJobFailuresKeepTheOriginalMessage() {
         final String translated = SecretErrorTranslator.translateCreateJobFailure(apiException(422, "Job.batch \"x\" is invalid"), "ctx");
         assertThat(translated, is("Could not create job in namespace \"ctx\": Job.batch \"x\" is invalid"));
+    }
+
+    @Test
+    public void secretProviderClassNotFoundIsMissing() {
+        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(
+                apiException(404, "secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" not found"), "xnat-proj01", "xnat-proj01-redcap");
+        assertThat(check.result(), is(SecretProviderClassCheck.Result.MISSING));
+        assertThat(check.reason(), containsString("SecretProviderClass \"xnat-proj01-redcap\" does not exist in namespace \"xnat-proj01\""));
+    }
+
+    @Test
+    public void missingCrdIsUndetermined() {
+        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(
+                apiException(404, "the server could not find the requested resource"), "xnat-proj01", "xnat-proj01-redcap");
+        assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
+        assertThat(check.reason(), containsString("Secrets Store CSI driver is not installed"));
+    }
+
+    @Test
+    public void forbiddenLookupIsUndetermined() {
+        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(apiException(403,
+                "secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" is forbidden: User \"system:serviceaccount:xnat-proj01:xnat-cs\" cannot get resource \"secretproviderclasses\" in API group \"secrets-store.csi.x-k8s.io\" in the namespace \"xnat-proj01\""),
+                "xnat-proj01", "xnat-proj01-redcap");
+        assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
+        assertThat(check.reason(), containsString("get permission on secretproviderclasses in namespace \"xnat-proj01\""));
+    }
+
+    @Test
+    public void timeoutIsUndeterminedWithTheRawMessage() {
+        final ApiException timeout = new ApiException(new SocketTimeoutException("timeout"));
+        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(timeout, "xnat-proj01", "xnat-proj01-redcap");
+        assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
+        assertThat(check.reason(), containsString("Could not check SecretProviderClass \"xnat-proj01-redcap\""));
     }
 }
