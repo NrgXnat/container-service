@@ -309,6 +309,12 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             final String oldPhase = oldObj.getStatus() != null && oldObj.getStatus().getPhase() != null
                     ? oldObj.getStatus().getPhase() : "<unknown>";
 
+            // Mirrors the history's clear on Running: a later re-mount failure (e.g. after a kubelet restart) is new again
+            if (KubernetesPodPhase.fromString(newPhase) == KubernetesPodPhase.RUNNING
+                    && KubernetesPodPhase.fromString(oldPhase) != KubernetesPodPhase.RUNNING) {
+                warningDeduplicator.forgetPod(objNamespace(newObj), objName(newObj));
+            }
+
             final String oldVersion = oldMeta.getResourceVersion();
             final String newVersion = newMeta.getResourceVersion();
 
@@ -430,7 +436,13 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                     .namespace(objNamespace(event))
                     .build();
             log.debug("Triggering event {}", statusEvent);
-            QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, statusEvent);
+            try {
+                QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, statusEvent);
+            } catch (RuntimeException e) {
+                // Not queued, so not seen: the next retry must be sent, or the history and watchdog never hear of it
+                warningDeduplicator.forget(objNamespace(event), event.getInvolvedObject().getName(), event.getReason());
+                throw e;
+            }
         }
 
         @Override

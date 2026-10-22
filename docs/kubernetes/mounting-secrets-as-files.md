@@ -140,7 +140,7 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 Other messages are recorded unchanged. Repeated kubelet retries whose message differs only in the AWS `RequestID` are
 recorded once in the container history, whether the kubelet updates the existing Event or creates a new one (the
 events listed by `kubectl get events` still grow); the same warning is recorded again only after a different one for
-that pod and reason, or once the pod is deleted.
+that pod and reason, once the pod is running, or once it is deleted.
 
 When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
 Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and

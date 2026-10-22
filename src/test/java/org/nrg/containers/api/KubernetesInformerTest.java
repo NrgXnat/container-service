@@ -331,6 +331,69 @@ public class KubernetesInformerTest {
         assertThat(deduplicator.isRepeat("xnat-proj01", POD_NAME, "FailedMount", "m"), is(false));
     }
 
+    /** A warning that could not be queued must not count as seen, or it never reaches history and the watchdog never starts. */
+    @Test
+    public void warningThatFailedToQueueIsSentAgain() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            mockedQueueUtils.when(() -> QueueUtils.sendJmsRequest(any(), any(), any()))
+                    .thenThrow(new IllegalStateException("broker down"))
+                    .thenAnswer(invocation -> null);
+            final KubernetesInformerImpl.PodWarningEventHandler handler =
+                    new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod(), new PodWarningDeduplicator());
+            try {
+                handler.onAdd(newPodEvent(POD_NAME, "18a1b2c3", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+                fail("the send failure is rethrown");
+            } catch (IllegalStateException expected) {
+                assertThat(expected.getMessage(), is("broker down"));
+            }
+            handler.onAdd(newPodEvent(POD_NAME, "18a1b2c4", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), any()), times(2));
+        }
+    }
+
+    /** Mirrors the history's clear on Running: a re-mount failure after a kubelet restart is recorded and re-arms the watchdog. */
+    @Test
+    public void podTurningRunningForgetsItsLastWarning() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final PodWarningDeduplicator deduplicator = new PodWarningDeduplicator();
+        final V1Pod pending = trackedPod().status(new V1PodStatus().phase("Pending"));
+        pending.getMetadata().resourceVersion("1");
+        final V1Pod running = trackedPod().status(new V1PodStatus().phase("Running"));
+        running.getMetadata().resourceVersion("2");
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            final KubernetesInformerImpl.PodWarningEventHandler warnings =
+                    new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod(), deduplicator);
+            warnings.onAdd(newPodEvent(POD_NAME, "18a1b2c3", awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")));
+            new KubernetesInformerImpl.PodEventHandler(template, deduplicator).onUpdate(pending, running);
+            warnings.onAdd(newPodEvent(POD_NAME, "18a1b2c4", awsNotFound("0a1b2c3d-4e5f-6789-abcd-ef0123456789")));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()), times(3));
+        }
+        assertThat("both warnings and the Running status were queued", sent.getAllValues().get(2).getWarningReason(), is("FailedMount"));
+        assertThat(sent.getAllValues().get(1).getPodPhase(), is(KubernetesPodPhase.RUNNING));
+    }
+
+    @Test
+    public void forgettingAPodLeavesPodsWithALongerNameAlone() {
+        final PodWarningDeduplicator deduplicator = new PodWarningDeduplicator();
+        deduplicator.isRepeat("ns", "x", "FailedMount", "m");
+        deduplicator.isRepeat("ns", "x-longer", "FailedMount", "m");
+        deduplicator.forgetPod("ns", "x");
+        assertThat(deduplicator.isRepeat("ns", "x", "FailedMount", "m"), is(false));
+        assertThat(deduplicator.isRepeat("ns", "x-longer", "FailedMount", "m"), is(true));
+    }
+
+    @Test
+    public void forgettingOneReasonLeavesTheOthers() {
+        final PodWarningDeduplicator deduplicator = new PodWarningDeduplicator();
+        deduplicator.isRepeat("ns", "x", "FailedMount", "m");
+        deduplicator.isRepeat("ns", "x", "FailedScheduling", "m");
+        deduplicator.forget("ns", "x", "FailedMount");
+        assertThat(deduplicator.isRepeat("ns", "x", "FailedMount", "m"), is(false));
+        assertThat(deduplicator.isRepeat("ns", "x", "FailedScheduling", "m"), is(true));
+    }
+
     // ---- one informer group per namespace ----
 
     /** Replaces the real list/watch group so these tests never touch the network. */
