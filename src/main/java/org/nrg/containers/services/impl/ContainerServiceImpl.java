@@ -180,8 +180,6 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     public static final String containerLaunchJustification = "Container launch";
     public static final String TO_BE_ASSIGNED = "To be assigned";
     static final String SECRET_MOUNT_TIMEOUT_PREFIX = "Secret mount timed out after ";
-    /** Prefix of the podPhaseReason KubernetesInformerImpl.PodEventHandler.onDelete puts on its synthetic FAILED event. */
-    static final String POD_DELETED_UNEXPECTEDLY_PREFIX = "Pod was deleted unexpectedly";
     /** Entity type ContainerHistory.fromUserAction records. */
     private static final String USER_ENTITY_TYPE = "user";
     /** Failed attempts (user lookup or Job delete) after which the watchdog gives up on a timed-out container. */
@@ -896,10 +894,10 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
             return;
         }
 
-        if (kEvent != null && isDeleteAfterSecretMountTimeout(kEvent, container)) {
-            // The watchdog deleted the job after queueing finalize. Status is "_Pending" (or already Failed), which
-            // isFinalizing() does not cover, so without this the onDelete FAILED event would finalize a second time.
-            log.debug("Container {}: pod deleted by the secret mount watchdog, finalize already queued; ignoring {}", container.databaseId(), event);
+        if (kEvent != null && isEventAfterSecretMountTimeout(kEvent, container)) {
+            // The watchdog queued finalize and deleted the job. Status is "_Pending" (or already terminal), which
+            // isFinalizing() does not cover, so without this any later pod event would finalize a second time.
+            log.debug("Container {}: secret mount watchdog already finalized; ignoring pod event {}", container.databaseId(), kEvent);
             return;
         }
 
@@ -1069,13 +1067,16 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     }
 
     /**
-     * The job was deleted by the watchdog after finalize was queued; the pod's synthetic FAILED event is not news.
-     * Only the watchdog's own delete: a user kill maps the status to "Failed (Killed)", which is terminal, and is
-     * finalized only through this very onDelete event, so a container with a user kill entry must pass through.
+     * Once the secret mount watchdog has queued finalize (and then deleted the job), that finalize is the single
+     * source of truth for the container. Every later pod event is noise: the synthetic onDelete FAILED event, the
+     * genuine FAILED / ContainerStatusUnknown / 137 event the informer delivers after the delete, and repeated
+     * FailedMount warnings. Recording any of them would add history and finalize a second time.
+     * A user kill still passes: it maps the status to "Failed (Killed)", which is terminal, and is finalized only
+     * through the onDelete event, so a container with a user kill entry must not be swallowed.
+     * The event parameter keeps this guard Kubernetes-only.
      */
-    private boolean isDeleteAfterSecretMountTimeout(final KubernetesStatusChangeEvent kEvent, final Container container) {
-        return kEvent.getPodPhaseReason() != null
-                && kEvent.getPodPhaseReason().startsWith(POD_DELETED_UNEXPECTEDLY_PREFIX)
+    private boolean isEventAfterSecretMountTimeout(final KubernetesStatusChangeEvent kEvent, final Container container) {
+        return kEvent != null
                 && hasSecretMountTimeoutEntry(container)
                 && (isQueuedOrFinalizing(container) || container.statusIsTerminal())
                 && !hasUserKillEntry(container);

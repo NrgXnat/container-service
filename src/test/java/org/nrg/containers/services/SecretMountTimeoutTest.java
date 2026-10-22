@@ -325,6 +325,50 @@ public class SecretMountTimeoutTest {
         assertThat(finalizeRequests, is(Collections.singletonList("1")));
     }
 
+    private static KubernetesStatusChangeEvent podFailedContainerStatusUnknownEvent() {
+        return KubernetesStatusChangeEvent.builder()
+                .jobName(JOB_NAME).podName(JOB_NAME + "-x7k2p").namespace("xnat-proj01")
+                .podPhase(KubernetesPodPhase.FAILED).exitCode(137)
+                .podPhaseReason("ContainerStatusUnknown")
+                .timestamp(OffsetDateTime.ofInstant(T0.plusSeconds(710), ZoneOffset.UTC))
+                .build();
+    }
+
+    /**
+     * After deleteJobAndClear the pod informer also delivers a genuine FAILED / ContainerStatusUnknown / 137 event,
+     * not only the synthetic onDelete one. Once the watchdog's finalize has run it is the single source of truth,
+     * so this event (and any repeated FailedMount warning) must add no history and queue no second finalize.
+     */
+    @Test
+    public void podFailedEventAfterTimeoutIsIgnoredWhenAlreadyFailed() throws Exception {
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofSeconds(601));
+        watchdog.tick();
+        entity.setStatus("Failed");
+        final int historyBefore = entity.getHistory().size();
+
+        containerService.processEvent(podFailedContainerStatusUnknownEvent());
+        assertThat(entity.getHistory().size(), is(historyBefore));
+        assertThat(finalizeRequests, is(Collections.singletonList("1")));
+
+        containerService.processEvent(failedMount(SECRET_MISSING, T0.plusSeconds(60)));
+        assertThat("a repeated FailedMount warning is noise too", entity.getHistory().size(), is(historyBefore));
+    }
+
+    /** Same event delivered while the watchdog's finalize is still queued ("_Pending"). */
+    @Test
+    public void podFailedEventAfterTimeoutIsIgnoredWhileQueued() throws Exception {
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofSeconds(601));
+        watchdog.tick();
+        final int historyBefore = entity.getHistory().size();
+
+        containerService.processEvent(podFailedContainerStatusUnknownEvent());
+
+        assertThat(entity.getHistory().size(), is(historyBefore));
+        assertThat(finalizeRequests, is(Collections.singletonList("1")));
+    }
+
     /** Registers the failed mount and moves the clock past the timeout; the next tick hands the entry to the service. */
     private void timedOutEntry() {
         containerService.processEvent(failedMount(SECRET_MISSING, T0));
