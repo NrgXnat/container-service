@@ -195,9 +195,13 @@ public class HibernateContainerEntityService
     @Override
     @Nullable
     public ContainerEntity addContainerEventToHistory(final ContainerEntity containerEntity, final ContainerEvent containerEvent, final UserI userI) {
-        final ContainerEntityHistory added = addContainerHistoryItem(containerEntity,
-                ContainerEntityHistory.fromContainerEvent(containerEvent, containerEntity), userI);
-        return added == null ? null : containerEntity; // Return null if we've already added the history item
+        // The caller may hand us a detached copy; record the event on the managed entity, whose status
+        // addContainerHistoryItem updates, and return that so the caller sees the new status.
+        final ContainerEntity managed = retrieve(containerEntity.getId());
+        final ContainerEntity target = managed == null ? containerEntity : managed;
+        final ContainerEntityHistory added = addContainerHistoryItem(target,
+                ContainerEntityHistory.fromContainerEvent(containerEvent, target), userI);
+        return added == null ? null : target; // Return null if we've already added the history item
     }
 
     @Override

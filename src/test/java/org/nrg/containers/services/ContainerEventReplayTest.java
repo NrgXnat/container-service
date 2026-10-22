@@ -76,6 +76,7 @@ public class ContainerEventReplayTest {
     @Mock private UserI user;
 
     private final List<Container> finalizeRequests = new ArrayList<>();
+    private final List<Boolean> finalizeSuccessFlags = new ArrayList<>();
 
     private ContainerService containerService;
     private MockedStatic<Users> mockedUsers;
@@ -103,6 +104,7 @@ public class ContainerEventReplayTest {
             public void queueFinalize(final String exitCodeString, final boolean isSuccessfulStatus,
                                       final Container containerOrService, final UserI userI) {
                 finalizeRequests.add(containerOrService);
+                finalizeSuccessFlags.add(isSuccessfulStatus);
             }
         };
     }
@@ -136,6 +138,8 @@ public class ContainerEventReplayTest {
         containerService.processEvent(succeededEvent());
 
         assertThat(finalizeRequests.size(), is(1));
+        // A pod that succeeded must finalize as Complete, not Failed
+        assertThat(finalizeSuccessFlags.get(0), is(true));
     }
 
     /** generateName suffixes can collide across namespaces; an event from another namespace is not ours. */
@@ -193,6 +197,8 @@ public class ContainerEventReplayTest {
                         return null;
                     }
                     containerEntity.addToHistory(historyItem);
+                    // The real service returns the entity carrying the new status; processEvent decides how to finalize from it
+                    containerEntity.setStatus(historyItem.getStatus());
                     return containerEntity;
                 });
     }
