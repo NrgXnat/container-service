@@ -498,7 +498,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             XNAT.ui.panel.input.text({
                                 name: 'secret-name-template',
                                 label: 'Secret name template',
-                                description: 'Name of the Secret / SecretProviderClass to mount. Placeholders: #PROJECT#, {identifier}, #<input name># (e.g. #session#). ' +
+                                description: 'Name of the Secret / SecretProviderClass to mount. Placeholders: #PROJECT#, {identifier}, #&lt;input name&gt;# (e.g. #session#). ' +
                                     'Blank means xnat-#PROJECT#-{identifier}. Must contain {identifier}.'
                             }),
                             XNAT.ui.panel.input.text({
