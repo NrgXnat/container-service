@@ -962,6 +962,61 @@ public class SecretsTest {
         }
     }
 
+    /**
+     * Guards NFR-6: an upgraded site that configures nothing must produce the same Job as before the file secret feature.
+     * The server carries only the pre-feature fields and the container has no secrets and no namespace, so the Job
+     * must match what the base code built: no service account, no secret or CSI volumes, no secret mounts, created
+     * in the client's context namespace, and the base TTL, backoff and suspend values.
+     */
+    @Test
+    public void testUnconfiguredSiteProducesThePreFeatureKubernetesJob() throws Exception {
+        final String contextNamespace = "ctx-" + RandomStringUtils.randomAlphabetic(5).toLowerCase();
+        final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
+        kubernetesClientWithMockedApi(contextNamespace, batchApi);
+        Mockito.when(batchApi.createNamespacedJob(Mockito.anyString(), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
+                .thenAnswer((Answer<V1Job>) invocation -> invocation.getArgument(1, V1Job.class));
+
+        final DockerServerBase.DockerServer server = DockerServerBase.DockerServer.builder()
+                .name("k8s")
+                .host("")
+                .backend(Backend.KUBERNETES)
+                .build();
+        final Container toCreate = Container.builder()
+                .wrapperId(0L).commandId(0L)
+                .dockerImage("busybox:latest")
+                .commandLine("true")
+                .backend(Backend.KUBERNETES)
+                .userId(userId)
+                .build();
+
+        Mockito.when(kubernetesClient.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
+        kubernetesClient.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server);
+
+        final ArgumentCaptor<String> namespaceCaptor = ArgumentCaptor.forClass(String.class);
+        final ArgumentCaptor<V1Job> jobCaptor = ArgumentCaptor.forClass(V1Job.class);
+        Mockito.verify(batchApi).createNamespacedJob(namespaceCaptor.capture(), jobCaptor.capture(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
+        final V1Job job = jobCaptor.getValue();
+
+        // The namespace is chosen by the create call, never written into the Job metadata.
+        assertThat(namespaceCaptor.getValue(), is(contextNamespace));
+        assertThat(job.getMetadata().getNamespace(), is(nullValue()));
+
+        final V1JobSpec jobSpec = job.getSpec();
+        assertThat(jobSpec.getBackoffLimit(), is(0));
+        assertThat(jobSpec.getSuspend(), is(true));
+        assertThat(jobSpec.getTtlSecondsAfterFinished(), is(604800));
+
+        final V1PodSpec podSpec = jobSpec.getTemplate().getSpec();
+        assertThat(podSpec.getServiceAccountName(), is(nullValue()));
+        assertThat(podSpec.getRestartPolicy(), is("Never"));
+        // No secret, CSI or any other volume: nothing in this container asks for one.
+        assertThat(podSpec.getVolumes(), anyOf(nullValue(), empty()));
+
+        assertThat(podSpec.getContainers(), hasSize(1));
+        // No /run/secrets mount, nor any other.
+        assertThat(podSpec.getContainers().get(0).getVolumeMounts(), anyOf(nullValue(), empty()));
+    }
+
     /** FR-15: both kinds in one command resolve independently and the Kubernetes job carries both. */
     @Test
     public void testKubernetesJobWithMixedEnvAndFileSecrets() throws Exception {
