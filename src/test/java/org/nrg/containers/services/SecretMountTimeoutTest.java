@@ -13,6 +13,7 @@ import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.KubernetesContainerState;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
+import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.Container.ContainerHistory;
 import org.nrg.containers.model.container.entity.ContainerEntity;
@@ -26,8 +27,10 @@ import org.nrg.containers.secrets.K8sSecretSource;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
 import org.nrg.containers.tasks.SecretMountWatchdog;
+import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
+import org.nrg.xdat.security.user.exceptions.UserNotFoundException;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.security.UserI;
 import org.nrg.xnat.services.XnatAppInfo;
@@ -51,6 +54,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -317,5 +321,91 @@ public class SecretMountTimeoutTest {
 
         assertThat(entity.getHistory().size(), is(historyBefore));
         assertThat(finalizeRequests, is(Collections.singletonList("1")));
+    }
+
+    /** Registers the failed mount and moves the clock past the timeout; the next tick hands the entry to the service. */
+    private void timedOutEntry() {
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofSeconds(601));
+    }
+
+    private void assertNothingWritten() {
+        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
+        assertThat(finalizeRequests.isEmpty(), is(true));
+    }
+
+    @Test
+    public void containerGoneClearsTheEntry() {
+        timedOutEntry();
+        when(containerEntityService.retrieve(DB_ID)).thenReturn(null);
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+        assertNothingWritten();
+    }
+
+    @Test
+    public void terminalContainerIsClearedWithoutHistoryOrFinalize() {
+        timedOutEntry();
+        entity.setStatus("Failed (Exited)");
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+        assertNothingWritten();
+    }
+
+    @Test
+    public void runningContainerIsClearedWithoutHistoryOrFinalize() {
+        timedOutEntry();
+        entity.setStatus(KubernetesPodPhase.RUNNING.toString());
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+        assertNothingWritten();
+    }
+
+    @Test
+    public void containerQueuedOnAnEarlierTickOnlyRetriesTheDelete() throws Exception {
+        timedOutEntry();
+        entity.setStatus("_" + KubernetesPodPhase.PENDING);
+        watchdog.tick();
+        verify(containerControlApi).kill(any(Container.class));
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+        assertNothingWritten();
+    }
+
+    @Test
+    public void failedDeleteKeepsTheEntryForTheNextTick() throws Exception {
+        timedOutEntry();
+        doThrow(new ContainerBackendException("api down")).when(containerControlApi).kill(any(Container.class));
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(true));
+    }
+
+    @Test
+    public void jobAlreadyGoneClearsTheEntry() throws Exception {
+        timedOutEntry();
+        doThrow(new NotFoundException("no such job")).when(containerControlApi).kill(any(Container.class));
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+    }
+
+    @Test
+    public void unknownUserKeepsTheEntryAndWritesNothing() {
+        timedOutEntry();
+        mockedUsers.when(() -> Users.getUser(USER_LOGIN)).thenThrow(UserNotFoundException.class);
+        watchdog.tick();
+        assertThat(watchdog.isTracking(DB_ID), is(true));
+        assertNothingWritten();
+    }
+
+    @Test
+    public void deleteThatKeepsFailingIsGivenUpAfterTheRetryCap() throws Exception {
+        timedOutEntry();
+        doThrow(new ContainerBackendException("api down")).when(containerControlApi).kill(any(Container.class));
+        for (int i = 1; i < 10; i++) {
+            watchdog.tick();
+        }
+        assertThat(watchdog.isTracking(DB_ID), is(true));
+        watchdog.tick();
+        assertThat("the Job needs manual cleanup; the entry is not retried forever", watchdog.isTracking(DB_ID), is(false));
+        verify(containerControlApi, times(10)).kill(any(Container.class));
     }
 }

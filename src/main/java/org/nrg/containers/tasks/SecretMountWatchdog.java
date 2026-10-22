@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tracks containers whose secret volume cannot be mounted and reports the ones that have been stuck longer than
@@ -51,6 +52,7 @@ public class SecretMountWatchdog implements InitializingBean, DisposableBean {
     private static final class Entry {
         private final Instant firstFailure;
         private final String translatedReason;
+        private final AtomicInteger failedAttempts = new AtomicInteger();
 
         private Entry(final Instant firstFailure, final String translatedReason) {
             this.firstFailure = firstFailure;
@@ -117,6 +119,12 @@ public class SecretMountWatchdog implements InitializingBean, DisposableBean {
         if (entries.remove(containerDbId) != null) {
             log.debug("Container {} no longer waiting on a secret mount", containerDbId);
         }
+    }
+
+    /** Counts a failed timeout-handling attempt; returns the total so far, or 0 when the container is not tracked. */
+    public int recordFailedAttempt(final long containerDbId) {
+        final Entry entry = entries.get(containerDbId);
+        return entry == null ? 0 : entry.failedAttempts.incrementAndGet();
     }
 
     public boolean isTracking(final long containerDbId) {

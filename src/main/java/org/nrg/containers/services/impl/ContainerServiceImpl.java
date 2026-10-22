@@ -184,6 +184,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     static final String POD_DELETED_UNEXPECTEDLY_PREFIX = "Pod was deleted unexpectedly";
     /** Entity type ContainerHistory.fromUserAction records. */
     private static final String USER_ENTITY_TYPE = "user";
+    /** Failed attempts (user lookup or Job delete) after which the watchdog gives up on a timed-out container. */
+    static final int MAX_SECRET_MOUNT_TIMEOUT_ATTEMPTS = 10;
 
     private static final String DATETIME_GROUP_NAME = "datetime";
     public static final Pattern DATETIME_AT_LINE_START = Pattern.compile("(?<=^|\\n)(?<" + DATETIME_GROUP_NAME + ">\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\S*) ");
@@ -995,6 +997,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
      * Watchdog callback. Order matters: history first, then queue finalize, then kill only once the finalize request
      * was accepted. Killing an unqueued job would make the pod's onDelete FAILED event look like a real failure.
      * While finalizing is throttled the entry stays and the next tick retries.
+     * The Pending check and queueFinalize are not atomic: a pod that turns Running in that millisecond window is
+     * finalized as failed, which is accepted by design.
      */
     void handleSecretMountTimeout(final long containerDbId, final int timeoutSeconds, final String translatedReason) {
         final Container container = retrieve(containerDbId);
@@ -1015,7 +1019,7 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         try {
             userI = Users.getUser(container.userId());
         } catch (UserInitException | UserNotFoundException e) {
-            log.error("Could not get user {} to time out container {}", container.userId(), containerDbId, e);
+            recordFailedSecretMountTimeoutAttempt(containerDbId, "get user " + container.userId(), e);
             return;
         }
         if (!hasSecretMountTimeoutEntry(container)) {
@@ -1039,10 +1043,24 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         } catch (NotFoundException e) {
             log.debug("Job of container {} is already gone", containerDbId);
         } catch (NoContainerServerException | ContainerBackendException e) {
-            log.error("Could not delete the job of timed-out container {}; will retry", containerDbId, e);
+            recordFailedSecretMountTimeoutAttempt(containerDbId, "delete the job", e);
             return;
         }
         secretMountWatchdog.clear(containerDbId);
+    }
+
+    /** Stack trace on the first failure only; after the cap the entry is dropped so a broken Job is not retried every minute forever. */
+    private void recordFailedSecretMountTimeoutAttempt(final long containerDbId, final String action, final Exception e) {
+        final int attempts = secretMountWatchdog.recordFailedAttempt(containerDbId);
+        if (attempts >= MAX_SECRET_MOUNT_TIMEOUT_ATTEMPTS) {
+            log.error("Could not {} for timed-out container {} after {} attempts; giving up, its Kubernetes Job needs manual cleanup: {}",
+                    action, containerDbId, attempts, e.toString());
+            secretMountWatchdog.clear(containerDbId);
+        } else if (attempts <= 1) {
+            log.error("Could not {} for timed-out container {}; will retry", action, containerDbId, e);
+        } else {
+            log.warn("Could not {} for timed-out container {} (attempt {}); will retry: {}", action, containerDbId, attempts, e.toString());
+        }
     }
 
     private static boolean hasSecretMountTimeoutEntry(final Container container) {
