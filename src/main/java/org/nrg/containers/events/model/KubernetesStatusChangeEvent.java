@@ -24,6 +24,10 @@ public class KubernetesStatusChangeEvent implements ContainerEvent {
     OffsetDateTime timestamp;
     String nodeId;
     String namespace;
+    /** Reason of a pod Warning Event (FailedMount, FailedAttachVolume, FailedScheduling); null for pod status changes. */
+    String warningReason;
+    /** When the warning first occurred (Event.firstTimestamp, falling back to eventTime then lastTimestamp); null otherwise. */
+    OffsetDateTime firstTimestamp;
 
     @Override
     public String backendId() {
@@ -58,15 +62,12 @@ public class KubernetesStatusChangeEvent implements ContainerEvent {
 
     @Override
     public String details() {
-        final String details;
-        if (podPhaseReason != null &&
-containerStateReason != null) {
-            details = "Pod: " + podPhaseReason + " Container: " + containerStateReason;
-        } else if (podPhaseReason != null) {
-            details = podPhaseReason;
-        } else {
-            details = containerStateReason;
+        if (warningReason != null) {
+            return warningReason + ": " + podPhaseReason;
         }
-        return details;
+        if (podPhaseReason != null && containerStateReason != null) {
+            return "Pod: " + podPhaseReason + " Container: " + containerStateReason;
+        }
+        return podPhaseReason != null ? podPhaseReason : containerStateReason;
     }
 }

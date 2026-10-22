@@ -385,11 +385,15 @@ public class KubernetesInformerImpl implements KubernetesInformer {
                 return;
             }
             final OffsetDateTime timestamp = event.getLastTimestamp() != null ? event.getLastTimestamp() : event.getEventTime();
+            final OffsetDateTime firstTimestamp = event.getFirstTimestamp() != null ? event.getFirstTimestamp()
+                    : event.getEventTime() != null ? event.getEventTime() : event.getLastTimestamp();
             final KubernetesStatusChangeEvent statusEvent = KubernetesStatusChangeEvent.builder()
                     .jobName(jobName)
                     .podName(event.getInvolvedObject().getName())
                     .podPhase(KubernetesPodPhase.PENDING)
-                    .podPhaseReason(event.getReason() + ": " + event.getMessage())
+                    .podPhaseReason(event.getMessage())
+                    .warningReason(event.getReason())
+                    .firstTimestamp(firstTimestamp)
                     .timestamp(timestamp)
                     .namespace(objNamespace(event))
                     .build();

@@ -34,6 +34,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
 
 public class KubernetesInformerTest {
     private static final String JOB_NAME = "container-service-job-abc123";
@@ -114,6 +115,45 @@ public class KubernetesInformerTest {
         assertThat(sent.details(), containsString("xnat-proj01-redcap\" not found"));
         assertThat(sent.externalTimestamp(), is(notNullValue()));
         assertThat(sent.getNamespace(), is("xnat-proj01"));
+    }
+
+    @Test
+    public void failedMountWarningCarriesReasonAndFirstTimestamp() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final OffsetDateTime first = OffsetDateTime.parse("2026-10-13T08:00:00Z");
+        final OffsetDateTime last = OffsetDateTime.parse("2026-10-13T08:09:00Z");
+        final CoreV1Event event = podEvent("Warning", "FailedMount", "MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found")
+                .firstTimestamp(first).lastTimestamp(last);
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod()).onAdd(event);
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()));
+        }
+
+        assertThat(sent.getValue().getWarningReason(), is("FailedMount"));
+        assertThat(sent.getValue().getFirstTimestamp(), is(first));
+        assertThat("the raw message is the pod phase reason, without the reason prefix",
+                sent.getValue().getPodPhaseReason(), is("MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found"));
+        assertThat("history text still starts with the reason", sent.getValue().details(), is("FailedMount: MountVolume.SetUp failed for volume \"secret-redcap\" : secret \"xnat-proj01-redcap\" not found"));
+    }
+
+    @Test
+    public void firstTimestampFallsBackToEventTimeThenLastTimestamp() {
+        final JmsTemplate template = mock(JmsTemplate.class);
+        final OffsetDateTime eventTime = OffsetDateTime.parse("2026-10-13T08:01:00Z");
+        final OffsetDateTime last = OffsetDateTime.parse("2026-10-13T08:09:00Z");
+        final ArgumentCaptor<KubernetesStatusChangeEvent> sent = ArgumentCaptor.forClass(KubernetesStatusChangeEvent.class);
+
+        try (final MockedStatic<QueueUtils> mockedQueueUtils = mockStatic(QueueUtils.class)) {
+            final KubernetesInformerImpl.PodWarningEventHandler handler = new KubernetesInformerImpl.PodWarningEventHandler(template, name -> trackedPod());
+            handler.onAdd(podEvent("Warning", "FailedMount", "m1").firstTimestamp(null).eventTime(eventTime).lastTimestamp(last));
+            handler.onAdd(podEvent("Warning", "FailedMount", "m2").firstTimestamp(null).eventTime(null).lastTimestamp(last));
+            mockedQueueUtils.verify(() -> QueueUtils.sendJmsRequest(eq(template), eq(ContainerEvent.QUEUE), sent.capture()), times(2));
+        }
+
+        assertThat(sent.getAllValues().get(0).getFirstTimestamp(), is(eventTime));
+        assertThat(sent.getAllValues().get(1).getFirstTimestamp(), is(last));
     }
 
     @Test
