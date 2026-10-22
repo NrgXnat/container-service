@@ -89,14 +89,16 @@ public class SecretErrorTranslatorTest {
         assertThat(check.reason(), containsString("Secrets Store CSI driver is not installed"));
     }
 
+    /** RBAC is evaluated before namespace existence, so a project that was never onboarded also answers 403. */
     @Test
-    public void forbiddenLookupIsUndetermined() {
-        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(apiException(403,
-                "secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj01-redcap\" is forbidden: User \"system:serviceaccount:xnat-proj01:xnat-cs\" cannot get resource \"secretproviderclasses\" in API group \"secrets-store.csi.x-k8s.io\" in the namespace \"xnat-proj01\""),
-                "xnat-proj01", "xnat-proj01-redcap");
+    public void forbiddenLookupPointsAtProjectOnboarding() {
+        final String raw = "secretproviderclasses.secrets-store.csi.x-k8s.io \"xnat-proj03-redcap\" is forbidden: User \"system:serviceaccount:xnat:xnat-cs\" cannot get resource \"secretproviderclasses\" in API group \"secrets-store.csi.x-k8s.io\" in the namespace \"xnat-proj03\"";
+        final SecretProviderClassCheck check = SecretErrorTranslator.translateSecretProviderClassLookup(apiException(403, raw),
+                "xnat-proj03", "xnat-proj03-redcap");
         assertThat(check.result(), is(SecretProviderClassCheck.Result.UNDETERMINED));
-        assertThat(check.reason(), containsString("get permission on secretproviderclasses in namespace \"xnat-proj01\""));
-        assertThat(check.reason(), containsString("grant get on secretproviderclasses to the Role bound to the Container Service's service account"));
+        assertThat(check.reason(), is("Namespace \"xnat-proj03\" does not exist, or the Container Service identity has no RoleBinding there granting get on secretproviderclasses:"
+                + " onboard the project (create the namespace, ServiceAccount and RoleBinding) or extend the Role bound to the Container Service's service account"
+                + " (Kubernetes: " + raw + ")"));
     }
 
     @Test

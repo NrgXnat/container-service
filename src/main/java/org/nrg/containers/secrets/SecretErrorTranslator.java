@@ -141,9 +141,11 @@ public final class SecretErrorTranslator {
         if (e.getCode() == 404) {
             return SecretProviderClassCheck.undetermined("The Secrets Store CSI driver is not installed in the cluster: the secretproviderclasses resource is unknown (Kubernetes: " + raw + ")");
         }
+        // RBAC is evaluated before namespace existence, so 403 also means the project was never onboarded.
         if (e.getCode() == 403) {
-            return SecretProviderClassCheck.undetermined("The Container Service identity lacks get permission on secretproviderclasses in namespace \"" + namespace
-                    + "\": grant get on secretproviderclasses to the Role bound to the Container Service's service account (Kubernetes: " + raw + ")");
+            return SecretProviderClassCheck.undetermined("Namespace \"" + namespace
+                    + "\" does not exist, or the Container Service identity has no RoleBinding there granting get on secretproviderclasses: "
+                    + ONBOARD_PROJECT + " or extend the Role bound to the Container Service's service account (Kubernetes: " + raw + ")");
         }
         return SecretProviderClassCheck.undetermined("Could not check SecretProviderClass \"" + name + "\" in namespace \"" + namespace + "\": " + raw);
     }

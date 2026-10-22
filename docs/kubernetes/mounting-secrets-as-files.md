@@ -76,7 +76,10 @@ edit Jobs with the same identity, and can be dropped for a stricter policy. The 
 namespace after it created a job there; a launch into a namespace that does not exist or has no RoleBinding fails
 with `Namespace "..." does not exist or the Container Service identity has no RoleBinding there` (Kubernetes evaluates
 RBAC before namespace existence, so an identity with only namespace-scoped RoleBindings gets 403 for a missing
-namespace too; only an identity with cluster-wide permissions gets `Namespace "..." does not exist`). Launches without a project
+namespace too; only an identity with cluster-wide permissions gets `Namespace "..." does not exist`). In csi mode an
+un-onboarded project fails earlier, at resolution (`Failed (Command resolution)`, no container record): the
+SecretProviderClass check runs before Job creation and its 403 reads `Namespace "..." does not exist, or the Container
+Service identity has no RoleBinding there granting get on secretproviderclasses`. Launches without a project
 (site-level) fail in per-project mode. After an XNAT restart the watches are re-registered from the namespaces of
 unfinished containers, so no re-onboarding is needed.
 
@@ -107,7 +110,7 @@ Secret name.
 
 | Stage | Where it shows |
 |-------|----------------|
-| Resolution (validation, csi SecretProviderClass missing or not checkable) | Launch response and workflow `Failed (Command resolution)`, no container record |
+| Resolution (validation, csi SecretProviderClass missing or not checkable, including a csi-mode project whose namespace is not onboarded) | Launch response and workflow `Failed (Command resolution)`, no container record |
 | Job creation (namespace missing or no RoleBinding: 403; namespace missing with cluster-wide permissions: 404) | Launch response and workflow `Failed (Container launch)` |
 | Mount (`FailedMount` events) | Container history; the watchdog fails the container after `secret-mount-timeout-seconds` |
 
@@ -118,7 +121,7 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 |-------------------------|----------|
 | SecretProviderClass lookup 404, object not found | SecretProviderClass "NAME" does not exist in namespace "NS": check the secret name template or create the object |
 | SecretProviderClass lookup 404, resource unknown | The Secrets Store CSI driver is not installed in the cluster: the secretproviderclasses resource is unknown |
-| SecretProviderClass lookup 403 | The Container Service identity lacks get permission on secretproviderclasses in namespace "NS": grant get on secretproviderclasses to the Role bound to the Container Service's service account |
+| SecretProviderClass lookup 403 (namespace missing, or no RoleBinding granting get on secretproviderclasses) | Namespace "NS" does not exist, or the Container Service identity has no RoleBinding there granting get on secretproviderclasses: onboard the project (create the namespace, ServiceAccount and RoleBinding) or extend the Role bound to the Container Service's service account |
 | Job create 404, namespace not found (identity with cluster-wide permissions) | Namespace "NS" does not exist: onboard the project (create the namespace, ServiceAccount and RoleBinding) |
 | Job create 403 | Namespace "NS" does not exist or the Container Service identity has no RoleBinding there: onboard the project (create the namespace, ServiceAccount and RoleBinding) |
 
