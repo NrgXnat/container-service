@@ -137,7 +137,8 @@ At resolution and job creation the Kubernetes API errors are translated, with th
 | `provider not found` | The Secrets Store CSI provider "PROVIDER" is not installed in the cluster |
 | `CSI token error` and `tokenRequests` | The Secrets Store CSI driver was installed without tokenRequests: reinstall or upgrade it with tokenRequests[0].audience=sts.amazonaws.com |
 
-Other messages are recorded unchanged.
+Other messages are recorded unchanged. Repeated kubelet retries whose message differs only in the AWS `RequestID` are
+recorded once in the container history (the event count shown by `kubectl get events` still increases).
 
 When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
 Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and

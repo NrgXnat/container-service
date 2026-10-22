@@ -361,6 +361,8 @@ public class KubernetesInformerImpl implements KubernetesInformer {
         static final Set<String> REASONS_OF_INTEREST = new HashSet<>(Arrays.asList(
                 "FailedMount", "FailedAttachVolume", "FailedScheduling"));
         private static final String WARNING = "Warning";
+        /** The AWS Secrets Store provider puts a fresh request id into every retry's message; any id format is accepted. */
+        private static final Pattern REQUEST_ID = Pattern.compile("(?:,\\s*)?RequestID: [^,\\s]+");
 
         private final JmsTemplate template;
         private final Function<String, V1Pod> podLookup;
@@ -369,9 +371,6 @@ public class KubernetesInformerImpl implements KubernetesInformer {
             this.template = template;
             this.podLookup = podLookup;
         }
-
-        /** The AWS Secrets Store provider puts a fresh request id into every retry's message. */
-        private static final Pattern REQUEST_ID = Pattern.compile("(?:,\\s*)?RequestID: [0-9a-fA-F-]+");
 
         /** The message without parts that change on every retry, for comparing repeats; never recorded. */
         @VisibleForTesting

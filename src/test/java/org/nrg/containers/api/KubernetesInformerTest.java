@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -243,6 +244,13 @@ public class KubernetesInformerTest {
                 is("StatusCode: 400, ResourceNotFoundException: x"));
         assertThat(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage("secret \"x\" not found"), is("secret \"x\" not found"));
         assertThat(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(null), is(nullValue()));
+        assertThat("a non-UUID request id is stripped too",
+                KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage("StatusCode: 400, RequestID: req_ABC.123/x, AccessDenied"),
+                is("StatusCode: 400, AccessDenied"));
+        assertThat("the volume name is never collapsed",
+                KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355")),
+                not(KubernetesInformerImpl.PodWarningEventHandler.normalizeWarningMessage(
+                        awsNotFound("7bfdc195-45b0-47a0-bbb3-688fb8c67355").replace("secret-redcap", "secret-other"))));
     }
 
     // ---- one informer group per namespace ----
