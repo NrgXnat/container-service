@@ -621,22 +621,37 @@ public class SecretsTest {
     }
 
     @Test
-    public void testK8sSecretSourceJsonWithExplicitName() throws Exception {
+    public void testK8sSecretSourceJsonWithNameTemplate() throws Exception {
         final String identifier = RandomStringUtils.randomAlphabetic(10);
-        final String name = "custom-" + RandomStringUtils.randomAlphabetic(6);
+        final String template = "custom-" + RandomStringUtils.randomAlphabetic(6) + "-{identifier}";
         final String json = "{" +
                 "\"type\": \"" + K8sSecretSource.JSON_TYPE_NAME + "\", " +
                 "\"identifier\": \"" + identifier + "\", " +
-                "\"name\": \"" + name + "\"" +
+                "\"name-template\": \"" + template + "\"" +
                 "}";
         final SecretSource secretSource = objectMapper.readValue(json, SecretSource.class);
 
         assertThat(secretSource, instanceOf(K8sSecretSource.class));
-        assertThat(((K8sSecretSource) secretSource).secretName(), is(name));
-        // Round-trip keeps the explicit name
+        assertThat(((K8sSecretSource) secretSource).nameTemplate(), is(template));
+        assertThat("nothing is rendered until resolution", ((K8sSecretSource) secretSource).secretName(), is(nullValue()));
+        // Round-trip keeps the template and does not invent a name
         final String reserialized = objectMapper.writeValueAsString(secretSource);
+        assertThat(reserialized, not(containsString("\"name\"")));
         final SecretSource again = objectMapper.readValue(reserialized, SecretSource.class);
-        assertThat(((K8sSecretSource) again).secretName(), is(name));
+        assertThat(((K8sSecretSource) again).nameTemplate(), is(template));
+    }
+
+    /** The container record (jsonb) carries the rendered name under "name" next to the declared template. */
+    @Test
+    public void testK8sSecretSourceJsonKeepsTheRenderedNameSeparateFromTheTemplate() throws Exception {
+        final K8sSecretSource rendered = new K8sSecretSource("redcap", "xnat-#PROJECT#-{identifier}").withSecretName("xnat-proj01-redcap");
+        final String json = objectMapper.writeValueAsString(rendered);
+        assertThat(json, containsString("\"name-template\":\"xnat-#PROJECT#-{identifier}\""));
+        assertThat(json, containsString("\"name\":\"xnat-proj01-redcap\""));
+        final K8sSecretSource again = (K8sSecretSource) objectMapper.readValue(json, SecretSource.class);
+        assertThat(again.nameTemplate(), is("xnat-#PROJECT#-{identifier}"));
+        assertThat(again.secretName(), is("xnat-proj01-redcap"));
+        assertThat(again, is(rendered));
     }
 
     @Test
@@ -646,10 +661,10 @@ public class SecretsTest {
         assertThat(((K8sSecretSource) withoutFlag).required(), is(true));
 
         final SecretSource optional = objectMapper.readValue(
-                "{\"type\": \"k8s-secret\", \"identifier\": \"redcap\", \"name\": \"redcap-#PROJECT#\", \"required\": false}", SecretSource.class);
+                "{\"type\": \"k8s-secret\", \"identifier\": \"redcap\", \"name-template\": \"#PROJECT#-{identifier}\", \"required\": false}", SecretSource.class);
         assertThat(((K8sSecretSource) optional).required(), is(false));
-        assertThat("placeholders in name are stored verbatim; rendering happens at resolution",
-                ((K8sSecretSource) optional).secretName(), is("redcap-#PROJECT#"));
+        assertThat("placeholders in the template are stored verbatim; rendering happens at resolution",
+                ((K8sSecretSource) optional).nameTemplate(), is("#PROJECT#-{identifier}"));
 
         final SecretSource again = objectMapper.readValue(objectMapper.writeValueAsString(optional), SecretSource.class);
         assertThat(((K8sSecretSource) again).required(), is(false));
@@ -716,7 +731,7 @@ public class SecretsTest {
     @Test
     public void testFileResolvedSecretSurvivesJsonRoundTrip() throws Exception {
         final FileResolvedSecret file = new FileResolvedSecret(new Secret(
-                new K8sSecretSource("redcap", "xnat-proj01-redcap", false), new FileSecretDestination("/run/secrets/redcap")));
+                new K8sSecretSource("redcap", null, "xnat-proj01-redcap", false), new FileSecretDestination("/run/secrets/redcap")));
         final ResolvedSecret env = new EnvironmentVariableResolvedSecret(new Secret(
                 new SystemPropertySecretSource("sys.prop"), new EnvironmentVariableSecretDestination("ENV")), "value");
 
@@ -857,7 +872,7 @@ public class SecretsTest {
         final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
         kubernetesClientWithMockedApi(namespace, batchApi);
 
-        final Secret secret = new Secret(new K8sSecretSource("redcap", secretName, required), new FileSecretDestination(mountPath));
+        final Secret secret = new Secret(new K8sSecretSource("redcap", null, secretName, required), new FileSecretDestination(mountPath));
         final ResolvedSecret resolved = new FileResolvedSecret(secret, Optional.empty());
         final Container toCreate = Container.builder()
                 .wrapperId(0L).commandId(0L)

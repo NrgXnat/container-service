@@ -22,6 +22,53 @@ public final class FileSecretValidator {
 
     private FileSecretValidator() {}
 
+    /**
+     * Save-time checks for {@code Command.validate()}: everything about file secrets that needs no launch context.
+     * A k8s-secret source must pair with a file destination; the rendered name is never declared; a declared
+     * name template must be well-formed and contain {identifier}; identifiers and mount paths must obey the
+     * same rules {@link #validate(List)} enforces again at resolution (for commands saved before this check).
+     *
+     * @return error messages, empty when the declarations are acceptable
+     */
+    public static List<String> validateDeclarations(final List<Secret> secrets) {
+        final List<String> errors = new ArrayList<>();
+        final List<FileResolvedSecret> fileSecrets = new ArrayList<>();
+        for (final Secret secret : secrets) {
+            final boolean k8sSource = secret.source() instanceof K8sSecretSource;
+            final boolean fileDestination = secret.destination() instanceof FileSecretDestination;
+            if (k8sSource && !fileDestination) {
+                errors.add("Secret " + secret.source() + " must have a file destination");
+                continue;
+            }
+            if (fileDestination && !k8sSource) {
+                errors.add("Secret with file destination " + secret.destination() + " must have a k8s-secret source");
+                continue;
+            }
+            if (!k8sSource) {
+                continue;
+            }
+            final K8sSecretSource source = (K8sSecretSource) secret.source();
+            final String what = "Secret \"" + source.identifier() + "\" " + K8sSecretSource.NAME_TEMPLATE_PROPERTY;
+            if (source.secretName() != null) {
+                errors.add("Secret \"" + source.identifier() + "\": \"" + K8sSecretSource.RENDERED_NAME_PROPERTY
+                        + "\" is set by command resolution; declare \"" + K8sSecretSource.NAME_TEMPLATE_PROPERTY + "\" instead");
+            }
+            if (source.nameTemplate() != null) {
+                final String templateError = K8sSecretNameTemplate.validateTemplate(source.nameTemplate(), what);
+                if (templateError != null) {
+                    errors.add(templateError);
+                }
+            }
+            fileSecrets.add(new FileResolvedSecret(secret));
+        }
+        try {
+            validate(fileSecrets);
+        } catch (IllegalArgumentException e) {
+            errors.add(e.getMessage());
+        }
+        return errors;
+    }
+
     public static void validate(final List<FileResolvedSecret> secrets) {
         final Set<String> volumeNames = new HashSet<>();
         final List<String> mountPaths = new ArrayList<>();

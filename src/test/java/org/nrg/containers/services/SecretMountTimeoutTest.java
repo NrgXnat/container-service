@@ -157,7 +157,7 @@ public class SecretMountTimeoutTest {
 
     private static ContainerEntity pendingContainer() {
         final FileResolvedSecret redcap = new FileResolvedSecret(new Secret(
-                new K8sSecretSource("redcap", "xnat-proj01-redcap"), new FileSecretDestination("/run/secrets/redcap")));
+                new K8sSecretSource("redcap", null, "xnat-proj01-redcap", null), new FileSecretDestination("/run/secrets/redcap")));
         return ContainerEntity.fromPojo(Container.builder()
                 .databaseId(DB_ID).commandId(0L).wrapperId(0L).userId(USER_LOGIN)
                 .backend(Backend.KUBERNETES).serviceId(JOB_NAME).taskId(JOB_NAME + "-x7k2p").namespace("xnat-proj01")

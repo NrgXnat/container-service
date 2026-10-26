@@ -3,10 +3,16 @@ package org.nrg.containers.model;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.secrets.FileSecretDestination;
+import org.nrg.containers.secrets.K8sSecretSource;
+import org.nrg.containers.secrets.Secret;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 
@@ -66,6 +72,29 @@ public class CommandValidationTest {
 
         final List<String> errors = command.validate();
         assertThat(errors, is(empty()));
+    }
+
+    /** File secret declarations are checked when the command is saved, not only when it is launched (XNAT-8703). */
+    @Test
+    public void testFileSecretDeclarationsAreValidatedOnSave() {
+        assertThat(commandWithSecret(new K8sSecretSource("redcap"), "/run/secrets/redcap").validate(), is(empty()));
+        assertThat(commandWithSecret(new K8sSecretSource("redcap", "xnat-#PROJECT#-{identifier}"), "/run/secrets/redcap").validate(), is(empty()));
+
+        assertThat(commandWithSecret(new K8sSecretSource("redcap", "redcap"), "/run/secrets/redcap").validate(),
+                contains(containsString("must contain {identifier}")));
+        assertThat(commandWithSecret(new K8sSecretSource("redcap", null, "xnat-proj01-redcap", null), "/run/secrets/redcap").validate(),
+                contains(containsString("name-template")));
+        assertThat(commandWithSecret(new K8sSecretSource("red cap"), "/run/secrets/redcap").validate(),
+                contains(containsString("may only contain")));
+        assertThat(commandWithSecret(new K8sSecretSource("redcap"), "/run/secrets").validate(),
+                contains(containsString("subdirectory")));
+    }
+
+    private static Command commandWithSecret(final K8sSecretSource source, final String mountPath) {
+        return Command.builder()
+                .name("cmd").image("busybox:latest").commandLine("true")
+                .secrets(Collections.singletonList(new Secret(source, new FileSecretDestination(mountPath))))
+                .build();
     }
 
     private Command.CommandWrapper makeWrapperThatHandlesOutput(final String outputName) {

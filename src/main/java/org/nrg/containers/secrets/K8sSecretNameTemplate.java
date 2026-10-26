@@ -13,7 +13,9 @@ import java.util.regex.Pattern;
  * Kubernetes Secret (or SecretProviderClass) to mount, and sanitises strings into Kubernetes names.
  * <p>
  * Placeholders: {@code #PROJECT#} (the XNAT project the container runs in), {@code {identifier}}
- * (the identifier declared in the command) and {@code #<input>#} (a wrapper/command input replacement key).
+ * (the identifier declared in the command; mandatory in every template) and {@code #<input>#}
+ * (a wrapper/command input replacement key). The command's {@code name-template}, the site's
+ * {@code secret-name-template} and the built-in default all follow the same rule.
  * Names are RFC 1123 subdomains (lower case, {@code [a-z0-9.-]}, at most 253 characters);
  * namespaces are RFC 1123 labels (no dots, at most 63 characters).
  */
@@ -25,7 +27,7 @@ public final class K8sSecretNameTemplate {
     public static final int    MAX_NAME_LENGTH        = 253;
     public static final int    MAX_LABEL_LENGTH       = 63;
 
-    /** Any {@code #...#} token left after the project substitution must be a wrapper input replacement key. */
+    /** A {@code #...#} token is {@code #PROJECT#} or a wrapper input replacement key. */
     private static final Pattern INPUT_PLACEHOLDER = Pattern.compile("#[^#\\s]+#");
     /** Exact Kubernetes rule: dot-separated RFC 1123 labels, so "a..b" and "a-.b" are rejected. */
     private static final Pattern RFC1123_SUBDOMAIN =
@@ -34,7 +36,9 @@ public final class K8sSecretNameTemplate {
     private K8sSecretNameTemplate() {}
 
     /**
-     * Render the site template (or the default) into a sanitised, length-checked Kubernetes name.
+     * Render a secret name template (the command's, the site's, or the built-in default when blank) into a sanitised,
+     * length-checked Kubernetes name. Every template must contain {@code {identifier}}, so two secrets of one
+     * command can never render to the same object.
      *
      * @param resolvedInputValuesByReplacementKey wrapper/command input values keyed by their replacement key,
      *                                            e.g. {@code #session#}
@@ -44,33 +48,40 @@ public final class K8sSecretNameTemplate {
     public static String render(@Nullable final String template, @Nullable final String project, final String identifier,
                                 final Map<String, String> resolvedInputValuesByReplacementKey) {
         final String effectiveTemplate = StringUtils.isBlank(template) ? DEFAULT_TEMPLATE : template;
-        if (!effectiveTemplate.contains(IDENTIFIER_PLACEHOLDER)) {
-            throw new IllegalArgumentException("Secret name template \"" + effectiveTemplate
-                    + "\" must contain " + IDENTIFIER_PLACEHOLDER);
+        final String templateError = validateTemplate(effectiveTemplate, "Secret name template");
+        if (templateError != null) {
+            throw new IllegalArgumentException(templateError);
         }
-        return renderExplicitName(effectiveTemplate, project, identifier, resolvedInputValuesByReplacementKey);
+        if (StringUtils.isBlank(identifier)) {
+            throw new IllegalArgumentException("Secret identifier is required");
+        }
+        final String substituted = substitute(effectiveTemplate.replace(IDENTIFIER_PLACEHOLDER, identifier), project,
+                resolvedInputValuesByReplacementKey);
+        return requireValidName(requireRfc1123Subdomain(sanitize(substituted)), "Secret name");
     }
 
     /**
-     * Render a command-level name: literal when it has no placeholders, otherwise the same placeholders as the template.
-     * A rendered name is sanitised and length-checked like a template rendering. A literal name (no placeholders)
-     * is only validated, never sanitised: rewriting "a--b" to "a-b" would silently point at a different object.
+     * The static part of the template rule, shared by {@code Command.validate()} and {@code DockerServer.validate()}:
+     * present, contains {@code {identifier}}, and every {@code #}, <code>{</code> or <code>}</code> belongs to a
+     * well-formed placeholder. Needs no launch context.
+     *
+     * @param what how to name the template in the message, e.g. {@code Secret name template}
+     * @return the error message, or null when the template is acceptable
      */
-    public static String renderExplicitName(final String name, @Nullable final String project, final String identifier,
-                                            final Map<String, String> resolvedInputValuesByReplacementKey) {
-        if (StringUtils.isBlank(name) || StringUtils.isBlank(identifier)) {
-            throw new IllegalArgumentException("Secret name and identifier are required");
+    @Nullable
+    public static String validateTemplate(@Nullable final String template, final String what) {
+        if (StringUtils.isBlank(template)) {
+            return what + " is required";
         }
-        if (!hasPlaceholders(name)) {
-            return requireValidName(requireRfc1123Subdomain(name), "Secret name");
+        if (!template.contains(IDENTIFIER_PLACEHOLDER)) {
+            return what + " \"" + template + "\" must contain " + IDENTIFIER_PLACEHOLDER;
         }
-        final String substituted = substitute(name.replace(IDENTIFIER_PLACEHOLDER, identifier), project,
-                resolvedInputValuesByReplacementKey);
-        if (StringUtils.containsAny(substituted, '#', '{', '}')) {
-            throw new IllegalArgumentException("Secret name \"" + name
-                    + "\" has a malformed placeholder; use #PROJECT#, #<input>#, {identifier}");
+        final String withoutPlaceholders = INPUT_PLACEHOLDER.matcher(template.replace(IDENTIFIER_PLACEHOLDER, "")).replaceAll("");
+        if (StringUtils.containsAny(withoutPlaceholders, '#', '{', '}')) {
+            return what + " \"" + template + "\" has a malformed placeholder; use " + PROJECT_PLACEHOLDER
+                    + ", #<input>#, " + IDENTIFIER_PLACEHOLDER;
         }
-        return requireValidName(requireRfc1123Subdomain(sanitize(substituted)), "Secret name");
+        return null;
     }
 
     /**
@@ -93,11 +104,6 @@ public final class K8sSecretNameTemplate {
                     + " has no value in this launch: per-project namespaces need a project");
         }
         return requireValidLabel(sanitizeLabel(template.replace(PROJECT_PLACEHOLDER, project)), "Job namespace");
-    }
-
-    static boolean hasPlaceholders(final String name) {
-        return name.contains(PROJECT_PLACEHOLDER) || name.contains(IDENTIFIER_PLACEHOLDER)
-                || INPUT_PLACEHOLDER.matcher(name).find();
     }
 
     private static String requireRfc1123Subdomain(final String name) {

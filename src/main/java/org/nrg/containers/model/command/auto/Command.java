@@ -28,6 +28,7 @@ import org.nrg.containers.model.command.entity.DockerCommandEntity;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandInputConfiguration;
 import org.nrg.containers.model.configuration.CommandConfiguration.CommandOutputConfiguration;
 import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
+import org.nrg.containers.secrets.FileSecretValidator;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.secrets.SecretDestination;
 import org.nrg.containers.services.ContainerService;
@@ -428,6 +429,9 @@ public abstract class Command implements Serializable {
         }
         for (final String envName : SetUtils.intersection(secretEnvNames, envNames)) {
             errors.add(commandName + " Secrets and environment variables both request name \"" + envName + "\"");
+        }
+        for (final String fileSecretError : FileSecretValidator.validateDeclarations(secrets())) {
+            errors.add(commandName + fileSecretError);
         }
 
         final Set<String> mountNames = new HashSet<>(mounts().size());

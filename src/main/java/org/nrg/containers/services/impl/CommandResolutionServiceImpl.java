@@ -3194,9 +3194,8 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                                                     final Map<String, String> resolvedInputValuesByReplacementKey)
                 throws CommandResolutionException {
             try {
-                final String secretName = StringUtils.isNotBlank(fileSecret.secretName())
-                        ? K8sSecretNameTemplate.renderExplicitName(fileSecret.secretName(), project, fileSecret.identifier(), resolvedInputValuesByReplacementKey)
-                        : K8sSecretNameTemplate.render(secretNameTemplate, project, fileSecret.identifier(), resolvedInputValuesByReplacementKey);
+                final String template = StringUtils.isNotBlank(fileSecret.nameTemplate()) ? fileSecret.nameTemplate() : secretNameTemplate;
+                final String secretName = K8sSecretNameTemplate.render(template, project, fileSecret.identifier(), resolvedInputValuesByReplacementKey);
                 log.debug("Secret \"{}\" will be mounted from Kubernetes object \"{}\" at {}", fileSecret.identifier(), secretName, fileSecret.mountPath());
                 return fileSecret.withSecretName(secretName);
             } catch (IllegalArgumentException e) {

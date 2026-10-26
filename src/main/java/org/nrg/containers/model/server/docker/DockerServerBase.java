@@ -516,9 +516,11 @@ public abstract class DockerServerBase implements Serializable {
                     errors.add("You cannot have a Kubernetes server setup which has path translations for both separate and combined locations for build and archive directories. Please choose one or the other.");
                 }
                 final String secretNameTemplate = secretNameTemplate();
-                if (StringUtils.isNotBlank(secretNameTemplate)
-                        && !secretNameTemplate.contains(K8sSecretNameTemplate.IDENTIFIER_PLACEHOLDER)) {
-                    errors.add("Secret name template must contain " + K8sSecretNameTemplate.IDENTIFIER_PLACEHOLDER);
+                if (StringUtils.isNotBlank(secretNameTemplate)) {
+                    final String templateError = K8sSecretNameTemplate.validateTemplate(secretNameTemplate, "Secret name template");
+                    if (templateError != null) {
+                        errors.add(templateError);
+                    }
                 }
                 if (jobNamespaceMode() == JobNamespaceMode.PER_PROJECT) {
                     final String namespaceTemplate = jobNamespaceTemplate();

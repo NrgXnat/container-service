@@ -7,9 +7,9 @@ import java.util.Optional;
 /**
  * A resolved {@link K8sSecretSource} → {@link FileSecretDestination} secret.
  * <p>
- * Carries no value: XNAT never obtains it. Command resolution renders {@link #secretName()} (site template or
- * command-level name plus placeholders) and writes it back into the source, so the Kubernetes backend only has
- * to turn this into a volume named {@link #volumeName()} plus a read-only mount at {@link #mountPath()}.
+ * Carries no value: XNAT never obtains it. Command resolution renders {@link #secretName()} from the command's
+ * {@link #nameTemplate()} or the site template and writes it back into the source, so the Kubernetes backend only
+ * has to turn this into a volume named {@link #volumeName()} plus a read-only mount at {@link #mountPath()}.
  */
 @ResolverFor(source = K8sSecretSource.class, destination = FileSecretDestination.class)
 public class FileResolvedSecret extends ResolvedSecret {
@@ -30,7 +30,13 @@ public class FileResolvedSecret extends ResolvedSecret {
         return source().identifier();
     }
 
-    /** Rendered Kubernetes Secret / SecretProviderClass name, or the unrendered command value (or null) before resolution. */
+    /** Command-level name template, or null when the site template applies. */
+    @Nullable
+    public String nameTemplate() {
+        return k8sSource().nameTemplate();
+    }
+
+    /** Rendered Kubernetes Secret / SecretProviderClass name; null before resolution. */
     @Nullable
     public String secretName() {
         return k8sSource().secretName();
@@ -54,8 +60,7 @@ public class FileResolvedSecret extends ResolvedSecret {
     /** A copy whose source carries the rendered (non-null) name, so it survives the jsonb round trip. */
     public FileResolvedSecret withSecretName(final String renderedSecretName) {
         Objects.requireNonNull(renderedSecretName, "rendered secret name");
-        return new FileResolvedSecret(new Secret(
-                new K8sSecretSource(identifier(), renderedSecretName, required()), destination()));
+        return new FileResolvedSecret(new Secret(k8sSource().withSecretName(renderedSecretName), destination()));
     }
 
     private K8sSecretSource k8sSource() {

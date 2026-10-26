@@ -14,7 +14,7 @@ feature, which reads a value from a Java system property and injects it as an en
 ```json
 "secrets": [
   {
-    "source":      {"type": "k8s-secret", "identifier": "redcap", "name": "redcap-#PROJECT#", "required": false},
+    "source":      {"type": "k8s-secret", "identifier": "redcap", "name-template": "xnat-#PROJECT#-#session#-{identifier}", "required": false},
     "destination": {"type": "file",       "identifier": "/run/secrets/redcap"}
   }
 ]
@@ -23,7 +23,8 @@ feature, which reads a value from a Java system property and injects it as an en
 | Field | Meaning |
 |-------|---------|
 | `source.identifier` | Required. Logical name (letters, digits, `_`, `.`, `-`); one entry per external system, each with its own mount path. At most 56 characters; `.` and `_` become `-` in the volume name `secret-<identifier>`, so identifiers must stay unique after that rewrite. |
-| `source.name` | Optional. Overrides the site template. May use the same placeholders; a value without placeholders is used literally (it must already be a valid Kubernetes name and is not sanitised). |
+| `source.name-template` | Optional. Overrides the site template and follows the same rules: the same placeholders, `{identifier}` mandatory, rendered and sanitised at launch. Checked when the command is saved. Leave it out unless the command needs placeholders the site template does not have. |
+| `source.name` | Never declared. Command resolution writes the rendered object name here, so the container record shows both the template and the name it produced; a command that sets it is rejected on save. |
 | `source.required` | Optional, default `true`. See "Optional secrets". |
 | `destination.identifier` | Absolute, normalised mount directory (no empty, `.` or `..` segments). Must be a subdirectory, not `/run/secrets` or `/var/run/secrets` themselves (that would hide the pod's service account token), and paths of different secrets must be unique and must not nest. |
 
@@ -34,20 +35,21 @@ with a file secret (`File secrets are not supported on the <backend> backend`, w
 
 ### Naming
 
-Three levels, highest first: the command's `source.name`, the backend setting `secret-name-template`, the built-in
-`{identifier}`. With no configuration a command declaring `"identifier": "redcap"` mounts the object named `redcap`
+Three levels, highest first: the command's `source.name-template`, the backend setting `secret-name-template`, the
+built-in `{identifier}`. All three follow the same rule and must contain `{identifier}`. With no configuration a command declaring `"identifier": "redcap"` mounts the object named `redcap`
 from the job's namespace, the same one for every project. Set `secret-name-template` to `xnat-#PROJECT#-{identifier}`
 to give each project its own object (`xnat-proj01-redcap`, `xnat-proj02-redcap`, ...); in per-project namespace mode
 the default already isolates projects, because each namespace holds its own `redcap`.
 
-`source.name` is for a command that must reference a fixed object regardless of the site template (a literal such as
-`"name": "redcap"` is used verbatim, so it keeps pointing at `redcap` even after the template changes), or that needs
-placeholders the site template does not have (for example `"name": "xnat-#PROJECT#-#session#"`). Do not set it just to
-get the default: leaving it out follows the site template.
+`source.name-template` is for a command that needs placeholders the site template does not have (for example
+`"name-template": "xnat-#PROJECT#-#session#-{identifier}"`), or that must keep referencing a fixed object regardless of
+the site template (`"name-template": "{identifier}"` with the identifier chosen to match the object). Do not set it
+just to get the default: leaving it out follows the site template.
 
 Placeholders (case sensitive): `#PROJECT#` (the launch project; wins over an input of the
 same name), `#<key>#` (a wrapper or command input replacement key, e.g. `#session#`), `{identifier}`. An unresolved
-placeholder fails the launch. A rendered name is sanitised to a Kubernetes name: lower cased, characters outside `[a-z0-9.-]` become `-`,
+placeholder fails the launch; a template without `{identifier}` or with a malformed placeholder is rejected when the
+command or backend is saved. A rendered name is sanitised to a Kubernetes name: lower cased, characters outside `[a-z0-9.-]` become `-`,
 repeated `-` are collapsed and leading or trailing `.` and `-` are stripped. The result must still be a valid RFC 1123
 subdomain (for example `a..b` is rejected, not repaired); longer than 253 characters is an error, never truncated. Sanitising is many-to-one (`Proj_01` and
 `proj-01` collide): provision objects under the sanitised name and keep project ids unique after sanitising.

@@ -177,6 +177,7 @@ public class DockerServerSecretSettingsTest {
         kubernetesBase().secretNameTemplate("site-#PROJECT#-{identifier}").build().validate();
         kubernetesBase().secretNameTemplate(null).build().validate();   // blank means the built-in default
         assertValidationError(kubernetesBase().secretNameTemplate("site-#PROJECT#").build(), "{identifier}");
+        assertValidationError(kubernetesBase().secretNameTemplate("site-#PROJECT-{identifier}").build(), "malformed placeholder");
     }
 
     @Test

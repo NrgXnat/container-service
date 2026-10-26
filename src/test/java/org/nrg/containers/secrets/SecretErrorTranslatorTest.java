@@ -111,7 +111,7 @@ public class SecretErrorTranslatorTest {
 
     private static SecretErrorTranslator.Context ctx() {
         final FileResolvedSecret redcap = new FileResolvedSecret(new Secret(
-                new K8sSecretSource("redcap", "xnat-proj01-redcap"), new FileSecretDestination("/run/secrets/redcap")));
+                new K8sSecretSource("redcap", null, "xnat-proj01-redcap", null), new FileSecretDestination("/run/secrets/redcap")));
         return SecretErrorTranslator.Context.of("xnat-proj01", "xnat-jobs", Collections.singletonList(redcap));
     }
 

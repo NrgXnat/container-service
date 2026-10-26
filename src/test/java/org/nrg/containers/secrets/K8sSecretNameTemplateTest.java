@@ -8,6 +8,7 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
@@ -45,28 +46,40 @@ public class K8sSecretNameTemplateTest {
         assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", StringUtils.repeat('p', 250), "redcap", NO_INPUTS), "253");
     }
 
+    /** Command-level templates follow the same rule as the site template: {identifier} is mandatory, so two secrets of one command can never render to the same object. */
     @Test
-    public void renderExplicitNameIsLiteralUnlessItHasPlaceholders() {
-        assertThat(K8sSecretNameTemplate.renderExplicitName("my-custom-secret", null, "redcap", NO_INPUTS), is("my-custom-secret"));
-        assertThat(K8sSecretNameTemplate.renderExplicitName("redcap-#PROJECT#", "PROJ01", "redcap", NO_INPUTS), is("redcap-proj01"));
-        assertThat(K8sSecretNameTemplate.renderExplicitName("{identifier}-Fixed", null, "redcap", NO_INPUTS), is("redcap-fixed"));
-        assertThat("a literal name is never rewritten", K8sSecretNameTemplate.renderExplicitName("a--b.c", null, "redcap", NO_INPUTS), is("a--b.c"));
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("My_Secret", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("redcap-#PROJECT#", null, "redcap", NO_INPUTS), "#PROJECT# has no value");
+    public void everyTemplateMustContainTheIdentifierPlaceholder() {
+        assertThat(K8sSecretNameTemplate.render("{identifier}", null, "redcap", NO_INPUTS), is("redcap"));
+        assertThat(K8sSecretNameTemplate.render("redcap-#PROJECT#-{identifier}", "PROJ01", "redcap", NO_INPUTS), is("redcap-proj01-redcap"));
+        assertThat(K8sSecretNameTemplate.render("{identifier}-Fixed", null, "redcap", NO_INPUTS), is("redcap-fixed"));
+        assertRejected(() -> K8sSecretNameTemplate.render("my-custom-secret", null, "redcap", NO_INPUTS), "{identifier}");
+        assertRejected(() -> K8sSecretNameTemplate.render("redcap-#PROJECT#", "PROJ01", "redcap", NO_INPUTS), "{identifier}");
+        assertRejected(() -> K8sSecretNameTemplate.render("redcap-#PROJECT#-{identifier}", null, "redcap", NO_INPUTS), "#PROJECT# has no value");
+    }
+
+    /** The static part of the rule, shared by Command.validate and DockerServer.validate: no launch context needed. */
+    @Test
+    public void validateTemplateReportsMissingIdentifierAndMalformedPlaceholders() {
+        assertThat(K8sSecretNameTemplate.validateTemplate("{identifier}", "Secret name template"), is(nullValue()));
+        assertThat(K8sSecretNameTemplate.validateTemplate("xnat-#PROJECT#-#session#-{identifier}", "Secret name template"), is(nullValue()));
+        assertThat(K8sSecretNameTemplate.validateTemplate("xnat-#PROJECT#", "Secret name template"), containsString("must contain {identifier}"));
+        assertThat(K8sSecretNameTemplate.validateTemplate("xnat-#PROJECT-{identifier}", "Secret name template"), containsString("malformed placeholder"));
+        assertThat(K8sSecretNameTemplate.validateTemplate("{identifier}-{foo}", "Secret name template"), containsString("malformed placeholder"));
+        assertThat(K8sSecretNameTemplate.validateTemplate("#a b#-{identifier}", "Secret name template"), containsString("malformed placeholder"));
+        assertThat(K8sSecretNameTemplate.validateTemplate("", "Secret name template"), containsString("required"));
+        assertThat(K8sSecretNameTemplate.validateTemplate("x", "Secret \"redcap\" name-template"), containsString("Secret \"redcap\" name-template"));
     }
 
     @Test
     public void renderRejectsMalformedPlaceholders() {
         assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
         assertRejected(() -> K8sSecretNameTemplate.render("#a b#-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("x-#PROJECT-{identifier}", "P1", "redcap", NO_INPUTS), "malformed");
     }
 
     @Test
     public void renderRejectsMissingIdentifierWithoutNullPointer() {
         assertRejected(() -> K8sSecretNameTemplate.render(null, "P1", null, NO_INPUTS), "required");
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("{identifier}", "P1", null, NO_INPUTS), "required");
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName(null, "P1", "redcap", NO_INPUTS), "required");
+        assertRejected(() -> K8sSecretNameTemplate.render("{identifier}", "P1", null, NO_INPUTS), "required");
     }
 
     @Test
@@ -77,12 +90,12 @@ public class K8sSecretNameTemplateTest {
 
     @Test
     public void namesMustHaveWellFormedDotSegments() {
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a..b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
-        assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a-.b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.render("a..b-{identifier}", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.render("a-.b-{identifier}", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
         assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", "P.", "redcap", NO_INPUTS), "not a valid Kubernetes object name");
         assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#.{identifier}", "P.", "redcap", NO_INPUTS),
                 "not a valid Kubernetes object name");
-        assertThat(K8sSecretNameTemplate.renderExplicitName("a.b-c", null, "redcap", NO_INPUTS), is("a.b-c"));
+        assertThat(K8sSecretNameTemplate.render("a.b-c-{identifier}", null, "redcap", NO_INPUTS), is("a.b-c-redcap"));
     }
 
     @Test

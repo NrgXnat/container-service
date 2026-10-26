@@ -8,7 +8,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
@@ -16,7 +20,7 @@ import static org.junit.Assert.fail;
 public class FileSecretValidatorTest {
 
     private static FileResolvedSecret secret(final String identifier, final String secretName, final String mountPath) {
-        return new FileResolvedSecret(new Secret(new K8sSecretSource(identifier, secretName), new FileSecretDestination(mountPath)));
+        return new FileResolvedSecret(new Secret(new K8sSecretSource(identifier, null, secretName, null), new FileSecretDestination(mountPath)));
     }
 
     @Test
@@ -88,6 +92,53 @@ public class FileSecretValidatorTest {
                 .secrets(Collections.singletonList(new Secret(new SystemPropertySecretSource("p"), new EnvironmentVariableSecretDestination("E"))))
                 .build();
         FileSecretValidator.requireNoFileSecrets(envOnly, "wrapup");
+    }
+
+    // ---- save-time checks (Command.validate) ----
+
+    private static Secret declared(final String identifier, final String nameTemplate, final String mountPath) {
+        return new Secret(new K8sSecretSource(identifier, nameTemplate), new FileSecretDestination(mountPath));
+    }
+
+    @Test
+    public void declarationsWithoutProblemsProduceNoErrors() {
+        assertThat(FileSecretValidator.validateDeclarations(Arrays.asList(
+                declared("redcap", null, "/run/secrets/redcap"),
+                declared("openspecimen", "xnat-#PROJECT#-#session#-{identifier}", "/run/secrets/openspecimen"),
+                new Secret(new SystemPropertySecretSource("p"), new EnvironmentVariableSecretDestination("E")))), is(empty()));
+    }
+
+    @Test
+    public void declaredTemplatesMustContainTheIdentifierPlaceholderAndBeWellFormed() {
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(declared("redcap", "redcap", "/run/secrets/redcap"))),
+                contains(allOf(containsString("redcap"), containsString("must contain {identifier}"))));
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(declared("redcap", "#PROJECT-{identifier}", "/run/secrets/redcap"))),
+                contains(containsString("malformed placeholder")));
+    }
+
+    @Test
+    public void theRenderedNameMayNotBeDeclaredInACommand() {
+        final Secret withRenderedName = new Secret(new K8sSecretSource("redcap", null, "xnat-proj01-redcap", null), new FileSecretDestination("/run/secrets/redcap"));
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(withRenderedName)),
+                contains(allOf(containsString("\"name\""), containsString("name-template"))));
+    }
+
+    @Test
+    public void k8sSecretSourcesAndFileDestinationsMustBePaired() {
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(
+                new Secret(new K8sSecretSource("redcap"), new EnvironmentVariableSecretDestination("E")))), contains(containsString("file destination")));
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(
+                new Secret(new SystemPropertySecretSource("p"), new FileSecretDestination("/run/secrets/p")))), contains(containsString("k8s-secret source")));
+    }
+
+    @Test
+    public void identifierAndMountPathRulesApplyAtSaveTime() {
+        assertThat(FileSecretValidator.validateDeclarations(Arrays.asList(declared("RedCap", null, "/run/secrets/a"), declared("redcap", null, "/run/secrets/b"))),
+                contains(containsString("not unique")));
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(declared("a", null, "/run/secrets"))),
+                contains(containsString("subdirectory")));
+        assertThat(FileSecretValidator.validateDeclarations(Collections.singletonList(declared("red cap", null, "/run/secrets/a"))),
+                contains(containsString("may only contain")));
     }
 
     private static void assertRejected(final List<FileResolvedSecret> secrets, final String expectedFragment) {
