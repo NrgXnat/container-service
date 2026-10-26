@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * namespaces are RFC 1123 labels (no dots, at most 63 characters).
  */
 public final class K8sSecretNameTemplate {
-    public static final String DEFAULT_TEMPLATE       = "xnat-#PROJECT#-{identifier}";
+    /** With no site template the identifier alone is the object name, so a fresh install needs no backend configuration. */
+    public static final String DEFAULT_TEMPLATE       = "{identifier}";
     public static final String PROJECT_PLACEHOLDER    = "#PROJECT#";
     public static final String IDENTIFIER_PLACEHOLDER = "{identifier}";
     public static final int    MAX_NAME_LENGTH        = 253;

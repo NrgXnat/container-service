@@ -1021,7 +1021,8 @@ public class SecretsTest {
     @Test
     public void testKubernetesJobWithMixedEnvAndFileSecrets() throws Exception {
         backend = Backend.KUBERNETES;
-        final DockerServerBase.DockerServer server = kubernetesServer();
+        final DockerServerBase.DockerServer server = DockerServerBase.DockerServer.builder().name("k8s").host("").backend(Backend.KUBERNETES)
+                .secretNameTemplate("xnat-#PROJECT#-{identifier}").build();
         Mockito.when(dockerServerService.getServer()).thenReturn(server);
 
         final String secretValue = RandomStringUtils.randomAlphanumeric(16);

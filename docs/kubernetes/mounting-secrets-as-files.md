@@ -35,7 +35,17 @@ with a file secret (`File secrets are not supported on the <backend> backend`, w
 ### Naming
 
 Three levels, highest first: the command's `source.name`, the backend setting `secret-name-template`, the built-in
-`xnat-#PROJECT#-{identifier}`. Placeholders (case sensitive): `#PROJECT#` (the launch project; wins over an input of the
+`{identifier}`. With no configuration a command declaring `"identifier": "redcap"` mounts the object named `redcap`
+from the job's namespace, the same one for every project. Set `secret-name-template` to `xnat-#PROJECT#-{identifier}`
+to give each project its own object (`xnat-proj01-redcap`, `xnat-proj02-redcap`, ...); in per-project namespace mode
+the default already isolates projects, because each namespace holds its own `redcap`.
+
+`source.name` is for a command that must reference a fixed object regardless of the site template (a literal such as
+`"name": "redcap"` is used verbatim, so it keeps pointing at `redcap` even after the template changes), or that needs
+placeholders the site template does not have (for example `"name": "xnat-#PROJECT#-#session#"`). Do not set it just to
+get the default: leaving it out follows the site template.
+
+Placeholders (case sensitive): `#PROJECT#` (the launch project; wins over an input of the
 same name), `#<key>#` (a wrapper or command input replacement key, e.g. `#session#`), `{identifier}`. An unresolved
 placeholder fails the launch. A rendered name is sanitised to a Kubernetes name: lower cased, characters outside `[a-z0-9.-]` become `-`,
 repeated `-` are collapsed and leading or trailing `.` and `-` are stripped. The result must still be a valid RFC 1123
@@ -50,7 +60,7 @@ Administer > Plugin Settings > Container Service > Compute Backend (Kubernetes),
 | Setting | Default | Meaning |
 |---------|---------|---------|
 | `secret-volume-type` | `secret` | `secret`: a Kubernetes Secret of that name in the job's namespace. `csi`: a Secrets Store CSI volume (`secrets-store.csi.k8s.io`) whose `secretProviderClass` is that name; the value is fetched from the external store at mount time. |
-| `secret-name-template` | `xnat-#PROJECT#-{identifier}` | Must contain `{identifier}`. |
+| `secret-name-template` | `{identifier}` | Must contain `{identifier}`. The default names the object after the identifier alone (shared by all projects); `xnat-#PROJECT#-{identifier}` gives one object per project. |
 | `job-service-account` | unset | Pod `serviceAccountName`. Needed when the CSI provider authenticates as the pod (IRSA on EKS). |
 | `job-namespace-mode` | `single` | `single`: jobs run in the kubeconfig context namespace, as before. `per-project`: in the namespace rendered from the template below. |
 | `job-namespace-template` | unset | Required in per-project mode; must contain `#PROJECT#` and no other placeholder; rendered as a DNS label (63 characters max, dots become dashes). |

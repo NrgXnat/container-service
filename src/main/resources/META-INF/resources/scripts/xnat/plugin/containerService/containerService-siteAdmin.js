@@ -499,7 +499,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 name: 'secret-name-template',
                                 label: 'Secret name template',
                                 description: 'Name of the Secret / SecretProviderClass to mount. Placeholders: #PROJECT#, {identifier}, #&lt;input name&gt;# (e.g. #session#). ' +
-                                    'Blank means xnat-#PROJECT#-{identifier}. Must contain {identifier}.'
+                                    'Must contain {identifier}. Blank means {identifier}: one object shared by all projects. Use xnat-#PROJECT#-{identifier} for one object per project.'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'job-service-account',

@@ -16,8 +16,12 @@ public class K8sSecretNameTemplateTest {
     private static final Map<String, String> NO_INPUTS = Collections.emptyMap();
 
     @Test
-    public void renderUsesDefaultTemplateAndSanitisesProject() {
-        assertThat(K8sSecretNameTemplate.render(null, "Proj_01", "redcap", NO_INPUTS), is("xnat-proj-01-redcap"));
+    public void renderUsesTheIdentifierAloneWhenNoTemplateIsConfigured() {
+        assertThat(K8sSecretNameTemplate.DEFAULT_TEMPLATE, is("{identifier}"));
+        assertThat(K8sSecretNameTemplate.render(null, "Proj_01", "redcap", NO_INPUTS), is("redcap"));
+        assertThat("a project-less launch works with the default", K8sSecretNameTemplate.render("", null, "redcap", NO_INPUTS), is("redcap"));
+        assertThat("the identifier is sanitised like any rendering", K8sSecretNameTemplate.render(null, "P1", "Red_Cap", NO_INPUTS), is("red-cap"));
+        assertThat(K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", "Proj_01", "redcap", NO_INPUTS), is("xnat-proj-01-redcap"));
         assertThat(K8sSecretNameTemplate.render("site-{identifier}-#PROJECT#", "PROJ01", "redcap", NO_INPUTS), is("site-redcap-proj01"));
     }
 
@@ -30,15 +34,15 @@ public class K8sSecretNameTemplateTest {
     @Test
     public void renderPrefersTheLaunchProjectOverAnInputNamedProject() {
         final Map<String, String> inputs = Collections.singletonMap("#PROJECT#", "from-input");
-        assertThat(K8sSecretNameTemplate.render(null, "PROJ01", "redcap", inputs), is("xnat-proj01-redcap"));
+        assertThat(K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", "PROJ01", "redcap", inputs), is("xnat-proj01-redcap"));
     }
 
     @Test
     public void renderFailsLoudlyOnUnresolvedPlaceholders() {
-        assertRejected(() -> K8sSecretNameTemplate.render(null, null, "redcap", NO_INPUTS), "#PROJECT# has no value");
+        assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", null, "redcap", NO_INPUTS), "#PROJECT# has no value");
         assertRejected(() -> K8sSecretNameTemplate.render("x-#nope#-{identifier}", "P1", "redcap", NO_INPUTS), "#nope# has no value");
         assertRejected(() -> K8sSecretNameTemplate.render("x-#PROJECT#", "P1", "redcap", NO_INPUTS), "{identifier}");
-        assertRejected(() -> K8sSecretNameTemplate.render(null, StringUtils.repeat('p', 250), "redcap", NO_INPUTS), "253");
+        assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", StringUtils.repeat('p', 250), "redcap", NO_INPUTS), "253");
     }
 
     @Test
@@ -75,7 +79,7 @@ public class K8sSecretNameTemplateTest {
     public void namesMustHaveWellFormedDotSegments() {
         assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a..b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
         assertRejected(() -> K8sSecretNameTemplate.renderExplicitName("a-.b", null, "redcap", NO_INPUTS), "not a valid Kubernetes object name");
-        assertRejected(() -> K8sSecretNameTemplate.render(null, "P.", "redcap", NO_INPUTS), "not a valid Kubernetes object name");
+        assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#-{identifier}", "P.", "redcap", NO_INPUTS), "not a valid Kubernetes object name");
         assertRejected(() -> K8sSecretNameTemplate.render("xnat-#PROJECT#.{identifier}", "P.", "redcap", NO_INPUTS),
                 "not a valid Kubernetes object name");
         assertThat(K8sSecretNameTemplate.renderExplicitName("a.b-c", null, "redcap", NO_INPUTS), is("a.b-c"));

@@ -155,8 +155,9 @@ public abstract class DockerServerBase implements Serializable {
     public abstract String buildDirCleanupTime();
 
     /**
-     * Template for the Kubernetes Secret / SecretProviderClass name; null means the built-in default. A non-null value
-     * must contain {identifier}. Kubernetes only.
+     * Template for the Kubernetes Secret / SecretProviderClass name; null means the built-in default {identifier}
+     * (the object is named after the secret's identifier, shared by every project). A non-null value must contain
+     * {identifier}; use xnat-#PROJECT#-{identifier} for one object per project. Kubernetes only.
      */
     @Nullable @JsonProperty("secret-name-template")
     public abstract String secretNameTemplate();

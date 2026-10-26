@@ -110,13 +110,20 @@ public class FileSecretResolutionTest {
     }
 
     @Test
-    public void defaultTemplateRendersAndWritesBackTheName() throws Exception {
+    public void builtInDefaultIsTheIdentifierAloneAndWritesBackTheName() throws Exception {
         final FileResolvedSecret secret = onlyFileSecret(resolve(
                 Collections.singletonList(fileSecret("redcap", null, MOUNT)), "Proj_01", Collections.emptyMap(), kubernetesServer().build()));
 
-        assertThat(secret.secretName(), is("xnat-proj-01-redcap"));
+        assertThat(secret.secretName(), is("redcap"));
         assertThat(secret.required(), is(true));
-        assertThat("written back into the serialisable source", ((K8sSecretSource) secret.source()).secretName(), is("xnat-proj-01-redcap"));
+        assertThat("written back into the serialisable source", ((K8sSecretSource) secret.source()).secretName(), is("redcap"));
+    }
+
+    /** Zero configuration must work for a launch that has no project, e.g. a site-level command. */
+    @Test
+    public void builtInDefaultDoesNotNeedAProject() throws Exception {
+        assertThat(onlyFileSecret(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), null, Collections.emptyMap(),
+                kubernetesServer().build())).secretName(), is("redcap"));
     }
 
     @Test
@@ -141,11 +148,11 @@ public class FileSecretResolutionTest {
         assertResolutionFails(Collections.singletonList(fileSecret("redcap", "redcap-#nope#", MOUNT)), "PROJ01", Collections.emptyMap(),
                 kubernetesServer().build(), "Placeholder #nope# has no value");
         assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), null, Collections.emptyMap(),
-                kubernetesServer().build(), "#PROJECT# has no value");
+                kubernetesServer().secretNameTemplate("xnat-#PROJECT#-{identifier}").build(), "#PROJECT# has no value");
         assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(),
                 kubernetesServer().secretNameTemplate("site-#PROJECT#").build(), "{identifier}");
         assertResolutionFails(Collections.singletonList(fileSecret("redcap", null, MOUNT)), StringUtils.repeat('p', 250), Collections.emptyMap(),
-                kubernetesServer().build(), "253");
+                kubernetesServer().secretNameTemplate("xnat-#PROJECT#-{identifier}").build(), "253");
     }
 
     @Test
@@ -218,8 +225,9 @@ public class FileSecretResolutionTest {
                 docker.toBuilder().backend(Backend.SWARM).build(), "File secrets are not supported on the " + Backend.SWARM + " backend");
     }
 
+    /** A per-project template so the SecretProviderClass checks below can tell projects apart. */
     private static DockerServerBase.DockerServer csiServer() {
-        return kubernetesServer().secretVolumeType(SecretVolumeType.CSI).build();
+        return kubernetesServer().secretVolumeType(SecretVolumeType.CSI).secretNameTemplate("xnat-#PROJECT#-{identifier}").build();
     }
 
     @Test
@@ -261,7 +269,7 @@ public class FileSecretResolutionTest {
     public void csiCheckUsesThePerProjectNamespace() throws Exception {
         final DockerServerBase.DockerServer server = kubernetesServer().secretVolumeType(SecretVolumeType.CSI)
                 .jobNamespaceMode(JobNamespaceMode.PER_PROJECT).jobNamespaceTemplate("xnat-#PROJECT#").build();
-        when(containerControlApi.secretProviderClassExists("xnat-proj01", "xnat-proj01-redcap")).thenReturn(SecretProviderClassCheck.exists());
+        when(containerControlApi.secretProviderClassExists("xnat-proj01", "redcap")).thenReturn(SecretProviderClassCheck.exists());
         assertThat(resolve(Collections.singletonList(fileSecret("redcap", null, MOUNT)), "PROJ01", Collections.emptyMap(), server).secrets(), hasSize(1));
     }
 
