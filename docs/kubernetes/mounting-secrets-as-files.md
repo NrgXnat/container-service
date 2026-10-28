@@ -57,15 +57,23 @@ Names are rendered when the command is resolved and stored with the container re
 
 ### Backend settings
 
-Administer > Plugin Settings > Container Service > Compute Backend (Kubernetes), or `POST /xapi/docker/server`:
+Administer > Plugin Settings > Container Service > Compute Backend (Kubernetes), or `POST /xapi/docker/server`. The
+page shows two groups: job namespace and identity (independent of secrets) and project secrets.
+
+Job namespace and identity:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `job-namespace-mode` | `single` | `single`: jobs run in the kubeconfig context namespace, as before. `per-project`: in the namespace rendered from the template below. |
+| `job-namespace-template` | unset | Required in per-project mode; must contain `#PROJECT#` and no other placeholder; rendered as a DNS label (63 characters max, dots become dashes). |
+| `job-service-account` | unset | Pod `serviceAccountName` for all jobs, whether or not they mount secrets. In per-project mode every project namespace needs a ServiceAccount of this name. With csi secrets it also carries the vault identity (IRSA on EKS). |
+
+Project secrets:
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
 | `secret-volume-type` | `secret` | `secret`: a Kubernetes Secret of that name in the job's namespace. `csi`: a Secrets Store CSI volume (`secrets-store.csi.k8s.io`) whose `secretProviderClass` is that name; the value is fetched from the external store at mount time. |
 | `secret-name-template` | `{identifier}` | Must contain `{identifier}`. The default names the object after the identifier alone (shared by all projects); `xnat-#PROJECT#-{identifier}` gives one object per project. |
-| `job-service-account` | unset | Pod `serviceAccountName`. Needed when the CSI provider authenticates as the pod (IRSA on EKS). |
-| `job-namespace-mode` | `single` | `single`: jobs run in the kubeconfig context namespace, as before. `per-project`: in the namespace rendered from the template below. |
-| `job-namespace-template` | unset | Required in per-project mode; must contain `#PROJECT#` and no other placeholder; rendered as a DNS label (63 characters max, dots become dashes). |
 | `secret-mount-timeout-seconds` | 600 | See "Failures". 0 disables the watchdog. |
 
 Namespace and secret settings apply to new launches; running jobs keep the namespace recorded on their container. The

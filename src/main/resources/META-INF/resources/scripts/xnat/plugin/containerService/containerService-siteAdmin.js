@@ -482,6 +482,31 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             ])
                         ]),
                         spawn('div.host-type-settings.kubernetes', [
+                            spawn('p.divider', '<strong>Job namespace and identity</strong><br> ' +
+                                'Which namespace jobs are created in and which ServiceAccount they run as. Independent of secrets: ' +
+                                'per-project namespaces isolate compute even when no command declares a secret. ' +
+                                'Leave the defaults to keep the current behaviour (kubeconfig context namespace, namespace default ServiceAccount).'),
+                            XNAT.ui.panel.select.single({
+                                name: 'job-namespace-mode',
+                                label: 'Job namespace mode',
+                                options: [
+                                    {label: 'Single: kubeconfig context namespace', value: 'single'},
+                                    {label: 'Per project: rendered from the template below', value: 'per-project'}
+                                ],
+                                description: 'Per-project needs every project namespace onboarded first (ServiceAccount, RoleBinding for the Container Service identity, PVCs, secret objects). ' +
+                                    'Changing the mode only affects jobs launched afterwards.'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'job-namespace-template',
+                                label: 'Job namespace template',
+                                description: 'Only used in per-project mode. Must contain #PROJECT#, e.g. xnat-#PROJECT#. Rendered as a DNS label (lower case, dashes, max 63 characters).'
+                            }),
+                            XNAT.ui.panel.input.text({
+                                name: 'job-service-account',
+                                label: 'Job service account',
+                                description: 'Pod serviceAccountName for all jobs. Blank uses the namespace default. In per-project mode every project namespace needs a ServiceAccount of this name; ' +
+                                    'with csi secrets it also carries the vault identity (for example IRSA on EKS).'
+                            }),
                             spawn('p.divider', '<strong>Project secrets (file secrets)</strong><br> ' +
                                 'Commands can declare <code>k8s-secret</code> / <code>file</code> secrets that are mounted into the job ' +
                                 'from a Kubernetes Secret or a Secrets Store CSI SecretProviderClass named per project. XNAT never reads ' +
@@ -500,25 +525,6 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                 label: 'Secret name template',
                                 description: 'Name of the Secret / SecretProviderClass to mount. Placeholders: #PROJECT#, {identifier}, #&lt;input name&gt;# (e.g. #session#). ' +
                                     'Must contain {identifier}. Blank means {identifier}: one object shared by all projects. Use xnat-#PROJECT#-{identifier} for one object per project.'
-                            }),
-                            XNAT.ui.panel.input.text({
-                                name: 'job-service-account',
-                                label: 'Job service account',
-                                description: 'Pod serviceAccountName for jobs. Blank uses the namespace default. Required for IRSA with csi.'
-                            }),
-                            XNAT.ui.panel.select.single({
-                                name: 'job-namespace-mode',
-                                label: 'Job namespace mode',
-                                options: [
-                                    {label: 'Single: kubeconfig context namespace', value: 'single'},
-                                    {label: 'Per project: rendered from the template below', value: 'per-project'}
-                                ],
-                                description: 'Per-project needs every project namespace onboarded first (service account, RoleBinding for the Container Service identity, PVCs, secret objects).'
-                            }),
-                            XNAT.ui.panel.input.text({
-                                name: 'job-namespace-template',
-                                label: 'Job namespace template',
-                                description: 'Only used in per-project mode. Must contain #PROJECT#, e.g. xnat-#PROJECT#. Rendered as a DNS label (lower case, dashes, max 63 characters).'
                             }),
                             XNAT.ui.panel.input.text({
                                 name: 'secret-mount-timeout-seconds',
