@@ -2978,31 +2978,14 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 });
 
                 panel.on('change','.orchestrationWrapperSelect.first', function(){
-                    contexts = $(this).find('option:selected').data('contexts').split(' ');
+                    const selectedContexts = $(this).find('option:selected').data('contexts');
+                    contexts = selectedContexts ? selectedContexts.split(' ') : [];
 
-                    // disable any command that doesn't match the available contexts for the parent
+                    // drop any command that doesn't match the available contexts for the parent
                     $('.orchestrationWrapperSelect:not(.first)').each(function(){
                         const $select = $(this);
-                        let selectedAndDisabled = false;
-                        $select.find('option').each(function(){
-                            const $option = $(this);
-                            const command = Object.values(commandOptions).find(o => o['wrapper-id'] == $option.val());
-                            if ($option.text() === '' || !command || !command.enabled) {
-                                return;
-                            }
-                            $option.prop('disabled', true);
-
-                            let commandContexts = $option.data('contexts') || '';
-                            commandContexts = commandContexts.split(' ');
-
-                            if (commandContexts.filter(c => contexts.includes(c)).length > 0) {
-                                $option.prop('disabled', false);
-                            }
-
-                            if ($option.is(':selected') && $option.prop('disabled')) {
-                                selectedAndDisabled = true;
-                            }
-                        });
+                        refreshOptions($select);
+                        const selectedAndDisabled = $select.find('option:selected').prop('disabled');
 
                         if (selectedAndDisabled) {
                             appendDisabledWarning($select, 'This command runs in a different context than its predecessor');
@@ -3039,9 +3022,9 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 }
 
                 function setFirst(firstSel, prev) {
-                    firstSel.find('option').prop('disabled', false);
-                    firstSel.parents('div.element-wrapper').find('div.description').text(firstDesc);
                     firstSel.addClass('first');
+                    refreshOptions(firstSel);
+                    firstSel.parents('div.element-wrapper').find('div.description').text(firstDesc);
                     if (prev) {
                         prev.removeClass('first');
                         prev.parents('div.element-wrapper').find('div.description').text('');
@@ -3051,34 +3034,64 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     }
                 }
 
-                function makeFormattedOptions(wid) {
+                // site-enabled commands only, sorted by label
+                function sortedCommandOptions() {
+                    return Object.values(commandOptions)
+                        .filter(option => option.enabled)
+                        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+                }
+
+                function makeFormattedOptions(wid, first, filterKey) {
+                    filterKey = (filterKey || '').toLowerCase();
                     let formattedOptions = [spawn('option',{ selected: true })];
-                    Object.values(commandOptions).forEach(function(option){
-                        let disabled = !option.enabled;
-                        if (!disabled && contexts.length > 0) {
-                            disabled |= option.contexts.filter(c => contexts.includes(c)).length === 0
-                        }
-                         if (!disabled) {
+                    sortedCommandOptions().forEach(function(option){
+                        const selected = !!wid && wid == option['wrapper-id'];
+                        const outOfContext = !first && contexts.length > 0 &&
+                            option.contexts.filter(c => contexts.includes(c)).length === 0;
+                        const matchesFilter = !filterKey || option.label.toLowerCase().indexOf(filterKey) >= 0;
+                        // keep the current selection listed, so a no-longer-valid choice still shows with its warning
+                        if (selected || (!outOfContext && matchesFilter)) {
                             formattedOptions.push(spawn('option',{
                                 value: option['wrapper-id'],
                                 data: { contexts: option.contexts.join(' ') },
                                 html: option.label,
-                                disabled: disabled,
-                                selected: wid && wid === option['wrapper-id']
+                                disabled: outOfContext,
+                                selected: selected
                             }));
-                         }
+                        }
                     });
                     return formattedOptions;
+                }
+
+                function refreshOptions($select) {
+                    const filterKey = $select.closest('div.element-wrapper').find('input.orchestrationWrapperFilter').val();
+                    // not $select.val(): jQuery ignores a selected option that is disabled, which would drop the selection
+                    const wid = $select.find('option:selected').val();
+                    const options = makeFormattedOptions(wid, $select.hasClass('first'), filterKey);
+                    $select.empty().append(options);
+                }
+
+                function spawnWrapperFilter() {
+                    return spawn('input.orchestrationWrapperFilter', {
+                        type: 'text',
+                        placeholder: 'Filter commands',
+                        title: 'Narrow the command list below by name',
+                        style: { display: 'block', width: '200px', marginBottom: '4px' },
+                        onkeyup: function(){
+                            refreshOptions($(this).closest('div.element-wrapper').find('select.orchestrationWrapperSelect'));
+                        }
+                    });
                 }
 
                 function spawnWrapperSelect(i, wid) {
                     return spawn('div.panel-element', [
                         spawn('label.element-label', {style: 'cursor:move'}, 'Command'),
                         spawn('div.element-wrapper',[
+                            spawnWrapperFilter(),
                             spawn('label',[
                                 spawn ('select', {
                                     classes: 'orchestrationWrapperSelect ' + (i===0 ? 'first' : ''),
-                                }, makeFormattedOptions(wid)),
+                                }, makeFormattedOptions(wid, i === 0)),
                                 spawn('span.close.text-error', {
                                     style: 'cursor:pointer',
                                     title: 'Remove command',
