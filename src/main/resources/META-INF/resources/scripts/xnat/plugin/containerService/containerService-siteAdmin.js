@@ -3034,11 +3034,11 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     }
                 }
 
-                // site-enabled commands only, sorted by label
+                // site-enabled commands only, sorted by label (case-insensitive, "tool-2" before "tool-10")
                 function sortedCommandOptions() {
                     return Object.values(commandOptions)
                         .filter(option => option.enabled)
-                        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+                        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base', numeric: true }));
                 }
 
                 function makeFormattedOptions(wid, first, filterKey) {
