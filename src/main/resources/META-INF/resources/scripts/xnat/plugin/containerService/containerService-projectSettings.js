@@ -462,8 +462,10 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             } else {
                 rowsToFilter.each(function(){
                     // show this row only if filters are empty or have values matching the command or container
+                    // the command filter matches the label (description) or the name, which is what orchestrations list
                     var showRow = (
-                        ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
+                        ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 ||
+                            String($(this).data('name')).toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
                         ($(this).data('image').toLowerCase().indexOf(containerFilterKey) >= 0 || !containerFilterKey ) &&
                          ($(this).data('visibility').toLowerCase().indexOf(visibilityFilterKey) >= 0 || !visibilityFilterKey ));
 
@@ -519,6 +521,12 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 },
                 spawn('b', label)
             );
+        }
+
+        // show the name under the description, since orchestrations list commands by name
+        function commandName(wrapper){
+            if (!wrapper.description || wrapper.description === wrapper.name) return '';
+            return spawn('div', { style: { color: '#808080', fontSize: '11px' }, textContent: wrapper.name });
         }
 
         function spawnContactContainerManager(command, wrapper) {
@@ -636,7 +644,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
             return spawn('input', {
                 addClass: 'filter-data filter-commandlabel',
                 type: 'text',
-                title: 'Filter on the command label',
+                title: 'Filter on the command label or name',
                 placeholder: 'Filter by Command',
                 style: { width: 'calc(100% - 12px)'},
                 onkeyup: XNAT.plugin.containerService.projCommandConfigManager.filterCommandList
@@ -683,7 +691,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
 
                         var label = (wrapper.description) ? wrapper.description : wrapper.name;
                         pccmTable.tr({addClass: 'command-config-listing', title: label, data: {id: wrapper.id, name: wrapper.name, image: command.image, visibility: command.visibility}})
-                            .td([viewLink(command, wrapper)]).addClass('name')
+                            .td([viewLink(command, wrapper), commandName(wrapper)]).addClass('name')
                             .td(command.image)
                             .td([['div.center', [enabledCheckbox(command,wrapper)]]])
                             .td([ spawn('span.center', showVisibilityText(command)) ])
@@ -852,6 +860,13 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 coTable.tr({ 'style': { 'background-color': '#f3f3f3' }})
                     .td({className: 'name', html: 'No orchestration', colSpan: 2})
                     .td([ spawn('div',[radioBtn(!data.selectedOrchestrationId, null)]) ])
+
+                if (!data.availableOrchestrations.length) {
+                    coTable.tr()
+                        .td({ colSpan: 3, html: 'No orchestrations are available to this ' +
+                            projectDataTypeSingularName.toLowerCase() + ' yet. Enable each of an ' +
+                            'orchestration\'s commands under Configure Commands to list it here.' })
+                }
 
                 data.availableOrchestrations.forEach(function(o) {
                     coTable.tr()
