@@ -526,7 +526,7 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
         // show the name under the description, since orchestrations list commands by name
         function commandName(wrapper){
             if (!wrapper.description || wrapper.description === wrapper.name) return '';
-            return spawn('div', { style: { color: '#808080', fontSize: '11px' }}, wrapper.name);
+            return spawn('div', { style: { color: '#808080', fontSize: '11px' }, textContent: wrapper.name });
         }
 
         function spawnContactContainerManager(command, wrapper) {
