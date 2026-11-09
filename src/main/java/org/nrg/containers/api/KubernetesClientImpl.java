@@ -101,7 +101,7 @@ public class KubernetesClientImpl implements KubernetesClient {
     public static final String SPC_VERSION = "v1";
     public static final String SPC_PLURAL  = "secretproviderclasses";
 
-    private static final int SPC_LOOKUP_TIMEOUT_SECONDS = 10;
+    private static final int API_LOOKUP_TIMEOUT_SECONDS = 10;
 
     static final String REDACTED_ENV_VALUE = "******";
 
@@ -291,7 +291,7 @@ public class KubernetesClientImpl implements KubernetesClient {
         try {
             // The shared ApiClient has readTimeout(0) once the informer is built, so bound this call on its own.
             final Call call = customObjectsApi.getNamespacedCustomObjectCall(SPC_GROUP, SPC_VERSION, effective, SPC_PLURAL, name, null);
-            call.timeout().timeout(SPC_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            call.timeout().timeout(API_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             apiClient.execute(call, Object.class);
             return SecretProviderClassCheck.exists();
         } catch (ApiException e) {
@@ -310,9 +310,9 @@ public class KubernetesClientImpl implements KubernetesClient {
         }
         final String effective = effectiveNamespace(namespace);
         try {
-            // Same reason as secretProviderClassExists: the shared ApiClient has no read timeout once the informer is built.
+            // The shared ApiClient has readTimeout(0) once the informer is built, so bound this call on its own.
             final Call call = coreApi.readNamespacedPodCall(podName, effective, null, null);
-            call.timeout().timeout(SPC_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            call.timeout().timeout(API_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             final V1Pod pod = apiClient.<V1Pod>execute(call, V1Pod.class).getData();
             return PodMountState.of(pod);
         } catch (ApiException e) {
