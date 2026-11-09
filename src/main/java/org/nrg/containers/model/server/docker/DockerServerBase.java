@@ -7,6 +7,7 @@ import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.exceptions.InvalidDefinitionException;
+import org.nrg.containers.model.kubernetes.JobNamespaceTemplate;
 import org.nrg.containers.secrets.K8sSecretNameTemplate;
 
 import javax.annotation.Nonnull;
@@ -523,23 +524,9 @@ public abstract class DockerServerBase implements Serializable {
                     }
                 }
                 if (jobNamespaceMode() == JobNamespaceMode.PER_PROJECT) {
-                    final String namespaceTemplate = jobNamespaceTemplate();
-                    if (StringUtils.isBlank(namespaceTemplate)) {
-                        errors.add("Job namespace template is required when job namespace mode is per-project");
-                    } else if (!namespaceTemplate.contains(K8sSecretNameTemplate.PROJECT_PLACEHOLDER)) {
-                        errors.add("Job namespace template must contain " + K8sSecretNameTemplate.PROJECT_PLACEHOLDER);
-                    } else if (namespaceTemplate.replace(K8sSecretNameTemplate.PROJECT_PLACEHOLDER, "").contains("#")) {
-                        errors.add("Job namespace template may only use the " + K8sSecretNameTemplate.PROJECT_PLACEHOLDER
-                                + " placeholder; input placeholders are not substituted in namespaces");
-                    } else {
-                        try {
-                            // A one-character project is the shortest possible rendering; a longer one only gets longer.
-                            K8sSecretNameTemplate.requireValidLabel(K8sSecretNameTemplate.sanitizeLabel(
-                                    namespaceTemplate.replace(K8sSecretNameTemplate.PROJECT_PLACEHOLDER, "x")),
-                                    "Job namespace template (rendered with a one-character project)");
-                        } catch (IllegalArgumentException e) {
-                            errors.add(e.getMessage());
-                        }
+                    final String namespaceTemplateError = JobNamespaceTemplate.validate(jobNamespaceTemplate());
+                    if (namespaceTemplateError != null) {
+                        errors.add(namespaceTemplateError);
                     }
                 }
                 if (secretMountTimeoutSeconds() < 0) {

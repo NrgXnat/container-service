@@ -1,31 +1,29 @@
 package org.nrg.containers.secrets;
 
 import org.apache.commons.lang3.StringUtils;
+import org.nrg.containers.model.kubernetes.JobNamespaceTemplate;
+import org.nrg.containers.model.kubernetes.KubernetesNames;
 
 import javax.annotation.Nullable;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Renders the template that maps a secret's identifier plus launch context to the name of the
- * Kubernetes Secret (or SecretProviderClass) to mount, and sanitises strings into Kubernetes names.
+ * Kubernetes Secret (or SecretProviderClass) to mount.
  * <p>
  * Placeholders: {@code #PROJECT#} (the XNAT project the container runs in), {@code {identifier}}
  * (the identifier declared in the command; mandatory in every template) and {@code #<input>#}
  * (a wrapper/command input replacement key). The command's {@code name-template}, the site's
  * {@code secret-name-template} and the built-in default all follow the same rule.
- * Names are RFC 1123 subdomains (lower case, {@code [a-z0-9.-]}, at most 253 characters);
- * namespaces are RFC 1123 labels (no dots, at most 63 characters).
+ * Rendered names are RFC 1123 subdomains; see {@link KubernetesNames}.
  */
 public final class K8sSecretNameTemplate {
     /** With no site template the identifier alone is the object name, so a fresh install needs no backend configuration. */
     public static final String DEFAULT_TEMPLATE       = "{identifier}";
-    public static final String PROJECT_PLACEHOLDER    = "#PROJECT#";
+    public static final String PROJECT_PLACEHOLDER    = JobNamespaceTemplate.PROJECT_PLACEHOLDER;
     public static final String IDENTIFIER_PLACEHOLDER = "{identifier}";
-    public static final int    MAX_NAME_LENGTH        = 253;
-    public static final int    MAX_LABEL_LENGTH       = 63;
 
     /** A {@code #...#} token is {@code #PROJECT#} or a wrapper input replacement key. */
     private static final Pattern INPUT_PLACEHOLDER = Pattern.compile("#[^#\\s]+#");
@@ -57,7 +55,7 @@ public final class K8sSecretNameTemplate {
         }
         final String substituted = substitute(effectiveTemplate.replace(IDENTIFIER_PLACEHOLDER, identifier), project,
                 resolvedInputValuesByReplacementKey);
-        return requireValidName(requireRfc1123Subdomain(sanitize(substituted)), "Secret name");
+        return KubernetesNames.requireValidName(requireRfc1123Subdomain(KubernetesNames.sanitize(substituted)), "Secret name");
     }
 
     /**
@@ -84,27 +82,6 @@ public final class K8sSecretNameTemplate {
         return null;
     }
 
-    /**
-     * Render the per-project namespace template into a sanitised, length-checked DNS label.
-     * Only {@code #PROJECT#} is substituted: namespaces are a project-level boundary.
-     */
-    public static String renderNamespace(@Nullable final String template, @Nullable final String project) {
-        if (StringUtils.isBlank(template)) {
-            throw new IllegalArgumentException("A job namespace template is required in per-project mode");
-        }
-        if (!template.contains(PROJECT_PLACEHOLDER)) {
-            throw new IllegalArgumentException("Job namespace template \"" + template + "\" must contain " + PROJECT_PLACEHOLDER);
-        }
-        if (template.replace(PROJECT_PLACEHOLDER, "").contains("#")) {
-            throw new IllegalArgumentException("Job namespace template \"" + template + "\" may only use the "
-                    + PROJECT_PLACEHOLDER + " placeholder; input placeholders are not substituted in namespaces");
-        }
-        if (StringUtils.isBlank(project)) {
-            throw new IllegalArgumentException("Placeholder " + PROJECT_PLACEHOLDER
-                    + " has no value in this launch: per-project namespaces need a project");
-        }
-        return requireValidLabel(sanitizeLabel(template.replace(PROJECT_PLACEHOLDER, project)), "Job namespace");
-    }
 
     private static String requireRfc1123Subdomain(final String name) {
         if (!RFC1123_SUBDOMAIN.matcher(name).matches()) {
@@ -141,36 +118,4 @@ public final class K8sSecretNameTemplate {
         return buffer.toString();
     }
 
-    /** Make a string usable as a Kubernetes object name (RFC 1123 subdomain subset). Length is not checked here. */
-    public static String sanitize(final String raw) {
-        final String lowered = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9.-]", "-").replaceAll("-{2,}", "-");
-        return StringUtils.strip(lowered, "-.");
-    }
-
-    /** Make a string usable as a Kubernetes namespace (RFC 1123 label: like {@link #sanitize} but dots become dashes). */
-    public static String sanitizeLabel(final String raw) {
-        final String lowered = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9-]", "-").replaceAll("-{2,}", "-");
-        return StringUtils.strip(lowered, "-");
-    }
-
-    /** @throws IllegalArgumentException when the sanitised name is empty or longer than 253 characters. Never truncates. */
-    public static String requireValidName(final String sanitized, final String what) {
-        return requireLength(sanitized, what, MAX_NAME_LENGTH);
-    }
-
-    /** @throws IllegalArgumentException when the sanitised label is empty or longer than 63 characters. Never truncates. */
-    public static String requireValidLabel(final String sanitized, final String what) {
-        return requireLength(sanitized, what, MAX_LABEL_LENGTH);
-    }
-
-    private static String requireLength(final String sanitized, final String what, final int max) {
-        if (StringUtils.isBlank(sanitized)) {
-            throw new IllegalArgumentException(what + " is empty after sanitising");
-        }
-        if (sanitized.length() > max) {
-            throw new IllegalArgumentException(what + " \"" + sanitized + "\" is " + sanitized.length()
-                    + " characters long; Kubernetes allows at most " + max);
-        }
-        return sanitized;
-    }
 }

@@ -3,6 +3,7 @@ package org.nrg.containers.secrets;
 import javax.annotation.Nullable;
 import java.util.Objects;
 import java.util.Optional;
+import org.nrg.containers.model.kubernetes.KubernetesNames;
 
 /**
  * A resolved {@link K8sSecretSource} → {@link FileSecretDestination} secret.
@@ -54,7 +55,7 @@ public class FileResolvedSecret extends ResolvedSecret {
 
     /** Pod volume name, derived from the identifier; Kubernetes requires it to be unique within the Pod. */
     public String volumeName() {
-        return K8sSecretNameTemplate.sanitizeLabel(VOLUME_NAME_PREFIX + identifier());
+        return KubernetesNames.sanitizeLabel(VOLUME_NAME_PREFIX + identifier());
     }
 
     /** A copy whose source carries the rendered (non-null) name, so it survives the jsonb round trip. */

@@ -51,6 +51,7 @@ import org.nrg.containers.model.command.entity.CommandInputEntity;
 import org.nrg.containers.model.command.entity.CommandType;
 import org.nrg.containers.model.command.entity.CommandWrapperInputType;
 import org.nrg.containers.model.command.entity.CommandWrapperOutputEntity;
+import org.nrg.containers.model.kubernetes.JobNamespaceTemplate;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.JobNamespaceMode;
@@ -576,7 +577,7 @@ public class CommandResolutionServiceImpl implements CommandResolutionService {
                 return null;
             }
             try {
-                final String namespace = K8sSecretNameTemplate.renderNamespace(jobNamespaceTemplate, project);
+                final String namespace = JobNamespaceTemplate.render(jobNamespaceTemplate, project);
                 log.debug("Job will run in per-project namespace {}", namespace);
                 return namespace;
             } catch (IllegalArgumentException e) {

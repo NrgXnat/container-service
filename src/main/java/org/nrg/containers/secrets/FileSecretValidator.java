@@ -2,6 +2,7 @@ package org.nrg.containers.secrets;
 
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.model.command.auto.Command;
+import org.nrg.containers.model.kubernetes.KubernetesNames;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,7 +82,7 @@ public final class FileSecretValidator {
                         + "\" may only contain letters, digits, '_', '.' and '-'");
             }
             // Pod volume names are DNS labels: "secret-" + identifier must stay within 63 characters
-            K8sSecretNameTemplate.requireValidLabel(secret.volumeName(),
+            KubernetesNames.requireValidLabel(secret.volumeName(),
                     "Secret volume name for identifier \"" + secret.identifier() + "\"");
             if (!volumeNames.add(secret.volumeName())) {
                 throw new IllegalArgumentException("Secret identifier \"" + secret.identifier()

@@ -98,41 +98,10 @@ public class K8sSecretNameTemplateTest {
         assertThat(K8sSecretNameTemplate.render("a.b-c-{identifier}", null, "redcap", NO_INPUTS), is("a.b-c-redcap"));
     }
 
-    @Test
-    public void sanitizeKeepsDotsButLowercasesAndReplacesOtherCharacters() {
-        assertThat(K8sSecretNameTemplate.sanitize("Xnat_Proj.01--redcap"), is("xnat-proj.01-redcap"));
-        assertThat(K8sSecretNameTemplate.sanitize("--a--"), is("a"));
-    }
 
-    @Test
-    public void sanitizeLabelAlsoReplacesDots() {
-        assertThat(K8sSecretNameTemplate.sanitizeLabel("xnat-My_Proj.1"), is("xnat-my-proj-1"));
-        assertThat(K8sSecretNameTemplate.sanitizeLabel("..x.."), is("x"));
-    }
 
-    @Test
-    public void requireValidNameRejectsBlankAndOverlong() {
-        assertThat(K8sSecretNameTemplate.requireValidName("ok", "Secret name"), is("ok"));
-        assertRejected(() -> K8sSecretNameTemplate.requireValidName("", "Secret name"), "Secret name");
-        assertRejected(() -> K8sSecretNameTemplate.requireValidName(StringUtils.repeat('a', 254), "Secret name"), "253");
-    }
 
-    @Test
-    public void requireValidLabelRejectsOverlong() {
-        assertThat(K8sSecretNameTemplate.requireValidLabel(StringUtils.repeat('a', 63), "Namespace"), is(StringUtils.repeat('a', 63)));
-        assertRejected(() -> K8sSecretNameTemplate.requireValidLabel(StringUtils.repeat('a', 64), "Namespace"), "63");
-    }
 
-    @Test
-    public void renderNamespaceProducesADnsLabel() {
-        assertThat(K8sSecretNameTemplate.renderNamespace("xnat-#PROJECT#", "PROJ01"), is("xnat-proj01"));
-        assertThat(K8sSecretNameTemplate.renderNamespace("xnat-#PROJECT#", "My_Proj.1"), is("xnat-my-proj-1"));
-        assertRejected(() -> K8sSecretNameTemplate.renderNamespace("xnat-#PROJECT#", StringUtils.repeat('p', 60)), "63");
-        assertRejected(() -> K8sSecretNameTemplate.renderNamespace("xnat-#PROJECT#", null), "#PROJECT# has no value");
-        assertRejected(() -> K8sSecretNameTemplate.renderNamespace("xnat-#PROJECT#-#session#", "PROJ01"), "only use");
-        assertRejected(() -> K8sSecretNameTemplate.renderNamespace("xnat-jobs", "PROJ01"), "#PROJECT#");
-        assertRejected(() -> K8sSecretNameTemplate.renderNamespace(null, "PROJ01"), "required");
-    }
 
     private static void assertRejected(final Runnable call, final String expectedFragment) {
         try {
