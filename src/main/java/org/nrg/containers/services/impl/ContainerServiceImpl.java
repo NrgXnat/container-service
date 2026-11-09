@@ -50,9 +50,6 @@ import org.nrg.containers.model.container.auto.ContainerPaginatedRequest;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
-import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
-import org.nrg.containers.model.kubernetes.PodMountState;
-import org.nrg.containers.model.kubernetes.PodWarningReason;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
 import org.nrg.containers.model.server.docker.Backend;
@@ -60,8 +57,6 @@ import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.xnat.Scan;
 import org.nrg.containers.model.xnat.XnatModelObject;
 import org.nrg.containers.rest.ContainerLogPollResponse;
-import org.nrg.containers.secrets.FileResolvedSecret;
-import org.nrg.containers.secrets.SecretErrorTranslator;
 import org.nrg.containers.secrets.SecretMountFailure;
 import org.nrg.containers.services.CommandResolutionService;
 import org.nrg.containers.services.CommandService;
@@ -181,11 +176,6 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     public static final String wrapupStr = "Wrapup";
     public static final String containerLaunchJustification = "Container launch";
     public static final String TO_BE_ASSIGNED = "To be assigned";
-    static final String SECRET_MOUNT_TIMEOUT_PREFIX = "Secret mount timed out after ";
-    /** Entity type ContainerHistory.fromUserAction records. */
-    private static final String USER_ENTITY_TYPE = "user";
-    /** Failed attempts (user lookup or Job delete) after which the watchdog gives up on a timed-out container. */
-    static final int MAX_SECRET_MOUNT_TIMEOUT_ATTEMPTS = 10;
 
     private static final String DATETIME_GROUP_NAME = "datetime";
     public static final Pattern DATETIME_AT_LINE_START = Pattern.compile("(?<=^|\\n)(?<" + DATETIME_GROUP_NAME + ">\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\S*) ");
@@ -205,8 +195,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     private final OrchestrationService orchestrationService;
     private final ObjectMapper mapper;
     private final ExecutorService executorService;
-    private final DockerServerService dockerServerService;
     private final SecretMountWatchdog secretMountWatchdog;
+    private final SecretMountTimeoutHandler secretMountTimeoutHandler;
 
 
     private LoadingCache<OrchestrationIdentifier, Optional<Orchestration>> orchestrationCache;
@@ -239,8 +229,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         this.orchestrationService = orchestrationService;
         this.mapper = mapper;
         this.executorService = containerServiceThreadPoolExecutorFactoryBean.getObject();
-        this.dockerServerService = dockerServerService;
         this.secretMountWatchdog = secretMountWatchdog;
+        this.secretMountTimeoutHandler = new SecretMountTimeoutHandler(this, containerControlApi, secretMountWatchdog, dockerServerService);
 
         buildCache();
     }
@@ -248,7 +238,7 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
     @Override
     public void afterPropertiesSet() {
         // Callback rather than injection: the watchdog must not depend on this service (construction-time cycle).
-        secretMountWatchdog.registerTimeoutHandler(this::handleSecretMountTimeout);
+        secretMountWatchdog.registerTimeoutHandler(secretMountTimeoutHandler);
     }
 
     private void buildCache() {
@@ -896,7 +886,7 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
             return;
         }
 
-        if (kEvent != null && isEventAfterSecretMountTimeout(kEvent, container)) {
+        if (kEvent != null && secretMountTimeoutHandler.isEventAfterTimeout(container)) {
             // The watchdog queued finalize and deleted the job. Status is "_Pending" (or already terminal), which
             // isFinalizing() does not cover, so without this any later pod event would finalize a second time.
             log.debug("Container {}: secret mount watchdog already finalized; ignoring pod event {}", container.databaseId(), kEvent);
@@ -916,11 +906,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         // events we have already seen, e.g. the kubernetes informer's initial LIST after a restart reports
         // pods that terminated long ago. Such an event can still carry an id we have not recorded yet,
         // but it must not be acted on again.
-        // A FailedMount on one of this container's secret volumes is translated before it is recorded, and starts the
-        // watchdog clock. Mount failures of other volumes (PVC, hostPath) are history only, as before.
-        // Reason checked first: building the translator context reads the server row, not worth it for every event.
-        final SecretMountFailure secretMountFailure = kEvent != null && PodWarningReason.FAILED_MOUNT.equals(kEvent.getWarningReason())
-                ? SecretMountFailure.from(kEvent, translatorContext(container)) : null;
+        // A FailedMount on one of this container's secret volumes is recorded translated, and starts the watchdog clock.
+        final SecretMountFailure secretMountFailure = kEvent == null ? null : secretMountTimeoutHandler.secretMountFailure(kEvent, container);
         final ContainerEvent eventToRecord = secretMountFailure == null ? event : secretMountFailure.translatedEvent();
 
         Container containerWithAddedEvent = toPojoOrNull(containerEntityService.addContainerEventToHistory(fromPojo(container), eventToRecord, userI));
@@ -929,12 +916,8 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
             containerWithAddedEvent = container;
         }
 
-        if (secretMountFailure != null) {
-            // Whether or not the event is new: an informer restart replays old events and must not lose the start time
-            secretMountWatchdog.recordFailedMount(container.databaseId(), kEvent.getFirstTimestamp(), secretMountFailure.translated());
-        }
-        if (kEvent != null && (kEvent.getPodPhase() == KubernetesPodPhase.RUNNING || kEvent.isExitStatus())) {
-            secretMountWatchdog.clear(container.databaseId());
+        if (kEvent != null) {
+            secretMountTimeoutHandler.onEventRecorded(kEvent, container, secretMountFailure);
         }
 
         if (kEvent != null && containerWithAddedEvent.backend() == Backend.KUBERNETES) {
@@ -979,127 +962,6 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         }
 
         log.debug("Done processing container event: {}", event);
-    }
-
-    private SecretErrorTranslator.Context translatorContext(final Container container) {
-        final List<FileResolvedSecret> fileSecrets = container.secrets().stream()
-                .filter(secret -> secret instanceof FileResolvedSecret)
-                .map(secret -> (FileResolvedSecret) secret)
-                .collect(Collectors.toList());
-        final DockerServerBase.DockerServer server = dockerServerService.retrieveServer();
-        return SecretErrorTranslator.Context.of(container.namespace(),
-                server == null ? null : server.jobServiceAccount(),
-                fileSecrets);
-    }
-
-    /**
-     * Watchdog callback. Order matters: history first, then queue finalize, then kill only once the finalize request
-     * was accepted. Killing an unqueued job would make the pod's onDelete FAILED event look like a real failure.
-     * While finalizing is throttled the entry stays and the next tick retries.
-     * The Pending check and queueFinalize are not atomic: a pod that turns Running in that millisecond window is
-     * finalized as failed, which is accepted by design.
-     */
-    void handleSecretMountTimeout(final long containerDbId, final int timeoutSeconds, final String translatedReason) {
-        final Container container = retrieve(containerDbId);
-        if (container == null || container.statusIsTerminal()) {
-            secretMountWatchdog.clear(containerDbId);
-            return;
-        }
-        if (isQueuedOrFinalizing(container)) {
-            // Finalize was accepted on an earlier tick but the delete failed: just retry the delete
-            deleteJobAndClear(container, containerDbId);
-            return;
-        }
-        if (KubernetesPodPhase.fromString(container.status()) != KubernetesPodPhase.PENDING) {
-            secretMountWatchdog.clear(containerDbId);   // past the mount stage (Running etc.): nothing to time out
-            return;
-        }
-        if (containerControlApi.podMountState(container) == PodMountState.PAST_VOLUME_MOUNT) {
-            // The FailedMount that started the clock is stale (e.g. replayed by the informer after a reconnect): the
-            // pod has mounted its volumes since and is held by something else, which the secret timeout must not report.
-            log.info("Container {} is no longer waiting on a secret mount; not timing it out", containerDbId);
-            secretMountWatchdog.clear(containerDbId);
-            return;
-        }
-        final UserI userI;
-        try {
-            userI = Users.getUser(container.userId());
-        } catch (UserInitException | UserNotFoundException e) {
-            recordFailedSecretMountTimeoutAttempt(containerDbId, "get user " + container.userId(), e);
-            return;
-        }
-        if (!hasSecretMountTimeoutEntry(container)) {
-            addContainerHistoryItem(container, ContainerHistory.fromSystem(container.status(),
-                    SECRET_MOUNT_TIMEOUT_PREFIX + timeoutSeconds + " s: " + translatedReason), userI);
-        }
-
-        queueFinalize("1", false, container, userI);
-
-        final Container requeried = retrieve(containerDbId);
-        if (requeried == null || !isQueuedOrFinalizing(requeried)) {
-            log.debug("Finalize of container {} is throttled; keeping the job until the next tick", containerDbId);
-            return;
-        }
-        deleteJobAndClear(requeried, containerDbId);
-    }
-
-    private void deleteJobAndClear(final Container container, final long containerDbId) {
-        try {
-            killWithoutHistory(container);
-        } catch (NotFoundException e) {
-            log.debug("Job of container {} is already gone", containerDbId);
-        } catch (NoContainerServerException | ContainerBackendException e) {
-            recordFailedSecretMountTimeoutAttempt(containerDbId, "delete the job", e);
-            return;
-        }
-        secretMountWatchdog.clear(containerDbId);
-    }
-
-    /** Stack trace on the first failure only; after the cap the entry is dropped so a broken Job is not retried every minute forever. */
-    private void recordFailedSecretMountTimeoutAttempt(final long containerDbId, final String action, final Exception e) {
-        final int attempts = secretMountWatchdog.recordFailedAttempt(containerDbId);
-        if (attempts >= MAX_SECRET_MOUNT_TIMEOUT_ATTEMPTS) {
-            log.error("Could not {} for timed-out container {} after {} attempts; giving up, its Kubernetes Job needs manual cleanup: {}",
-                    action, containerDbId, attempts, e.toString());
-            secretMountWatchdog.clear(containerDbId);
-        } else if (attempts <= 1) {
-            log.error("Could not {} for timed-out container {}; will retry", action, containerDbId, e);
-        } else {
-            log.warn("Could not {} for timed-out container {} (attempt {}); will retry: {}", action, containerDbId, attempts, e.toString());
-        }
-    }
-
-    private static boolean hasSecretMountTimeoutEntry(final Container container) {
-        return container.history().stream()
-                .anyMatch(item -> item.message() != null && item.message().startsWith(SECRET_MOUNT_TIMEOUT_PREFIX));
-    }
-
-    /**
-     * Once the secret mount watchdog has queued finalize (and then deleted the job), that finalize is the single
-     * source of truth for the container. Every later pod event is noise: the synthetic onDelete FAILED event, the
-     * genuine FAILED / ContainerStatusUnknown / 137 event the informer delivers after the delete, and repeated
-     * FailedMount warnings. Recording any of them would add history and finalize a second time.
-     * A user kill still passes: it maps the status to "Failed (Killed)", which is terminal, and is finalized only
-     * through the onDelete event, so a container with a user kill entry must not be swallowed.
-     * The event parameter keeps this guard Kubernetes-only.
-     */
-    private boolean isEventAfterSecretMountTimeout(final KubernetesStatusChangeEvent kEvent, final Container container) {
-        return kEvent != null
-                && hasSecretMountTimeoutEntry(container)
-                && (isQueuedOrFinalizing(container) || container.statusIsTerminal())
-                && !hasUserKillEntry(container);
-    }
-
-    /** History items keep the raw status, so a user kill is recorded as "kill" even though the container shows "Failed (Killed)". */
-    private static boolean hasUserKillEntry(final Container container) {
-        return container.history().stream()
-                .anyMatch(item -> ContainerEntity.KILL_STATUS.equals(item.status()) && USER_ENTITY_TYPE.equals(item.entityType()));
-    }
-
-    /** queueFinalize marks acceptance by prefixing the status with "_" (e.g. "_Pending"); "Finalizing" follows once consumed. */
-    private boolean isQueuedOrFinalizing(final Container container) {
-        final String status = container.status();
-        return isFinalizing(container) || (status != null && status.startsWith(ContainerRequest.inQueueStatusPrefix));
     }
 
     @Override
