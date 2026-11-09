@@ -19,6 +19,7 @@ import org.nrg.containers.model.container.auto.Container.ContainerHistory;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.secrets.FileResolvedSecret;
@@ -223,6 +224,50 @@ public class SecretMountTimeoutTest {
         assertThat(finalizeRequests, is(Collections.singletonList("1")));
         verify(containerControlApi).kill(any(Container.class));
         assertThat(watchdog.isTracking(DB_ID), is(false));
+    }
+
+    /**
+     * FU-3: after a reconnect the informer replays an old FailedMount whose firstTimestamp is already past the timeout,
+     * although the pod has since mounted its volumes and is stuck on something else (ImagePullBackOff on EKS).
+     * Timing it out would fail the container with a stale secret reason; the entry is dropped instead.
+     */
+    @Test
+    public void replayedFailedMountDoesNotTimeOutAPodPastTheMountStage() throws Exception {
+        when(containerControlApi.podMountState(any(Container.class))).thenReturn(PodMountState.PAST_VOLUME_MOUNT);
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofHours(1));
+
+        watchdog.tick();
+
+        verify(containerEntityService, never()).addContainerHistoryItem(any(ContainerEntity.class), any(ContainerEntityHistory.class), any(UserI.class));
+        assertThat(finalizeRequests, is(Collections.<String>emptyList()));
+        verify(containerControlApi, never()).kill(any(Container.class));
+        assertThat(watchdog.isTracking(DB_ID), is(false));
+    }
+
+    @Test
+    public void podStillWaitingOnItsVolumesTimesOut() throws Exception {
+        when(containerControlApi.podMountState(any(Container.class))).thenReturn(PodMountState.WAITING_ON_VOLUMES);
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofHours(1));
+
+        watchdog.tick();
+
+        assertThat(finalizeRequests, is(Collections.singletonList("1")));
+        verify(containerControlApi).kill(any(Container.class));
+    }
+
+    /** No answer from the API server keeps the behaviour from before the check: the timeout applies. */
+    @Test
+    public void unknownPodStateStillTimesOut() throws Exception {
+        when(containerControlApi.podMountState(any(Container.class))).thenReturn(PodMountState.UNKNOWN);
+        containerService.processEvent(failedMount(SECRET_MISSING, T0));
+        clock.now = T0.plus(Duration.ofSeconds(601));
+
+        watchdog.tick();
+
+        assertThat(finalizeRequests, is(Collections.singletonList("1")));
+        verify(containerControlApi).kill(any(Container.class));
     }
 
     @Test

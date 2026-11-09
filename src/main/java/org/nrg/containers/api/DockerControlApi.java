@@ -72,6 +72,7 @@ import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerClientCacheKey;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -1320,6 +1321,19 @@ public class DockerControlApi implements ContainerControlApi {
             return getKubernetesClient().secretProviderClassExists(namespace, name);
         } catch (NoContainerServerException e) {
             return SecretProviderClassCheck.undetermined("Could not reach the Kubernetes backend to check SecretProviderClass \"" + name + "\": " + e.getMessage());
+        }
+    }
+
+    @Override
+    public PodMountState podMountState(final Container container) {
+        try {
+            if (getServer().backend() != Backend.KUBERNETES) {
+                return PodMountState.UNKNOWN;
+            }
+            return getKubernetesClient().podMountState(container.podName(), container.namespace());
+        } catch (NoContainerServerException e) {
+            log.debug("Could not reach the Kubernetes backend to read the pod of container {}", container.databaseId(), e);
+            return PodMountState.UNKNOWN;
         }
     }
 }

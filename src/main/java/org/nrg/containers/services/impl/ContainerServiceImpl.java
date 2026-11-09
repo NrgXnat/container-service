@@ -51,6 +51,7 @@ import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
 import org.nrg.containers.model.server.docker.Backend;
@@ -1010,6 +1011,13 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         }
         if (!KubernetesPodPhase.PENDING.toString().equals(container.status())) {
             secretMountWatchdog.clear(containerDbId);   // past the mount stage (Running etc.): nothing to time out
+            return;
+        }
+        if (containerControlApi.podMountState(container) == PodMountState.PAST_VOLUME_MOUNT) {
+            // The FailedMount that started the clock is stale (e.g. replayed by the informer after a reconnect): the
+            // pod has mounted its volumes since and is held by something else, which the secret timeout must not report.
+            log.info("Container {} is no longer waiting on a secret mount; not timing it out", containerDbId);
+            secretMountWatchdog.clear(containerDbId);
             return;
         }
         final UserI userI;

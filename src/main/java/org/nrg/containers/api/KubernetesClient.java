@@ -4,6 +4,7 @@ import io.kubernetes.client.openapi.ApiClient;
 import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -28,6 +29,9 @@ public interface KubernetesClient {
 
     /** csi mode only: whether the SecretProviderClass exists in the namespace (null = context namespace). Never throws. */
     SecretProviderClassCheck secretProviderClassExists(@Nullable String namespace, String name);
+
+    /** The pod's current mount stage (namespace null = context namespace). UNKNOWN when it cannot be read. Never throws. */
+    PodMountState podMountState(@Nullable String podName, @Nullable String namespace);
 
     String getLog(String podName, @Nullable String namespace, final LogType logType, final Boolean withTimestamp, final OffsetDateTime since) throws ContainerBackendException;
 

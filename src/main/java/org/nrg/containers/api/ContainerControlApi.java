@@ -14,6 +14,7 @@ import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.dockerhub.DockerHubBase;
 import org.nrg.containers.model.dockerhub.DockerHubBase.DockerHub;
 import org.nrg.containers.model.image.docker.DockerImage;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.secrets.SecretProviderClassCheck;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -60,4 +61,7 @@ public interface ContainerControlApi {
 
     /** Kubernetes csi mode: whether the SecretProviderClass exists in the namespace (null = context). Other backends answer UNDETERMINED. */
     SecretProviderClassCheck secretProviderClassExists(@Nullable String namespace, String name);
+
+    /** Kubernetes only: whether the container's pod is still at the volume mount stage. Other backends answer UNKNOWN. Never throws. */
+    PodMountState podMountState(Container container);
 }

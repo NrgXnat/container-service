@@ -8,6 +8,7 @@
 
 ### Bugfixes
 * The Kubernetes backend's TRACE log of a new job no longer prints environment variable values, which carry env-type secrets; values are shown as `******`.
+* The Kubernetes secret mount watchdog reads the pod before timing a container out and leaves it alone when the pod has already mounted its volumes, so a stale `FailedMount` replayed after a reconnect no longer fails a container that is held by something else (for example `ImagePullBackOff`) with an out-of-date secret reason.
 
 ## 3.8.2
 

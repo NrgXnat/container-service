@@ -164,7 +164,11 @@ that pod and reason, once the pod is running, or once it is deleted.
 
 When a secret volume has been failing for longer than `secret-mount-timeout-seconds` (checked every minute), the
 Container Service records `Secret mount timed out after N s: <reason>` in the history, queues finalization and
-deletes the job; the workflow ends `Failed` with one notification. If finalizing is throttled, the job is kept and the
+deletes the job; the workflow ends `Failed` with one notification. Before doing so it reads the pod: if the pod has
+already mounted its volumes (condition `PodReadyToStartContainers` is `True`, or, on clusters without that condition,
+the container waits for a reason other than `ContainerCreating`, such as `ImagePullBackOff`), the `FailedMount` that
+started the clock is stale, for example replayed by the informer after XNAT reconnects, and the container is left
+alone. If the pod cannot be read, the timeout applies. If finalizing is throttled, the job is kept and the
 watchdog tries again on the next tick. If the job cannot be deleted, the watchdog retries
 on the following ticks and gives up after 10 attempts, logging that the Kubernetes Job needs manual cleanup. Mount
 failures of other volumes (PVC, hostPath) are recorded only, as before. Values never appear in history, logs, the

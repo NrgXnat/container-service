@@ -20,6 +20,7 @@ import io.kubernetes.client.openapi.models.V1JobSpec;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirement;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirementBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodTemplateSpec;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
 import io.kubernetes.client.openapi.models.V1ResourceRequirementsBuilder;
@@ -43,6 +44,7 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.exceptions.ContainerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.model.container.auto.Container;
+import org.nrg.containers.model.kubernetes.PodMountState;
 import org.nrg.containers.model.server.docker.DockerServerBase;
 import org.nrg.containers.model.server.docker.SecretVolumeType;
 import org.nrg.containers.secrets.ContainerPropertiesWithSecretValues;
@@ -298,6 +300,27 @@ public class KubernetesClientImpl implements KubernetesClient {
         } catch (RuntimeException e) {
             log.warn("SecretProviderClass {}/{} lookup failed unexpectedly", effective, name, e);
             return SecretProviderClassCheck.undetermined("Could not check SecretProviderClass \"" + name + "\" in namespace \"" + effective + "\": " + e);
+        }
+    }
+
+    @Override
+    public PodMountState podMountState(@Nullable final String podName, @Nullable final String namespace) {
+        if (podName == null) {
+            return PodMountState.UNKNOWN;
+        }
+        final String effective = effectiveNamespace(namespace);
+        try {
+            // Same reason as secretProviderClassExists: the shared ApiClient has no read timeout once the informer is built.
+            final Call call = coreApi.readNamespacedPodCall(podName, effective, null, null);
+            call.timeout().timeout(SPC_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            final V1Pod pod = apiClient.<V1Pod>execute(call, V1Pod.class).getData();
+            return PodMountState.of(pod);
+        } catch (ApiException e) {
+            log.debug("Pod {}/{} lookup failed: code {} body {}", effective, podName, e.getCode(), e.getResponseBody());
+            return PodMountState.UNKNOWN;
+        } catch (RuntimeException e) {
+            log.warn("Pod {}/{} lookup failed unexpectedly", effective, podName, e);
+            return PodMountState.UNKNOWN;
         }
     }
 
