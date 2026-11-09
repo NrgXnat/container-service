@@ -1108,8 +1108,9 @@ public class DockerControlApi implements ContainerControlApi {
             try {
                 final com.github.dockerjava.api.model.Service serviceResponse = client.inspectServiceCmd(serviceId).exec();
                 serviceName = serviceResponse.getSpec() != null ? serviceResponse.getSpec().getName() : null;
-                log.trace("Service {} \"{}\" has name \"{}\" based on inspection: {}",
-                        service.databaseId(), serviceId, serviceName, serviceResponse);
+                // Only the name: the inspected spec holds the container env, where env-type secrets are plain values
+                log.trace("Service {} \"{}\" has name \"{}\" based on inspection",
+                        service.databaseId(), serviceId, serviceName);
             } catch (com.github.dockerjava.api.exception.NotFoundException e) {
                 throw new ServiceNotFoundException(e);
             }
