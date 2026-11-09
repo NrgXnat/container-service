@@ -32,7 +32,7 @@ public enum PodMountState {
         if (status == null) {
             return UNKNOWN;
         }
-        if (!KubernetesPodPhase.PENDING.toString().equals(status.getPhase())) {
+        if (KubernetesPodPhase.fromString(status.getPhase()) != KubernetesPodPhase.PENDING) {
             return PAST_VOLUME_MOUNT;
         }
         final Optional<String> readyToStart = nullToEmpty(status.getConditions()).stream()

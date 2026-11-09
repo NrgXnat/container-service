@@ -28,6 +28,7 @@ import org.nrg.containers.events.model.KubernetesContainerState;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
 import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
+import org.nrg.containers.model.kubernetes.PodWarningReason;
 import org.springframework.jms.core.JmsTemplate;
 
 import java.time.OffsetDateTime;
@@ -374,7 +375,7 @@ public class KubernetesInformerImpl implements KubernetesInformer {
      */
     static class PodWarningEventHandler implements ResourceEventHandler<CoreV1Event> {
         static final Set<String> REASONS_OF_INTEREST = new HashSet<>(Arrays.asList(
-                "FailedMount", "FailedAttachVolume", "FailedScheduling"));
+                PodWarningReason.FAILED_MOUNT, PodWarningReason.FAILED_ATTACH_VOLUME, PodWarningReason.FAILED_SCHEDULING));
         private static final String WARNING = "Warning";
         /** The AWS Secrets Store provider puts a fresh request id into every retry's message; any id format is accepted. */
         private static final Pattern REQUEST_ID = Pattern.compile("(?:,\\s*)?RequestID: [^,\\s]+");

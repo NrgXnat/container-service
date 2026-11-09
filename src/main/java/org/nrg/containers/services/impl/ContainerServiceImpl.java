@@ -52,6 +52,7 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.kubernetes.KubernetesPodPhase;
 import org.nrg.containers.model.kubernetes.PodMountState;
+import org.nrg.containers.model.kubernetes.PodWarningReason;
 import org.nrg.containers.model.orchestration.auto.Orchestration;
 import org.nrg.containers.model.orchestration.auto.Orchestration.OrchestrationIdentifier;
 import org.nrg.containers.model.server.docker.Backend;
@@ -918,7 +919,7 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
         // A FailedMount on one of this container's secret volumes is translated before it is recorded, and starts the
         // watchdog clock. Mount failures of other volumes (PVC, hostPath) are history only, as before.
         // Reason checked first: building the translator context reads the server row, not worth it for every event.
-        final SecretMountFailure secretMountFailure = kEvent != null && SecretMountFailure.FAILED_MOUNT.equals(kEvent.getWarningReason())
+        final SecretMountFailure secretMountFailure = kEvent != null && PodWarningReason.FAILED_MOUNT.equals(kEvent.getWarningReason())
                 ? SecretMountFailure.from(kEvent, translatorContext(container)) : null;
         final ContainerEvent eventToRecord = secretMountFailure == null ? event : secretMountFailure.translatedEvent();
 
@@ -1009,7 +1010,7 @@ public class ContainerServiceImpl implements ContainerService, InitializingBean 
             deleteJobAndClear(container, containerDbId);
             return;
         }
-        if (!KubernetesPodPhase.PENDING.toString().equals(container.status())) {
+        if (KubernetesPodPhase.fromString(container.status()) != KubernetesPodPhase.PENDING) {
             secretMountWatchdog.clear(containerDbId);   // past the mount stage (Running etc.): nothing to time out
             return;
         }

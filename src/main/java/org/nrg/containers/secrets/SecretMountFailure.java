@@ -1,13 +1,12 @@
 package org.nrg.containers.secrets;
 
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
+import org.nrg.containers.model.kubernetes.PodWarningReason;
 
 import javax.annotation.Nullable;
 
 /** A FailedMount event that concerns one of the container's own secret volumes, with its translation. */
 public final class SecretMountFailure {
-    public static final String FAILED_MOUNT = "FailedMount";
-
     private final KubernetesStatusChangeEvent event;
     private final String translated;
 
@@ -19,7 +18,7 @@ public final class SecretMountFailure {
     /** Null unless the event is a FailedMount naming a volume that {@code ctx} owns. PVC and hostPath mounts are not ours to time. */
     @Nullable
     public static SecretMountFailure from(final KubernetesStatusChangeEvent event, final SecretErrorTranslator.Context ctx) {
-        if (!FAILED_MOUNT.equals(event.getWarningReason()) || event.getPodPhaseReason() == null) {
+        if (!PodWarningReason.FAILED_MOUNT.equals(event.getWarningReason()) || event.getPodPhaseReason() == null) {
             return null;
         }
         if (!ctx.ownsVolume(SecretErrorTranslator.volumeNameFrom(event.getPodPhaseReason()))) {
