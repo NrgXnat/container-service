@@ -438,7 +438,7 @@ public class KubernetesInformerTest {
         informer.ensureWatching("xnat-proj01");
         informer.ensureWatching("xnat-proj01");
         informer.ensureWatching("ctx");
-        assertThat(informer.started, is(java.util.Arrays.asList("ctx", "xnat-proj01")));
+        assertThat(informer.started, is(Arrays.asList("ctx", "xnat-proj01")));
     }
 
     @Test
@@ -464,7 +464,7 @@ public class KubernetesInformerTest {
         assertThat(informer.stopped, containsInAnyOrder("ctx", "xnat-proj01"));
         assertThat(informer.watchedNamespaces().isEmpty(), is(true));
         informer.start();
-        assertThat(informer.started, is(java.util.Arrays.asList("ctx", "xnat-proj01", "ctx")));
+        assertThat(informer.started, is(Arrays.asList("ctx", "xnat-proj01", "ctx")));
         informer.ensureWatching("xnat-proj01");
         assertThat(informer.started.size(), is(4));
     }

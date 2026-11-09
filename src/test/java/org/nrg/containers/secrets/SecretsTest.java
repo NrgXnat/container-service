@@ -35,6 +35,7 @@ import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.DockerControlApi;
 import org.nrg.containers.api.KubernetesClientImpl;
+import org.nrg.containers.api.LogType;
 import org.nrg.containers.config.ObjectMapperConfig;
 import org.nrg.containers.model.command.auto.Command;
 import org.nrg.containers.model.command.auto.ResolvedCommand;
@@ -67,6 +68,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.fail;
 import static org.hamcrest.Matchers.both;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
@@ -82,6 +84,7 @@ import io.kubernetes.client.openapi.models.V1VolumeMount;
 import io.kubernetes.client.openapi.models.V1Volume;
 import static org.hamcrest.Matchers.anyOf;
 import org.nrg.containers.exceptions.ContainerException;
+import org.springframework.test.util.ReflectionTestUtils;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -236,10 +239,7 @@ public class SecretsTest {
         backend = Backend.KUBERNETES;
 
         final String namespace = RandomStringUtils.randomAlphabetic(5);
-        // Whitebox.setInternalState(kubernetesClient, "contextNamespace", namespace);
-        Field namespaceField = kubernetesClient.getClass().getDeclaredField("contextNamespace");
-        namespaceField.setAccessible(true);  // Allow access to private fields
-        namespaceField.set(kubernetesClient, namespace);
+        ReflectionTestUtils.setField(kubernetesClient, "contextNamespace", namespace);
 
         final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
         // Whitebox.setInternalState(kubernetesClient, "batchApi", batchApi);
@@ -790,7 +790,7 @@ public class SecretsTest {
 
         try {
             dockerControlApi.create(toCreate, user);
-            org.junit.Assert.fail("Expected ContainerException for file secret on Docker backend");
+            fail("Expected ContainerException for file secret on Docker backend");
         } catch (ContainerException e) {
             assertThat(e.getMessage(), containsString("not supported"));
         }
@@ -805,8 +805,8 @@ public class SecretsTest {
     }
 
     private KubernetesClientImpl kubernetesClientWithMockedApi(final String namespace, final BatchV1Api batchApi) throws Exception {
-        setField(kubernetesClient, "contextNamespace", namespace);
-        setField(kubernetesClient, "batchApi", batchApi);
+        ReflectionTestUtils.setField(kubernetesClient, "contextNamespace", namespace);
+        ReflectionTestUtils.setField(kubernetesClient, "batchApi", batchApi);
         return kubernetesClient;
     }
 
@@ -844,7 +844,7 @@ public class SecretsTest {
         final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
         final CoreV1Api coreApi = Mockito.mock(CoreV1Api.class);
         kubernetesClientWithMockedApi("ctx", batchApi);
-        setField(kubernetesClient, "coreApi", coreApi);
+        ReflectionTestUtils.setField(kubernetesClient, "coreApi", coreApi);
 
         Mockito.doCallRealMethod().when(kubernetesClient).removeJob("job-1", "xnat-proj01");
         kubernetesClient.removeJob("job-1", "xnat-proj01");
@@ -854,15 +854,9 @@ public class SecretsTest {
         kubernetesClient.removeJob("job-2", null);
         Mockito.verify(batchApi).deleteNamespacedJob(Mockito.eq("job-2"), Mockito.eq("ctx"), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.eq("Foreground"), Mockito.isNull());
 
-        Mockito.when(kubernetesClient.getLog("job-1-pod", "xnat-proj01", org.nrg.containers.api.LogType.STDOUT, null, null)).thenCallRealMethod();
-        kubernetesClient.getLog("job-1-pod", "xnat-proj01", org.nrg.containers.api.LogType.STDOUT, null, null);
+        Mockito.when(kubernetesClient.getLog("job-1-pod", "xnat-proj01", LogType.STDOUT, null, null)).thenCallRealMethod();
+        kubernetesClient.getLog("job-1-pod", "xnat-proj01", LogType.STDOUT, null, null);
         Mockito.verify(coreApi).readNamespacedPodLog(Mockito.eq("job-1-pod"), Mockito.eq("xnat-proj01"), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull());
-    }
-
-    private static void setField(final Object target, final String name, final Object value) throws Exception {
-        final Field field = target.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(target, value);
     }
 
     private V1Job captureJobForFileSecret(final String secretName, final boolean required, final String mountPath,
@@ -921,7 +915,7 @@ public class SecretsTest {
     public void testKubernetesRefusesFileSecretWithoutResolvedName() throws Exception {
         try {
             captureJobForFileSecret(null, true, "/run/secrets/redcap", kubernetesServer());
-            org.junit.Assert.fail("Expected ContainerException");
+            fail("Expected ContainerException");
         } catch (ContainerException e) {
             assertThat(e.getMessage(), containsString("has no rendered Kubernetes object name"));
         }

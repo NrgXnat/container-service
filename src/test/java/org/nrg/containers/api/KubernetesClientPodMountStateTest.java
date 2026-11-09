@@ -13,8 +13,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.nrg.containers.model.kubernetes.PodMountState;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -34,17 +34,11 @@ public class KubernetesClientPodMountStateTest {
 
     @Before
     public void setUp() throws Exception {
-        setField("contextNamespace", "ctx");
-        setField("coreApi", coreApi);
-        setField("apiClient", apiClient);
+        ReflectionTestUtils.setField(client, "contextNamespace", "ctx");
+        ReflectionTestUtils.setField(client, "coreApi", coreApi);
+        ReflectionTestUtils.setField(client, "apiClient", apiClient);
         Mockito.when(call.timeout()).thenReturn(timeout);
         Mockito.when(client.podMountState(Mockito.any(), Mockito.any())).thenCallRealMethod();
-    }
-
-    private void setField(final String name, final Object value) throws Exception {
-        final Field field = KubernetesClientImpl.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(client, value);
     }
 
     private static V1Pod pastMount() {

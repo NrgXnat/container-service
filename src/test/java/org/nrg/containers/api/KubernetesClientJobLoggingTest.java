@@ -2,12 +2,9 @@ package org.nrg.containers.api;
 
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.models.V1Job;
-import org.apache.log4j.AppenderSkeleton;
 import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.spi.LoggingEvent;
-import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -18,11 +15,10 @@ import org.nrg.containers.secrets.EnvironmentVariableResolvedSecret;
 import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
 import org.nrg.containers.secrets.Secret;
 import org.nrg.containers.secrets.SystemPropertySecretSource;
+import org.nrg.containers.utils.LogCapture;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
@@ -37,46 +33,17 @@ public class KubernetesClientJobLoggingTest {
     private final KubernetesClientImpl client = Mockito.mock(KubernetesClientImpl.class);
     private final BatchV1Api batchApi = Mockito.mock(BatchV1Api.class);
     private final DockerServerBase.DockerServer server = DockerServerBase.DockerServer.builder().name("k8s").host("").backend(Backend.KUBERNETES).build();
-    private final Logger logger = Logger.getLogger(KubernetesClientImpl.class);
-    private final List<String> messages = new ArrayList<>();
-    private final AppenderSkeleton capture = new AppenderSkeleton() {
-        @Override
-        protected void append(final LoggingEvent event) {
-            messages.add(event.getRenderedMessage());
-        }
-
-        @Override
-        public void close() {
-        }
-
-        @Override
-        public boolean requiresLayout() {
-            return false;
-        }
-    };
-    private Level originalLevel;
+    @Rule
+    public final LogCapture logCapture = new LogCapture(KubernetesClientImpl.class);
 
     @Before
     public void setUp() throws Exception {
-        setField("contextNamespace", "ctx");
-        setField("batchApi", batchApi);
-        originalLevel = logger.getLevel();
-        logger.addAppender(capture);
+        ReflectionTestUtils.setField(client, "contextNamespace", "ctx");
+        ReflectionTestUtils.setField(client, "batchApi", batchApi);
         Mockito.when(batchApi.createNamespacedJob(Mockito.eq("xnat-proj01"), Mockito.any(V1Job.class), Mockito.isNull(), Mockito.isNull(), Mockito.isNull(), Mockito.isNull()))
                 .thenAnswer(invocation -> invocation.getArgument(1, V1Job.class));
     }
 
-    @After
-    public void tearDown() {
-        logger.removeAppender(capture);
-        logger.setLevel(originalLevel);
-    }
-
-    private void setField(final String name, final Object value) throws Exception {
-        final Field field = KubernetesClientImpl.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(client, value);
-    }
 
     private static Container containerWithSecretEnv() {
         final Secret secret = new Secret(new SystemPropertySecretSource("redcap.token"), new EnvironmentVariableSecretDestination("REDCAP_TOKEN"));
@@ -88,11 +55,11 @@ public class KubernetesClientJobLoggingTest {
     }
 
     private String createJobAndCollectLogs(final Level level) throws Exception {
-        logger.setLevel(level);
+        logCapture.setLevel(level);
         final Container toCreate = containerWithSecretEnv();
         Mockito.when(client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server)).thenCallRealMethod();
         client.createJob(toCreate, DockerControlApi.NumReplicas.ZERO, server);
-        return String.join("\n", messages);
+        return logCapture.messages();
     }
 
     @Test

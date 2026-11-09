@@ -10,8 +10,8 @@ import org.nrg.containers.exceptions.ContainerBackendException;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.model.server.docker.DockerServerBase;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.List;
 
@@ -28,14 +28,8 @@ public class KubernetesClientJobCreationTest {
 
     @Before
     public void setUp() throws Exception {
-        setField("contextNamespace", "ctx");
-        setField("batchApi", batchApi);
-    }
-
-    private void setField(final String name, final Object value) throws Exception {
-        final Field field = KubernetesClientImpl.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(client, value);
+        ReflectionTestUtils.setField(client, "contextNamespace", "ctx");
+        ReflectionTestUtils.setField(client, "batchApi", batchApi);
     }
 
     private static Container container(final String namespace) {
@@ -104,7 +98,7 @@ public class KubernetesClientJobCreationTest {
 
     @Test
     public void ensureWatchingWithoutAStartedInformerDoesNothing() throws Exception {
-        setField("kubernetesInformer", null);
+        ReflectionTestUtils.setField(client, "kubernetesInformer", null);
         Mockito.doCallRealMethod().when(client).ensureWatching("ns");
 
         client.ensureWatching("ns");
@@ -115,7 +109,7 @@ public class KubernetesClientJobCreationTest {
     @Test
     public void ensureWatchingDelegatesToTheStartedInformer() throws Exception {
         final KubernetesInformer informer = Mockito.mock(KubernetesInformer.class);
-        setField("kubernetesInformer", informer);
+        ReflectionTestUtils.setField(client, "kubernetesInformer", informer);
         Mockito.doCallRealMethod().when(client).ensureWatching("ns");
 
         client.ensureWatching("ns");
