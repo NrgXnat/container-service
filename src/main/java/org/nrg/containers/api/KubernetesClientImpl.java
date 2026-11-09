@@ -16,9 +16,11 @@ import io.kubernetes.client.openapi.models.V1EnvVar;
 import io.kubernetes.client.openapi.models.V1EnvVarBuilder;
 import io.kubernetes.client.openapi.models.V1Job;
 import io.kubernetes.client.openapi.models.V1JobBuilder;
+import io.kubernetes.client.openapi.models.V1JobSpec;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirement;
 import io.kubernetes.client.openapi.models.V1NodeSelectorRequirementBuilder;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1PodTemplateSpec;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
 import io.kubernetes.client.openapi.models.V1ResourceRequirementsBuilder;
 import io.kubernetes.client.openapi.models.V1SecurityContext;
@@ -63,6 +65,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.kubernetes.client.util.Config.SERVICEACCOUNT_CA_PATH;
 
@@ -97,6 +100,8 @@ public class KubernetesClientImpl implements KubernetesClient {
     public static final String SPC_PLURAL  = "secretproviderclasses";
 
     private static final int SPC_LOOKUP_TIMEOUT_SECONDS = 10;
+
+    static final String REDACTED_ENV_VALUE = "******";
 
     private final ExecutorService executorService;
     private final JmsTemplate     template;
@@ -170,6 +175,27 @@ public class KubernetesClientImpl implements KubernetesClient {
         customObjectsApi = new CustomObjectsApi(apiClient);
 
         restart();
+    }
+
+    /**
+     * The job as text for logging, with every environment variable value masked. Env-type secrets are merged into the
+     * container env as plain values, so the job's own toString() would print them. Works on a copy; the job sent to the
+     * API server keeps its values.
+     */
+    static String describeWithoutEnvValues(final V1Job job) {
+        final V1Job copy = new V1JobBuilder(job).build();
+        Optional.ofNullable(copy.getSpec())
+                .map(V1JobSpec::getTemplate)
+                .map(V1PodTemplateSpec::getSpec)
+                .ifPresent(podSpec -> Stream.concat(nullToEmpty(podSpec.getContainers()), nullToEmpty(podSpec.getInitContainers()))
+                        .flatMap(container -> nullToEmpty(container.getEnv()))
+                        .filter(envVar -> envVar.getValue() != null)
+                        .forEach(envVar -> envVar.setValue(REDACTED_ENV_VALUE)));
+        return copy.toString();
+    }
+
+    private static <T> Stream<T> nullToEmpty(@Nullable final List<T> list) {
+        return list == null ? Stream.empty() : list.stream();
     }
 
     private static V1Volume fileSecretVolume(final String volumeName, final String secretName, final SecretVolumeType volumeType,
@@ -574,7 +600,7 @@ final Map<String, String> cleanedLabels = labels.entrySet().stream()
                 .build();
 
         if (log.isTraceEnabled()) {
-            log.trace("Creating kubernetes job: {}", job);
+            log.trace("Creating kubernetes job: {}", describeWithoutEnvValues(job));
         } else if (log.isDebugEnabled()) {
             log.debug("Creating kubernetes job:" +
                       "\n\tnamespace {}" +
