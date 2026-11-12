@@ -18,6 +18,8 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.security.helpers.Users;
 import org.nrg.xdat.services.AliasTokenService;
@@ -30,6 +32,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -77,7 +80,9 @@ public class ServiceTaskEventReloadTest {
                 catalogService,
                 orchestrationService,
                 new ObjectMapper(),
-                executorFactoryBean);
+                executorFactoryBean,
+                mock(DockerServerService.class),
+                mock(SecretMountWatchdog.class));
     }
 
     @After

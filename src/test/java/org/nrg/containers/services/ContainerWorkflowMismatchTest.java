@@ -15,6 +15,8 @@ import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
 import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.impl.ContainerServiceImpl;
+import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.tasks.SecretMountWatchdog;
 import org.nrg.xdat.preferences.SiteConfigPreferences;
 import org.nrg.xdat.services.AliasTokenService;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
@@ -80,7 +82,9 @@ public class ContainerWorkflowMismatchTest {
                 catalogService,
                 orchestrationService,
                 new ObjectMapper(),
-                executorFactoryBean);
+                executorFactoryBean,
+                mock(DockerServerService.class),
+                mock(SecretMountWatchdog.class));
     }
 
     @After
