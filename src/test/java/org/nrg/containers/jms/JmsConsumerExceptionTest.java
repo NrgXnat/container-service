@@ -163,6 +163,8 @@ public class JmsConsumerExceptionTest {
 
     @After
     public void tearDownStaticMocks() {
+        // Left open, it stays registered on the test thread and breaks the next class that mocks it
+        mockedPersistentWorkflowUtils.closeOnDemand();
         mockedUriParserUtils.closeOnDemand();
         mockedXFTManager.closeOnDemand();
         mockedUsers.closeOnDemand();

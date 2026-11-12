@@ -5,6 +5,7 @@ import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.events.ContainerStatusUpdater;
 import org.nrg.containers.services.ContainerService;
 import org.nrg.containers.services.DockerServerService;
+import org.nrg.containers.utils.StaticMocks;
 import org.nrg.framework.services.NrgEventServiceI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,8 +43,9 @@ public class EventPullingIntegrationTestConfig implements SchedulingConfigurer {
 
     @Bean
     public TriggerTask containerStatusUpdateTask(final ContainerStatusUpdater containerStatusUpdater) {
+        // The updater runs on the scheduler's thread, which needs the test's static mocks opened on it
         myTask = new TriggerTask(
-                containerStatusUpdater,
+                () -> StaticMocks.runWithMocks(containerStatusUpdater),
                 new PeriodicTrigger(250L, TimeUnit.MILLISECONDS)
         );
         return myTask;
