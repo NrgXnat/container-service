@@ -259,6 +259,24 @@ public class DockerServerEntityTest {
         assertThat(current.kubernetesTolerations(), Matchers.hasSize(2));
     }
 
+    /** A client posts the config of a server that was replaced since (its row is disabled): that row becomes the server again. */
+    @Test
+    @DirtiesContext
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void testSetServerWithReplacedIdMakesItTheServerAgain() throws Exception {
+        dockerServerService.setServer(K8S_WITH_TOLERATIONS);
+        final DockerServer first = dockerServerService.getServer();
+        dockerServerService.setServer(STANDALONE);
+        assertThat(dockerServerService.getServer().id(), Matchers.not(first.id()));
+
+        dockerServerService.setServer(first.toBuilder().name("back").build());
+
+        final DockerServer current = dockerServerService.getServer();
+        assertThat(current.id(), Matchers.is(first.id()));
+        assertThat(current.name(), Matchers.is("back"));
+        assertThat(current.kubernetesTolerations(), Matchers.hasSize(2));
+    }
+
     @Test
     @DirtiesContext
     public void testConstraintValidationAttributeAndValues() throws Exception {

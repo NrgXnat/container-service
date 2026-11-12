@@ -4,6 +4,7 @@ import org.nrg.containers.api.KubernetesClientFactory;
 import org.nrg.containers.exceptions.InvalidDefinitionException;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
 import org.nrg.containers.model.server.docker.DockerServerEntity;
+import org.nrg.framework.orm.hibernate.HibernateUtils;
 import org.nrg.containers.services.DockerServerEntityService;
 import org.nrg.containers.services.DockerServerService;
 import org.nrg.framework.exceptions.NotFoundException;
@@ -59,9 +60,11 @@ public class DockerServerServiceImpl implements DockerServerService {
         if (entity.getId() == 0L) {
             return toPojo(dockerServerEntityService.create(entity));
         }
-        // The id names an existing server (a client fetched the config and sent it back): update that row in place.
-        // Creating it again would load the same row a second time in the create transaction and fail on its
-        // tolerations and constraints.
+        // The id names an existing server (a client fetched the config and sent it back): update that row in place
+        // and make it the server, whether or not it was replaced since. Creating it again would load the same row a
+        // second time in the create transaction and fail on its tolerations and constraints.
+        entity.setEnabled(true);
+        entity.setDisabled(HibernateUtils.DEFAULT_DATE);
         dockerServerEntityService.update(entity);
         return toPojo(dockerServerEntityService.retrieve(entity.getId()));
     }
