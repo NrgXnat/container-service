@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Date;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -65,6 +66,7 @@ public class DockerServerServiceImpl implements DockerServerService {
         // second time in the create transaction and fail on its tolerations and constraints.
         entity.setEnabled(true);
         entity.setDisabled(HibernateUtils.DEFAULT_DATE);
+        entity.setTimestamp(new Date());
         dockerServerEntityService.update(entity);
         return toPojo(dockerServerEntityService.retrieve(entity.getId()));
     }
