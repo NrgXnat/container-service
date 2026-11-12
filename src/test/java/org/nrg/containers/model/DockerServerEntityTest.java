@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
@@ -237,6 +238,25 @@ public class DockerServerEntityTest {
         TestingUtils.commitTransaction();
         server = dockerServerService.getServer();
         assertThat(server, isIgnoreId(updatedServer));
+    }
+
+    /**
+     * What an API client does: GET the server (id included), change a field, POST it back. Each service call runs
+     * in its own transaction, as in the REST layer, so the entity loaded by the first call is detached by the second.
+     */
+    @Test
+    @DirtiesContext
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void testSetServerWithExistingIdKeepsTolerations() throws Exception {
+        dockerServerService.setServer(K8S_WITH_TOLERATIONS);
+        final DockerServer fetched = dockerServerService.getServer();
+        assertThat(fetched.kubernetesTolerations(), Matchers.hasSize(2));
+
+        dockerServerService.setServer(fetched.toBuilder().name("renamed").build());
+
+        final DockerServer current = dockerServerService.getServer();
+        assertThat(current.name(), Matchers.is("renamed"));
+        assertThat(current.kubernetesTolerations(), Matchers.hasSize(2));
     }
 
     @Test

@@ -20,6 +20,7 @@ public class DockerServerEntityRepository extends AbstractHibernateDAO<DockerSer
         }
         Hibernate.initialize(entity);
         Hibernate.initialize(entity.getSwarmConstraints());
+        Hibernate.initialize(entity.getKubernetesTolerations());
         if (entity.getSwarmConstraints() != null) {
             for (final DockerServerEntitySwarmConstraint constraint : entity.getSwarmConstraints()) {
                 Hibernate.initialize(constraint.getValues());

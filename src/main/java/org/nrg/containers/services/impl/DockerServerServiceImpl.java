@@ -55,7 +55,15 @@ public class DockerServerServiceImpl implements DockerServerService {
     @Override
     public DockerServer setServer(final DockerServer dockerServer) throws InvalidDefinitionException {
         kubernetesClientFactory.shutdown();
-        return toPojo(dockerServerEntityService.create(fromPojo(dockerServer)));
+        final DockerServerEntity entity = fromPojo(dockerServer);
+        if (entity.getId() == 0L) {
+            return toPojo(dockerServerEntityService.create(entity));
+        }
+        // The id names an existing server (a client fetched the config and sent it back): update that row in place.
+        // Creating it again would load the same row a second time in the create transaction and fail on its
+        // tolerations and constraints.
+        dockerServerEntityService.update(entity);
+        return toPojo(dockerServerEntityService.retrieve(entity.getId()));
     }
 
     @Override
