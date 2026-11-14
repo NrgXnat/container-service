@@ -13,7 +13,7 @@
 
 ### Bugfixes
 * [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and the full request and response bodies. Those include a job's `XNAT_PASS` and, in pod lists, the environment of every pod in the namespace. It now logs headers only, with `Authorization` redacted.
-* [#28](https://github.com/NrgXnat/container-service/pull/28): A batch launch now records its number of targets and steps with XNAT, so the Activity tab follows the batch's targets instead of the workflows saved so far. An orchestration batch now finishes once every target has run every step, and a batch starts at 0% instead of NaN%. Needs [NrgXnat/xnat#173](https://github.com/NrgXnat/xnat/pull/173).
+* [#28](https://github.com/NrgXnat/container-service/pull/28): A batch launch now records its number of targets and steps with XNAT, so the Activity tab follows the batch's targets instead of the workflows saved so far. An orchestration batch now finishes once every target has run every step, and a batch starts at 0% instead of NaN%. An orchestration's later steps on a scan are now recorded against the scan instead of its session. Needs [NrgXnat/xnat#173](https://github.com/NrgXnat/xnat/pull/173).
 
 ## 3.9.0
 
