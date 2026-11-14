@@ -21,6 +21,7 @@ import org.nrg.xft.event.entities.WorkflowStatusEvent;
 import org.nrg.xft.event.persist.PersistentWorkflowI;
 import org.nrg.xft.event.persist.PersistentWorkflowUtils;
 import org.nrg.xft.security.UserI;
+import org.nrg.xnat.utils.WorkflowUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.core.JmsTemplate;
@@ -141,6 +142,11 @@ public class ContainerServiceWorkflowStatusEventListener implements Consumer<Eve
             newWorkflow = containerService.createContainerWorkflow(workflow.getId(),
                                                                    workflow.getDataType(), nextWrapper.name(), project, user, workflow.getJobid(),
                                                                    orchestrationId, stepIdx + 1);
+            // A scan's next step runs on the same scan, so its workflow names the scan, as the first step's does
+            if (newWorkflow != null && StringUtils.isNotBlank(workflow.getScanId())) {
+                newWorkflow.setScanId(workflow.getScanId());
+                WorkflowUtils.save(newWorkflow, newWorkflow.buildEvent());
+            }
 
             // Determine inputValues (root element)
             final Map<String, String> inputValues;

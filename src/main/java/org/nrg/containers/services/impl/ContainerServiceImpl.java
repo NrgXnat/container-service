@@ -99,6 +99,7 @@ import org.nrg.xnat.helpers.uri.URIManager;
 import org.nrg.xnat.helpers.uri.archive.impl.ExptScanURI;
 import org.nrg.xnat.services.XnatAppInfo;
 import org.nrg.xnat.services.archive.CatalogService;
+import org.nrg.xnat.tracking.services.EventTrackingDataService;
 import org.nrg.xnat.turbine.utils.ArchivableItem;
 import org.nrg.xnat.utils.WorkflowUtils;
 import org.postgresql.util.PSQLException;
@@ -2414,7 +2415,23 @@ public class ContainerServiceImpl implements ContainerService {
         if (failures > 0) {
             log.error("Bulk launch had {} failures out of {} targets. BulkLaunchId: {}", failures, targets.size(), bulkLaunchId);
         }
+        recordBulkLaunch(bulkLaunchId, userI, targets.size() - failures, steps);
         return reportBuilder.build();
+    }
+
+    /**
+     * Gives XNAT the batch's size before the launch is answered. XNAT builds the batch's progress from its workflows,
+     * which are saved as each target's launch runs, so without the size it counts only the workflows saved so far.
+     */
+    private void recordBulkLaunch(final String bulkLaunchId, final UserI userI, final int queued, final int steps) {
+        if (queued == 0) {
+            return;
+        }
+        try {
+            XDAT.getContextService().getBean(EventTrackingDataService.class).recordBulkLaunch(bulkLaunchId, userI, queued, steps);
+        } catch (Exception e) {
+            log.warn("Unable to record the size of bulk launch {}. Its progress will count only the workflows saved so far.", bulkLaunchId, e);
+        }
     }
 
     private String generateBulkLaunchId(final UserI userI) {
