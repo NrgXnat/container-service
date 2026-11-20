@@ -864,8 +864,9 @@ XNAT.plugin.containerService = getObject(XNAT.plugin.containerService || {});
                 if (!data.availableOrchestrations.length) {
                     coTable.tr()
                         .td({ colSpan: 3, html: 'No orchestrations are available to this ' +
-                            projectDataTypeSingularName.toLowerCase() + ' yet. Enable each of an ' +
-                            'orchestration\'s commands under Configure Commands to list it here.' })
+                            projectDataTypeSingularName.toLowerCase() + ' yet. If your site has orchestrations ' +
+                            'set up, enable each of an orchestration\'s commands under Configure Commands to list ' +
+                            'it here.' })
                 }
 
                 data.availableOrchestrations.forEach(function(o) {
