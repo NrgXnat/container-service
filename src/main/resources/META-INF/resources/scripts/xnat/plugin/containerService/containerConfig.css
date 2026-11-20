@@ -20,6 +20,17 @@
     position: absolute;
     top: .9em; left: 1px;
 }
+#image-filter-bar {
+    margin: 0 0 1em;
+}
+#image-filter-bar input.filter-name {
+    width: 26em;
+    max-width: 60%;
+    margin-right: 6px;
+}
+#image-filter-bar .no-filter-matches {
+    margin: 1em 0 0;
+}
 .commandConfigInputRow {
     padding: 5px 0;
 }
