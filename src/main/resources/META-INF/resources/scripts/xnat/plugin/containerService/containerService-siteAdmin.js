@@ -1729,29 +1729,52 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
         }
     };
 
+    // the text the panel's search matches for a command: its name and description, and those of each of its XNAT actions
+    function commandSearchText(command){
+        var text = [command.name, command.description];
+        (command.xnat || []).forEach(function(wrapper){
+            text.push(wrapper.name, wrapper.description);
+        });
+        return text.filter(Boolean).join('\n').toLowerCase();
+    }
+
     commandListManager.filterCommandList = filterCommandList = function(){
-        // check all active filters
-        var clmTable = $(document).find('table.enabled-commands'),
-            commandFilterKey = clmTable.find('input.filter-name').val().toLowerCase() || false,
-            visibilityFilterKey = clmTable.find('input.filter-visibility').val().toLowerCase() || false;
+        // one search and one visibility filter for every image in the panel
+        var $filterBar = $('#image-filter-bar'),
+            searchKey = ($filterBar.find('input.filter-name').val() || '').trim().toLowerCase(),
+            visibilityFilterKey = $filterBar.find('select.filter-visibility').val() || '',
+            $images = $('#image-list-container').find('.imageContainer'),
+            imagesShown = 0,
+            loading = false;
 
-        var rowsToFilter = $(clmTable).find('tr.enabled-commands-listing');
-        if (!commandFilterKey &&  !visibilityFilterKey) {
-            rowsToFilter.removeClass('hidden');
-        } else {
-            rowsToFilter.each(function(){
-                // show this row only if filters are empty or have values matching the command or container
+        $images.each(function(){
+            var $image = $(this),
+                $rows = $image.find('tr.enabled-commands-listing'),
+                // a search that matches the image's name shows all of the image's commands
+                imageMatches = !searchKey || String($image.data('name')).toLowerCase().indexOf(searchKey) >= 0,
+                rowsShown = 0;
+
+            if (!$image.find('table.enabled-commands').length) loading = true;
+
+            $rows.each(function(){
                 var showRow = (
-                    ($(this).prop('title').toLowerCase().indexOf(commandFilterKey) >= 0 || !commandFilterKey ) &&
-                    ($(this).data('visibility').toLowerCase().indexOf(visibilityFilterKey) >= 0 || !visibilityFilterKey ))
+                    (imageMatches || String($(this).data('search')).indexOf(searchKey) >= 0) &&
+                    ($(this).data('visibility') === visibilityFilterKey || !visibilityFilterKey ));
 
-                if (showRow) {
-                    $(this).removeClass('hidden')
-                } else {
-                    $(this).addClass('hidden')
-                }
-            })
-        }
+                $(this).toggleClass('hidden', !showRow);
+                if (showRow) rowsShown++;
+            });
+
+            // while a filter is active, hide an image that has nothing to show for it.
+            // An image with no commands can only match by its name, and the "hidden images" toggle still decides whether it is listed.
+            var showImage = (!searchKey && !visibilityFilterKey) || rowsShown > 0 ||
+                (!$rows.length && searchKey && imageMatches && !visibilityFilterKey);
+
+            $image.css('display', showImage ? '' : 'none');
+            if (showImage && !$image.hasClass('hidden')) imagesShown++;
+        });
+
+        $filterBar.find('.no-filter-matches').toggleClass('hidden', loading || !$images.length || imagesShown > 0);
     }
 
 
@@ -1780,39 +1803,6 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             .th('<b>Version</b>')
             .th('<b>Visibility</b>')
             .th({html: '<b>Actions</b>' });
-
-        // add master switch
-        clmTable.tr({ addClass: 'header-row', 'style': { 'background-color': '#f3f3f3' }})
-            .td([ spawn('div',[filterCommandLabel()]) ])
-            .td()
-            .td()
-            .td()
-            .td([ spawn('div',[filterVisibility()]) ])
-            .td();
-
-        function filterCommandLabel(){
-            return spawn('input', {
-                addClass: 'filter-data filter-name',
-                type: 'text',
-                title: 'Filter on the command name',
-                placeholder: 'Filter by Command',
-                style: { width: 'calc(100% - 12px)'},
-                onkeyup: XNAT.plugin.containerService.commandListManager.filterCommandList
-                })
-        }
-
-
-        function filterVisibility(){
-            return spawn('input', {
-                addClass: 'filter-data filter-visibility',
-                type: 'text',
-                title: 'Filter on command visibility',
-                placeholder: 'Filter by Visibility',
-                style: { width: 'calc(100% - 12px)'},
-                onkeyup: XNAT.plugin.containerService.commandListManager.filterCommandList
-                })
-        }
-
 
         function viewLink(item, text){
             return spawn('a.link|href=#!', {
@@ -1882,7 +1872,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     } else {
                         xnatActions = 'N/A';
                     }
-                    clmTable.tr({title: command.name, addClass: 'enabled-commands-listing',  data: {id: command.id, name: command.name, image: command.image, visibility: command.visibility }})
+                    clmTable.tr({title: command.name, addClass: 'enabled-commands-listing',  data: {id: command.id, name: command.name, image: command.image, visibility: command.visibility, search: commandSearchText(command) }})
                         .td([viewLink(command, command.name), ]).addClass('name')
                         .td(xnatActions)
                         .td('N/A')
@@ -1906,6 +1896,9 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
 
                 imageFilterManager.refresh();
             }
+
+            // the list is rebuilt after every change to an image or command, so apply the current search to the new table
+            filterCommandList();
         });
     };
 
@@ -1945,6 +1938,31 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 spawn('span.pull-right', { style: { 'margin-top': '-4px' }}, buttonSet)
             ])
         ]));
+
+        // the header and footer are rebuilt on every refresh. The filter bar is built once, so a refresh keeps the search.
+        var $filterBar = $('#image-filter-bar');
+        if (!$filterBar.children().length) {
+            $filterBar.append(spawn('!',[
+                spawn('input', {
+                    addClass: 'filter-data filter-name',
+                    type: 'text',
+                    title: 'Search by command name, command description, XNAT action or image name',
+                    placeholder: 'Search commands and images',
+                    oninput: filterCommandList
+                }),
+                spawn('select', {
+                    addClass: 'filter-data filter-visibility',
+                    title: 'Filter on command visibility',
+                    onchange: filterCommandList
+                }, [
+                    spawn('option', { value: '' }, 'Any visibility'),
+                    spawn('option', { value: 'public' }, 'Public'),
+                    spawn('option', { value: 'private' }, 'Private'),
+                    spawn('option', { value: 'protected' }, 'Protected')
+                ]),
+                spawn('p.no-filter-matches.hidden', 'No commands or images match.')
+            ]));
+        }
         var $hideableImages = $(document).find('.imageContainer.no-commands');
         if ($hideableImages.length) {
             $footer.empty().append(spawn('div.pull-right.pad5v',[
@@ -2142,7 +2160,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         imageListManager.images.push(imageInfo);
 
 
-                        $manager.append(spawn('div.imageContainer',[
+                        $manager.append(spawn('div.imageContainer', { data: { name: imageInfo.imageName }}, [
                             spawn('h3.imageTitle',[
                                 imageInfo.imageName,
                                 spawn( 'span.pull-right',[
@@ -2186,6 +2204,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 .find('span').html(hiddenImagesMessage($hideableImages.length, true));
             $hideableImages.addClass('hidden');
         }
+        filterCommandList();
     });
 
     imageListManager.refresh = imageListManager.refreshTable = function(container){
