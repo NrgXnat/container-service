@@ -9,6 +9,8 @@ import org.hibernate.criterion.Projection;
 import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
 import org.hibernate.sql.JoinType;
+import org.nrg.containers.events.model.DockerContainerEvent;
+import org.nrg.containers.jms.requests.ContainerRequest;
 import org.nrg.containers.model.container.ContainerBuildDirRow;
 import org.nrg.containers.model.container.entity.ContainerEntity;
 import org.nrg.containers.model.container.entity.ContainerEntityHistory;
@@ -100,6 +102,39 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
                 .setProjection(Projections.property("id"))
                 .list();
         return ids == null ? Collections.emptyList() : ids;
+    }
+
+    /**
+     * Backend ids of the plain Docker containers that, as far as we know, have not exited: not finalized or
+     * finalizing, not queued for finalizing, and with no "die" recorded as their status. Used by
+     * ContainerStatusUpdater to find containers whose "die" event Docker never delivered.
+     */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<String> retrieveDockerContainerIdsWithNoExit() {
+        final List<Object[]> rows = getSession()
+                .createCriteria(ContainerEntity.class)
+                .add(Restrictions.conjunction()
+                        .add(Restrictions.eq("backend", Backend.DOCKER))
+                        .add(Restrictions.isNotNull("containerId"))
+                        .add(getNonFinalizedCriterion())
+                )
+                .setProjection(Projections.projectionList()
+                        .add(Projections.property("containerId"))
+                        .add(Projections.property("status")))
+                .list();
+        if (rows == null) {
+            return Collections.emptyList();
+        }
+        final List<String> containerIds = new ArrayList<>();
+        for (final Object[] row : rows) {
+            final String status = (String) row[1];
+            if (status.equals(DockerContainerEvent.EXIT_STATUS) || status.startsWith(ContainerRequest.inQueueStatusPrefix)) {
+                continue;
+            }
+            containerIds.add((String) row[0]);
+        }
+        return containerIds;
     }
 
     /**

@@ -13,7 +13,8 @@ public abstract class DockerContainerEvent implements ContainerEvent, Serializab
     private static final long serialVersionUID = -6676309798270638416L;
 
     private static final Pattern ignoreStatusPattern = Pattern.compile("kill|destroy");
-    private static final Pattern exitStatusPattern = Pattern.compile("die");
+    public static final String EXIT_STATUS = "die";
+    private static final Pattern exitStatusPattern = Pattern.compile(EXIT_STATUS);
 
     public abstract String status();
     public abstract String backendId();

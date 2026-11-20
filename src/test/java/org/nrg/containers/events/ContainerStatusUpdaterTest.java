@@ -13,9 +13,13 @@ import org.mockito.MockedStatic;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.TaskNotFoundException;
+import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -36,6 +40,7 @@ import org.springframework.jms.core.JmsTemplate;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -173,10 +178,60 @@ class ContainerStatusUpdaterTest {
         when(leader.isLeader()).thenReturn(true, false);
         updater.run();
         verify(dockerServerService, never()).update(any());
+        verify(containerService, never()).retrieveDockerContainerIdsWithNoExit();
 
         // Still the leader at the end of the tick: the checkpoint moves.
         when(leader.isLeader()).thenReturn(true);
         updater.run();
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerTickThrowsTheDieEventForAContainerThatExitedWithoutOne() throws Exception {
+        final Date lastEventCheckTime = new Date(1795137026000L);
+        final List<String> noExitRecorded = Arrays.asList("container-1", "container-2");
+        final DockerContainerEvent missedExit = DockerContainerEvent.create(DockerContainerEvent.EXIT_STATUS,
+                "container-1", new Date(1795137025778L), 1795137025778357966L, Collections.singletonMap("exitCode", "0"));
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(lastEventCheckTime);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(noExitRecorded);
+        when(containerControlApi.getExitEventsForContainers(eq(noExitRecorded), any()))
+                .thenReturn(Collections.singletonList(missedExit));
+
+        try (final MockedStatic<QueueUtils> queueUtils = mockStatic(QueueUtils.class)) {
+            updater.run();
+
+            queueUtils.verify(() -> QueueUtils.sendJmsRequest(any(JmsTemplate.class), eq(ContainerEvent.QUEUE), eq(missedExit)));
+        }
+
+        // Only containers that finished well before this tick's event window: a "die" from inside the window,
+        // or from just before it, may still be on its way through the queue.
+        verify(containerControlApi).getExitEventsForContainers(noExitRecorded,
+                new Date(lastEventCheckTime.getTime() - ContainerStatusUpdater.MISSED_EXIT_EVENT_GRACE.toMillis()));
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerTickDoesNotAskDockerAboutExitsWhenEveryContainerHasOne() throws Exception {
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(Collections.emptyList());
+
+        updater.run();
+
+        verify(containerControlApi, never()).getExitEventsForContainers(any(), any());
+    }
+
+    @Test
+    void dockerCheckpointStillMovesWhenTheExitCheckFails() throws Exception {
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(Collections.singletonList("container-1"));
+        when(containerControlApi.getExitEventsForContainers(any(), any())).thenThrow(new DockerServerException("docker is down"));
+
+        updater.run();
+
         verify(dockerServerService).update(any());
     }
 
