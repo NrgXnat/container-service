@@ -19,6 +19,7 @@ import org.nrg.framework.exceptions.NotFoundException;
 import org.nrg.xft.security.UserI;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
@@ -52,6 +53,16 @@ public interface ContainerControlApi {
     ServiceTask getTaskForService(DockerServer dockerServer, Container service) throws DockerServerException, ServiceNotFoundException, TaskNotFoundException;
 
     List<DockerContainerEvent> getContainerEvents(final Date since, final Date until) throws NoDockerServerException, DockerServerException;
+
+    /**
+     * Ask Docker which of these containers have exited, and build the "die" event for each one that finished
+     * before the given time. For containers whose own "die" event was never delivered.
+     *
+     * @param containerIds   Docker container ids
+     * @param finishedBefore Leave out containers that finished at or after this time
+     * @return One "die" event per exited container, with the time it finished and its exit code
+     */
+    List<DockerContainerEvent> getExitEventsForContainers(final Collection<String> containerIds, final Date finishedBefore) throws NoDockerServerException, DockerServerException;
 
     Integer getFinalizingThrottle();
     boolean isStatusEmailEnabled();

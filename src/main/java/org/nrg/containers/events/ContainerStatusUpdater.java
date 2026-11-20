@@ -71,6 +71,12 @@ public class ContainerStatusUpdater implements Runnable {
      */
     static final Duration STEP_DOWN_BACKOFF = Duration.ofMinutes(5);
 
+    /**
+     * How long before a tick's event window a Docker container must have finished before we report its exit
+     * ourselves. Covers the time a fetched "die" event can wait in the queue before it is recorded.
+     */
+    static final Duration MISSED_EXIT_EVENT_GRACE = Duration.ofSeconds(30);
+
     private static final String SKIP_MESSAGE = "Skipping attempt to update status.";
 
     private final ContainerControlApi containerControlApi;
@@ -344,6 +350,8 @@ public class ContainerStatusUpdater implements Runnable {
                 log.debug("No longer the {} leader; not moving the Docker event checkpoint.", LEADER_LOCK);
                 return UpdateReport.singleton(UpdateReportEntry.success());
             }
+
+            throwEventsForExitedContainersWithNoExitEvent(since);
             dockerServerService.update(server.updateEventCheckTime(now));
 
             return UpdateReport.singleton(UpdateReportEntry.success());
@@ -359,6 +367,35 @@ public class ContainerStatusUpdater implements Runnable {
             log.error("Invalid server configuration found on timestamp update", e);
         }
         return UpdateReport.singleton(UpdateReportEntry.failure());
+    }
+
+    /**
+     * Docker keeps only its most recent events (256, of every type), so on a busy host a container's "die" can
+     * be gone before the next tick asks for it. Nothing else reports that the container exited, and it would
+     * stay "Running" forever. So ask Docker directly about the containers with no exit recorded, and throw the
+     * "die" event ourselves for any that have exited.
+     *
+     * <p>Only containers that finished well before this tick's window are considered: their "die" event, if
+     * Docker still had it, was fetched by an earlier tick and has had time to be processed.
+     *
+     * @param since The start of this tick's event window
+     */
+    private void throwEventsForExitedContainersWithNoExitEvent(final Date since) {
+        try {
+            final List<String> containerIds = containerService.retrieveDockerContainerIdsWithNoExit();
+            if (containerIds.isEmpty()) {
+                return;
+            }
+            final Date finishedBefore = new Date(since.getTime() - MISSED_EXIT_EVENT_GRACE.toMillis());
+            for (final DockerContainerEvent event : containerControlApi.getExitEventsForContainers(containerIds, finishedBefore)) {
+                log.warn("Docker container {} has exited but its \"die\" event was never received. Throwing the event now.",
+                        event.backendId());
+                QueueUtils.sendJmsRequest(template, ContainerEvent.QUEUE, event);
+            }
+        } catch (Exception e) {
+            // The event poll itself succeeded. Don't fail the tick over this; the next one tries again.
+            log.error("Cannot check for Docker containers that exited without an event.", e);
+        }
     }
 
     @Nonnull

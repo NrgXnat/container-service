@@ -56,6 +56,7 @@ import com.github.dockerjava.okhttp.OkDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.containers.events.model.DockerContainerEvent;
@@ -91,14 +92,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.nrg.containers.services.CommandLabelService.LABEL_KEY;
@@ -108,6 +113,8 @@ import static org.nrg.containers.utils.ContainerUtils.instanceOrDefault;
 @Service
 public class DockerControlApi implements ContainerControlApi {
     private static final String HUB_AUTH_SUCCESS = "Login Succeeded";
+    private static final List<String> EXITED_CONTAINER_STATUSES = Arrays.asList("exited", "dead");
+    private static final int EXITED_CONTAINER_BATCH_SIZE = 100;
 
     private final DockerServerService dockerServerService;
     private final DockerHubService dockerHubService;
@@ -1188,6 +1195,51 @@ public class DockerControlApi implements ContainerControlApi {
             return callback.events;
         } catch (IOException | InterruptedException | DockerException e) {
             log.error("Error getting container events", e);
+            throw new DockerServerException(e);
+        }
+    }
+
+    @Override
+    public List<DockerContainerEvent> getExitEventsForContainers(final Collection<String> containerIds, final Date finishedBefore) throws NoDockerServerException, DockerServerException {
+        final List<DockerContainerEvent> events = new ArrayList<>();
+        if (containerIds == null || containerIds.isEmpty()) {
+            return events;
+        }
+        final DockerClient client = getDockerClient(getServer());
+        try {
+            // The ids travel in the request's query string, so ask in batches.
+            for (final List<String> batch : Lists.partition(new ArrayList<>(containerIds), EXITED_CONTAINER_BATCH_SIZE)) {
+                final List<com.github.dockerjava.api.model.Container> exited = client.listContainersCmd()
+                        .withShowAll(true)
+                        .withStatusFilter(EXITED_CONTAINER_STATUSES)
+                        .withIdFilter(batch)
+                        .exec();
+                for (final com.github.dockerjava.api.model.Container container : exited) {
+                    final InspectContainerResponse.ContainerState state = client.inspectContainerCmd(container.getId()).exec().getState();
+                    final Instant finishedAt;
+                    try {
+                        finishedAt = Instant.parse(state.getFinishedAt());
+                    } catch (DateTimeParseException | NullPointerException e) {
+                        log.warn("Container {} has exited but Docker reports no usable finish time: {}", container.getId(), state.getFinishedAt());
+                        continue;
+                    }
+                    if (!finishedAt.isBefore(finishedBefore.toInstant())) {
+                        continue;
+                    }
+                    final Map<String, String> attributes = new HashMap<>();
+                    if (state.getExitCodeLong() != null) {
+                        attributes.put("exitCode", String.valueOf(state.getExitCodeLong()));
+                    }
+                    events.add(DockerContainerEvent.create(DockerContainerEvent.EXIT_STATUS,
+                            container.getId(),
+                            Date.from(finishedAt),
+                            TimeUnit.SECONDS.toNanos(finishedAt.getEpochSecond()) + finishedAt.getNano(),
+                            attributes));
+                }
+            }
+            return events;
+        } catch (DockerException e) {
+            log.error("Error checking for exited containers", e);
             throw new DockerServerException(e);
         }
     }

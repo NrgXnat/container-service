@@ -20,6 +20,7 @@ import org.nrg.action.ClientException;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.LogType;
 import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.KubernetesStatusChangeEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
 import org.nrg.containers.exceptions.BadRequestException;
@@ -406,6 +407,12 @@ public class ContainerServiceImpl implements ContainerService {
     @Nonnull
     public List<Long> retrieveNonfinalizedServiceIds() {
         return containerEntityService.retrieveNonfinalizedServiceIds();
+    }
+
+    @Override
+    @Nonnull
+    public List<String> retrieveDockerContainerIdsWithNoExit() {
+        return containerEntityService.retrieveDockerContainerIdsWithNoExit();
     }
 
     @Override
@@ -855,6 +862,13 @@ public class ContainerServiceImpl implements ContainerService {
             return;
         }
 
+        if (event instanceof DockerContainerEvent && event.isExitStatus() && hasRecordedDockerExit(container)) {
+            // A Docker container exits once. This is the same exit reported a second time, e.g. the "die" event
+            // arriving after the status updater already reported the exit itself, or the other way around.
+            log.debug("Container {} already has an exit recorded, skipping addl event {}", container.containerOrServiceId(), event);
+            return;
+        }
+
         final String userLogin = container.userId();
         final UserI userI;
         try {
@@ -918,6 +932,12 @@ public class ContainerServiceImpl implements ContainerService {
         }
 
         log.debug("Done processing container event: {}", event);
+    }
+
+    private static boolean hasRecordedDockerExit(final Container container) {
+        return container.history().stream()
+                .anyMatch(history -> "event".equals(history.entityType()) &&
+                        DockerContainerEvent.EXIT_STATUS.equals(history.status()));
     }
 
     @Override
