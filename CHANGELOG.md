@@ -11,6 +11,9 @@
     * Upgrade the primary node first. A non-primary node that restarts on this release while the primary still runs an older one takes the lock alongside it, and containers that finish in that window can be finalized twice.
     * `containers.log` records when a node is elected or demoted as the status updater leader.
 
+### Improvements
+* [#29](https://github.com/NrgXnat/container-service/pull/29): The site admin **Installed Images and Commands** panel has one search box for all images, in place of a filter row in each image's table. It matches command names and descriptions, XNAT action names and descriptions, and image names, and a visibility menu sits next to it. Images with no match are hidden while a search is active, and the search is kept when the list refreshes.
+
 ### Bugfixes
 * [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and the full request and response bodies. Those include a job's `XNAT_PASS` and, in pod lists, the environment of every pod in the namespace. It now logs headers only, with `Authorization` redacted.
 
