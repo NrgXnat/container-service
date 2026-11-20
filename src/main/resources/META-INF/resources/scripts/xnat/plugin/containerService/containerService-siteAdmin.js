@@ -3029,9 +3029,8 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                         prev.removeClass('first');
                         prev.parents('div.element-wrapper').find('div.description').text('');
                     }
-                    if (prev || removeDisabledWarning(firstSel)) {
-                        firstSel.change();
-                    }
+                    // the context now comes from this command, so the later lists always need rebuilding
+                    firstSel.change();
                 }
 
                 // site-enabled commands only, sorted by label (case-insensitive, "tool-2" before "tool-10")
