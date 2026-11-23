@@ -34,6 +34,7 @@
       CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_output_tags_container_entity_output ON xhbm_container_entity_output_tags (container_entity_output);
       CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_mount_files_entity_container_entity_mount ON xhbm_container_mount_files_entity (container_entity_mount);
       ```
+      An interrupted `CONCURRENTLY` build leaves an invalid index behind, which `IF NOT EXISTS` then skips and queries don't use. `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;` lists any; drop each with `DROP INDEX CONCURRENTLY` and run its statement again.
 
 ## 3.9.0
 
