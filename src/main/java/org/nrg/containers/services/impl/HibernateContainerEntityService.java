@@ -101,6 +101,16 @@ public class HibernateContainerEntityService
         return (nonfinalized == null || !nonfinalized) ? getAll() : getDao().getAllNonfinalized();
     }
 
+    @Override
+    public List<ContainerEntity> getAllAfter(final long afterId, final int batchSize) {
+        return getDao().getAllAfter(afterId, batchSize);
+    }
+
+    @Override
+    public List<ContainerEntity> getAllAfter(final String project, final long afterId, final int batchSize) {
+        return getDao().getAllAfter(project, afterId, batchSize);
+    }
+
   
     @Override
     @Nonnull

@@ -52,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import static org.nrg.containers.services.ContainerService.XNAT_PASS;
 import static org.nrg.xdat.security.helpers.AccessLevel.Authenticated;
@@ -91,14 +92,13 @@ public class ContainerRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = "/containers", method = GET, restrictTo = Authenticated)
-    @ApiOperation(value = "Get all Containers")
+    @ApiOperation(value = "Get all Containers", response = Container.class, responseContainer = "List")
     @ResponseBody
-    public List<Container> getAll(final @RequestParam(required = false) Boolean nonfinalized) {
+    public Iterable<Container> getAll(final @RequestParam(required = false) Boolean nonfinalized) {
         final UserI userI = getSessionUser();
-        return containerService.getAll(nonfinalized).stream()
-                               .filter(c -> isUserOwnerOrAdmin(userI, c))
-                               .map(this::scrubPasswordEnv)
-                               .collect(Collectors.toList());
+        return ownedAndScrubbed(userI, Boolean.TRUE.equals(nonfinalized) ?
+                                       containerService.getAll(true) :
+                                       containerService.getAllInBatches());
     }
 
     @XapiRequestMapping(value = "/containers", method = POST, restrictTo = Authenticated, consumes = JSON, produces = JSON)
@@ -113,15 +113,14 @@ public class ContainerRestApi extends AbstractXapiRestController {
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers", method = GET, restrictTo = Authenticated)
-    @ApiOperation(value = "Get all Containers by project")
+    @ApiOperation(value = "Get all Containers by project", response = Container.class, responseContainer = "List")
     @ResponseBody
-    public List<Container> getAll(final @PathVariable @Project String project,
-                                  final @RequestParam(required = false) Boolean nonfinalized) {
+    public Iterable<Container> getAll(final @PathVariable @Project String project,
+                                      final @RequestParam(required = false) Boolean nonfinalized) {
         final UserI userI = getSessionUser();
-        return containerService.getAll(nonfinalized, project).stream()
-                               .filter(c -> isUserOwnerOrAdmin(userI, c))
-                               .map(this::scrubPasswordEnv)
-                               .collect(Collectors.toList());
+        return ownedAndScrubbed(userI, Boolean.TRUE.equals(nonfinalized) ?
+                                       containerService.getAll(true, project) :
+                                       containerService.getAllInBatches(project));
     }
 
     @XapiRequestMapping(value = "/projects/{project}/containers/name/{name}", method = GET, restrictTo = Authenticated)
@@ -191,6 +190,19 @@ public class ContainerRestApi extends AbstractXapiRestController {
                        final @PathVariable String id)
             throws NotFoundException, NoDockerServerException, DockerServerException, UnauthorizedException {
         return containerService.kill(project, id, getSessionUser());
+    }
+
+    /**
+     * The containers the user owns or administers, with {@code XNAT_PASS} scrubbed, filtered and scrubbed one at a time
+     * as the result is iterated. Spring writes a returned {@code Iterable} to the response as it iterates it, so with
+     * {@link ContainerService#getAllInBatches} only one batch of containers is in memory at a time. This is a plain
+     * lambda rather than one of Guava's iterables, which Jackson would write as an object instead of an array.
+     */
+    private Iterable<Container> ownedAndScrubbed(final UserI userI, final Iterable<Container> containers) {
+        return () -> StreamSupport.stream(containers.spliterator(), false)
+                                  .filter(c -> isUserOwnerOrAdmin(userI, c))
+                                  .map(this::scrubPasswordEnv)
+                                  .iterator();
     }
 
     private Container scrubPasswordEnv(final Container container) {

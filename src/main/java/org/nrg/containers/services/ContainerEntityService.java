@@ -23,6 +23,18 @@ public interface ContainerEntityService extends BaseHibernateService<ContainerEn
     List<ContainerEntity> getAll(Boolean nonfinalized, String project);
     List<ContainerEntity> getAll(Boolean nonfinalized);
 
+    /**
+     * The next batch of {@link #getAll()} in id order: up to {@code batchSize} containers with ids above
+     * {@code afterId}, initialized.
+     */
+    List<ContainerEntity> getAllAfter(long afterId, int batchSize);
+
+    /**
+     * The next batch of {@link #getAll(Boolean, String) getAll(null, project)} in id order: up to {@code batchSize}
+     * of the project's containers with ids above {@code afterId}, initialized.
+     */
+    List<ContainerEntity> getAllAfter(String project, long afterId, int batchSize);
+
 
     List<ContainerEntity> retrieveServices();
     List<Long> retrieveNonfinalizedServiceIds();

@@ -3,6 +3,8 @@ package org.nrg.containers.model.container.entity;
 import com.google.common.base.MoreObjects;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.hibernate.Hibernate;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Type;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.server.docker.Backend;
@@ -28,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Entity
@@ -36,6 +39,30 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     private static final long serialVersionUID = 2346142731253539259L;
 
     public static final String KILL_STATUS = "kill";
+
+    /**
+     * How many containers' collections Hibernate loads in one query once one of them is needed, so reading a list of
+     * containers costs a query per collection per batch rather than per container. Lists read in batches use the same
+     * size.
+     * <p>
+     * The maps (environment variables, ports and labels) still load one container at a time. The JSON lists a map's
+     * keys in the order its rows were loaded, which for one container is usually sorted by key, through the map
+     * table's primary key. Loaded for a whole batch, the rows come back in table order and the keys would come out
+     * reordered. That primary key makes one container's map a single index lookup.
+     */
+    public static final int BATCH_SIZE = 100;
+
+    /**
+     * Runs {@code action} on each item of a collection, unless Hibernate hasn't loaded the collection yet. Hibernate
+     * passes its unloaded collections to the setters as it builds a container, and their items point back to the
+     * container once they are loaded. Iterating one in the setter would load it there and then, a query per container,
+     * before {@link BatchSize} could load it together with the rest of the batch.
+     */
+    static <T> void forEachIfLoaded(final List<T> items, final Consumer<T> action) {
+        if (Hibernate.isInitialized(items)) {
+            items.forEach(action);
+        }
+    }
 
     private long commandId;
     private long wrapperId;
@@ -284,6 +311,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     }
 
     @OneToMany(mappedBy = "containerEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = BATCH_SIZE)
     public List<ContainerEntityMount> getMounts() {
         return mounts;
     }
@@ -292,9 +320,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.mounts = mounts == null ?
                 new ArrayList<>() :
                 mounts;
-        for (final ContainerEntityMount mount : this.mounts) {
-            mount.setContainerEntity(this);
-        }
+        forEachIfLoaded(this.mounts, mount -> mount.setContainerEntity(this));
     }
 
     public String getContainerId() {
@@ -457,6 +483,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     }
 
     @OneToMany(mappedBy = "containerEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = BATCH_SIZE)
     public List<ContainerEntityInput> getInputs() {
         return inputs;
     }
@@ -465,9 +492,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.inputs = inputs == null ?
                 new ArrayList<>() :
                 inputs;
-        for (final ContainerEntityInput input : this.inputs) {
-            input.setContainerEntity(this);
-        }
+        forEachIfLoaded(this.inputs, input -> input.setContainerEntity(this));
     }
 
     public void addInput(final ContainerEntityInput input) {
@@ -483,6 +508,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     }
 
     @OneToMany(mappedBy = "containerEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = BATCH_SIZE)
     public List<ContainerEntityOutput> getOutputs() {
         return outputs;
     }
@@ -491,12 +517,11 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.outputs = outputs == null ?
                 new ArrayList<>() :
                 outputs;
-        for (final ContainerEntityOutput output : this.outputs) {
-            output.setContainerEntity(this);
-        }
+        forEachIfLoaded(this.outputs, output -> output.setContainerEntity(this));
     }
 
     @OneToMany(mappedBy = "containerEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = BATCH_SIZE)
     public List<ContainerEntityHistory> getHistory() {
         return history;
     }
@@ -505,9 +530,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
         this.history = history == null ?
                 new ArrayList<>() :
                 history;
-        for (final ContainerEntityHistory historyItem : this.history) {
-            historyItem.setContainerEntity(this);
-        }
+        forEachIfLoaded(this.history, historyItem -> historyItem.setContainerEntity(this));
     }
 
     @Transient
@@ -537,6 +560,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
     }
 
     @ElementCollection
+    @BatchSize(size = BATCH_SIZE)
     public List<String> getLogPaths() {
         return logPaths;
     }
@@ -555,6 +579,7 @@ public class ContainerEntity extends AbstractHibernateEntity implements Serializ
 
 
     @ElementCollection
+    @BatchSize(size = BATCH_SIZE)
     public List<String> getSwarmConstraints() {
         return swarmConstraints;
     }
