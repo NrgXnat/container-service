@@ -14,6 +14,7 @@ import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.services.ContainerEntityService;
 import org.nrg.containers.services.ContainerService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.test.context.web.WebAppConfiguration;
@@ -31,9 +32,13 @@ import static org.junit.Assert.assertThat;
  * of earlier batches can be collected. This test is not {@code @Transactional}, unlike the others here: a test
  * transaction would keep one session open across every batch, as a transactional caller or an open-session-in-view
  * filter would, and the containers have to be built from entities whose session has closed.
+ * <p>
+ * The context is closed afterwards rather than cached: the permission checks in the list endpoints reach Spring
+ * through XNAT's static {@code ContextService}, which the contexts of the test classes that run in between repoint.
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @WebAppConfiguration
+@DirtiesContext
 @ContextConfiguration(classes = ContainerRestApiTestConfig.class)
 public class ContainerListBatchSessionsTest {
     private static final String PROJECT = "batch-sessions";
