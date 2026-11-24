@@ -4,6 +4,7 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectContainerCmd;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.command.ListContainersCmd;
+import com.github.dockerjava.api.exception.NotFoundException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Answers;
@@ -90,6 +91,23 @@ public class DockerControlApiExitEventsTest {
                 Collections.singletonList(JUST_EXITED_ID), Date.from(FINISHED_BEFORE));
 
         assertThat(events.isEmpty(), is(true));
+    }
+
+    @Test
+    public void containerRemovedBeforeItsInspectIsSkipped() throws Exception {
+        final InspectContainerCmd inspectRemoved = mock(InspectContainerCmd.class);
+        when(inspectRemoved.exec()).thenThrow(new NotFoundException("No such container: " + JUST_EXITED_ID));
+        when(client.inspectContainerCmd(JUST_EXITED_ID)).thenReturn(inspectRemoved);
+        final com.github.dockerjava.api.model.Container removed = mock(com.github.dockerjava.api.model.Container.class);
+        when(removed.getId()).thenReturn(JUST_EXITED_ID);
+        dockerLists(removed, exited(EXITED_ID, "2026-11-20T01:10:25.778357966Z", 3L));
+
+        final List<DockerContainerEvent> events = dockerControlApi.getExitEventsForContainers(
+                Arrays.asList(JUST_EXITED_ID, EXITED_ID), Date.from(FINISHED_BEFORE));
+
+        // The other container's exit is still reported
+        assertThat(events.size(), is(1));
+        assertThat(events.get(0).backendId(), is(EXITED_ID));
     }
 
     @Test

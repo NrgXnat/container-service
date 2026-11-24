@@ -1215,7 +1215,14 @@ public class DockerControlApi implements ContainerControlApi {
                         .withIdFilter(batch)
                         .exec();
                 for (final com.github.dockerjava.api.model.Container container : exited) {
-                    final InspectContainerResponse.ContainerState state = client.inspectContainerCmd(container.getId()).exec().getState();
+                    final InspectContainerResponse.ContainerState state;
+                    try {
+                        state = client.inspectContainerCmd(container.getId()).exec().getState();
+                    } catch (com.github.dockerjava.api.exception.NotFoundException e) {
+                        // Removed since the list call. Don't lose the other exits found this time.
+                        log.info("Container {} has exited but was removed before it could be inspected", container.getId());
+                        continue;
+                    }
                     final Instant finishedAt;
                     try {
                         finishedAt = Instant.parse(state.getFinishedAt());
