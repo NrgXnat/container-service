@@ -38,7 +38,9 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -72,8 +74,7 @@ public class ContainerStatusUpdater implements Runnable {
     static final Duration STEP_DOWN_BACKOFF = Duration.ofMinutes(5);
 
     /**
-     * How long before a tick's event window a Docker container must have finished before we report its exit
-     * ourselves. Covers the time a fetched "die" event can wait in the queue before it is recorded.
+     * How long a fetched Docker "die" event may wait in the queue before we report the container's exit ourselves.
      */
     static final Duration MISSED_EXIT_EVENT_GRACE = Duration.ofSeconds(30);
 
@@ -96,6 +97,9 @@ public class ContainerStatusUpdater implements Runnable {
     private boolean haveLoggedUpdateFailure = false;
     private int consecutiveBackendFailures = 0;
     private boolean kubernetesInformerStarted = false;
+    // Docker event checkpoints that recent ticks started from, rounded down to the second. The tick that wrote a
+    // checkpoint asked Docker for events up to that second, so a "die" from before it has been queued since then.
+    private final NavigableSet<Date> dockerCheckpoints = new TreeSet<>();
 
     @Autowired
     @SuppressWarnings("SpringJavaAutowiringInspection")
@@ -351,7 +355,7 @@ public class ContainerStatusUpdater implements Runnable {
                 return UpdateReport.singleton(UpdateReportEntry.success());
             }
 
-            throwEventsForExitedContainersWithNoExitEvent(since);
+            throwEventsForExitedContainersWithNoExitEvent(since, now);
             dockerServerService.update(server.updateEventCheckTime(now));
 
             return UpdateReport.singleton(UpdateReportEntry.success());
@@ -375,18 +379,26 @@ public class ContainerStatusUpdater implements Runnable {
      * stay "Running" forever. So ask Docker directly about the containers with no exit recorded, and throw the
      * "die" event ourselves for any that have exited.
      *
-     * <p>Only containers that finished well before this tick's window are considered: their "die" event, if
-     * Docker still had it, was fetched by an earlier tick and has had time to be processed.
+     * <p>Only containers that finished before a checkpoint at least {@link #MISSED_EXIT_EVENT_GRACE} old are
+     * considered: their "die" event, if Docker still had it, was queued by the tick that wrote that checkpoint
+     * and has had time to be processed. The grace counts from when the event was queued, not from when the
+     * container finished, because after polling pauses one tick queues every "die" from the pause.
      *
-     * @param since The start of this tick's event window
+     * @param since The start of this tick's event window, the checkpoint the previous tick wrote
+     * @param now   The end of this tick's event window
      */
-    private void throwEventsForExitedContainersWithNoExitEvent(final Date since) {
+    private void throwEventsForExitedContainersWithNoExitEvent(final Date since, final Date now) {
+        dockerCheckpoints.add(new Date(since.getTime() / 1000 * 1000));
+        final Date finishedBefore = dockerCheckpoints.floor(new Date(now.getTime() - MISSED_EXIT_EVENT_GRACE.toMillis()));
+        if (finishedBefore == null) {
+            return;
+        }
+        dockerCheckpoints.headSet(finishedBefore, false).clear();
         try {
             final List<String> containerIds = containerService.retrieveDockerContainerIdsWithNoExit();
             if (containerIds.isEmpty()) {
                 return;
             }
-            final Date finishedBefore = new Date(since.getTime() - MISSED_EXIT_EVENT_GRACE.toMillis());
             for (final DockerContainerEvent event : containerControlApi.getExitEventsForContainers(containerIds, finishedBefore)) {
                 log.warn("Docker container {} has exited but its \"die\" event was never received. Throwing the event now.",
                         event.backendId());

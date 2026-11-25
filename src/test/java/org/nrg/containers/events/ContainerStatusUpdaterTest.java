@@ -205,10 +205,46 @@ class ContainerStatusUpdaterTest {
             queueUtils.verify(() -> QueueUtils.sendJmsRequest(any(JmsTemplate.class), eq(ContainerEvent.QUEUE), eq(missedExit)));
         }
 
-        // Only containers that finished well before this tick's event window: a "die" from inside the window,
-        // or from just before it, may still be on its way through the queue.
-        verify(containerControlApi).getExitEventsForContainers(noExitRecorded,
-                new Date(lastEventCheckTime.getTime() - ContainerStatusUpdater.MISSED_EXIT_EVENT_GRACE.toMillis()));
+        // Only containers that finished before a checkpoint written at least the grace ago: a "die" from after
+        // it may still be on its way through the queue.
+        verify(containerControlApi).getExitEventsForContainers(noExitRecorded, lastEventCheckTime);
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerExitCheckCountsTheGraceFromWhenTheDieWasQueued() throws Exception {
+        // Polling paused: the first tick after it starts from a checkpoint long ago, and queues the real "die"
+        // of every container that finished during the pause. The next tick starts 10 seconds later.
+        final long nowMillis = System.currentTimeMillis();
+        final Date beforePause = new Date(nowMillis - TimeUnit.MINUTES.toMillis(5) + 250);
+        final Date afterPause = new Date(nowMillis - TimeUnit.SECONDS.toMillis(10));
+        final List<String> noExitRecorded = Collections.singletonList("container-1");
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(beforePause, afterPause);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(noExitRecorded);
+
+        updater.run();
+        updater.run();
+
+        // Both ticks only report containers that finished before the pause, rounded down to the second the
+        // events were asked for up to. A container that finished during it had its "die" queued 10 seconds ago.
+        verify(containerControlApi, times(2)).getExitEventsForContainers(noExitRecorded,
+                new Date(beforePause.getTime() / 1000 * 1000));
+    }
+
+    @Test
+    void dockerExitCheckWaitsUntilACheckpointIsOldEnough() throws Exception {
+        // Leadership just moved, and the other node wrote the checkpoint 5 seconds ago: the "die" events before
+        // it may still be queued.
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(new Date(System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(5)));
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+
+        updater.run();
+
+        verify(containerService, never()).retrieveDockerContainerIdsWithNoExit();
+        verify(containerControlApi, never()).getExitEventsForContainers(any(), any());
         verify(dockerServerService).update(any());
     }
 
