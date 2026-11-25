@@ -3098,7 +3098,12 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                                         const parentPanel = $(this).closest('div.panel-element');
                                         if (parentPanel.find('.orchestrationWrapperSelect.first').length > 0) {
                                             const firstSel = $('div#orchestrationWrappers').find('.orchestrationWrapperSelect:not(.first)').first();
-                                            setFirst(firstSel);
+                                            if (firstSel.length > 0) {
+                                                setFirst(firstSel);
+                                            } else {
+                                                // no command left to set the context
+                                                contexts = [];
+                                            }
                                         }
                                         parentPanel.remove();
                                     }
@@ -3177,14 +3182,16 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                             'haltOnCommandFailure': panel.find('#orchestration-haltOnCommandFailure').is(':checked'),
                             'wrapperIds': []
                         };
-                        data.wrapperIds = panel.find('select.orchestrationWrapperSelect').map(function() {
-                            return $(this).val();
-                        }).get();
+                        // native map, not jQuery's: jQuery drops the null that .val() returns for a disabled
+                        // (out-of-context) selection, which would save the orchestration without that command
+                        data.wrapperIds = panel.find('select.orchestrationWrapperSelect').get().map(function(select) {
+                            return $(select).val();
+                        });
                         const errors = [];
                         if (!data.name) {
                             errors.push(spawn('li', 'You must specify a name for the orchestration'));
                         }
-                        if (data.wrapperIds.length < 2 || data.wrapperIds.includes('')) {
+                        if (data.wrapperIds.length < 2 || data.wrapperIds.includes('') || data.wrapperIds.includes(null)) {
                             errors.push(spawn('li', 'You must select 2 or more commands, remove any blank entries, ' +
                                 'and ensure no warnings are present'));
                         }
