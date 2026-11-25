@@ -9,6 +9,7 @@ import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Striped;
 import lombok.extern.slf4j.Slf4j;
@@ -132,6 +133,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -140,6 +142,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -377,8 +380,45 @@ public class ContainerServiceImpl implements ContainerService {
     }
 
     @Override
+    public Iterable<Container> getAllInBatches() {
+        return inBatches(afterId -> containerEntityService.getAllAfter(afterId, ContainerEntity.BATCH_SIZE));
+    }
+
+    @Override
+    public Iterable<Container> getAllInBatches(final String project) {
+        return inBatches(afterId -> containerEntityService.getAllAfter(project, afterId, ContainerEntity.BATCH_SIZE));
+    }
+
+    /**
+     * Reads {@code batchAfter(id)}, the batch after the given id, one batch at a time as the result is iterated.
+     */
+    private Iterable<Container> inBatches(final LongFunction<List<ContainerEntity>> batchAfter) {
+        return () -> new AbstractIterator<Container>() {
+            private Iterator<Container> batch = Collections.emptyIterator();
+            private long lastId = Long.MIN_VALUE;
+            private boolean lastBatch = false;
+
+            @Override
+            protected Container computeNext() {
+                while (!batch.hasNext()) {
+                    if (lastBatch) {
+                        return endOfData();
+                    }
+                    final List<ContainerEntity> entities = batchAfter.apply(lastId);
+                    lastBatch = entities.size() < ContainerEntity.BATCH_SIZE;
+                    if (!entities.isEmpty()) {
+                        lastId = entities.get(entities.size() - 1).getId();
+                    }
+                    batch = toPojo(entities).iterator();
+                }
+                return batch.next();
+            }
+        };
+    }
+
+    @Override
     public Container getByName(String project, String name, Boolean nonfinalized) {
-        List<Container> all = getAll(nonfinalized, project);
+        final Iterable<Container> all = Boolean.TRUE.equals(nonfinalized) ? getAll(true, project) : getAllInBatches(project);
         for(Container container : all){
             if (container.containerName() != null && container.containerName().contentEquals(name)){
                 return container;
@@ -389,7 +429,7 @@ public class ContainerServiceImpl implements ContainerService {
 
     @Override
     public Container getByName(String name, Boolean nonfinalized) {
-        List<Container> all = getAll(nonfinalized);
+        final Iterable<Container> all = Boolean.TRUE.equals(nonfinalized) ? getAll(true) : getAllInBatches();
         for(Container container : all){
             if (container.containerName() != null && container.containerName().contentEquals(name)){
                 return container;

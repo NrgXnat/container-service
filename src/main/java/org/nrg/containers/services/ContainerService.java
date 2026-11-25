@@ -58,6 +58,18 @@ public interface ContainerService {
     List<Container> getAll(String project);
     List<Container> getAll(Boolean nonfinalized);
 
+    /**
+     * The containers {@link #getAll()} returns, in id order and read a batch at a time as the result is iterated,
+     * each batch in its own transaction. A caller that handles each container as it goes, such as a response written
+     * as it is serialized, holds one batch in memory however many containers there are.
+     */
+    Iterable<Container> getAllInBatches();
+
+    /**
+     * The containers {@link #getAll(String)} returns for the project, read the same way as {@link #getAllInBatches()}.
+     */
+    Iterable<Container> getAllInBatches(String project);
+
     Container getByName(String project, String name, final Boolean nonfinalized);
     Container getByName(String name, final Boolean nonfinalized);
 

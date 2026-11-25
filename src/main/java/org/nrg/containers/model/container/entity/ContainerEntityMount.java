@@ -3,6 +3,7 @@ package org.nrg.containers.model.container.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
+import org.hibernate.annotations.BatchSize;
 import org.nrg.containers.model.container.auto.Container;
 
 import javax.annotation.Nullable;
@@ -135,6 +136,7 @@ public class ContainerEntityMount implements Serializable {
      */
     @Deprecated
     @OneToMany(mappedBy = "containerEntityMount", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
+    @BatchSize(size = ContainerEntity.BATCH_SIZE)
     public List<ContainerMountFilesEntity> getInputFiles() {
         return inputFiles;
     }
@@ -151,9 +153,7 @@ public class ContainerEntityMount implements Serializable {
         this.inputFiles = inputFiles == null ?
                 new ArrayList<>() :
                 inputFiles;
-        for (final ContainerMountFilesEntity files : this.inputFiles) {
-            files.setContainerEntityMount(this);
-        }
+        ContainerEntity.forEachIfLoaded(this.inputFiles, files -> files.setContainerEntityMount(this));
     }
 
     @Override

@@ -2,6 +2,7 @@ package org.nrg.containers.model.container.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.MoreObjects;
+import org.hibernate.annotations.BatchSize;
 import org.nrg.containers.model.container.auto.Container;
 
 import javax.persistence.Column;
@@ -182,6 +183,7 @@ public class ContainerEntityOutput implements Serializable {
     public void setContent(String content) { this.content = content; }
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = ContainerEntity.BATCH_SIZE)
     public List<String> getTags() { return tags; }
 
     public void setTags(List<String> tags) { this.tags = tags; }

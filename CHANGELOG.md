@@ -19,6 +19,21 @@
 ### Bugfixes
 * [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and the full request and response bodies. Those include a job's `XNAT_PASS` and, in pod lists, the environment of every pod in the namespace. It now logs headers only, with `Authorization` redacted.
 * [#30](https://github.com/NrgXnat/container-service/pull/30): On the Docker backend, a container whose exit event was lost no longer stays "Running" forever. The Docker daemon keeps only its last 256 events, so on a busy host a container's `die` could be gone before the status updater's next poll. The updater now checks Docker for containers that exited without an event and finalizes them, and logs a warning for each. Containers already stuck this way are finalized on the first run after upgrade, if they still exist in Docker. Swarm and Kubernetes are unchanged.
+* [#32](https://github.com/NrgXnat/container-service/pull/32): Listing every container no longer loads them all into memory at once. `GET /xapi/containers` and `GET /xapi/projects/{project}/containers`, without `nonfinalized=true`, used to read the whole list, with each container's history, mounts, inputs and outputs, before writing any of it. On a site with a large container history one request could run XNAT out of memory, and it kept going after the client gave up. The list is now read 100 containers at a time and each batch is written out before the next is read, so memory use no longer grows with the number of containers, and the request stops when the client disconnects. Each batch loads its containers' history, mounts, inputs and outputs in a few queries, instead of a few per container. Looking up a container by name (`GET /xapi/container/name/{name}` and `GET /xapi/projects/{project}/containers/name/{name}`) read the same full list, and now reads it the same way and stops at the first match.
+    * The response is otherwise unchanged, except that containers are listed in database id order. The order was not defined before.
+    * If an error happens after the response has started, the status stays 200. The response holds the containers written so far, a closing `]`, and then XNAT's error message as plain text. A strict JSON parser rejects it, but a lenient one, such as Jackson with its default settings, reads a shorter list without an error.
+    * Optional, for a large site: the tables these queries read have no index on their container column, so each query scans the whole table. These indexes make the list faster, and every container lookup too. `CONCURRENTLY` builds them without blocking writes, before or after the upgrade:
+      ```sql
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_history_container_entity ON xhbm_container_entity_history (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_input_container_entity ON xhbm_container_entity_input (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_mount_container_entity ON xhbm_container_entity_mount (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_output_container_entity ON xhbm_container_entity_output (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_log_paths_container_entity ON xhbm_container_entity_log_paths (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_swarm_constraints_container_entity ON xhbm_container_entity_swarm_constraints (container_entity);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_entity_output_tags_container_entity_output ON xhbm_container_entity_output_tags (container_entity_output);
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_xhbm_container_mount_files_entity_container_entity_mount ON xhbm_container_mount_files_entity (container_entity_mount);
+      ```
+      An interrupted `CONCURRENTLY` build leaves an invalid index behind, which `IF NOT EXISTS` then skips and queries don't use. `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;` lists any; drop each with `DROP INDEX CONCURRENTLY` and run its statement again.
 
 ## 3.9.0
 

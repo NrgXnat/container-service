@@ -5,6 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.hibernate.Hibernate;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.MatchMode;
+import org.hibernate.criterion.Order;
 import org.hibernate.criterion.Projection;
 import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
@@ -336,6 +337,38 @@ public class ContainerEntityRepository extends AbstractHibernateDAO<ContainerEnt
     @Nonnull
     public List<ContainerEntity> getAll(final String project) {
         return initializeAndReturnList(findByProperty("project", project));
+    }
+
+    /**
+     * The next batch of the containers {@link #findAllEnabled()} returns, in id order: up to {@code batchSize} enabled
+     * containers with ids above {@code afterId}, initialized.
+     */
+    @Nonnull
+    public List<ContainerEntity> getAllAfter(final long afterId, final int batchSize) {
+        return getBatchAfter(Restrictions.eq(ENABLED_PROPERTY, true), afterId, batchSize);
+    }
+
+    /**
+     * The next batch of the containers {@link #getAll(String)} returns, in id order: up to {@code batchSize} of the
+     * project's containers with ids above {@code afterId}, initialized. A null project means containers without one,
+     * as it does there.
+     */
+    @Nonnull
+    public List<ContainerEntity> getAllAfter(@Nullable final String project, final long afterId, final int batchSize) {
+        return getBatchAfter(project == null ? Restrictions.isNull("project") : Restrictions.eq("project", project),
+                             afterId, batchSize);
+    }
+
+    @Nonnull
+    private List<ContainerEntity> getBatchAfter(final Criterion criterion, final long afterId, final int batchSize) {
+        final List list = getSession()
+                .createCriteria(ContainerEntity.class)
+                .add(criterion)
+                .add(Restrictions.gt("id", afterId))
+                .addOrder(Order.asc("id"))
+                .setMaxResults(batchSize)
+                .list();
+        return initializeAndReturnList(list);
     }
 
     @Nonnull
