@@ -78,6 +78,12 @@ public class ContainerStatusUpdater implements Runnable {
      */
     static final Duration MISSED_EXIT_EVENT_GRACE = Duration.ofSeconds(30);
 
+    /**
+     * How much later than a container's finish time Docker may stamp its "die" event. A container that finished
+     * just before a checkpoint can have its "die" stamped just after it, and fetched by the next tick.
+     */
+    static final Duration DIE_EVENT_LAG = Duration.ofSeconds(2);
+
     private static final String SKIP_MESSAGE = "Skipping attempt to update status.";
 
     private final ContainerControlApi containerControlApi;
@@ -379,9 +385,9 @@ public class ContainerStatusUpdater implements Runnable {
      * stay "Running" forever. So ask Docker directly about the containers with no exit recorded, and throw the
      * "die" event ourselves for any that have exited.
      *
-     * <p>Only containers that finished before a checkpoint at least {@link #MISSED_EXIT_EVENT_GRACE} old are
-     * considered: their "die" event, if Docker still had it, was queued by the tick that wrote that checkpoint
-     * and has had time to be processed. The grace counts from when the event was queued, not from when the
+     * <p>Only containers that finished more than {@link #DIE_EVENT_LAG} before a checkpoint at least
+     * {@link #MISSED_EXIT_EVENT_GRACE} old are considered: their "die" event, if Docker still had it, was queued by
+     * the tick that wrote that checkpoint and has had time to be processed. The grace counts from when the event was queued, not from when the
      * container finished, because after polling pauses one tick queues every "die" from the pause.
      *
      * @param since The start of this tick's event window, the checkpoint the previous tick wrote
@@ -389,11 +395,12 @@ public class ContainerStatusUpdater implements Runnable {
      */
     private void throwEventsForExitedContainersWithNoExitEvent(final Date since, final Date now) {
         dockerCheckpoints.add(new Date(since.getTime() / 1000 * 1000));
-        final Date finishedBefore = dockerCheckpoints.floor(new Date(now.getTime() - MISSED_EXIT_EVENT_GRACE.toMillis()));
-        if (finishedBefore == null) {
+        final Date checkpoint = dockerCheckpoints.floor(new Date(now.getTime() - MISSED_EXIT_EVENT_GRACE.toMillis()));
+        if (checkpoint == null) {
             return;
         }
-        dockerCheckpoints.headSet(finishedBefore, false).clear();
+        dockerCheckpoints.headSet(checkpoint, false).clear();
+        final Date finishedBefore = new Date(checkpoint.getTime() - DIE_EVENT_LAG.toMillis());
         try {
             final List<String> containerIds = containerService.retrieveDockerContainerIdsWithNoExit();
             if (containerIds.isEmpty()) {

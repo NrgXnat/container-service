@@ -8,6 +8,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.stubbing.Answer;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.events.model.ContainerEvent;
 import org.nrg.containers.events.model.DockerContainerEvent;
@@ -28,8 +29,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockStatic;
@@ -64,7 +68,7 @@ public class DockerMissedExitEventTest {
     @Mock private ThreadPoolExecutorFactoryBean executorFactoryBean;
     @Mock private UserI user;
 
-    private final List<Container> finalizeRequests = new ArrayList<>();
+    private final List<Container> finalizeRequests = Collections.synchronizedList(new ArrayList<>());
 
     private ContainerService containerService;
     private MockedStatic<Users> mockedUsers;
@@ -144,6 +148,50 @@ public class DockerMissedExitEventTest {
         assertThat(finalizeRequests.size(), is(1));
     }
 
+    /**
+     * The real "die" and the updater's report consumed at the same time. The second one must wait until the first
+     * is recorded, and then skip it; checking first and recording later lets both through.
+     */
+    @Test
+    public void exitsConsumedAtTheSameTimeFinalizeOnce() throws Exception {
+        final ContainerEntity containerEntity = startedContainer();
+        when(containerEntityService.retrieve(CONTAINER_ID)).thenReturn(containerEntity);
+        final AtomicReference<Thread> updaterReport = new AtomicReference<>();
+        final AtomicReference<Throwable> updaterReportFailure = new AtomicReference<>();
+        final Answer<?> recordEvent = recordEventAnswer(containerEntity);
+
+        // While the "die" is being recorded, consume the updater's report on another thread, and give it until
+        // it blocks or finishes before the "die" is recorded.
+        when(containerEntityService.addContainerEventToHistory(any(ContainerEvent.class), any(UserI.class)))
+                .thenAnswer(invocation -> {
+                    final Thread thread = new Thread(() -> {
+                        // Static mocks only apply on the thread that made them.
+                        try (final MockedStatic<Users> users = mockStatic(Users.class)) {
+                            users.when(() -> Users.getUser(USER_LOGIN)).thenReturn(user);
+                            containerService.processEvent(exitReportedByTheUpdater());
+                        } catch (Throwable t) {
+                            updaterReportFailure.set(t);
+                        }
+                    });
+                    updaterReport.set(thread);
+                    thread.start();
+                    final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    while (thread.getState() != Thread.State.WAITING && thread.getState() != Thread.State.TERMINATED
+                            && System.nanoTime() < deadline) {
+                        Thread.sleep(10);
+                    }
+                    return recordEvent.answer(invocation);
+                })
+                .thenAnswer(recordEvent);
+
+        containerService.processEvent(dieEvent());
+        updaterReport.get().join(TimeUnit.SECONDS.toMillis(5));
+
+        assertThat(updaterReportFailure.get(), is(nullValue()));
+        assertThat(finalizeRequests.size(), is(1));
+        assertThat(exitsInHistory(containerEntity), is(1L));
+    }
+
     private static DockerContainerEvent dieEvent() {
         return DockerContainerEvent.create(DockerContainerEvent.EXIT_STATUS, CONTAINER_ID,
                 new Date(DIE_EVENT_NANOS / 1_000_000L), DIE_EVENT_NANOS, Collections.singletonMap("exitCode", "0"));
@@ -189,16 +237,19 @@ public class DockerMissedExitEventTest {
     private void stubContainerEntityService(final ContainerEntity containerEntity) {
         when(containerEntityService.retrieve(CONTAINER_ID)).thenReturn(containerEntity);
         when(containerEntityService.addContainerEventToHistory(any(ContainerEvent.class), any(UserI.class)))
-                .thenAnswer(invocation -> {
-                    final ContainerEvent event = (ContainerEvent) invocation.getArguments()[0];
-                    final ContainerEntityHistory historyItem =
-                            ContainerEntityHistory.fromContainerEvent(event, containerEntity);
-                    if (containerEntity.isItemInHistory(historyItem)) {
-                        return null;
-                    }
-                    containerEntity.addToHistory(historyItem);
-                    containerEntity.setStatus(historyItem.getStatus());
-                    return containerEntity;
-                });
+                .thenAnswer(recordEventAnswer(containerEntity));
+    }
+
+    private static Answer<ContainerEntity> recordEventAnswer(final ContainerEntity containerEntity) {
+        return invocation -> {
+            final ContainerEvent event = (ContainerEvent) invocation.getArguments()[0];
+            final ContainerEntityHistory historyItem = ContainerEntityHistory.fromContainerEvent(event, containerEntity);
+            if (containerEntity.isItemInHistory(historyItem)) {
+                return null;
+            }
+            containerEntity.addToHistory(historyItem);
+            containerEntity.setStatus(historyItem.getStatus());
+            return containerEntity;
+        };
     }
 }

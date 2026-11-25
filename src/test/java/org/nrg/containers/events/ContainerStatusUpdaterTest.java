@@ -207,7 +207,8 @@ class ContainerStatusUpdaterTest {
 
         // Only containers that finished before a checkpoint written at least the grace ago: a "die" from after
         // it may still be on its way through the queue.
-        verify(containerControlApi).getExitEventsForContainers(noExitRecorded, lastEventCheckTime);
+        verify(containerControlApi).getExitEventsForContainers(noExitRecorded,
+                new Date(lastEventCheckTime.getTime() - ContainerStatusUpdater.DIE_EVENT_LAG.toMillis()));
         verify(dockerServerService).update(any());
     }
 
@@ -228,9 +229,10 @@ class ContainerStatusUpdaterTest {
         updater.run();
 
         // Both ticks only report containers that finished before the pause, rounded down to the second the
-        // events were asked for up to. A container that finished during it had its "die" queued 10 seconds ago.
+        // events were asked for up to, less the lag of a "die" behind the finish time. A container that finished
+        // during the pause had its "die" queued 10 seconds ago.
         verify(containerControlApi, times(2)).getExitEventsForContainers(noExitRecorded,
-                new Date(beforePause.getTime() / 1000 * 1000));
+                new Date(beforePause.getTime() / 1000 * 1000 - ContainerStatusUpdater.DIE_EVENT_LAG.toMillis()));
     }
 
     @Test

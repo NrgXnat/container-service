@@ -10,6 +10,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.Striped;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
@@ -136,6 +137,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -178,6 +180,11 @@ public class ContainerServiceImpl implements ContainerService {
     public static final DateTimeFormatter[] DATETIME_PARSING_FORMATTERS = {DateTimeFormatter.ISO_OFFSET_DATE_TIME, DateTimeFormatter.ISO_DATE_TIME};
     public static final DateTimeFormatter DATETIME_OUTPUT_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     public static final ZoneId UTC = ZoneId.of("UTC");
+
+    // Recording a Docker exit is serialized per container: the real "die" and the status updater's report of the
+    // same exit can be consumed at the same time, and only the first may be recorded and finalize the container.
+    @SuppressWarnings("UnstableApiUsage") // Striped is marked as @Beta in our guava version, but not in current version
+    private static final Striped<Lock> dockerExitLocks = Striped.lazyWeakLock(4096);
 
     private final ContainerControlApi containerControlApi;
     private final ContainerEntityService containerEntityService;
@@ -862,13 +869,6 @@ public class ContainerServiceImpl implements ContainerService {
             return;
         }
 
-        if (event instanceof DockerContainerEvent && event.isExitStatus() && hasRecordedDockerExit(container)) {
-            // A Docker container exits once. This is the same exit reported a second time, e.g. the "die" event
-            // arriving after the status updater already reported the exit itself, or the other way around.
-            log.debug("Container {} already has an exit recorded, skipping addl event {}", container.containerOrServiceId(), event);
-            return;
-        }
-
         final String userLogin = container.userId();
         final UserI userI;
         try {
@@ -882,7 +882,27 @@ public class ContainerServiceImpl implements ContainerService {
         // events we have already seen, e.g. the kubernetes informer's initial LIST after a restart reports
         // pods that terminated long ago. Such an event can still carry an id we have not recorded yet,
         // but it must not be acted on again.
-        Container containerWithAddedEvent = addContainerEventToHistory(event, userI);
+        Container containerWithAddedEvent;
+        if (event instanceof DockerContainerEvent && event.isExitStatus()) {
+            // The history insert commits when addContainerEventToHistory returns, so holding the lock across the
+            // check and the insert means a second exit event for this container sees the first one's row.
+            final Lock exitLock = dockerExitLocks.get(container.databaseId());
+            exitLock.lock();
+            try {
+                final Container current = retrieve(event.backendId());
+                if (current != null && hasRecordedDockerExit(current)) {
+                    // A Docker container exits once. This is the same exit reported a second time, e.g. the "die"
+                    // event arriving after the status updater already reported the exit itself, or the other way round.
+                    log.debug("Container {} already has an exit recorded, skipping addl event {}", container.containerOrServiceId(), event);
+                    return;
+                }
+                containerWithAddedEvent = addContainerEventToHistory(event, userI);
+            } finally {
+                exitLock.unlock();
+            }
+        } else {
+            containerWithAddedEvent = addContainerEventToHistory(event, userI);
+        }
         final boolean eventAlreadyRecorded = containerWithAddedEvent == null;
         if (eventAlreadyRecorded) {
             containerWithAddedEvent = container;
