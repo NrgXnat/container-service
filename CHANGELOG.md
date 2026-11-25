@@ -18,6 +18,7 @@
 
 ### Bugfixes
 * [#15](https://github.com/NrgXnat/container-service/pull/15): With the `org.nrg.containers.api` logger at DEBUG, the Kubernetes client no longer logs the service account token or request bodies. It used to log every request's `Authorization` header and the full request and response bodies. Those include a job's `XNAT_PASS` and, in pod lists, the environment of every pod in the namespace. It now logs headers only, with `Authorization` redacted.
+* [#30](https://github.com/NrgXnat/container-service/pull/30): On the Docker backend, a container whose exit event was lost no longer stays "Running" forever. The Docker daemon keeps only its last 256 events, so on a busy host a container's `die` could be gone before the status updater's next poll. The updater now checks Docker for containers that exited without an event and finalizes them, and logs a warning for each. Containers already stuck this way are finalized on the first run after upgrade, if they still exist in Docker. Swarm and Kubernetes are unchanged.
 
 ## 3.9.0
 

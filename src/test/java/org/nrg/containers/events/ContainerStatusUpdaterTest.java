@@ -13,9 +13,13 @@ import org.mockito.MockedStatic;
 import org.nrg.containers.api.ContainerControlApi;
 import org.nrg.containers.api.KubernetesClient;
 import org.nrg.containers.api.KubernetesClientFactory;
+import org.nrg.containers.events.model.ContainerEvent;
+import org.nrg.containers.events.model.DockerContainerEvent;
 import org.nrg.containers.events.model.ServiceTaskEvent;
+import org.nrg.containers.exceptions.DockerServerException;
 import org.nrg.containers.exceptions.NoContainerServerException;
 import org.nrg.containers.exceptions.TaskNotFoundException;
+import org.nrg.containers.jms.utils.QueueUtils;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.auto.ServiceTask;
 import org.nrg.containers.model.server.docker.DockerServerBase.DockerServer;
@@ -36,6 +40,7 @@ import org.springframework.jms.core.JmsTemplate;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -173,10 +178,98 @@ class ContainerStatusUpdaterTest {
         when(leader.isLeader()).thenReturn(true, false);
         updater.run();
         verify(dockerServerService, never()).update(any());
+        verify(containerService, never()).retrieveDockerContainerIdsWithNoExit();
 
         // Still the leader at the end of the tick: the checkpoint moves.
         when(leader.isLeader()).thenReturn(true);
         updater.run();
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerTickThrowsTheDieEventForAContainerThatExitedWithoutOne() throws Exception {
+        final Date lastEventCheckTime = new Date(1795137026000L);
+        final List<String> noExitRecorded = Arrays.asList("container-1", "container-2");
+        final DockerContainerEvent missedExit = DockerContainerEvent.create(DockerContainerEvent.EXIT_STATUS,
+                "container-1", new Date(1795137025778L), 1795137025778357966L, Collections.singletonMap("exitCode", "0"));
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(lastEventCheckTime);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(noExitRecorded);
+        when(containerControlApi.getExitEventsForContainers(eq(noExitRecorded), any()))
+                .thenReturn(Collections.singletonList(missedExit));
+
+        try (final MockedStatic<QueueUtils> queueUtils = mockStatic(QueueUtils.class)) {
+            updater.run();
+
+            queueUtils.verify(() -> QueueUtils.sendJmsRequest(any(JmsTemplate.class), eq(ContainerEvent.QUEUE), eq(missedExit)));
+        }
+
+        // Only containers that finished before a checkpoint written at least the grace ago: a "die" from after
+        // it may still be on its way through the queue.
+        verify(containerControlApi).getExitEventsForContainers(noExitRecorded,
+                new Date(lastEventCheckTime.getTime() - ContainerStatusUpdater.DIE_EVENT_LAG.toMillis()));
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerExitCheckCountsTheGraceFromWhenTheDieWasQueued() throws Exception {
+        // Polling paused: the first tick after it starts from a checkpoint long ago, and queues the real "die"
+        // of every container that finished during the pause. The next tick starts 10 seconds later.
+        final long nowMillis = System.currentTimeMillis();
+        final Date beforePause = new Date(nowMillis - TimeUnit.MINUTES.toMillis(5) + 250);
+        final Date afterPause = new Date(nowMillis - TimeUnit.SECONDS.toMillis(10));
+        final List<String> noExitRecorded = Collections.singletonList("container-1");
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(beforePause, afterPause);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(noExitRecorded);
+
+        updater.run();
+        updater.run();
+
+        // Both ticks only report containers that finished before the pause, rounded down to the second the
+        // events were asked for up to, less the lag of a "die" behind the finish time. A container that finished
+        // during the pause had its "die" queued 10 seconds ago.
+        verify(containerControlApi, times(2)).getExitEventsForContainers(noExitRecorded,
+                new Date(beforePause.getTime() / 1000 * 1000 - ContainerStatusUpdater.DIE_EVENT_LAG.toMillis()));
+    }
+
+    @Test
+    void dockerExitCheckWaitsUntilACheckpointIsOldEnough() throws Exception {
+        // Leadership just moved, and the other node wrote the checkpoint 5 seconds ago: the "die" events before
+        // it may still be queued.
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(server.lastEventCheckTime()).thenReturn(new Date(System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(5)));
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+
+        updater.run();
+
+        verify(containerService, never()).retrieveDockerContainerIdsWithNoExit();
+        verify(containerControlApi, never()).getExitEventsForContainers(any(), any());
+        verify(dockerServerService).update(any());
+    }
+
+    @Test
+    void dockerTickDoesNotAskDockerAboutExitsWhenEveryContainerHasOne() throws Exception {
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(Collections.emptyList());
+
+        updater.run();
+
+        verify(containerControlApi, never()).getExitEventsForContainers(any(), any());
+    }
+
+    @Test
+    void dockerCheckpointStillMovesWhenTheExitCheckFails() throws Exception {
+        when(server.backend()).thenReturn(Backend.DOCKER);
+        when(containerControlApi.getContainerEvents(any(), any())).thenReturn(Collections.emptyList());
+        when(containerService.retrieveDockerContainerIdsWithNoExit()).thenReturn(Collections.singletonList("container-1"));
+        when(containerControlApi.getExitEventsForContainers(any(), any())).thenThrow(new DockerServerException("docker is down"));
+
+        updater.run();
+
         verify(dockerServerService).update(any());
     }
 

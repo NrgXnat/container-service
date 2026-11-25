@@ -15,6 +15,7 @@ import org.nrg.containers.model.command.auto.ResolvedInputTreeNode;
 import org.nrg.containers.model.command.auto.ResolvedInputValue;
 import org.nrg.containers.model.container.auto.Container;
 import org.nrg.containers.model.container.entity.ContainerEntity;
+import org.nrg.containers.model.server.docker.Backend;
 import org.nrg.containers.secrets.EnvironmentVariableSecretDestination;
 import org.nrg.containers.secrets.ResolvedSecret;
 import org.nrg.containers.secrets.Secret;
@@ -175,6 +176,31 @@ public class ContainerEntityTest {
 
         // Missing id returns null.
         assertThat(containerEntityService.retrieveServiceForPoll(-1L), is(nullValue()));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testRetrieveDockerContainerIdsWithNoExit() throws Exception {
+        final Container running = Container.builder()
+                .commandId(10L)
+                .wrapperId(100L)
+                .containerId("running")
+                .userId("me")
+                .dockerImage("whale")
+                .commandLine("exit 0")
+                .status("Running")
+                .build();
+        containerEntityService.create(ContainerEntity.fromPojo(running));
+        containerEntityService.create(ContainerEntity.fromPojo(running.toBuilder()
+                .containerId("swarm").serviceId("swarm-service").backend(Backend.SWARM).build()));
+        containerEntityService.create(ContainerEntity.fromPojo(running.toBuilder()
+                .containerId("died").status("die").build()));
+        containerEntityService.create(ContainerEntity.fromPojo(running.toBuilder()
+                .containerId("queued").status("_Queued").build()));
+
+        // Only the Docker container still running as far as we know. The others are Swarm, have a "die"
+        // recorded, or are queued for finalizing.
+        assertThat(containerEntityService.retrieveDockerContainerIdsWithNoExit(), is(Collections.singletonList("running")));
     }
 
     @Test
