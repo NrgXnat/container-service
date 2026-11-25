@@ -1745,6 +1745,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             visibilityFilterKey = $filterBar.find('select.filter-visibility').val() || '',
             $images = $('#image-list-container').find('.imageContainer'),
             imagesShown = 0,
+            hiddenMatches = 0,
             loading = false;
 
         $images.each(function(){
@@ -1772,9 +1773,16 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
 
             $image.css('display', showImage ? '' : 'none');
             if (showImage && !$image.hasClass('hidden')) imagesShown++;
+            if (showImage && $image.hasClass('hidden')) hiddenMatches++;
         });
 
-        $filterBar.find('.no-filter-matches').toggleClass('hidden', loading || !$images.length || imagesShown > 0);
+        // only report "no match" while a filter is active, and say so when the only matches are hidden images
+        var filterActive = !!(searchKey || visibilityFilterKey);
+        $filterBar.find('.no-filter-matches')
+            .text(hiddenMatches === 0 ? 'No commands or images match.' :
+                hiddenMatches === 1 ? '1 matching image is hidden.' :
+                hiddenMatches + ' matching images are hidden.')
+            .toggleClass('hidden', !filterActive || loading || !$images.length || imagesShown > 0);
     }
 
 
@@ -1898,7 +1906,13 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
             }
 
             // the list is rebuilt after every change to an image or command, so apply the current search to the new table
-            filterCommandList();
+            commandListManager.filterCommandList();
+        }).fail(function(){
+            // still give the image a table, so the panel doesn't wait on it forever
+            clmTable.tr({title: 'Commands could not be loaded'})
+                .td({colSpan: '6', html: 'Commands could not be loaded'});
+            $commandListContainer.append(clmTable.table);
+            commandListManager.filterCommandList();
         });
     };
 
@@ -1948,12 +1962,12 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     type: 'text',
                     title: 'Search by command name, command description, XNAT action or image name',
                     placeholder: 'Search commands and images',
-                    oninput: filterCommandList
+                    oninput: commandListManager.filterCommandList
                 }),
                 spawn('select', {
                     addClass: 'filter-data filter-visibility',
                     title: 'Filter on command visibility',
-                    onchange: filterCommandList
+                    onchange: commandListManager.filterCommandList
                 }, [
                     spawn('option', { value: '' }, 'Any visibility'),
                     spawn('option', { value: 'public' }, 'Public'),
@@ -2178,6 +2192,9 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                     }
                 })
 
+                // apply the current search to the new images before their commands load, so they don't show unfiltered
+                commandListManager.filterCommandList();
+
             } else {
                 $manager.append(spawn('p',['There are no images installed in this XNAT.']));
             }
@@ -2204,7 +2221,7 @@ XNAT.plugin.containerService.assignProjectlauncher = assignProjectlauncher = get
                 .find('span').html(hiddenImagesMessage($hideableImages.length, true));
             $hideableImages.addClass('hidden');
         }
-        filterCommandList();
+        commandListManager.filterCommandList();
     });
 
     imageListManager.refresh = imageListManager.refreshTable = function(container){
