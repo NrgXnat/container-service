@@ -112,7 +112,7 @@ public class ContainerListBatchSessionsTest {
     @Test
     public void testProjectListEndpointReadsEachBatchInItsOwnSession() throws Exception {
         final List<Container> listed = new ArrayList<>();
-        final long sessions = sessionsOpenedBy(() -> listed.addAll(list("/projects/" + PROJECT + "/containers")));
+        final long sessions = sessionsOpenedBy(() -> listed.addAll(list("/projects/" + PROJECT + "/containers", adminAuth)));
 
         assertThat(sessions, greaterThanOrEqualTo(batches(CONTAINERS)));
         assertThat(idsOf(listed), is(created));
@@ -121,11 +121,33 @@ public class ContainerListBatchSessionsTest {
     @Test
     public void testSiteListEndpointReadsEachBatchInItsOwnSession() throws Exception {
         final List<Container> listed = new ArrayList<>();
-        final long sessions = sessionsOpenedBy(() -> listed.addAll(list("/containers")));
+        final long sessions = sessionsOpenedBy(() -> listed.addAll(list("/containers", adminAuth)));
 
         // The site list also holds any containers the other tests in this context's database committed.
         assertThat(sessions, greaterThanOrEqualTo(batches(listed.size())));
         assertThat(idsOf(listed), hasItems(created.toArray(new Long[0])));
+    }
+
+    /**
+     * A user who isn't an admin, a container manager or the project's owner sees only their own containers. The other
+     * user's container is created last, so the two batches before it hold none of theirs and the filter has to run
+     * across batch boundaries to find it.
+     */
+    @Test
+    public void testListsLeaveOutOtherUsersContainers() throws Exception {
+        final UserI other = mock(UserI.class);
+        when(other.getLogin()).thenReturn("other");
+        when(other.getPassword()).thenReturn("other-pass");
+        when(mockUserManagementServiceI.getUser("other")).thenReturn(other);
+        final Authentication otherAuth = new TestingAuthenticationToken(other, "other-pass");
+
+        final long own = containerEntityService.create(ContainerEntity.fromPojo(
+                container(CONTAINERS).toBuilder().userId("other").build())).getId();
+        created.add(own);
+
+        for (final String path : new String[]{"/containers", "/projects/" + PROJECT + "/containers"}) {
+            assertThat(path, idsOf(list(path, otherAuth)), contains(own));
+        }
     }
 
     /**
@@ -147,9 +169,9 @@ public class ContainerListBatchSessionsTest {
         void run() throws Exception;
     }
 
-    private List<Container> list(final String path) throws Exception {
+    private List<Container> list(final String path, final Authentication auth) throws Exception {
         final String response = mockMvc.perform(get(path)
-                                                        .with(authentication(adminAuth))
+                                                        .with(authentication(auth))
                                                         .with(csrf())
                                                         .with(testSecurityContext()))
                                        .andExpect(status().isOk())
